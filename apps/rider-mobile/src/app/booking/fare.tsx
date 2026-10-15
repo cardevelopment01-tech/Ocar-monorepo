@@ -9,6 +9,7 @@ import { CategoryCard, type CategoryEta } from '@/features/booking/components/Ca
 import { SelectRideMap } from '@/features/booking/components/SelectRideMap'
 import { useFareEstimates } from '@/features/booking/hooks/useFareEstimates'
 import { useBookingDraftStore } from '@/features/booking/store'
+import { formatPickupTime } from '@/lib/formatPickupTime'
 import { resolveSelectedCategory } from '@/features/booking/resolveSelectedCategory'
 import { createBooking, resolveBookingError } from '@/features/booking/api'
 import { socket } from '@/services/socket'
@@ -51,6 +52,7 @@ export default function BookingFareScreen() {
   const tripHours = useBookingDraftStore((s) => s.tripHours)
   const stops = useBookingDraftStore((s) => s.stops)
   const scheduledFor = useBookingDraftStore((s) => s.scheduledFor)
+  const setScheduledFor = useBookingDraftStore((s) => s.setScheduledFor)
   const riderName = useBookingDraftStore((s) => s.riderName)
   const riderPhone = useBookingDraftStore((s) => s.riderPhone)
   const resetDraft = useBookingDraftStore((s) => s.reset)
@@ -100,8 +102,11 @@ export default function BookingFareScreen() {
   const selectedFare = effectiveSelected != null
     ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])?.breakdown.total
     : undefined
-  const allUnavailable = driversPolled && visibleCategories.length > 0 && visibleCategories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
-  const selectedNoCars = driversPolled && effectiveSelected != null && (driverEta[effectiveSelected]?.count ?? 0) === 0
+  // Nearby cars only matter for a ride NOW. A ride booked for later is dispatched shortly before its time, so an empty
+  // street at this moment must not stop the rider from booking it.
+  const liveCheck = driversPolled && !scheduledFor
+  const allUnavailable = liveCheck && visibleCategories.length > 0 && visibleCategories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
+  const selectedNoCars = liveCheck && effectiveSelected != null && (driverEta[effectiveSelected]?.count ?? 0) === 0
   const canBook = effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars
 
   // Available categories first, unavailable ones pushed to the bottom rather
@@ -225,6 +230,15 @@ export default function BookingFareScreen() {
                 </Text>
               ) : null}
             </View>
+            {scheduledFor ? (
+              <View style={styles.scheduledNote}>
+                <Feather name="clock" size={12} color={colors.primaryDark} />
+                <Text style={styles.scheduledNoteText}>Pickup {formatPickupTime(new Date(scheduledFor))}</Text>
+                <Pressable onPress={() => setScheduledFor(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Reset to ride now">
+                  <Feather name="x" size={12} color={colors.primaryDark} />
+                </Pressable>
+              </View>
+            ) : null}
           </View>
 
           {allUnavailable ? (
@@ -402,6 +416,8 @@ const styles = StyleSheet.create({
   sheetHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs },
   sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.sm },
   sheetTitleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  scheduledNote: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: spacing.xs, backgroundColor: colors.primarySubtle, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2 },
+  scheduledNoteText: { ...typography.caption, color: colors.primaryDark, fontFamily: fonts.bold },
   noDriversBanner: {
     flexDirection: 'row',
     alignItems: 'center',

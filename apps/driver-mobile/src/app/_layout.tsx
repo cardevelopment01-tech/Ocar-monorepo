@@ -13,6 +13,7 @@ import { useSessionSyncListener } from '@/features/go-online/useSessionSyncListe
 import { useSessionResync } from '@/features/go-online/useSessionResync'
 import { usePushNotificationRouting } from '@/features/notifications/usePushNotificationRouting'
 import { usePushRegistration } from '@/features/notifications/usePushSetup'
+import { useStandingSync } from '@/features/account/useStandingSync'
 // Registers the background-location TaskManager task at module scope -- must run
 // unconditionally at app startup, since Android can invoke the task in a headless
 // JS instance after the app process was killed (see backgroundTask.ts).
@@ -34,6 +35,7 @@ export default function RootLayout() {
   useSessionResync()
   usePushNotificationRouting()
   usePushRegistration()
+  useStandingSync()
 
   useEffect(() => {
     if (hasHydrated && fontsLoaded) SplashScreen.hideAsync().catch(() => {})

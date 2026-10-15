@@ -21,6 +21,15 @@ function clearSavedLocation(): void {
   require('@/store/useLocationStore').useLocationStore.getState().clearSaved()
 }
 
+// Same lazy-require reason. Recent searches (persisted) and the half-built booking are personal too: the next rider on
+// this phone must not see where the last rider has been going.
+function clearPersonalBookingData(): void {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deliberate lazy require, see above
+  require('@/store/useRecentSearchesStore').useRecentSearchesStore.getState().clearRecents()
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deliberate lazy require, see above
+  require('@/features/booking/store').useBookingDraftStore.getState().reset()
+}
+
 export interface UserProfile {
   id: string
   code: string
@@ -62,6 +71,7 @@ export const useAuthStore = create<AuthState>()(
       clearAuth: () => {
         getSocketActions().disconnectSocket()
         clearSavedLocation() // the next rider on this phone must not see the last rider's place/address
+        clearPersonalBookingData()
         set({ token: null, refreshToken: null, user: null, isAuthenticated: false })
       },
 

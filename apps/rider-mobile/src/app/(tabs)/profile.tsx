@@ -12,6 +12,7 @@ import Animated, { FadeInDown, FadeIn, useAnimatedStyle } from 'react-native-rea
 import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, fonts, useKeyboardOffset, mapSaveError } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
+import { EMAIL_ERROR, isPlausibleEmail } from '@/utils/email'
 import { teardownPushNotifications } from '@/services/notifications'
 import { fetchProfile, updateProfile, type ProfileStats } from '@/features/profile/api'
 
@@ -73,6 +74,7 @@ export default function ProfileScreen() {
 
   async function saveEdit() {
     if (editName.trim().length < 2) { setSaveErr('Name must be at least 2 characters.'); return }
+    if (editEmail.trim() && !isPlausibleEmail(editEmail)) { setSaveErr(EMAIL_ERROR); return }
     setSaving(true)
     setSaveErr('')
     try {
@@ -93,6 +95,10 @@ export default function ProfileScreen() {
   }
 
   async function handleLogout() {
+    // Revoke the refresh token on the server. Sent without waiting (the token is already read), so signing out is
+    // instant and still works with no network.
+    const refreshToken = useAuthStore.getState().refreshToken
+    if (refreshToken) void api.post('/api/v1/auth/logout', { refreshToken }, { timeout: 5000 }).catch(() => undefined)
     await teardownPushNotifications()
     clearAuth()
   }
@@ -252,7 +258,7 @@ export default function ProfileScreen() {
               <Feather name="mail" size={15} color={colors.ink400} style={styles.inputIcon} />
               <TextInput
                 value={editEmail}
-                onChangeText={setEditEmail}
+                onChangeText={(t) => { setEditEmail(t); setSaveErr('') }}
                 placeholder="Email address (optional)"
                 placeholderTextColor={colors.ink400}
                 selectionColor={colors.primary}

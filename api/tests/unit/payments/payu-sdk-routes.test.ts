@@ -10,7 +10,7 @@ vi.mock('@/db/redis', () => ({ client: { get: vi.fn(), set: vi.fn(), del: vi.fn(
 vi.mock('@/middleware/auth.middleware', () => ({
   authenticate: () => (req: { driver?: { id: bigint } }, _r: unknown, n: () => void) => { req.driver = { id: 7n }; n() },
 }))
-vi.mock('@/middleware/role.middleware', () => ({ requireDriver: () => (_q: unknown, _r: unknown, n: () => void) => n() }))
+vi.mock('@/middleware/role.middleware', () => ({ requireDriver: () => (_q: unknown, _r: unknown, n: () => void) => n(), requireUser: () => (_q: unknown, _r: unknown, n: () => void) => n() }))
 vi.mock('@/middleware/rateLimit.middleware', () => ({
   payuHashLimiter: (_q: unknown, _r: unknown, n: () => void) => n(),
   payuConfirmLimiter: (_q: unknown, _r: unknown, n: () => void) => n(),

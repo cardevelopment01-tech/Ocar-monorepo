@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/websocket/socket.server', () => ({ socketEvents: { sendRideRequest: vi.fn() } }))
 vi.mock('@/modules/payments/payments.service', () => ({ getMinWalletBalance: vi.fn().mockResolvedValue(0) }))
-vi.mock('@/modules/notifications/notifications.service', () => ({ sendRideRequestPushOnce: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/modules/notifications/notifications.service', () => ({ sendRideRequestPushOnce: vi.fn().mockResolvedValue(undefined), notifyRideEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/db/redis', () => ({ client: { set: vi.fn().mockResolvedValue('OK') } }))
 vi.mock('@/jobs/queues', () => ({
   queues: { dispatch: { add: vi.fn() } },
@@ -18,6 +18,8 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   createRideAssignment: vi.fn().mockResolvedValue(undefined),
   updateRideStatus: vi.fn(),
   logStatusHistory: vi.fn(),
+  expireLapsedOffers: vi.fn().mockResolvedValue(undefined),
+  getRideCoreById: vi.fn().mockResolvedValue(null),
 }))
 
 import * as repo from '@/modules/rides/rides.repository'

@@ -18,9 +18,10 @@ import {
 
 export async function getActiveSession(driverId: bigint): Promise<DriverSession | null> {
   const res = await pool.query<DriverSession>(
-    `SELECT ds.*, vc.display_name AS category_name
+    `SELECT ds.*, vc.display_name AS category_name, dc.name AS destination_city_name
      FROM driver_sessions ds
      JOIN vehicle_categories vc ON vc.id = ds.category_id
+     LEFT JOIN cities dc ON dc.id = ds.destination_city_id
      WHERE ds.driver_id = $1
        AND ds.status IN ('online', 'on_trip')`,
     [driverId]
@@ -626,7 +627,10 @@ export async function getActiveRideIdForUser(userId: bigint): Promise<string | n
   return res.rows[0]?.id ?? null
 }
 
-export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | null> {
+// includeUnsettledCash: a finished cash ride whose cash was never confirmed counts as active too, so the mobile relaunch
+// check can reopen the cash screen. Other callers (the web driver app) treat any result as a ride in progress, so it is
+// opt-in.
+export async function getActiveRideForDriver(driverId: bigint, includeUnsettledCash = false): Promise<Ride | null> {
   const res = await pool.query<Ride>(
     `SELECT
        r.*,
@@ -648,10 +652,19 @@ export async function getActiveRideForDriver(driverId: bigint): Promise<Ride | n
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
      LEFT JOIN rate_cards hrc    ON hrc.id = fs.rate_card_id
      WHERE r.driver_id = $1
-       AND r.status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
-     ORDER BY r.accepted_at DESC
+       AND (r.status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
+            -- A finished cash ride whose cash was never confirmed: the app was closed between the end PIN and
+            -- the cash screen. Surfacing it lets the relaunch check reopen that screen instead of stranding the ride.
+            -- (A NULL channel means cash, same as collectCash.)
+            OR ($2::boolean AND r.status = 'completed' AND COALESCE(r.payment_channel::text, 'cash') = 'cash'
+                AND r.cash_collected_at IS NULL AND r.completed_at > now() - interval '2 days'
+                -- Not one that support or the sweeper force-completed: there is no cash screen to reopen, and the
+                -- app would show "ended by support" on every launch for two days.
+                AND NOT EXISTS (SELECT 1 FROM ride_status_history h
+                                WHERE h.ride_id = r.id AND h.to_status = 'completed' AND h.actor IN ('admin', 'timeout'))))
+     ORDER BY (r.status = 'completed'), r.accepted_at DESC
      LIMIT 1`,
-    [driverId]
+    [driverId, includeUnsettledCash]
   )
   return res.rows[0] ?? null
 }
@@ -1273,6 +1286,17 @@ export async function expireAssignment(rideId: bigint, driverId: bigint): Promis
      SET status = 'expired', responded_at = now()
      WHERE ride_id = $1 AND driver_id = $2 AND status = 'offered'`,
     [rideId, driverId]
+  )
+}
+
+// Offers whose window has passed without an answer: mark them expired so the audit row is honest. Only rows past
+// expires_at are touched, so an offer that is still open for its driver is never closed early.
+export async function expireLapsedOffers(rideId: bigint): Promise<void> {
+  await pool.query(
+    `UPDATE ride_assignments
+     SET status = 'expired', responded_at = now()
+     WHERE ride_id = $1 AND status = 'offered' AND expires_at < now()`,
+    [rideId]
   )
 }
 

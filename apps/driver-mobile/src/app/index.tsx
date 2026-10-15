@@ -5,7 +5,8 @@ import { Button, Card, colors, spacing, typography, Text } from '@ocar/mobile-sh
 import { useAuthStore } from '@/store/useAuthStore'
 import { useOnboardingIntroStore } from '@/store/useOnboardingIntroStore'
 import { fetchActiveRideForRelaunch } from '@/features/active-ride/relaunchApi'
-import { relaunchRoute } from '@/features/active-ride/relaunchRouting'
+import { refreshDriverProfile } from '@/features/account/refreshDriver'
+import { restrictionOf, standingRoute } from '@/features/account/accountStanding'
 
 type CheckState = 'checking' | 'done' | 'failed'
 
@@ -39,20 +40,42 @@ export default function Index() {
 
   // docs_rejected drivers go into the app itself (Home's document-gate banner
   // already surfaces the rejection there), matching web's ProtectedRoute.
-  const needsOnboarding = !!driver && driver.status !== 'active' && driver.status !== 'docs_rejected'
+  // Suspended and banned drivers are NOT mid-application: they go to the account status screen (standingRoute below).
+  const needsOnboarding = !!driver && driver.status !== 'active' && driver.status !== 'docs_rejected' && !restrictionOf(driver.status)
   const onboardingRoute = needsOnboarding
     ? (ONBOARDING_STEP_ROUTES[driver.onboarding_step] ?? '/onboarding/pending-review')
     : null
 
   useEffect(() => {
     if (!isAuthenticated || onboardingRoute) return
+    let cancelled = false
     setCheckState('checking')
-    fetchActiveRideForRelaunch()
-      .then((ride) => {
-        setRoute(relaunchRoute(ride))
+    void (async () => {
+      // Re-read the account first: a driver suspended or banned after they signed in must not land on Home.
+      await refreshDriverProfile()
+      if (cancelled) return
+      const status = useAuthStore.getState().driver?.status
+      try {
+        // A banned driver is refused everywhere, so there is no ride to look up for them.
+        const ride = status === 'banned' ? null : await fetchActiveRideForRelaunch()
+        if (cancelled) return
+        setRoute(standingRoute(status, ride))
         setCheckState('done')
-      })
-      .catch(() => setCheckState('failed'))
+      } catch {
+        if (cancelled) return
+        // A suspended driver's token cannot be renewed unless a ride is under way (the server refuses the refresh
+        // with 403 DRIVER_SUSPENDED), so a failed lookup that left the account restricted means "no ride": show the
+        // status screen rather than an error.
+        const now = useAuthStore.getState().driver?.status
+        if (restrictionOf(now)) {
+          setRoute(standingRoute(now, null))
+          setCheckState('done')
+        } else {
+          setCheckState('failed')
+        }
+      }
+    })()
+    return () => { cancelled = true }
   }, [isAuthenticated, retryToken, onboardingRoute])
 
   if (!introHydrated) return null

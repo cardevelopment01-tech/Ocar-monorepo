@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useNavClearance } from '@/features/home/FloatingTabBar'
 import { geo } from '@/theme/homeTokens'
@@ -101,7 +101,10 @@ export function RideHistoryList() {
             <UpcomingCard
               ride={item}
               onOpen={() => openRide(item.id)}
-              onCancel={() => void cancelUpcoming(item.id)}
+              onCancel={() => Alert.alert('Cancel this ride?', 'Your scheduled pickup will be cancelled.', [
+                { text: 'Keep ride', style: 'cancel' },
+                { text: 'Cancel ride', style: 'destructive', onPress: () => void cancelUpcoming(item.id) },
+              ])}
               cancelling={cancellingId === item.id}
             />
           )}

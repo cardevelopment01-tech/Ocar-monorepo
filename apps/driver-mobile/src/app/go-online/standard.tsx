@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons'
 import { Button, Card, colors, h, radii, shadow, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { fetchMyVehicle } from '@/features/go-online/api'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
+import { walletBlockMessage } from '@/features/go-online/walletGateMessage'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
 import { useConfirmGoOnline } from '@/features/go-online/useConfirmGoOnline'
 import { LocationDisclosure } from '@/features/go-online/LocationDisclosure'
@@ -18,6 +19,7 @@ export default function StandardConfirmScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const walletGate = useWalletGate()
+  const walletBlock = walletBlockMessage(walletGate)
   const documentGate = useDocumentGate()
 
   const [vehicle, setVehicle] = useState<VehicleInfo | null>(null)
@@ -54,6 +56,12 @@ export default function StandardConfirmScreen() {
           <View style={styles.gateCard}>
             <Feather name="alert-triangle" size={15} color={colors.error} />
             <Text style={styles.gateText}>Your wallet is frozen. Contact support.</Text>
+          </View>
+        ) : null}
+        {walletBlock ? (
+          <View style={styles.gateCard}>
+            <Feather name="alert-triangle" size={15} color={colors.error} />
+            <Text style={styles.gateText}>{walletBlock.message}</Text>
           </View>
         ) : null}
 

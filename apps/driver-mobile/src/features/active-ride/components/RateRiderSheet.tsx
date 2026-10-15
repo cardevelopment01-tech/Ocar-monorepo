@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Feather } from '@expo/vector-icons'
+import { Feather, Ionicons } from '@expo/vector-icons'
 import axios from 'axios'
 import { Button, colors, radii, spacing, typography, type RatingTag, fonts, Text, SlideModal } from '@ocar/mobile-shared'
 import { fetchRiderTags, rateRider } from '../safety-api'
@@ -85,7 +85,7 @@ export function RateRiderSheet({ visible, rideId, riderName, onClose }: RateRide
             <View style={styles.starsRow}>
               {[1, 2, 3, 4, 5].map((star) => (
                 <Pressable key={star} onPress={() => setRating(star)} style={styles.star} accessibilityRole="button" accessibilityLabel={`${star} star${star > 1 ? 's' : ''}`}>
-                  <Feather name="star" size={34} color={rating >= star ? colors.warning : colors.ink400} />
+                  <Ionicons name={rating >= star ? 'star' : 'star-outline'} size={34} color={rating >= star ? colors.warning : colors.ink400} />
                 </Pressable>
               ))}
             </View>

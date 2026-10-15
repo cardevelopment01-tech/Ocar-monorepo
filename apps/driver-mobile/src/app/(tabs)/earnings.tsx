@@ -2,7 +2,7 @@ import { RefreshControl, StyleSheet, View } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
-import { EmptyState, ErrorState, Skeleton, colors, spacing, typography, fonts, sectionLabel, useNavClearance, Text } from '@ocar/mobile-shared'
+import { Button, EmptyState, ErrorState, Skeleton, colors, spacing, typography, fonts, sectionLabel, useNavClearance, Text } from '@ocar/mobile-shared'
 import { useTripHistory } from '@/features/earnings/useTripHistory'
 import { TripRow } from '@/features/earnings/TripRow'
 import { PeriodTabs } from '@/features/earnings/components/PeriodTabs'
@@ -13,7 +13,7 @@ const SKELETON_ROWS = Array.from({ length: 6 }, (_, i) => i)
 const PERIOD_LABEL = { today: 'Today', week: 'This Week', month: 'This Month' } as const
 
 export default function EarningsScreen() {
-  const { trips, summary, period, setPeriod, loading, refreshing, loadingMore, summaryLoading, hasMore, error, refresh, loadMore } = useTripHistory()
+  const { trips, summary, summaryFailed, retrySummary, period, setPeriod, loading, refreshing, loadingMore, summaryLoading, hasMore, error, refresh, loadMore } = useTripHistory()
   const insets = useSafeAreaInsets()
   const clearance = useNavClearance()
 
@@ -58,13 +58,20 @@ export default function EarningsScreen() {
 
           <LinearGradient colors={['#0B4A50', '#0E8FA3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.summaryCard, summaryLoading ? styles.summaryLoading : null]}>
             <Text style={styles.summaryLabel}>{PERIOD_LABEL[period]}</Text>
-            <Text style={styles.summaryTotal}>₹{(summary?.totalEarnings ?? 0).toLocaleString('en-IN')}</Text>
+            <Text style={styles.summaryTotal}>{summary ? `₹${summary.totalEarnings.toLocaleString('en-IN')}` : '—'}</Text>
             <View style={styles.pillRow}>
-              <View style={styles.pill}><Text style={styles.pillText}>{summary?.tripCount ?? 0} trips</Text></View>
-              <View style={styles.pill}><Text style={styles.pillText}>{summary?.onlineHours ?? '0m'} online</Text></View>
+              <View style={styles.pill}><Text style={styles.pillText}>{summary ? summary.tripCount : '—'} trips</Text></View>
+              <View style={styles.pill}><Text style={styles.pillText}>{summary ? summary.onlineHours : '—'} online</Text></View>
               <View style={styles.pill}><Text style={styles.pillText}>★ {summary?.rating ?? '-'}</Text></View>
             </View>
           </LinearGradient>
+
+          {summaryFailed ? (
+            <View style={styles.summaryError}>
+              <Text style={styles.summaryErrorText}>Couldn't load these figures.</Text>
+              <Button label="Retry" variant="secondary" onPress={retrySummary} />
+            </View>
+          ) : null}
 
           {summary ? <EarningsBarChart values={summary.chart} labels={summary.chartLabels} /> : null}
           {summary ? <EarningsBreakdown breakdown={summary.breakdown} /> : null}
@@ -95,6 +102,8 @@ const styles = StyleSheet.create({
   // hero card: deep teal, white type, the one dark surface on an otherwise pale screen
   summaryCard: { gap: spacing.xs, borderRadius: 22, padding: spacing.lg, boxShadow: '0 12px 28px rgba(14,143,163,0.28)' },
   summaryLoading: { opacity: 0.6 },
+  summaryError: { gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  summaryErrorText: { ...typography.caption, color: colors.error },
   summaryLabel: { ...typography.label, color: 'rgba(255,255,255,0.72)' },
   summaryTotal: { ...typography.display, color: '#FFFFFF', fontSize: 34, lineHeight: 40, letterSpacing: -0.6 },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.xs },

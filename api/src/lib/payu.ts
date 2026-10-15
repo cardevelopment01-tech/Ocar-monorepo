@@ -13,6 +13,9 @@ const UDF = ['', '', '', '', '']
 const UNUSED = ['', '', '', '', '']
 
 export const PAYU_RETURN_PATH = '/api/v1/payments/payu/return'
+// The native SDK's surl/furl. PAYU_RETURN_PATH redirects to the web apps, which would load a web login page inside
+// the payment screen; this one confirms the same way and ends on a bare page the SDK closes on.
+export const PAYU_SDK_RETURN_PATH = '/api/v1/payments/payu/sdk-return'
 // productinfo is part of the request hash, so the order creators and the SDK hash
 // signer must build it from the same place.
 export const TOPUP_PRODUCT_INFO = 'Ocar wallet top-up'

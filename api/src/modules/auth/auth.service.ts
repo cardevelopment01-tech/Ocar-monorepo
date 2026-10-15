@@ -174,7 +174,8 @@ export async function verifyOtp(
     isNew = !existing
     principal = await repo.upsertDriver(phone)
     const { status } = principal as DriverRecord
-    if (status === 'suspended' || status === 'banned' || status === 'deleted') {
+    if (status === 'banned') throw createHttpError(AppErrors.DRIVER_BANNED)
+    if (status === 'suspended' || status === 'deleted') {
       throw createHttpError(AppErrors.DRIVER_SUSPENDED)
     }
   }
@@ -269,7 +270,8 @@ export async function refreshTokens(refreshToken: string): Promise<{ tokens: Aut
     if (standing === 'deleted' || !(await repo.hasLiveRide(role, principalId))) throw createHttpError(AppErrors.AUTH_FORBIDDEN)
   }
   if (role === PrincipalRole.DRIVER && (standing === 'suspended' || standing === 'banned' || standing === 'deleted')) {
-    if (standing === 'banned' || standing === 'deleted' || !(await repo.hasLiveRide(role, principalId))) throw createHttpError(AppErrors.DRIVER_SUSPENDED)
+    if (standing === 'banned') throw createHttpError(AppErrors.DRIVER_BANNED)
+    if (standing === 'deleted' || !(await repo.hasLiveRide(role, principalId))) throw createHttpError(AppErrors.DRIVER_SUSPENDED)
   }
   if (role === PrincipalRole.ADMIN && (principal as AdminRecord).is_active === false) {
     throw createHttpError(AppErrors.AUTH_TOKEN_INVALID)
@@ -307,5 +309,18 @@ export async function refreshTokens(refreshToken: string): Promise<{ tokens: Aut
 
 export async function logout(refreshToken: string): Promise<void> {
   const tokenHash = hashRefreshToken(refreshToken)
+  const token = await repo.findRefreshToken(tokenHash)
   await repo.revokeRefreshTokenFamily(tokenHash)
+  // A driver who signs out must not stay matchable with nobody logged in. Best effort: logout itself must not fail.
+  // Only a live token counts: one that was already rotated or revoked (an old phone after a newer login, or a replayed
+  // token) must not end the session the driver is running on another device.
+  if (token?.principal_role === 'driver' && !token.revoked_at && !token.used_at) {
+    try {
+      const driverId = BigInt(token.principal_id)
+      const active = await ridesRepo.getActiveSession(driverId)
+      if (active?.status === 'online') await goOffline(driverId, 'logout')
+    } catch (err) {
+      logger.warn({ err, driverId: token.principal_id }, 'could not end driver session on logout')
+    }
+  }
 }

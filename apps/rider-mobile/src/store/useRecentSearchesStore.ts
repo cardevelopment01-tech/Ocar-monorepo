@@ -8,6 +8,7 @@ const MAX_RECENTS = 5
 type RecentSearchesState = {
   recents: BookingPlace[]
   addRecent: (place: BookingPlace) => void
+  clearRecents: () => void
 }
 
 // Web has no equivalent of this (its search page only has a static POPULAR
@@ -21,6 +22,7 @@ export const useRecentSearchesStore = create<RecentSearchesState>()(
         set((state) => ({
           recents: [place, ...state.recents.filter((r) => r.address !== place.address)].slice(0, MAX_RECENTS),
         })),
+      clearRecents: () => set({ recents: [] }),
     }),
     {
       name: 'ocar_recent_searches',

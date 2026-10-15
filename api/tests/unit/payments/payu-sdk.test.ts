@@ -133,6 +133,11 @@ describe('sdkParams', () => {
     expect(JSON.stringify(p)).not.toContain('SALT')
     expect(p).not.toHaveProperty('hash')
   })
+  it('returns to the bare SDK page, not the web-app redirect, on success and failure', () => {
+    const p = sdkParams(form())
+    expect(p.surl).toBe('https://api.example/api/v1/payments/payu/sdk-return')
+    expect(p.furl).toBe('https://api.example/api/v1/payments/payu/sdk-return')
+  })
   it('refuses a transaction id over the SDK limit of 25 characters', () => {
     expect(() => sdkParams(form({ txnid: 'W' + 'x'.repeat(25) }))).toThrow()
   })

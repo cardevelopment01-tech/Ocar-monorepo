@@ -31,7 +31,7 @@ export default function DocumentsScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <ComplianceBanner rejectedCount={form.rejectedDocs.length} pendingCount={form.pendingCount} />
+          <ComplianceBanner rejectedCount={form.rejectedDocs.length} pendingCount={form.pendingCount} incomplete={!form.allDocsUploaded || !(form.identitySaved || form.identityFilled)} />
 
           {form.rejectedDocs.length > 0 ? (
             <View style={styles.alertCard}>
@@ -63,7 +63,7 @@ export default function DocumentsScreen() {
   )
 }
 
-function ComplianceBanner({ rejectedCount, pendingCount }: { rejectedCount: number; pendingCount: number }) {
+function ComplianceBanner({ rejectedCount, pendingCount, incomplete }: { rejectedCount: number; pendingCount: number; incomplete: boolean }) {
   if (rejectedCount > 0) {
     return (
       <View style={[styles.banner, styles.bannerError]}>
@@ -79,6 +79,16 @@ function ComplianceBanner({ rejectedCount, pendingCount }: { rejectedCount: numb
         <Text style={[styles.bannerText, styles.bannerTextWarn]}>
           {pendingCount === 1 ? '1 document is being reviewed' : `${pendingCount} documents are being reviewed`}. Reviews usually take 1 to 2 business days.
         </Text>
+      </View>
+    )
+  }
+  // Documents or numbers that were never provided are not "verified". This is the same condition the Profile menu
+  // uses for its Incomplete badge, so the two screens always agree.
+  if (incomplete) {
+    return (
+      <View style={[styles.banner, styles.bannerWarn]}>
+        <Feather name="upload" size={16} color="#8A6420" />
+        <Text style={[styles.bannerText, styles.bannerTextWarn]}>Some documents are still to upload. Add them below to get verified.</Text>
       </View>
     )
   }

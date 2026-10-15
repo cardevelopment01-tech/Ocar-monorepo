@@ -92,12 +92,14 @@ export function useRideHistory() {
     try {
       await cancelRide(rideId, 'rider_cancelled_scheduled')
       setUpcoming((prev) => prev.filter((r) => r.id !== rideId))
+      // The All tab was loaded before the cancel and still lists this ride as Scheduled until it is refetched.
+      void fetchHistory(1)
     } catch {
       setUpcomingError(LOAD_ERROR_MESSAGE)
     } finally {
       setCancellingId(null)
     }
-  }, [])
+  }, [fetchHistory])
 
   return {
     tab, setTab,

@@ -164,10 +164,19 @@ export async function placeDetails(placeId: string): Promise<PlaceDetail> {
 
   return {
     placeId,
-    address: body.result.formatted_address ?? body.result.name,
+    address: body.result.formatted_address ? stripPlusCode(body.result.formatted_address) : body.result.name,
     lat: body.result.geometry.location.lat,
     lng: body.result.geometry.location.lng,
   }
+}
+
+// Google sometimes leads a reverse-geocoded address with an Open Location Code ("6RQM+P33, Lingaraj Nagar, ..."). It
+// means nothing to a rider or driver, so it is dropped here once for every client. An address that is only a code is
+// kept as it is rather than returned empty.
+const PLUS_CODE = /^[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3},?\s*/i
+export function stripPlusCode(address: string): string {
+  const stripped = address.replace(PLUS_CODE, '').trim()
+  return stripped.length > 0 ? stripped : address
 }
 
 export async function reverseGeocode(lat: number, lng: number): Promise<string> {
@@ -179,7 +188,8 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
   }) as { status: string; results: Array<{ formatted_address: string }> }
 
   if (body.status !== 'OK') return `${lat.toFixed(5)}, ${lng.toFixed(5)}`
-  return body.results?.[0]?.formatted_address ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+  const formatted = body.results?.[0]?.formatted_address
+  return formatted ? stripPlusCode(formatted) : `${lat.toFixed(5)}, ${lng.toFixed(5)}`
 }
 
 type RoutesApiRoute = {

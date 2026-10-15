@@ -1,4 +1,4 @@
-import { query } from '@/db/client'
+import { query, withTransaction } from '@/db/client'
 
 export interface EmergencyContactDTO {
   id: string
@@ -20,6 +20,30 @@ export async function insert(userId: bigint, name: string, phone: string): Promi
     [userId.toString(), name, phone]
   )
   return rows[0]!
+}
+
+export type InsertWithinLimitResult =
+  | { result: 'added'; contact: EmergencyContactDTO }
+  | { result: 'limit' | 'duplicate' | 'own_number' }
+
+// Contacts are capped per user. Reading the list, checking its length and then inserting lets simultaneous adds all
+// pass the check (three at once bypassed the limit of 3). Locking the user's row (FOR UPDATE), held to the end of the
+// transaction, makes the count and the insert one atomic step per user. The lock is a row lock on the user's own row,
+// so it needs no hand-made key space and only ever serialises the same user.
+
+export function insertWithinLimit(userId: bigint, name: string, phone: string, max: number): Promise<InsertWithinLimitResult> {
+  return withTransaction(async (client) => {
+    const own = await client.query<{ phone: string }>('SELECT phone FROM users WHERE id = $1 FOR UPDATE', [userId.toString()])
+    const existing = await client.query<{ phone: string }>('SELECT phone FROM user_emergency_contacts WHERE user_id = $1', [userId.toString()])
+    if (existing.rows.length >= max) return { result: 'limit' as const }
+    if (existing.rows.some((c) => c.phone === phone)) return { result: 'duplicate' as const }
+    if (own.rows[0]?.phone === phone) return { result: 'own_number' as const }
+    const ins = await client.query<EmergencyContactDTO>(
+      `INSERT INTO user_emergency_contacts (user_id, name, phone) VALUES ($1, $2, $3) RETURNING ${COLUMNS}`,
+      [userId.toString(), name, phone]
+    )
+    return { result: 'added' as const, contact: ins.rows[0]! }
+  })
 }
 
 export async function remove(userId: bigint, id: bigint): Promise<boolean> {

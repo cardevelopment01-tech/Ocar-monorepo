@@ -124,9 +124,9 @@ describe('adminAssignDriver', () => {
     expect(removeMock).toHaveBeenCalled()
   })
 
-  it('request mode expires the manual offer before scheduling the fallback broadcast', async () => {
+  it('request mode leaves the manual offer open so the driver can accept it', async () => {
     await adminAssignDriver(5n, 9n, 'request', false, 1n)
-    expect(repo.expireAssignment).toHaveBeenCalledWith(5n, 9n)
+    expect(repo.expireAssignment).not.toHaveBeenCalled()
   })
 
   it('logs only one status-history row for the CAS transition when the ride starts scheduled', async () => {

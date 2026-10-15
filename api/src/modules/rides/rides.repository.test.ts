@@ -14,7 +14,23 @@ vi.mock('@/db/redis', () => ({
   client: { del: vi.fn().mockResolvedValue(1) },
 }))
 
-import { getEligibleDriverCategoryIds, findNearbyDrivers, findStaleOnlineDrivers, findReturnCabDrivers, getCategoryDisplayName, getRideById, getRideCoreById, getRideCoreForDriverAction } from './rides.repository'
+import { getEligibleDriverCategoryIds, findNearbyDrivers, findStaleOnlineDrivers, findReturnCabDrivers, getCategoryDisplayName, getRideById, getRideCoreById, getRideCoreForDriverAction, getActiveRideForDriver } from './rides.repository'
+
+describe('getActiveRideForDriver', () => {
+  beforeEach(() => { mockQuery.mockReset() })
+
+  it('only counts a finished, unconfirmed cash ride when the caller opts in', async () => {
+    mockQuery.mockResolvedValue({ rows: [] })
+    await getActiveRideForDriver(7n)
+    await getActiveRideForDriver(7n, true)
+    expect(mockQuery.mock.calls[0]![1]).toEqual([7n, false])
+    expect(mockQuery.mock.calls[1]![1]).toEqual([7n, true])
+    const sql = String(mockQuery.mock.calls[0]![0])
+    expect(sql).toContain('$2::boolean')
+    expect(sql).toContain("COALESCE(r.payment_channel::text, 'cash') = 'cash'")
+    expect(sql).toContain('r.cash_collected_at IS NULL')
+  })
+})
 
 describe('findNearbyDrivers', () => {
   beforeEach(() => { mockQuery.mockReset() })

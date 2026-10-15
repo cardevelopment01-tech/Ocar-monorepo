@@ -11,7 +11,8 @@ import type { RideStatus } from './reducer'
 // (Eng review HIGH-severity finding).
 export async function fetchActiveRideForRelaunch(): Promise<RelaunchRideSummary> {
   try {
-    const res = await api.get('/api/v1/rides/me/active')
+    // include=unsettled_cash: a finished ride whose cash was never confirmed still routes back to the cash screen.
+    const res = await api.get('/api/v1/rides/me/active', { params: { include: 'unsettled_cash' } })
     const ride = camelizeKeys<RideDetail>(res.data)
     return { id: ride.id, status: ride.status as RideStatus }
   } catch (err) {

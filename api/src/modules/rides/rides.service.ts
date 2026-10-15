@@ -25,6 +25,7 @@ import {
   MAX_ADVANCE_BOOKING_DAYS,
   MAX_CONCURRENT_SCHEDULED_BOOKINGS,
   IN_CITY_MAX_TRIP_DISTANCE_METRES,
+  MIN_TRIP_DISTANCE_METRES,
   MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS,
   FORCE_ASSIGN_GRACE_MINUTES,
 } from '@/constants/limits'
@@ -190,7 +191,7 @@ export async function goOnline(driverId: bigint, data: {
   // otherwise a driver in a basic car could go online as a premium category (or use someone else's vehicle).
   const vehicleRes = await pool.query<{ category_id: string | null }>(
     `SELECT category_id::text FROM driver_vehicles
-      WHERE id = $1 AND driver_id = $2 AND status <> 'blacklisted'`,
+      WHERE id = $1 AND driver_id = $2 AND status = 'active'`,
     [data.vehicleId, driverId]
   )
   const vehicle = vehicleRes.rows[0]
@@ -610,6 +611,10 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     data.destinationLat !== undefined &&
     data.destinationLng !== undefined
   ) {
+    // Pickup and drop on the same spot is a 0 km trip billed at the minimum fare, never a real booking.
+    if (distanceMetres(data.originLat, data.originLng, data.destinationLat, data.destinationLng) < MIN_TRIP_DISTANCE_METRES) {
+      throw httpError(422, 'Pickup and drop are the same place. Choose a different drop-off.', 'PICKUP_DROP_SAME')
+    }
     const classification = await classifyTrip(
       data.originLat, data.originLng, data.destinationLat, data.destinationLng
     )
@@ -1473,10 +1478,15 @@ export async function addRideStop(
   }
 
   // Settlement bills snap.stop_fare, so a charged stop added after booking must land there too.
+  // A one-way ride settles to total_estimated (no recompute), so the charge has to be added there too or the rider
+  // is never billed for a stop added mid-trip. Round trips add snap.stop_fare to their recomputed total instead.
   if (chargeApplied > 0) {
     await pool.query(
-      `UPDATE fare_snapshots SET stop_fare = stop_fare + $2, stop_count = COALESCE(stop_count, 0) + 1 WHERE ride_id = $1`,
-      [rideId, chargeApplied],
+      `UPDATE fare_snapshots
+       SET stop_fare = stop_fare + $2, stop_count = COALESCE(stop_count, 0) + 1,
+           total_estimated = CASE WHEN $3 THEN total_estimated + $2 ELSE total_estimated END
+       WHERE ride_id = $1`,
+      [rideId, chargeApplied, ride.ride_type === 'one_way'],
     )
   }
 
@@ -2256,10 +2266,9 @@ export async function adminAssignDriver(
   if (existingFallback) {
     await existingFallback.remove().catch(() => {})
   }
-  // By the time this fallback can fire (timeoutSeconds + 2s later), the manual
-  // offer's own window has already passed — mark it expired now so the audit
-  // trail is accurate instead of stuck 'offered' forever.
-  await repo.expireAssignment(rideId, driverId)
+  // The offer stays 'offered' for its whole window so the driver can accept it. Once the window has passed,
+  // processBroadcast (the fallback below) marks it expired through repo.expireLapsedOffers, which keeps the audit
+  // trail honest. Expiring it here, straight after creating it, made every manual offer impossible to accept.
   await queues[QUEUE_NAMES.DISPATCH].add(
     'broadcast_ride',
     {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Dimensions, Pressable, StyleSheet, View } from 'react-native'
+import { AppState, Dimensions, Linking, Pressable, StyleSheet, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -12,6 +12,8 @@ import { OnlineToggle } from '@/features/go-online/components/OnlineToggle'
 import { BottomSheet } from '@/features/go-online/components/BottomSheet'
 import { useGoOnlineFlow } from '@/features/go-online/useGoOnlineFlow'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
+import { walletBlockMessage } from '@/features/go-online/walletGateMessage'
+import { useSocketConnected } from '@/features/go-online/useSocketConnected'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
 import { useNotificationPrimer } from '@/features/notifications/usePushSetup'
 import { fetchEarningsSummary } from '@/features/earnings/api'
@@ -26,6 +28,8 @@ import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosit
 const DEFAULT_REGION = { latitude: 20.2961, longitude: 85.8245, latitudeDelta: 0.05, longitudeDelta: 0.05 }
 
 const WINDOW_HEIGHT = Dimensions.get('window').height
+// Room the "Reconnecting" strip takes at the top, so the wallet pill and bell move down instead of sitting under it.
+const RECONNECT_STRIP_HEIGHT = 34
 // Rough pre-layout guess (greeting + stats card, no error banners) -- only
 // used for the first frame before onLayout below reports the sheet's real
 // measured height; mapPadding switches to the real value the instant it's
@@ -44,6 +48,8 @@ export default function HomeScreen() {
   const destinationCityName = useDriverSessionStore((s) => s.destinationCityName)
   const flow = useGoOnlineFlow()
   const walletGate = useWalletGate()
+  const socketConnected = useSocketConnected()
+  const showReconnecting = isOnline && !socketConnected
   const documentGate = useDocumentGate()
   const unreadNotifications = useUnreadCount()
   const primer = useNotificationPrimer()
@@ -73,6 +79,21 @@ export default function HomeScreen() {
   // a driver who'd moved since that snapshot saw themselves somewhere they
   // hadn't been in a while, with nothing on screen indicating it was stale.
   const live = useDriverLivePosition(isOnline)
+
+  // Location can be switched off in system settings while online; the server keeps the session alive but no
+  // position reaches it, so the driver must be told rather than left on "ride requests incoming".
+  const [locationOff, setLocationOff] = useState(false)
+  useEffect(() => {
+    if (!isOnline) { setLocationOff(false); return }
+    const check = () => {
+      Location.getForegroundPermissionsAsync()
+        .then(({ granted }) => setLocationOff(!granted))
+        .catch(() => {})
+    }
+    check()
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') check() })
+    return () => sub.remove()
+  }, [isOnline])
 
   useEffect(() => {
     Location.requestForegroundPermissionsAsync()
@@ -106,11 +127,14 @@ export default function HomeScreen() {
 
   // Actionable, not just informational, tapping goes straight to the screen that fixes it, matching
   // the rule every driver-app rejection writeup agrees on: never leave a driver guessing what to do next.
+  const walletBlock = walletBlockMessage(walletGate)
   const blockedBanner = documentGate.hasRejected
     ? { title: documentGate.isMissingUpload ? 'Action needed' : 'Document rejected', message: documentGate.rejectionReason ?? 'Reupload it to go online again.', actionLabel: 'Fix now', route: '/documents' as const }
     : walletGate.isFrozen
       ? { title: 'Wallet frozen', message: 'Contact support to go online again.', actionLabel: 'View wallet', route: '/wallet' as const }
-      : null
+      : walletBlock
+        ? { ...walletBlock, actionLabel: 'Top up', route: '/wallet' as const }
+        : null
 
   const toggleDisabled =
     flow.sessionCheck !== 'ready' || flow.checkingVerification || (!isOnline && (!!blockedBanner || !flow.vehicle))
@@ -162,7 +186,13 @@ export default function HomeScreen() {
 
       {/* Minimal persistent HUD -- wallet balance and a notifications entry
           point, out of the way in the corners. */}
-      <View style={[styles.topRow, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
+      {showReconnecting ? (
+        <View style={[styles.offlineStrip, { top: insets.top }]} accessibilityLiveRegion="polite">
+          <Text style={styles.offlineStripText}>Reconnecting… you may miss ride requests until it is back</Text>
+        </View>
+      ) : null}
+
+      <View style={[styles.topRow, { top: insets.top + spacing.sm + (showReconnecting ? RECONNECT_STRIP_HEIGHT : 0) }]} pointerEvents="box-none">
         <View style={styles.walletPill}>
           <MaterialCommunityIcons name="currency-inr" size={13} color={colors.accent} />
           <Text style={styles.walletPillText}>{walletGate.loading ? '-' : Math.round(walletGate.balance).toLocaleString('en-IN')}</Text>
@@ -175,9 +205,17 @@ export default function HomeScreen() {
           <View style={styles.headerText}>
             <Text style={styles.date}>{todayLabel}</Text>
             <Text style={styles.greeting}>Hi, {firstName}</Text>
-            <Text style={styles.subtext}>
-              {isOnline ? "You're live, ride requests incoming" : 'Go online to start earning'}
-            </Text>
+            {isOnline && locationOff ? (
+              <Pressable onPress={() => void Linking.openSettings()}>
+                <Text style={[styles.subtext, { color: colors.error }]}>
+                  Location is off, so you won't get ride requests. Tap to turn it on in Settings.
+                </Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.subtext}>
+                {isOnline ? "You're live, ride requests incoming" : 'Go online to start earning'}
+              </Text>
+            )}
           </View>
           <OnlineToggle isOnline={isOnline} onToggle={() => void handleToggle()} disabled={toggleDisabled} />
         </View>
@@ -310,6 +348,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  offlineStrip: { position: 'absolute', left: 0, right: 0, zIndex: 20, backgroundColor: colors.warning, paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
+  offlineStripText: { ...typography.caption, color: colors.inkInverse, textAlign: 'center', fontFamily: fonts.bold },
   container: { flex: 1, backgroundColor: colors.bg },
   mapDim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: `${colors.bg}59` },
   topRow: { position: 'absolute', left: spacing.md, right: spacing.md, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },

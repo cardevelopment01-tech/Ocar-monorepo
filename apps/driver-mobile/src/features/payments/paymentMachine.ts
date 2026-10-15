@@ -38,8 +38,10 @@ export const isBusy = (s: PaymentState): boolean =>
 export function paymentReducer(s: PaymentState, e: PaymentEvent): PaymentState {
   switch (e.type) {
     case 'START':
-      // Double-tap safe: only an idle machine starts a payment.
-      return s.phase === 'idle' ? { phase: 'creating', kind: e.kind } : s
+      // Double-tap safe: a live payment ignores START. A finished attempt (credited, failed, cancelled) still shows its
+      // banner, and tapping Pay again is a new attempt: it must not wait for the banner to be dismissed.
+      return s.phase === 'idle' || s.phase === 'credited' || s.phase === 'failed' || s.phase === 'cancelled'
+        ? { phase: 'creating', kind: e.kind } : s
     case 'ORDER_READY':
       return s.phase === 'creating' ? { phase: 'sdk', kind: s.kind, txnId: e.txnId } : s
     case 'ORDER_FAILED':

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -79,7 +79,9 @@ export default function ProfileScreen() {
       .catch(() => setStatsFailed(true))
   }, [])
 
-  useEffect(() => { loadStats() }, [loadStats])
+  // Refetch whenever the tab comes into focus, so stats that failed to load (or were never fetched because the
+  // connection dropped) recover without restarting the app.
+  useFocusEffect(useCallback(() => { loadStats() }, [loadStats]))
 
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [photoStatus, setPhotoStatus] = useState<string | null>(null)
@@ -150,6 +152,11 @@ export default function ProfileScreen() {
   }
 
   async function handleLogout() {
+    // Tell the server: it revokes the refresh token and takes an online driver offline, so nobody can be matched to a
+    // phone nobody is signed in on. Sent without waiting (the token is already read), so signing out is instant and
+    // still works with no network.
+    const refreshToken = useAuthStore.getState().refreshToken
+    if (refreshToken) void api.post('/api/v1/auth/logout', { refreshToken }, { timeout: 5000 }).catch(() => undefined)
     await teardownPushNotifications()
     clearAuth()
   }
@@ -194,7 +201,7 @@ export default function ProfileScreen() {
                 <Feather name="star" size={12} color={colors.warning} />
                 <Text style={styles.badgeText}>{stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '-'}</Text>
                 <Feather name="truck" size={12} color={colors.ink400} style={{ marginLeft: spacing.xs }} />
-                <Text style={styles.badgeTextMuted}>{stats?.total_rides ?? 0} trips</Text>
+                <Text style={styles.badgeTextMuted}>{stats ? stats.total_rides : '-'} total trips</Text>
               </View>
             </View>
             <View style={styles.headerActions}>
@@ -241,7 +248,7 @@ export default function ProfileScreen() {
                 </View>
               ) : missingDocs > 0 ? (
                 <View style={styles.pendingBadge}>
-                  <Text style={styles.pendingBadgeText}>{missingDocs} pending</Text>
+                  <Text style={styles.pendingBadgeText}>Incomplete</Text>
                 </View>
               ) : null}
               <Feather name="chevron-right" size={14} color={colors.ink400} />

@@ -17,6 +17,7 @@ import {
   clearForceAssignGraceJob,
   revertForceAssign,
   expireAssignment,
+  expireLapsedOffers,
   acceptAssignment,
 } from './rides.repository'
 
@@ -102,6 +103,19 @@ describe('expireAssignment', () => {
     mockQuery.mockResolvedValueOnce({ rows: [] })
     await expireAssignment(5n, 9n)
     expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("status = 'expired'"), [5n, 9n])
+  })
+})
+
+describe('expireLapsedOffers', () => {
+  beforeEach(() => { mockQuery.mockReset() })
+
+  it('only expires offers whose window has passed', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+    await expireLapsedOffers(5n)
+    const sql = String(mockQuery.mock.calls[0]![0])
+    expect(sql).toContain("status = 'expired'")
+    expect(sql).toContain('expires_at < now()')
+    expect(mockQuery.mock.calls[0]![1]).toEqual([5n])
   })
 })
 

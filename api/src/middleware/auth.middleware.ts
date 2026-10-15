@@ -104,7 +104,16 @@ export function authenticate(): RequestHandler {
           driver = { id: dbDriver.id, code: dbDriver.code, status: dbDriver.status }
           await setWithTTL(cacheKey, JSON.stringify(driver), PRINCIPAL_CACHE_TTL_SEC).catch(cacheWriteFailed)
         }
-        if (driver.status === 'banned' || driver.status === 'deleted') {
+        // A banned driver is told so (the app shows its Account Banned screen on this code); a deleted one is
+        // just an invalid token.
+        if (driver.status === 'banned') {
+          res.status(403).json({
+            error: AppErrors.DRIVER_BANNED.message,
+            code: AppErrors.DRIVER_BANNED.code,
+          })
+          return
+        }
+        if (driver.status === 'deleted') {
           res.status(401).json({
             error: AppErrors.AUTH_TOKEN_INVALID.message,
             code: AppErrors.AUTH_TOKEN_INVALID.code,

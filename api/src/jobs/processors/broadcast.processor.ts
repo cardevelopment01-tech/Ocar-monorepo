@@ -5,7 +5,7 @@ import { rideAckKey } from '@/constants/redis-keys'
 import { client as redis } from '@/db/redis'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
 import { getMinWalletBalance } from '@/modules/payments/payments.service'
-import { sendRideRequestPushOnce } from '@/modules/notifications/notifications.service'
+import { sendRideRequestPushOnce, notifyRideEvent } from '@/modules/notifications/notifications.service'
 import type { AckCheckJobData } from './ack-check.processor'
 import { logger } from '@/lib/logger'
 
@@ -37,6 +37,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     log.info({ rideId: data.rideId }, 'broadcast skipped: ride no longer active')
     return
   }
+
+  await repo.expireLapsedOffers(rideId)
 
   const stops = await repo.getRideStops(rideId)
   const minWalletBalance = await getMinWalletBalance()
@@ -124,6 +126,10 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
         actor:      'system',
         note:       'No drivers available after 3 broadcast rounds',
       })
+      // Tell the rider now — otherwise the app keeps showing "Finding your driver" until it is reopened.
+      socketEvents.sendRideStatusUpdate(data.rideId, { status: 'no_drivers' })
+      const closedRide = await repo.getRideCoreById(rideId)
+      if (closedRide) void notifyRideEvent('ride_no_drivers', BigInt(closedRide.user_id), rideId)
       log.info({ rideId: data.rideId }, 'no drivers available after max broadcast rounds')
     }
     return

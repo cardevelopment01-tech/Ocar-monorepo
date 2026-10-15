@@ -8,6 +8,8 @@ export type VehicleInfo = {
 export type WalletInfo = {
   balance: number
   isFrozen: boolean
+  /** The server's minimum balance to go online; null when the server did not send one. */
+  minBalance: number | null
 }
 
 export type DocumentGateStatus = {
@@ -22,6 +24,8 @@ export type DriverSession = {
   mode: 'standard' | 'return_cab'
   vehicleId: number
   categoryId: number
+  /** Return-cab destination city, sent with the current session so a relaunch can still name it. */
+  destinationCityName?: string | null
 }
 
 export type City = { id: number; name: string; slug: string }

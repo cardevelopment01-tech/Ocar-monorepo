@@ -111,6 +111,14 @@ export default function RideTrackingScreen() {
     transform: [{ translateY: (1 - entrance.get()) * SHEET_ENTRANCE_DISTANCE }],
   }))
 
+  // One tap must not throw away a search that may be seconds from matching, so ask first.
+  function confirmCancelSearch() {
+    Alert.alert('Cancel this request?', "We'll stop looking for a driver. You can book again any time.", [
+      { text: 'Keep waiting', style: 'cancel' },
+      { text: 'Cancel request', style: 'destructive', onPress: () => void cancelSearch() },
+    ])
+  }
+
   async function cancelSearch() {
     if (cancelInFlightRef.current) return
     cancelInFlightRef.current = true
@@ -313,9 +321,13 @@ export default function RideTrackingScreen() {
           {isSearching ? (
             <View style={styles.searchingBlock}>
               <SearchingBar />
-              <Text style={styles.searchingBody}>Hang tight, we're matching you with a nearby driver.</Text>
+              <Text style={styles.searchingBody}>
+                {ride.status === 'scheduled'
+                  ? "Your pickup is scheduled. We'll start matching you with a nearby driver shortly before it."
+                  : "Hang tight, we're matching you with a nearby driver."}
+              </Text>
               <Pressable
-                onPress={cancelSearch}
+                onPress={confirmCancelSearch}
                 disabled={cancelling}
                 accessibilityRole="button"
                 accessibilityLabel="Cancel this ride request"

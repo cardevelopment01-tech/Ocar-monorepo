@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons'
 import { Button, Input, colors, fonts, spacing, typography, getApiErrorMessage } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { updateProfile } from '@/features/profile/api'
+import { EMAIL_ERROR, isPlausibleEmail } from '@/utils/email'
 
 // Mirrors apps/user/app/onboarding/page.tsx: a new rider (isNew, or no name on
 // the account yet) lands here straight after OTP verify instead of home --
@@ -26,6 +27,10 @@ export default function OnboardingScreen() {
   async function handleSubmit() {
     if (!isValid || loading) return
     setError('')
+    if (email.trim() && !isPlausibleEmail(email)) {
+      setError(EMAIL_ERROR)
+      return
+    }
     setLoading(true)
     try {
       const data: { full_name: string; email?: string } = { full_name: fullName.trim() }
@@ -72,7 +77,7 @@ export default function OnboardingScreen() {
         />
         <Input
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(t) => { setEmail(t); setError('') }}
           label="Email (optional)"
           placeholder="For trip receipts"
           keyboardType="email-address"
