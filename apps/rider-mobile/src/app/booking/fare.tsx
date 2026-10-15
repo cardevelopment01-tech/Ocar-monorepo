@@ -102,8 +102,11 @@ export default function BookingFareScreen() {
   const selectedFare = effectiveSelected != null
     ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])?.breakdown.total
     : undefined
-  const allUnavailable = driversPolled && visibleCategories.length > 0 && visibleCategories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
-  const selectedNoCars = driversPolled && effectiveSelected != null && (driverEta[effectiveSelected]?.count ?? 0) === 0
+  // Nearby cars only matter for a ride NOW. A ride booked for later is dispatched shortly before its time, so an empty
+  // street at this moment must not stop the rider from booking it.
+  const liveCheck = driversPolled && !scheduledFor
+  const allUnavailable = liveCheck && visibleCategories.length > 0 && visibleCategories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
+  const selectedNoCars = liveCheck && effectiveSelected != null && (driverEta[effectiveSelected]?.count ?? 0) === 0
   const canBook = effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars
 
   // Available categories first, unavailable ones pushed to the bottom rather
