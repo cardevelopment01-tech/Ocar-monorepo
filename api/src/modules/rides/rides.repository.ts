@@ -657,7 +657,11 @@ export async function getActiveRideForDriver(driverId: bigint, includeUnsettledC
             -- the cash screen. Surfacing it lets the relaunch check reopen that screen instead of stranding the ride.
             -- (A NULL channel means cash, same as collectCash.)
             OR ($2::boolean AND r.status = 'completed' AND COALESCE(r.payment_channel::text, 'cash') = 'cash'
-                AND r.cash_collected_at IS NULL AND r.completed_at > now() - interval '2 days'))
+                AND r.cash_collected_at IS NULL AND r.completed_at > now() - interval '2 days'
+                -- Not one that support or the sweeper force-completed: there is no cash screen to reopen, and the
+                -- app would show "ended by support" on every launch for two days.
+                AND NOT EXISTS (SELECT 1 FROM ride_status_history h
+                                WHERE h.ride_id = r.id AND h.to_status = 'completed' AND h.actor IN ('admin', 'timeout'))))
      ORDER BY (r.status = 'completed'), r.accepted_at DESC
      LIMIT 1`,
     [driverId, includeUnsettledCash]
