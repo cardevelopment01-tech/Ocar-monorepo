@@ -85,6 +85,11 @@ export const AppErrors = {
     message: 'Your account is suspended. Please contact Ocar support',
     httpStatus: 403,
   },
+  DRIVER_BANNED: {
+    code: 'DRIVER_BANNED',
+    message: 'Your driver account has been deactivated. Please contact Ocar support',
+    httpStatus: 403,
+  },
   DRIVER_DOCS_REJECTED: {
     code: 'DRIVER_DOCS_REJECTED',
     message: 'One or more of your documents was rejected, has expired or is awaiting review — please fix or wait for approval to continue',

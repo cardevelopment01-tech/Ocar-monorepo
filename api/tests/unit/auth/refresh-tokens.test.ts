@@ -101,7 +101,7 @@ describe('refreshTokens', () => {
       ['user', 'suspended', 'AUTH_FORBIDDEN'],
       ['user', 'deleted', 'AUTH_FORBIDDEN'],
       ['driver', 'suspended', 'DRIVER_SUSPENDED'],
-      ['driver', 'banned', 'DRIVER_SUSPENDED'],
+      ['driver', 'banned', 'DRIVER_BANNED'],
     ])('refuses a %s who is %s and does not rotate the token', async (role, status, code) => {
       vi.mocked(repo.findRefreshToken).mockResolvedValue(liveToken(role) as never)
       const principal = { id: '7', code: 'X', status } as never

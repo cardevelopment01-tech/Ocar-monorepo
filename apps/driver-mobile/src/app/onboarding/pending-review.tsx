@@ -8,6 +8,8 @@ import { Feather } from '@expo/vector-icons'
 import { Button, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { api } from '@/services/api'
+import { AccountStatusScreen } from '@/features/account/AccountStatusScreen'
+import { restrictionOf } from '@/features/account/accountStanding'
 
 // Scrollable + inset-aware: a rejected-docs list or big system fonts must never push content off a small
 // screen, and the centred block clears the status bar / notch / gesture bar on every device.
@@ -112,39 +114,16 @@ export default function PendingReviewScreen() {
   // are the actionable surfaces, see /documents) rather than landing on this screen; this component
   // only ever renders for a driver still mid-first-application (never yet approved).
 
-  if (driver?.status === 'suspended') {
+  const restriction = restrictionOf(driver?.status)
+  if (restriction) {
     return (
-      <Screen>
-        <PulsingIcon name="alert-triangle" color={colors.warning} bg={colors.warningLight} />
-        <Text style={styles.title}>Account Suspended</Text>
-        <Text style={styles.body}>Your driver account has been temporarily suspended. Please contact our support team for more information.</Text>
-        {driver.code ? (
-          <View style={styles.codeCard}>
-            <Text style={styles.codeLabel}>Your driver code</Text>
-            <Text style={styles.codeValuePrimary}>{driver.code}</Text>
-            <Text style={styles.codeHint}>Provide this when contacting support</Text>
-          </View>
-        ) : null}
-        <Button label={checking ? 'Checking…' : 'Check status'} variant="ghost" icon="refresh-cw" onPress={() => void checkStatus()} disabled={checking} />
-      </Screen>
-    )
-  }
-
-  if (driver?.status === 'banned') {
-    return (
-      <Screen>
-        <PulsingIcon name="x-circle" color={colors.error} bg={colors.errorLight} />
-        <Text style={styles.title}>Account Banned</Text>
-        <Text style={styles.body}>
-          Your driver account has been permanently deactivated due to a violation of our terms. You are no longer eligible to drive on Ocar.
-        </Text>
-        {driver.code ? (
-          <View style={styles.codeCard}>
-            <Text style={styles.codeLabel}>Your driver code</Text>
-            <Text style={styles.codeValue}>{driver.code}</Text>
-          </View>
-        ) : null}
-      </Screen>
+      <AccountStatusScreen
+        variant={restriction}
+        driverCode={driver?.code}
+        checking={checking}
+        onCheck={() => void checkStatus()}
+        onSignOut={clearAuth}
+      />
     )
   }
 
@@ -198,7 +177,6 @@ const styles = StyleSheet.create({
   // was still dead weight), and codeValuePrimary set raw fontSize/fontWeight
   // with no fontFamily key whatsoever, so a driver's own code -- arguably the
   // single most memorable string on this screen -- was silently off-brand.
-  codeValue: { fontSize: 18, fontFamily: fonts.bold, color: colors.ink600, letterSpacing: 2 },
   codeValuePrimary: { fontSize: 24, fontFamily: fonts.bold, color: colors.primary, letterSpacing: 2 },
   codeHint: { ...typography.caption, color: colors.ink400, marginTop: 2 },
 })
