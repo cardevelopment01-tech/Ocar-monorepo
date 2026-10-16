@@ -22,7 +22,7 @@ describe('listAdminRides query shape', () => {
     mockQuery.mockImplementation((sql: string) => {
       if (/COUNT\(\*\)::int AS n/.test(sql)) return Promise.resolve({ rows: [{ n: 12345 }] })
       // searchIsNarrow(): 1 matching user of 50,000, ~20 rides each -> narrow strategy
-      if (/pg_class/.test(sql)) return Promise.resolve({ rows: [{ u: 1, d: 0, rides: 1_000_000, users: 50_000, drivers: 700 }] })
+      if (/matching_rides/.test(sql)) return Promise.resolve({ rows: [{ matching_rides: 20 }] }) // few rides qualify -> narrow strategy
       return Promise.resolve({ rows: [] })
     })
   })
@@ -67,7 +67,7 @@ describe('listAdminRides query shape', () => {
   it('switches to walking the time index when a search matches most people (one-letter search)', async () => {
     mockQuery.mockImplementation((sql: string) => {
       if (/COUNT\(\*\)::int AS n/.test(sql)) return Promise.resolve({ rows: [{ n: 50 }] })
-      if (/pg_class/.test(sql)) return Promise.resolve({ rows: [{ u: 50_000, d: 400, rides: 1_000_000, users: 50_000, drivers: 700 }] })
+      if (/matching_rides/.test(sql)) return Promise.resolve({ rows: [{ matching_rides: 40_002 }] }) // most rides qualify -> walk the time index
       return Promise.resolve({ rows: [] })
     })
     await listAdminRides({ limit: 20, offset: 0, search: 'a' })
@@ -107,5 +107,22 @@ describe('listAdminPayments / stats query shape', () => {
     const sql = String(mockQuery.mock.calls[0]![0])
     expect(sql).not.toContain('::date')
     expect(sql).toContain('requested_at >= CURRENT_DATE AND requested_at < CURRENT_DATE + 1')
+  })
+})
+
+describe('listDriverPayments query shape', () => {
+  it('filters by payments.driver_id and pages the bare ids before joining (plan-stable for drivers with few payments)', async () => {
+    mockQuery.mockReset()
+    mockQuery.mockImplementation((sql: string) => (/COUNT\(\*\)::int AS n/.test(sql) ? Promise.resolve({ rows: [{ n: 32 }] }) : Promise.resolve({ rows: [] })))
+    const { listDriverPayments } = await import('./admin.repository')
+    const res = await listDriverPayments(7n, 20, 0)
+    expect(res).toMatchObject({ total: 32, totalCapped: false })
+    const countSql = String(mockQuery.mock.calls[0]![0])
+    expect(countSql).toContain('WHERE p.driver_id = $1')
+    expect(countSql).not.toContain('JOIN')
+    const dataSql = String(mockQuery.mock.calls[1]![0])
+    expect(dataSql).toContain('SELECT id FROM payments WHERE driver_id = $1')
+    expect(dataSql.indexOf('LIMIT $2 OFFSET $3')).toBeLessThan(dataSql.indexOf('JOIN rides r'))
+    expect(dataSql).not.toContain('r.driver_id')
   })
 })
