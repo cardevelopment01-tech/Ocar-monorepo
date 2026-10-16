@@ -1960,6 +1960,26 @@ export const capTotal = (counted: number) => ({
   totalCapped: counted > COUNT_CAP,
 });
 
+// Search strategy switch. Reaching rides through the matched users/drivers is fastest when few rides qualify;
+// when most rides qualify, walking the time index and filtering wins (a one-letter search matches nearly everyone).
+// Estimate the qualifying rides as matched_users x rides/user + matched_drivers x rides/driver from planner row
+// estimates (cheap; skew only moves the switch point, both strategies return identical rows).
+const NARROW_SEARCH_MAX_RIDES = 20_000;
+async function searchIsNarrow(like: string, includePhones: boolean): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT
+       (SELECT COUNT(*)::float8 FROM users WHERE name ILIKE $1${includePhones ? " OR phone ILIKE $1" : ""}) AS u,
+       (SELECT COUNT(*)::float8 FROM drivers WHERE full_name ILIKE $1${includePhones ? " OR phone ILIKE $1" : ""}) AS d,
+       (SELECT GREATEST(reltuples, 1)::float8 FROM pg_class WHERE oid = 'rides'::regclass) AS rides,
+       (SELECT GREATEST(reltuples, 1)::float8 FROM pg_class WHERE oid = 'users'::regclass) AS users,
+       (SELECT GREATEST(reltuples, 1)::float8 FROM pg_class WHERE oid = 'drivers'::regclass) AS drivers`,
+    [like],
+  );
+  const r = res.rows[0];
+  const estimatedRides = (r.u * r.rides) / r.users + (r.d * r.rides) / r.drivers;
+  return estimatedRides <= NARROW_SEARCH_MAX_RIDES;
+}
+
 export async function getAdminRideStats() {
   // Half-open timestamp ranges (not `requested_at::date = CURRENT_DATE`) so the requested_at index can be used.
   const res = await pool.query(
@@ -2023,33 +2043,41 @@ export async function listAdminRides(filters: {
   // trigram-indexed) and then reaches their rides through rides_user_idx / rides_driver_idx, instead of ILIKE-ing
   // four columns after joining every ride.
   let candidates: string;
+  let withMatches = "";
   if (filters.search) {
-    const like = `%${filters.search}%`;
-    const [mu, md] = await Promise.all([
-      pool.query(`SELECT COALESCE(array_agg(id), '{}') AS ids FROM users WHERE name ILIKE $1 OR phone ILIKE $1`, [like]),
-      pool.query(`SELECT COALESCE(array_agg(id), '{}') AS ids FROM drivers WHERE full_name ILIKE $1 OR phone ILIKE $1`, [like]),
-    ]);
-    const userIds = p++;
-    params.push(mu.rows[0].ids);
-    const driverIds = p++;
-    params.push(md.rows[0].ids);
-    const branches = [
-      `SELECT r.id, r.requested_at FROM rides r WHERE r.user_id = ANY($${userIds}::bigint[])${and}`,
-      `SELECT r.id, r.requested_at FROM rides r WHERE r.driver_id = ANY($${driverIds}::bigint[])${and}`,
-    ];
+    const likeP = p++;
+    params.push(`%${filters.search}%`);
     // exact ride-id match, only for canonical positive integers (same as the old `r.id::text = $search`)
-    if (/^[1-9]\d{0,17}$/.test(filters.search)) {
-      const idParam = p++;
+    const idMatch = /^[1-9]\d{0,17}$/.test(filters.search);
+    let idParam = 0;
+    if (idMatch) {
+      idParam = p++;
       params.push(filters.search);
-      branches.push(`SELECT r.id, r.requested_at FROM rides r WHERE r.id = $${idParam}::bigint${and}`);
     }
-    candidates = branches.join(" UNION ");
+    if (await searchIsNarrow(`%${filters.search}%`, true)) {
+      // Few people match: reach their rides through rides_user_idx / rides_driver_idx.
+      withMatches = `WITH mu AS (SELECT array_agg(id) AS a FROM users WHERE name ILIKE $${likeP} OR phone ILIKE $${likeP}),
+       md AS (SELECT array_agg(id) AS a FROM drivers WHERE full_name ILIKE $${likeP} OR phone ILIKE $${likeP}) `;
+      const branches = [
+        `SELECT r.id, r.requested_at FROM rides r WHERE r.user_id = ANY(COALESCE((SELECT a FROM mu), '{}'))${and}`,
+        `SELECT r.id, r.requested_at FROM rides r WHERE r.driver_id = ANY(COALESCE((SELECT a FROM md), '{}'))${and}`,
+      ];
+      if (idMatch) branches.push(`SELECT r.id, r.requested_at FROM rides r WHERE r.id = $${idParam}::bigint${and}`);
+      // UNION (not UNION ALL): a ride whose rider and driver both match must appear once.
+      candidates = branches.join(" UNION ");
+    } else {
+      // Many people match (e.g. a one-letter search): most rides qualify, so walking the requested_at index and
+      // filtering finds a page almost immediately, while collecting every candidate id first would be slower.
+      const idOr = idMatch ? ` OR r.id = $${idParam}::bigint` : "";
+      candidates = `SELECT r.id, r.requested_at FROM rides r JOIN users u ON u.id = r.user_id LEFT JOIN drivers d ON d.id = r.driver_id
+         WHERE (u.name ILIKE $${likeP} OR u.phone ILIKE $${likeP} OR d.full_name ILIKE $${likeP} OR d.phone ILIKE $${likeP}${idOr})${and}`;
+    }
   } else {
     candidates = `SELECT r.id, r.requested_at FROM rides r ${where}`;
   }
 
   const countRes = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM (SELECT 1 FROM (${candidates}) c LIMIT ${COUNT_CAP + 1}) t`,
+    `${withMatches}SELECT COUNT(*)::int AS n FROM (SELECT 1 FROM (${candidates}) c LIMIT ${COUNT_CAP + 1}) t`,
     params,
   );
   const { total, totalCapped } = capTotal(countRes.rows[0].n as number);
@@ -2057,7 +2085,7 @@ export async function listAdminRides(filters: {
   // Page the bare candidates first (deferred join), then join the five detail tables for just the rows kept.
   // `id DESC` is the unique tie-break: without it rides with equal timestamps can repeat or vanish between pages.
   const dataRes = await pool.query(
-    `SELECT
+    `${withMatches}SELECT
        r.id::text, r.status, r.ride_type, r.is_return_cab,
        r.origin_address, r.destination_address,
        r.requested_at, r.accepted_at, r.driver_arrived_at, r.started_at, r.completed_at,
@@ -2405,20 +2433,24 @@ export async function listAdminPayments(filters: {
     conditions.push(`p.channel = $${p++}`);
     params.push(filters.channel);
   }
+  let withMatches = "";
   if (filters.search) {
-    // Same meaning as before (rider name or driver name contains the text), resolved in the small tables first.
-    const like = `%${filters.search}%`;
-    const [mu, md] = await Promise.all([
-      pool.query(`SELECT COALESCE(array_agg(id), '{}') AS ids FROM users WHERE name ILIKE $1`, [like]),
-      pool.query(`SELECT COALESCE(array_agg(id), '{}') AS ids FROM drivers WHERE full_name ILIKE $1`, [like]),
-    ]);
-    const userIds = p++;
-    params.push(mu.rows[0].ids);
-    const driverIds = p++;
-    params.push(md.rows[0].ids);
-    conditions.push(
-      `p.ride_id IN (SELECT id FROM rides WHERE user_id = ANY($${userIds}::bigint[]) UNION SELECT id FROM rides WHERE driver_id = ANY($${driverIds}::bigint[]))`,
-    );
+    // Same meaning as before (rider name or driver name contains the text), matched in the small tables inside the same statement.
+    const likeP = p++;
+    params.push(`%${filters.search}%`);
+    if (await searchIsNarrow(`%${filters.search}%`, false)) {
+      withMatches = `WITH mu AS (SELECT array_agg(id) AS a FROM users WHERE name ILIKE $${likeP}),
+       md AS (SELECT array_agg(id) AS a FROM drivers WHERE full_name ILIKE $${likeP}) `;
+      conditions.push(
+        `p.ride_id IN (SELECT id FROM rides WHERE user_id = ANY(COALESCE((SELECT a FROM mu), '{}')) UNION SELECT id FROM rides WHERE driver_id = ANY(COALESCE((SELECT a FROM md), '{}')))`,
+      );
+    } else {
+      // Many people match: most payments qualify, so probe each payment in created_at order instead.
+      conditions.push(
+        `EXISTS (SELECT 1 FROM rides r JOIN users u ON u.id = r.user_id LEFT JOIN drivers d ON d.id = r.driver_id
+                  WHERE r.id = p.ride_id AND (u.name ILIKE $${likeP} OR COALESCE(d.full_name, '') ILIKE $${likeP}))`,
+      );
+    }
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -2426,13 +2458,13 @@ export async function listAdminPayments(filters: {
   // payments.ride_id is NOT NULL REFERENCES rides and rides.user_id is NOT NULL, so the old inner joins never removed
   // a row: the count needs no joins, and it stops at COUNT_CAP + 1.
   const countRes = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM (SELECT 1 FROM payments p ${where} LIMIT ${COUNT_CAP + 1}) t`,
+    `${withMatches}SELECT COUNT(*)::int AS n FROM (SELECT 1 FROM payments p ${where} LIMIT ${COUNT_CAP + 1}) t`,
     params,
   );
   const { total, totalCapped } = capTotal(countRes.rows[0].n as number);
 
   const dataRes = await pool.query(
-    `SELECT
+    `${withMatches}SELECT
        p.id::text, p.status, p.channel, p.created_at,
        p.amount::text, p.commission_amount::text, p.driver_earning::text,
        r.id::text AS ride_id,

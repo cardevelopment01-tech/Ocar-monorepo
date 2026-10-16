@@ -21,7 +21,8 @@ describe('listAdminRides query shape', () => {
     mockQuery.mockReset()
     mockQuery.mockImplementation((sql: string) => {
       if (/COUNT\(\*\)::int AS n/.test(sql)) return Promise.resolve({ rows: [{ n: 12345 }] })
-      if (/array_agg/.test(sql)) return Promise.resolve({ rows: [{ ids: ['5', '6'] }] })
+      // searchIsNarrow(): 1 matching user of 50,000, ~20 rides each -> narrow strategy
+      if (/pg_class/.test(sql)) return Promise.resolve({ rows: [{ u: 1, d: 0, rides: 1_000_000, users: 50_000, drivers: 700 }] })
       return Promise.resolve({ rows: [] })
     })
   })
@@ -49,24 +50,39 @@ describe('listAdminRides query shape', () => {
     expect(dataSql).not.toContain('requested_at::date')
   })
 
-  it('searches matching users and drivers first, then their rides (no ILIKE after the joins)', async () => {
+  it('matches users and drivers inside the same statement, then reaches their rides by index (no ILIKE after the joins)', async () => {
     await listAdminRides({ limit: 20, offset: 0, search: 'rahul' })
-    const lookups = mockQuery.mock.calls.filter((c) => /array_agg/.test(String(c[0])))
-    expect(lookups).toHaveLength(2)
-    expect(lookups[0]![1]).toEqual(['%rahul%'])
+    // no separate id lookups: nothing is round-tripped through JS and no extra pool connection is used
+    expect(mockQuery.mock.calls).toHaveLength(3) // strategy check + count + data, nothing else
+    const dataCall = mockQuery.mock.calls[mockQuery.mock.calls.length - 1]!
+    const dataSql = String(dataCall[0])
+    expect(dataSql.startsWith('WITH mu AS (SELECT array_agg(id) AS a FROM users WHERE name ILIKE $1 OR phone ILIKE $1)')).toBe(true)
+    expect(dataSql).toContain("r.user_id = ANY(COALESCE((SELECT a FROM mu), '{}'))")
+    expect(dataSql).toContain("r.driver_id = ANY(COALESCE((SELECT a FROM md), '{}'))")
+    expect(dataSql).toContain(' UNION ')
+    expect(dataSql).not.toContain('r.id = $2') // 'rahul' is not an id
+    expect(dataCall[1]).toEqual(['%rahul%', 20, 0])
+  })
+
+  it('switches to walking the time index when a search matches most people (one-letter search)', async () => {
+    mockQuery.mockImplementation((sql: string) => {
+      if (/COUNT\(\*\)::int AS n/.test(sql)) return Promise.resolve({ rows: [{ n: 50 }] })
+      if (/pg_class/.test(sql)) return Promise.resolve({ rows: [{ u: 50_000, d: 400, rides: 1_000_000, users: 50_000, drivers: 700 }] })
+      return Promise.resolve({ rows: [] })
+    })
+    await listAdminRides({ limit: 20, offset: 0, search: 'a' })
     const dataSql = String(mockQuery.mock.calls[mockQuery.mock.calls.length - 1]![0])
-    expect(dataSql).toContain('r.user_id = ANY($1::bigint[])')
-    expect(dataSql).toContain('r.driver_id = ANY($2::bigint[])')
-    expect(dataSql).not.toMatch(/ILIKE/)
-    expect(dataSql).not.toContain('r.id = $3') // 'rahul' is not an id
+    expect(dataSql).not.toContain('WITH mu AS')
+    expect(dataSql).toContain('u.name ILIKE $1 OR u.phone ILIKE $1 OR d.full_name ILIKE $1 OR d.phone ILIKE $1')
+    expect(dataSql).not.toContain(' UNION ')
   })
 
   it('adds an exact ride-id branch only for a canonical integer', async () => {
     await listAdminRides({ limit: 20, offset: 0, search: '500000' })
-    expect(String(mockQuery.mock.calls[mockQuery.mock.calls.length - 1]![0])).toContain('r.id = $3::bigint')
+    expect(String(mockQuery.mock.calls[mockQuery.mock.calls.length - 1]![0])).toContain('r.id = $2::bigint')
     mockQuery.mockClear()
     await listAdminRides({ limit: 20, offset: 0, search: '0123' })
-    expect(String(mockQuery.mock.calls[mockQuery.mock.calls.length - 1]![0])).not.toContain('r.id = $3::bigint')
+    expect(String(mockQuery.mock.calls[mockQuery.mock.calls.length - 1]![0])).not.toContain('r.id = $2::bigint')
   })
 })
 
