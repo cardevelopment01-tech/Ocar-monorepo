@@ -133,8 +133,8 @@ export async function listDriverRides(driverId: bigint, query: { page?: number; 
 export async function listDriverPayments(driverId: bigint, query: { page?: number; limit?: number }) {
   const limit = Math.min(query.limit ?? 20, 100)
   const page = Math.max(query.page ?? 1, 1)
-  const { rows, total } = await repo.listDriverPayments(driverId, limit, (page - 1) * limit)
-  return { payments: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
+  const { rows, total, totalCapped } = await repo.listDriverPayments(driverId, limit, (page - 1) * limit)
+  return { payments: rows, pagination: { total, total_capped: totalCapped, page, limit, pages: Math.ceil(total / limit) } }
 }
 
 export async function updateDriverStatus(
@@ -570,8 +570,8 @@ export async function listAdminRides(query: {
   if (query.date_from       !== undefined) q.date_from        = query.date_from
   if (query.date_to         !== undefined) q.date_to          = query.date_to
   if (query.city_id         !== undefined) q.city_id          = query.city_id
-  const { rows, total } = await repo.listAdminRides(q)
-  return { rides: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
+  const { rows, total, totalCapped } = await repo.listAdminRides(q)
+  return { rides: rows, pagination: { total, total_capped: totalCapped, page, limit, pages: Math.ceil(total / limit) } }
 }
 
 export async function listUpcomingScheduledRides() {
@@ -744,8 +744,8 @@ export async function listAdminPayments(query: {
   const q: { channel?: string; search?: string; limit: number; offset: number } = { limit, offset: (page - 1) * limit }
   if (query.channel !== undefined) q.channel = query.channel
   if (query.search  !== undefined) q.search  = query.search
-  const { rows, total } = await repo.listAdminPayments(q)
-  return { payments: rows, pagination: { total, page, limit, pages: Math.ceil(total / limit) } }
+  const { rows, total, totalCapped } = await repo.listAdminPayments(q)
+  return { payments: rows, pagination: { total, total_capped: totalCapped, page, limit, pages: Math.ceil(total / limit) } }
 }
 
 export async function updateAdminCity(

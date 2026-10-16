@@ -10,6 +10,7 @@ import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
 import StatCard from '@/components/ui/StatCard'
 import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem, type AdminRideStop, type AdminRideDetail, type AdminRideStats } from '@/lib/admin-api'
+import { formatTotal, hasNextPage, CAPPED_TOTAL_HINT } from '@/lib/format-total'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 import AssignDriverDrawer from './AssignDriverDrawer'
 import BookedTimeBlock from '@/components/rides/BookedTimeBlock'
@@ -70,6 +71,8 @@ function RidesPageContent() {
   const searchParams = useSearchParams()
   const [rides, setRides] = useState<AdminRideItem[]>([])
   const [total, setTotal] = useState(0)
+  // the API stops counting at 10,000 rows (counting every ride is a full scan); show "10,000+" instead of a wrong exact number
+  const [totalCapped, setTotalCapped] = useState(false)
   const [pages, setPages] = useState(1)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -83,6 +86,8 @@ function RidesPageContent() {
   const [dateTo, setDateTo] = useState('')
   const [cities, setCities] = useState<AdminCity[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Only the newest request may write state: with fast filter changes an older, slower response could otherwise overwrite a newer one.
+  const requestId = useRef(0)
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
   useEffect(() => { cityApi.list().then(setCities).catch(() => setCities([])) }, [])
@@ -154,6 +159,7 @@ function RidesPageContent() {
   }, [search])
 
   const fetchRides = useCallback(async () => {
+    const myRequest = ++requestId.current
     setLoading(true)
     try {
       const params: Parameters<typeof adminRideApi.list>[0] = { page, limit: LIMIT }
@@ -165,13 +171,19 @@ function RidesPageContent() {
       if (dateFrom)         params.dateFrom  = dateFrom
       if (dateTo)           params.dateTo    = dateTo
       const data = await adminRideApi.list(params)
+      if (myRequest !== requestId.current) return
       setRides(data.rides)
       setTotal(data.pagination.total)
+      setTotalCapped(data.pagination.total_capped === true)
       setPages(data.pagination.pages)
     } catch {
+      if (myRequest !== requestId.current) return
       setRides([])
+      setTotal(0)
+      setTotalCapped(false)
+      setPages(1)
     } finally {
-      setLoading(false)
+      if (myRequest === requestId.current) setLoading(false)
     }
   }, [page, statusFilter, rideTypeFilter, debouncedSearch, cashFlagFilter, cityFilter, dateFrom, dateTo])
 
@@ -290,7 +302,7 @@ function RidesPageContent() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-text-primary">Rides</h2>
-            <p className="text-xs text-text-muted">{total.toLocaleString('en-IN')} total rides</p>
+            <p className="text-xs text-text-muted"><span title={totalCapped ? CAPPED_TOTAL_HINT : undefined}>{formatTotal(total, totalCapped)}</span> total rides</p>
           </div>
         </div>
       </div>
@@ -414,11 +426,11 @@ function RidesPageContent() {
         }
         {pages > 1 && (
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-border-light">
-            <p className="text-xs text-text-muted">{total} total</p>
+            <p className="text-xs text-text-muted"><span title={totalCapped ? CAPPED_TOTAL_HINT : undefined}>{formatTotal(total, totalCapped)}</span> total</p>
             <div className="flex gap-2">
               <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1 text-xs border border-border rounded-lg disabled:opacity-40 hover:bg-surface-2 transition-colors">Prev</button>
-              <span className="px-3 py-1 text-xs text-text-muted">{page} / {pages}</span>
-              <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="px-3 py-1 text-xs border border-border rounded-lg disabled:opacity-40 hover:bg-surface-2 transition-colors">Next</button>
+              <span className="px-3 py-1 text-xs text-text-muted">{page} / {pages}{totalCapped ? '+' : ''}</span>
+              <button disabled={!hasNextPage({ page, pages, capped: totalCapped, rowsOnPage: rides.length, limit: LIMIT })} onClick={() => setPage(p => p + 1)} className="px-3 py-1 text-xs border border-border rounded-lg disabled:opacity-40 hover:bg-surface-2 transition-colors">Next</button>
             </div>
           </div>
         )}

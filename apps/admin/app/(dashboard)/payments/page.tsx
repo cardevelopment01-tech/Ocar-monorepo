@@ -6,6 +6,7 @@ import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import { adminPaymentApi, type AdminPaymentItem } from '@/lib/admin-api'
+import { formatTotal, hasNextPage, CAPPED_TOTAL_HINT } from '@/lib/format-total'
 import { cn } from '@/lib/utils'
 
 function fmt(iso: string) {
@@ -40,6 +41,8 @@ const LIMIT = 20
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<AdminPaymentItem[]>([])
   const [total, setTotal] = useState(0)
+  // the API stops counting at 10,000 rows; show "10,000+" instead of a wrong exact number
+  const [totalCapped, setTotalCapped] = useState(false)
   const [pages, setPages] = useState(1)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -47,6 +50,8 @@ export default function PaymentsPage() {
   const [search, setSearch] = useState('')
   const [channelFilter, setChannelFilter] = useState('')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Only the newest request may write state (see rides page).
+  const requestId = useRef(0)
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
   useEffect(() => {
@@ -56,19 +61,26 @@ export default function PaymentsPage() {
   }, [search])
 
   const fetchPayments = useCallback(async () => {
+    const myRequest = ++requestId.current
     setLoading(true)
     try {
       const params: Record<string, unknown> = { page, limit: LIMIT }
       if (channelFilter) params['channel'] = channelFilter
       if (debouncedSearch) params['search'] = debouncedSearch
       const data = await adminPaymentApi.list(params as Parameters<typeof adminPaymentApi.list>[0])
+      if (myRequest !== requestId.current) return
       setPayments(data.payments)
       setTotal(data.pagination.total)
+      setTotalCapped(data.pagination.total_capped === true)
       setPages(data.pagination.pages)
     } catch {
+      if (myRequest !== requestId.current) return
       setPayments([])
+      setTotal(0)
+      setTotalCapped(false)
+      setPages(1)
     } finally {
-      setLoading(false)
+      if (myRequest === requestId.current) setLoading(false)
     }
   }, [page, channelFilter, debouncedSearch])
 
@@ -120,7 +132,7 @@ export default function PaymentsPage() {
         <IndianRupee className="w-5 h-5 text-primary" />
         <div>
           <h2 className="text-lg font-bold text-text-primary">Payments</h2>
-          <p className="text-xs text-text-muted">{total} total transactions</p>
+          <p className="text-xs text-text-muted"><span title={totalCapped ? CAPPED_TOTAL_HINT : undefined}>{formatTotal(total, totalCapped)}</span> total transactions</p>
         </div>
       </div>
 
@@ -155,11 +167,11 @@ export default function PaymentsPage() {
         }
         {pages > 1 && (
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-border-light">
-            <p className="text-xs text-text-muted">{total} total</p>
+            <p className="text-xs text-text-muted"><span title={totalCapped ? CAPPED_TOTAL_HINT : undefined}>{formatTotal(total, totalCapped)}</span> total</p>
             <div className="flex gap-2">
               <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1 text-xs border border-border rounded-lg disabled:opacity-40 hover:bg-surface-2 transition-colors">Prev</button>
-              <span className="px-3 py-1 text-xs text-text-muted">{page} / {pages}</span>
-              <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="px-3 py-1 text-xs border border-border rounded-lg disabled:opacity-40 hover:bg-surface-2 transition-colors">Next</button>
+              <span className="px-3 py-1 text-xs text-text-muted">{page} / {pages}{totalCapped ? '+' : ''}</span>
+              <button disabled={!hasNextPage({ page, pages, capped: totalCapped, rowsOnPage: payments.length, limit: LIMIT })} onClick={() => setPage(p => p + 1)} className="px-3 py-1 text-xs border border-border rounded-lg disabled:opacity-40 hover:bg-surface-2 transition-colors">Next</button>
             </div>
           </div>
         )}
