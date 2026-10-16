@@ -865,23 +865,31 @@ export async function listDriverPayments(
   limit: number,
   offset: number,
 ): Promise<{ rows: unknown[]; total: number; totalCapped: boolean }> {
+  // payments.driver_id is written once, from the ride's driver, when the payment row is created (payments.service.ts),
+  // so it always equals rides.driver_id (0 mismatches over 770,547 payments on production) and payments_driver_idx
+  // (driver_id, created_at DESC) serves this list directly. Filtering through rides instead let the planner walk
+  // every payment by created_at and probe rides one by one (1.2 s for a driver with 32 payments).
   const countRes = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM (SELECT 1 FROM payments p JOIN rides r ON r.id = p.ride_id WHERE r.driver_id = $1 LIMIT ${COUNT_CAP + 1}) t`,
+    `SELECT COUNT(*)::int AS n FROM (SELECT 1 FROM payments p WHERE p.driver_id = $1 LIMIT ${COUNT_CAP + 1}) t`,
     [driverId],
   );
   const { total, totalCapped } = capTotal(countRes.rows[0].n as number);
 
+  // Page the bare payment ids first (single-table query, so the driver index is the obvious plan), then join.
   const dataRes = await pool.query(
     `SELECT p.id::text, p.status, p.channel, p.created_at,
             p.amount::text, p.commission_amount::text, p.driver_earning::text,
             r.id::text AS ride_id,
             u.name AS user_name
-     FROM payments p
+     FROM (
+       SELECT id FROM payments WHERE driver_id = $1
+       ORDER BY created_at DESC, id DESC
+       LIMIT $2 OFFSET $3
+     ) pg
+     JOIN payments p ON p.id = pg.id
      JOIN rides r ON r.id = p.ride_id
      JOIN users u ON u.id = r.user_id
-     WHERE r.driver_id = $1
-     ORDER BY p.created_at DESC, p.id DESC
-     LIMIT $2 OFFSET $3`,
+     ORDER BY p.created_at DESC, p.id DESC`,
     [driverId, limit, offset],
   );
 
@@ -1962,22 +1970,20 @@ export const capTotal = (counted: number) => ({
 
 // Search strategy switch. Reaching rides through the matched users/drivers is fastest when few rides qualify;
 // when most rides qualify, walking the time index and filtering wins (a one-letter search matches nearly everyone).
-// Estimate the qualifying rides as matched_users x rides/user + matched_drivers x rides/driver from planner row
-// estimates (cheap; skew only moves the switch point, both strategies return identical rows).
+// The decision uses the real number of qualifying rides, counted through the existing user/driver indexes and stopped
+// at NARROW_SEARCH_MAX_RIDES + 1 (so it is cheap whichever side of the line it lands). An average-based estimate was
+// tried first and picked the slow strategy on skewed data (a few drivers hold most rides).
 const NARROW_SEARCH_MAX_RIDES = 20_000;
 async function searchIsNarrow(like: string, includePhones: boolean): Promise<boolean> {
   const res = await pool.query(
-    `SELECT
-       (SELECT COUNT(*)::float8 FROM users WHERE name ILIKE $1${includePhones ? " OR phone ILIKE $1" : ""}) AS u,
-       (SELECT COUNT(*)::float8 FROM drivers WHERE full_name ILIKE $1${includePhones ? " OR phone ILIKE $1" : ""}) AS d,
-       (SELECT GREATEST(reltuples, 1)::float8 FROM pg_class WHERE oid = 'rides'::regclass) AS rides,
-       (SELECT GREATEST(reltuples, 1)::float8 FROM pg_class WHERE oid = 'users'::regclass) AS users,
-       (SELECT GREATEST(reltuples, 1)::float8 FROM pg_class WHERE oid = 'drivers'::regclass) AS drivers`,
+    `WITH mu AS (SELECT array_agg(id) AS a FROM users WHERE name ILIKE $1${includePhones ? " OR phone ILIKE $1" : ""}),
+          md AS (SELECT array_agg(id) AS a FROM drivers WHERE full_name ILIKE $1${includePhones ? " OR phone ILIKE $1" : ""})
+     SELECT
+       (SELECT COUNT(*)::int FROM (SELECT 1 FROM rides WHERE user_id = ANY(COALESCE((SELECT a FROM mu), '{}')) LIMIT ${NARROW_SEARCH_MAX_RIDES + 1}) x) +
+       (SELECT COUNT(*)::int FROM (SELECT 1 FROM rides WHERE driver_id = ANY(COALESCE((SELECT a FROM md), '{}')) LIMIT ${NARROW_SEARCH_MAX_RIDES + 1}) y) AS matching_rides`,
     [like],
   );
-  const r = res.rows[0];
-  const estimatedRides = (r.u * r.rides) / r.users + (r.d * r.rides) / r.drivers;
-  return estimatedRides <= NARROW_SEARCH_MAX_RIDES;
+  return (res.rows[0].matching_rides as number) <= NARROW_SEARCH_MAX_RIDES;
 }
 
 export async function getAdminRideStats() {
