@@ -185,6 +185,11 @@ export const AppErrors = {
     message: 'Internal server error',
     httpStatus: 500,
   },
+  SERVICE_UNAVAILABLE: {
+    code: 'SERVICE_UNAVAILABLE',
+    message: 'Ocar is having a temporary problem. Please try again in a moment',
+    httpStatus: 503,
+  },
   MAINTENANCE_MODE: {
     code: 'MAINTENANCE_MODE',
     message: 'Ocar is under maintenance right now. Please try again shortly',
