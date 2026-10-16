@@ -70,6 +70,8 @@ function RidesPageContent() {
   const searchParams = useSearchParams()
   const [rides, setRides] = useState<AdminRideItem[]>([])
   const [total, setTotal] = useState(0)
+  // the API stops counting at 10,000 rows (counting every ride is a full scan); show "10,000+" instead of a wrong exact number
+  const [totalCapped, setTotalCapped] = useState(false)
   const [pages, setPages] = useState(1)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -167,6 +169,7 @@ function RidesPageContent() {
       const data = await adminRideApi.list(params)
       setRides(data.rides)
       setTotal(data.pagination.total)
+      setTotalCapped(data.pagination.total_capped === true)
       setPages(data.pagination.pages)
     } catch {
       setRides([])
@@ -290,7 +293,7 @@ function RidesPageContent() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-text-primary">Rides</h2>
-            <p className="text-xs text-text-muted">{total.toLocaleString('en-IN')} total rides</p>
+            <p className="text-xs text-text-muted">{total.toLocaleString('en-IN')}{totalCapped ? '+' : ''} total rides</p>
           </div>
         </div>
       </div>
@@ -414,7 +417,7 @@ function RidesPageContent() {
         }
         {pages > 1 && (
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-border-light">
-            <p className="text-xs text-text-muted">{total} total</p>
+            <p className="text-xs text-text-muted">{total.toLocaleString('en-IN')}{totalCapped ? '+' : ''} total</p>
             <div className="flex gap-2">
               <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1 text-xs border border-border rounded-lg disabled:opacity-40 hover:bg-surface-2 transition-colors">Prev</button>
               <span className="px-3 py-1 text-xs text-text-muted">{page} / {pages}</span>

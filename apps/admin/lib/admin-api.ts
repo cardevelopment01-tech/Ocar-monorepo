@@ -87,7 +87,7 @@ export interface DriverDetail {
 
 export interface DriversResponse {
   drivers: DriverListItem[]
-  pagination: { total: number; page: number; limit: number; pages: number }
+  pagination: { total: number; total_capped?: boolean; page: number; limit: number; pages: number }
   summary: DriverListSummary
   facets: DriverListFacets
 }
@@ -194,19 +194,19 @@ export const adminDriverApi = {
     await api.patch(`/api/v1/admin/drivers/${id}/vehicle`, { ...fields, reason })
   },
 
-  rides: async (id: string, page = 1, limit = 20): Promise<{ rides: DriverDetail['recent_rides']; pagination: { total: number; page: number; limit: number; pages: number } }> => {
+  rides: async (id: string, page = 1, limit = 20): Promise<{ rides: DriverDetail['recent_rides']; pagination: { total: number; total_capped?: boolean; page: number; limit: number; pages: number } }> => {
     const res = await api.get(`/api/v1/admin/drivers/${id}/rides`, { params: { page, limit } })
-    return res.data as { rides: DriverDetail['recent_rides']; pagination: { total: number; page: number; limit: number; pages: number } }
+    return res.data as { rides: DriverDetail['recent_rides']; pagination: { total: number; total_capped?: boolean; page: number; limit: number; pages: number } }
   },
 
-  payments: async (id: string, page = 1, limit = 20): Promise<{ payments: DriverPaymentRow[]; pagination: { total: number; page: number; limit: number; pages: number } }> => {
+  payments: async (id: string, page = 1, limit = 20): Promise<{ payments: DriverPaymentRow[]; pagination: { total: number; total_capped?: boolean; page: number; limit: number; pages: number } }> => {
     const res = await api.get(`/api/v1/admin/drivers/${id}/payments`, { params: { page, limit } })
-    return res.data as { payments: DriverPaymentRow[]; pagination: { total: number; page: number; limit: number; pages: number } }
+    return res.data as { payments: DriverPaymentRow[]; pagination: { total: number; total_capped?: boolean; page: number; limit: number; pages: number } }
   },
 
-  auditLog: async (id: string, page = 1, limit = 20): Promise<{ entries: DriverAuditLogEntry[]; pagination: { total: number; page: number; limit: number; pages: number } }> => {
+  auditLog: async (id: string, page = 1, limit = 20): Promise<{ entries: DriverAuditLogEntry[]; pagination: { total: number; total_capped?: boolean; page: number; limit: number; pages: number } }> => {
     const res = await api.get(`/api/v1/admin/drivers/${id}/audit-log`, { params: { page, limit } })
-    return res.data as { entries: DriverAuditLogEntry[]; pagination: { total: number; page: number; limit: number; pages: number } }
+    return res.data as { entries: DriverAuditLogEntry[]; pagination: { total: number; total_capped?: boolean; page: number; limit: number; pages: number } }
   },
 
   // Irreversible — deletes the driver and every ride/payment/rating/session
@@ -335,7 +335,7 @@ export type AdminRideDetail = AdminRideItem & AdminRideFareBreakdown & {
 
 export interface AdminRidesResponse {
   rides: AdminRideItem[]
-  pagination: { total: number; page: number; limit: number; pages: number }
+  pagination: { total: number; total_capped?: boolean; page: number; limit: number; pages: number }
 }
 
 export interface AdminUpcomingRideItem {
@@ -417,7 +417,7 @@ export interface AdminUserItem {
 
 export interface AdminUsersResponse {
   users: AdminUserItem[]
-  pagination: { total: number; page: number; limit: number; pages: number }
+  pagination: { total: number; total_capped?: boolean; page: number; limit: number; pages: number }
 }
 
 export const adminUserApi = {
@@ -447,7 +447,7 @@ export interface AdminPaymentItem {
 
 export interface AdminPaymentsResponse {
   payments: AdminPaymentItem[]
-  pagination: { total: number; page: number; limit: number; pages: number }
+  pagination: { total: number; total_capped?: boolean; page: number; limit: number; pages: number }
 }
 
 export const adminPaymentApi = {
