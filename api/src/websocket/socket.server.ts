@@ -84,8 +84,10 @@ export function initSocketServer(httpServer: HttpServer): Server {
   // streams, the session and missed packets live in Redis, so any instance can
   // restore them. https://socket.io/docs/v4/redis-streams-adapter (Valkey is supported)
   // It reads with a blocking XREAD, so it needs its own connection: never the shared
-  // `redis` client (BullMQ's), hence duplicate(). One connection instead of the two
-  // the pub/sub adapter held.
+  // `redis` client (BullMQ's), hence duplicate(). Measured in production (3 servers,
+  // 2026-10-17): ElastiCache connections went from 46-47 to 49-50, i.e. about ONE MORE
+  // per server than the pub/sub adapter's two (the adapter opens an extra internal
+  // connection); Redis memory 4.10% -> 4.2-4.3%, CPU unchanged.
   io.adapter(createAdapter(redis.duplicate()))
 
   io.use((socket, next) => {
