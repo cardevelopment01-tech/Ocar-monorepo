@@ -381,23 +381,45 @@ jobs:
           # is near-zero for the idle color right up until cutover (only the
           # header-preview smoke test hits it). Without this, the policy
           # scales the idle color straight back down to min_size=0 seconds
-          # after the next step sets desired_capacity=2, and the idle color
+          # after the next step sets its desired_capacity, and the idle color
           # never actually comes up. Resumed on whichever color ends up
           # active after cutover, a few steps down.
           aws autoscaling suspend-processes --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --scaling-processes AlarmNotification
 
-      - name: Scale the idle color up
+      - name: Scale the idle color up to the capacity the active color is serving
+        id: scaleup
         run: |
-          # Scale to 0 first, then to 1 -- if the previous deploy attempt's
-          # bake failed, this ASG was deliberately left at desired=1 (kept
-          # warm for inspection), so a straight "set desired=1" would be a
+          # The new color must take over with as many instances as the old one is
+          # running. Starting it at 1 whatever the load (as this step used to)
+          # sent the whole fleet's traffic to one cold instance after the flip
+          # until the autoscaler caught up: measured 2026-10-17 with three
+          # instances serving, one instance carried ~2,100 requests/min for 8
+          # minutes (p95 stayed fine only because that load was light).
+          # N = the active color's desired or in-service count, whichever is
+          # higher, clamped to 1..MaxSize. Anything unreadable falls back to 1
+          # (the previous behaviour). Staging normally runs 1, so it is unchanged.
+          # Note: this raises the overlap (old + new) to up to 2N instances for the
+          # bake; each API instance can hold up to ~29 Postgres connections.
+          DESIRED=1; INSERVICE=1; MAXSIZE=1
+          read -r DESIRED INSERVICE MAXSIZE < <(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "${{ steps.colors.outputs.active_asg }}" \
+            --query 'AutoScalingGroups[0].[DesiredCapacity,length(Instances[?LifecycleState==`InService`]),MaxSize]' --output text 2>/dev/null) || true
+          case "$DESIRED$INSERVICE$MAXSIZE" in (*[!0-9]*|"") DESIRED=1; INSERVICE=1; MAXSIZE=1 ;; esac
+          N=$(( DESIRED > INSERVICE ? DESIRED : INSERVICE ))
+          if [ "$N" -gt "$MAXSIZE" ]; then N=$MAXSIZE; fi
+          if [ "$N" -lt 1 ]; then N=1; fi
+          echo "active color: desired=$DESIRED in-service=$INSERVICE max=$MAXSIZE -> starting the idle color at $N"
+          echo "count=$N" >> "$GITHUB_OUTPUT"
+          # Scale to 0 first, then to N -- if the previous deploy attempt's
+          # bake failed, this ASG was deliberately left at desired>=1 (kept
+          # warm for inspection), so a straight "set desired=N" could be a
           # no-op and the health-check/smoke-test below would validate those
           # already-running, previously-bad instances instead of the new
           # image tag just written above. Forcing 0 first guarantees fresh
           # instances boot with the current image tag every time. Harmless
           # no-op in the normal case (idle color already at 0).
           aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 0
-          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity 1
+          aws autoscaling update-auto-scaling-group --auto-scaling-group-name "${{ steps.colors.outputs.idle_asg }}" --min-size 0 --desired-capacity "$N"
 
       - name: Wait for the idle color's targets to pass health checks
         id: wait
@@ -405,11 +427,14 @@ jobs:
           set +e
           IDLE_TG_ARN=$(aws elbv2 describe-target-groups --names "${{ steps.colors.outputs.idle_tg_name }}" --query 'TargetGroups[0].TargetGroupArn' --output text)
           echo "idle_tg_arn=$IDLE_TG_ARN" >> "$GITHUB_OUTPUT"
+          # Every instance the idle color was started with must be healthy before
+          # cutover (not just one), or the flip would still start under-sized.
+          NEED="${{ steps.scaleup.outputs.count }}"; NEED="${NEED:-1}"
           for i in $(seq 1 30); do
             HEALTHY=$(aws elbv2 describe-target-health --target-group-arn "$IDLE_TG_ARN" \
               --query "length(TargetHealthDescriptions[?TargetHealth.State=='healthy'])" --output text)
-            echo "healthy targets: $HEALTHY/1"
-            if [ "$HEALTHY" -ge 1 ] 2>/dev/null; then
+            echo "healthy targets: $HEALTHY/$NEED"
+            if [ "$HEALTHY" -ge "$NEED" ] 2>/dev/null; then
               echo "result=success" >> "$GITHUB_OUTPUT"
               exit 0
             fi
