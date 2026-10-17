@@ -90,6 +90,22 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs_archive" {
     }
   }
 
+  # Postgres exporter metrics (config.alloy "postgres_s3"): OTLP JSON, written
+  # instead of shipping to Grafana Cloud. 90 days is a starting point for
+  # forensics, raise it if you want a longer history.
+  rule {
+    id     = "expire-metrics-after-90-days"
+    status = "Enabled"
+
+    filter {
+      prefix = "metrics/"
+    }
+
+    expiration {
+      days = 90
+    }
+  }
+
   # Athena query results are disposable.
   rule {
     id     = "expire-athena-results-after-7-days"
@@ -126,9 +142,12 @@ resource "aws_iam_role_policy" "logs_archive_write" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:AbortMultipartUpload"]
-        Resource = "${aws_s3_bucket.logs_archive.arn}/logs/*"
+        Effect = "Allow"
+        Action = ["s3:PutObject", "s3:AbortMultipartUpload"]
+        Resource = [
+          "${aws_s3_bucket.logs_archive.arn}/logs/*",
+          "${aws_s3_bucket.logs_archive.arn}/metrics/*",
+        ]
       },
       {
         Effect   = "Allow"

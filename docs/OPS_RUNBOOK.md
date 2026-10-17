@@ -154,9 +154,12 @@ because they're exactly what you'll see again if they recur:
   alone exposed ~3,400 series (`pg_stat_user_tables_*` + `pg_statio_user_tables_*` ~2,800),
   ~80% of the ~4,300 a host shipped, and every instance repeats it against the same
   database, so 3 hosts is ~13,000 and a deploy's 6 hosts is far over 15,000. Since then
-  `config.alloy`'s `prometheus.relabel "postgres"` keeps only an allow-list (255 series
-  per host); add a metric name there before building a panel or alert on a new `pg_*`
-  metric. Series budget: ~1,000 per host × the most hosts alive at once (both colours,
+  Postgres metrics are NOT sent to Grafana Cloud at all: `config.alloy`'s `postgres_s3`
+  pipeline writes the full, unfiltered exporter output to
+  `s3://<logs-archive-bucket>/metrics/postgres/year=/month=/day=/hour=/` (OTLP JSON, gzip,
+  5 min batches, 90 day expiry, `s3-logs-archive.tf`). There are no `pg_*` series in
+  Grafana, so the dashboard has no DB-internals row; slow queries are in RDS Performance
+  Insights. Series budget (api, node, cadvisor, alloy only): ~700 per host × the most hosts alive at once (both colours,
   plus the ~20 min retired hosts stay active) must stay under 15,000. Applying a change
   to `config.alloy` needs a `terraform apply` (the SSM copy, 8 KB cap, ~6.2 KB now) and
   a deploy: running hosts keep their old config until replaced.
