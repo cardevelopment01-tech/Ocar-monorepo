@@ -1973,7 +1973,7 @@ export const capTotal = (counted: number) => ({
 // The decision uses the real number of qualifying rides, counted through the existing user/driver indexes and stopped
 // at NARROW_SEARCH_MAX_RIDES + 1 (so it is cheap whichever side of the line it lands). An average-based estimate was
 // tried first and picked the slow strategy on skewed data (a few drivers hold most rides).
-const NARROW_SEARCH_MAX_RIDES = 20_000;
+const NARROW_SEARCH_MAX_RIDES = 60_000;
 async function searchIsNarrow(like: string, includePhones: boolean): Promise<boolean> {
   const res = await pool.query(
     `WITH mu AS (SELECT array_agg(id) AS a FROM users WHERE name ILIKE $1${includePhones ? " OR phone ILIKE $1" : ""}),

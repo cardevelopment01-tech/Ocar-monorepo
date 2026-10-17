@@ -67,7 +67,7 @@ describe('listAdminRides query shape', () => {
   it('switches to walking the time index when a search matches most people (one-letter search)', async () => {
     mockQuery.mockImplementation((sql: string) => {
       if (/COUNT\(\*\)::int AS n/.test(sql)) return Promise.resolve({ rows: [{ n: 50 }] })
-      if (/matching_rides/.test(sql)) return Promise.resolve({ rows: [{ matching_rides: 40_002 }] }) // most rides qualify -> walk the time index
+      if (/matching_rides/.test(sql)) return Promise.resolve({ rows: [{ matching_rides: 70_000 }] }) // most rides qualify -> walk the time index
       return Promise.resolve({ rows: [] })
     })
     await listAdminRides({ limit: 20, offset: 0, search: 'a' })
