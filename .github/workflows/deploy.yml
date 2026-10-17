@@ -395,20 +395,32 @@ jobs:
           # until the autoscaler caught up: measured 2026-10-17 with three
           # instances serving, one instance carried ~2,100 requests/min for 8
           # minutes (p95 stayed fine only because that load was light).
-          # N = the active color's desired or in-service count, whichever is
-          # higher, clamped to 1..MaxSize. Anything unreadable falls back to 1
-          # (the previous behaviour). Staging normally runs 1, so it is unchanged.
+          # N = the number of HEALTHY targets in the active color's target group (the
+          # instances actually serving), clamped to 1..PRESCALE_MAX (the ASG max_size
+          # in asg.tf). It is read from the target group, not the ASG: the deploy
+          # role may call elbv2 describe-target-health (this workflow already does for
+          # the idle color) but NOT autoscaling:DescribeAutoScalingGroups. The first
+          # version of this step used the ASG call, was denied, hid the error and fell
+          # back to 1 (production deploy 2026-10-17 13:51Z started the new color at 1
+          # with 3 serving). So errors are printed now, never swallowed.
+          # Anything unreadable falls back to 1 (the previous behaviour), with a
+          # warning annotation. Staging normally runs 1, so it is unchanged.
           # Note: this raises the overlap (old + new) to up to 2N instances for the
           # bake; each API instance can hold up to ~29 Postgres connections.
-          DESIRED=1; INSERVICE=1; MAXSIZE=1
-          read -r DESIRED INSERVICE MAXSIZE < <(aws autoscaling describe-auto-scaling-groups \
-            --auto-scaling-group-names "${{ steps.colors.outputs.active_asg }}" \
-            --query 'AutoScalingGroups[0].[DesiredCapacity,length(Instances[?LifecycleState==`InService`]),MaxSize]' --output text 2>/dev/null) || true
-          case "$DESIRED$INSERVICE$MAXSIZE" in (*[!0-9]*|"") DESIRED=1; INSERVICE=1; MAXSIZE=1 ;; esac
-          N=$(( DESIRED > INSERVICE ? DESIRED : INSERVICE ))
-          if [ "$N" -gt "$MAXSIZE" ]; then N=$MAXSIZE; fi
+          PRESCALE_MAX=4
+          N=1
+          if ACTIVE_TG_ARN=$(aws elbv2 describe-target-groups --names "${{ steps.colors.outputs.active_tg_name }}" --query 'TargetGroups[0].TargetGroupArn' --output text) \
+             && HEALTHY=$(aws elbv2 describe-target-health --target-group-arn "$ACTIVE_TG_ARN" --query "length(TargetHealthDescriptions[?TargetHealth.State=='healthy'])" --output text); then
+            case "$HEALTHY" in
+              ""|*[!0-9]*) echo "::warning::unreadable healthy-target count '$HEALTHY'; starting the idle color at 1" ;;
+              *) N=$HEALTHY ;;
+            esac
+          else
+            echo "::warning::could not read the active color's target health (see the error above); starting the idle color at 1"
+          fi
+          if [ "$N" -gt "$PRESCALE_MAX" ]; then N=$PRESCALE_MAX; fi
           if [ "$N" -lt 1 ]; then N=1; fi
-          echo "active color: desired=$DESIRED in-service=$INSERVICE max=$MAXSIZE -> starting the idle color at $N"
+          echo "active color ${{ steps.colors.outputs.active }}: ${HEALTHY:-?} healthy target(s) -> starting the idle color at $N"
           echo "count=$N" >> "$GITHUB_OUTPUT"
           # Scale to 0 first, then to N -- if the previous deploy attempt's
           # bake failed, this ASG was deliberately left at desired>=1 (kept
