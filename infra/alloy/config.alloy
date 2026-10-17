@@ -145,8 +145,14 @@ prometheus.relabel "node" {
 }
 
 // pg_stat_statements drove staging's series count; staging drops postgres
-// metrics below and archives to S3 (s3-metrics-archive.tf). Prod: capped by
-// the exporter's stat_statements.limit (docker-compose.prod.yml).
+// metrics below and archives to S3 (s3-metrics-archive.tf). Prod ships only the
+// allow-list below: measured 2026-10-17, one host exposed ~3,400 postgres series
+// (pg_stat_user_tables + pg_statio_user_tables alone ~2,800, one per table per
+// metric), ~80% of everything a host shipped. Every instance runs its own exporter
+// against the SAME database, so that was repeated per host; a scaled-out deploy
+// (6+ hosts, plus the series of retired hosts that stay active for ~20 min) passed
+// Grafana Cloud's 15,000 active-series limit and every write was rejected (HTTP 429
+// err-mimir-max-active-series), blanking all dashboards, in two tests.
 prometheus.scrape "postgres" {
   targets      = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR"), "alloy_env" = sys.env("ALLOY_ENV")}]
   sample_limit = 20000
@@ -160,6 +166,20 @@ prometheus.relabel "postgres" {
     source_labels = ["alloy_env"]
     regex         = "staging"
     action        = "drop"
+  }
+
+  // Allow-list: only what the dashboards and alerts query (pg_stat_statements_* and
+  // pg_stat_database_* in infra/grafana/dashboards and infra/terraform/observability)
+  // plus a few health basics. 255 of ~3,386 series per host. The per-table families
+  // (pg_stat_user_tables_*, pg_statio_user_tables_*, pg_settings_*, ...) are dropped
+  // here; RDS Performance Insights and CloudWatch cover slow queries and RDS health,
+  // and a per-table export to S3 is a separate piece of work. Liveness alerts use
+  // up{instance="api:4000"}, not this target. Add a name here before building a
+  // panel or alert on a new pg_* metric.
+  rule {
+    source_labels = ["__name__"]
+    regex         = "pg_up|pg_exporter_.*|pg_database_size_bytes|pg_locks_count|pg_settings_max_connections|pg_stat_activity_(count|max_tx_duration)|pg_stat_database_(numbackends|xact_commit|xact_rollback|blks_hit|blks_read|deadlocks|temp_files|conflicts)|pg_stat_statements_(calls_total|seconds_total|rows_total|query_id)"
+    action        = "keep"
   }
 
   // alloy_env only exists for the drop rule above -- strip before remote_write.
