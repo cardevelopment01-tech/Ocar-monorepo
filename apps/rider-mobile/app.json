@@ -22,7 +22,7 @@
         "ACCESS_COARSE_LOCATION",
         "POST_NOTIFICATIONS"
       ],
-      "blockedPermissions": ["android.permission.SYSTEM_ALERT_WINDOW", "android.permission.RECORD_AUDIO"],
+      "blockedPermissions": ["android.permission.SYSTEM_ALERT_WINDOW", "android.permission.RECORD_AUDIO", "android.permission.FOREGROUND_SERVICE"],
       "allowBackup": false,
       "config": {
         "googleMaps": {
@@ -44,6 +44,7 @@
     "plugins": [
       "expo-router",
     "../../packages/mobile-shared/plugins/withReleaseSigning.js",
+    "../../packages/mobile-shared/plugins/withoutLocationService.js",
 [
   "expo-build-properties",
   {
