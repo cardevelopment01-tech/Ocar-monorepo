@@ -34,6 +34,10 @@ export const errorMiddleware: ErrorRequestHandler = (err, req, res, _next) => {
     // Fixed message on purpose: the parser's own text quotes the offending input.
     status = 400
     body = { error: 'Malformed JSON body', code: 'INVALID_JSON', requestId }
+  } else if (err instanceof SyntaxError && /^Cannot convert .* to a BigInt/.test(err.message)) {
+    // BigInt(req.params.id) on a non-numeric id (GET /rides/abc): a bad request, not a server fault.
+    status = 400
+    body = { error: 'Invalid id', code: 'INVALID_ID', requestId }
   } else if (err instanceof ZodError) {
     status = 422
     body = { error: 'Validation failed', code: 'VALIDATION_ERROR', fields: err.flatten().fieldErrors, requestId }
