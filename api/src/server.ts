@@ -152,6 +152,13 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '30 4 * * *' }, removeOnComplete: true, removeOnFail: true }
   )
+  // Reports read past days from pre-aggregated views (migration 117); hourly refresh keeps them current and
+  // moves the cutoff, so a failed or late run only makes the reports read a few more days from the raw tables.
+  await partitionMaintenanceQueue.add(
+    'refresh_report_rollups',
+    {},
+    { repeat: { pattern: '5 * * * *' }, removeOnComplete: true, removeOnFail: true }
+  )
 
   void paymentReconcileWorker
   logger.info('payment reconciliation worker started')
