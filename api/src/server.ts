@@ -252,3 +252,5 @@ start().catch((err) => {
   logger.fatal({ err }, 'server startup failed')
   exitAfterFlush(1)
 })
+
+// Deploy-during-load test marker (2026-10): a comment-only change so a production deploy can be triggered on demand.
