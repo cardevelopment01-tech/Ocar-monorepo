@@ -61,7 +61,7 @@
   ],
   "title": "Ocar — Overview",
   "uid": "ocar-overview",
-  "description": "Single dashboard for the whole ASG fleet: at-a-glance health, RED-method golden signals for the API, fleet and autoscaling, DB pool and queues, top-25 pg_stat_statements internals, per-instance and per-container resources, and a live log stream. Edited here, applied with Terraform (infra/terraform/observability/dashboards.tf); fixed uid 'ocar-overview' so applies update it in place. Postgres metrics reach Grafana through an allow-list (infra/alloy/config.alloy): pg_stat_statements and pg_stat_database only; per-table statistics are not shipped. Deployment markers come from the annotation the deploy workflow posts at every cutover (tags deploy, blue-green, cutover).",
+  "description": "Single dashboard for the whole ASG fleet: at-a-glance health, RED-method golden signals for the API, fleet and autoscaling, DB pool and queues, per-instance and per-container resources, and a live log stream. Edited here, applied with Terraform (infra/terraform/observability/dashboards.tf); fixed uid 'ocar-overview' so applies update it in place. Postgres metrics are not in Grafana (they are archived to S3, infra/alloy/config.alloy). Deployment markers come from the annotation the deploy workflow posts at every cutover (tags deploy, blue-green, cutover).",
   "editable": true,
   "timezone": "",
   "schemaVersion": 39,
@@ -503,8 +503,8 @@
     {
       "id": 34,
       "type": "stat",
-      "title": "Slowest query (mean)",
-      "description": "Highest mean execution time among the top-25 tracked statements (pg_stat_statements). Green under 100 ms, amber to 500 ms.",
+      "title": "Requests / server / min",
+      "description": "Average requests per minute each server handles. The autoscaler adds servers when the load balancer's requests per server stays above 1,000 per minute; amber from 700.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -521,7 +521,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(rate(pg_stat_statements_seconds_total{host=~\"$host\"}[5m]) / rate(pg_stat_statements_calls_total{host=~\"$host\"}[5m]))",
+          "expr": "avg(sum by (host) (rate(http_request_duration_seconds_count{host=~\"$host\"}[5m]))) * 60",
           "refId": "A",
           "instant": false,
           "legendFormat": ""
@@ -529,7 +529,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -539,11 +539,11 @@
               },
               {
                 "color": "orange",
-                "value": 0.1
+                "value": 700
               },
               {
                 "color": "red",
-                "value": 0.5
+                "value": 1000
               }
             ]
           },
@@ -551,7 +551,7 @@
             "mode": "thresholds"
           },
           "noValue": "no data",
-          "decimals": 3
+          "decimals": 0
         },
         "overrides": []
       },
@@ -1221,418 +1221,13 @@
       }
     },
     {
-      "id": 105,
-      "type": "row",
-      "title": "DB internals (top 25 statements)",
-      "collapsed": false,
-      "gridPos": {
-        "x": 0,
-        "y": 51,
-        "w": 24,
-        "h": 1
-      },
-      "panels": []
-    },
-    {
-      "id": 13,
-      "type": "table",
-      "title": "Top 10 Slow Queries (mean exec time)",
-      "description": "Mean execution time per call, top 10 of the 25 statements pg_stat_statements tracks (the Postgres exporter keeps only the 25 heaviest; the Alloy allow-list ships calls, seconds, rows and the query text). Uses max() across servers: every server's exporter reports the same numbers because they all query the same RDS database.",
-      "gridPos": {
-        "x": 0,
-        "y": 52,
-        "w": 24,
-        "h": 8
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "topk(10, max by (queryid, query) ((rate(pg_stat_statements_seconds_total{host=~\"$host\"}[5m]) / rate(pg_stat_statements_calls_total{host=~\"$host\"}[5m])) * on(queryid, host) group_left(query) pg_stat_statements_query_id))",
-          "refId": "A",
-          "format": "table",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "inspect": true
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Mean time"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "s"
-              },
-              {
-                "id": "decimals",
-                "value": 3
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 0.1
-                    },
-                    {
-                      "color": "red",
-                      "value": 0.5
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "custom.width",
-                "value": 140
-              }
-            ]
-          }
-        ]
-      },
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true
-            },
-            "renameByName": {
-              "Value": "Mean time",
-              "queryid": "Query ID",
-              "query": "Query",
-              "route": "Route",
-              "method": "Method"
-            }
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "field": "Mean time",
-                "desc": true
-              }
-            ]
-          }
-        }
-      ],
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm",
-        "footer": {
-          "show": false
-        }
-      }
-    },
-    {
-      "id": 14,
-      "type": "table",
-      "title": "Top 10 Queries by Total Time",
-      "description": "Which statements cost the most aggregate database time (rate of total seconds). A fast query called constantly can outweigh a rare slow one. Top 10 of the 25 tracked statements; value is seconds of database time consumed per wall-clock second (above 1 means the query keeps more than one connection busy on average). max() across servers, as for the slow-query table.",
-      "gridPos": {
-        "x": 0,
-        "y": 60,
-        "w": 24,
-        "h": 8
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "topk(10, max by (queryid, query) (rate(pg_stat_statements_seconds_total{host=~\"$host\"}[5m]) * on(queryid, host) group_left(query) pg_stat_statements_query_id))",
-          "refId": "A",
-          "format": "table",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "inspect": true
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "DB time (s per s)"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "suffix: s/s"
-              },
-              {
-                "id": "decimals",
-                "value": 2
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 0.5
-                    },
-                    {
-                      "color": "red",
-                      "value": 2
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "custom.width",
-                "value": 140
-              }
-            ]
-          }
-        ]
-      },
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true
-            },
-            "renameByName": {
-              "Value": "DB time (s per s)",
-              "queryid": "Query ID",
-              "query": "Query",
-              "route": "Route",
-              "method": "Method"
-            }
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "field": "DB time (s per s)",
-                "desc": true
-              }
-            ]
-          }
-        }
-      ],
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm",
-        "footer": {
-          "show": false
-        }
-      }
-    },
-    {
-      "id": 15,
-      "type": "timeseries",
-      "title": "Cache Hit Ratio by Database",
-      "description": "blks_hit / (blks_hit + blks_read) -- a healthy Postgres should stay >99%. A sustained drop means working-set data no longer fits in shared_buffers and queries are hitting disk more.",
-      "gridPos": {
-        "x": 0,
-        "y": 68,
-        "w": 12,
-        "h": 7
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "max by (datname) (rate(pg_stat_database_blks_hit{host=~\"$host\"}[5m])) / (max by (datname) (rate(pg_stat_database_blks_hit{host=~\"$host\"}[5m])) + max by (datname) (rate(pg_stat_database_blks_read{host=~\"$host\"}[5m])))",
-          "legendFormat": "{{datname}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "min": 0.9,
-          "max": 1,
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth",
-            "lineWidth": 1.5,
-            "fillOpacity": 14,
-            "gradientMode": "opacity",
-            "showPoints": "never",
-            "spanNulls": true,
-            "axisBorderShow": false,
-            "thresholdsStyle": {
-              "mode": "dashed"
-            }
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 0.98
-              },
-              {
-                "color": "green",
-                "value": 0.99
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "id": 16,
-      "type": "timeseries",
-      "title": "Deadlocks & Rollbacks by Database",
-      "description": "Either climbing is a real correctness/contention signal, not just a performance one.",
-      "gridPos": {
-        "x": 12,
-        "y": 68,
-        "w": 12,
-        "h": 7
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "max by (datname) (rate(pg_stat_database_deadlocks{host=~\"$host\"}[5m]))",
-          "legendFormat": "deadlocks {{datname}}",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "max by (datname) (rate(pg_stat_database_xact_rollback{host=~\"$host\"}[5m]))",
-          "legendFormat": "rollbacks {{datname}}",
-          "refId": "B"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "min": 0,
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth",
-            "lineWidth": 1.5,
-            "fillOpacity": 14,
-            "gradientMode": "opacity",
-            "showPoints": "never",
-            "spanNulls": true,
-            "axisBorderShow": false
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
       "id": 102,
       "type": "row",
       "title": "Per-server saturation",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 75,
+        "y": 51,
         "w": 24,
         "h": 1
       },
@@ -1645,7 +1240,7 @@
       "description": "100 - idle%, broken out by the host label (EC2 instance ID) — a single aggregate number hides one hot instance behind a healthy average.",
       "gridPos": {
         "x": 0,
-        "y": 76,
+        "y": 52,
         "w": 8,
         "h": 7
       },
@@ -1728,7 +1323,7 @@
       "title": "Memory % by Instance",
       "gridPos": {
         "x": 8,
-        "y": 76,
+        "y": 52,
         "w": 8,
         "h": 7
       },
@@ -1811,7 +1406,7 @@
       "title": "Disk % by Instance (root volume)",
       "gridPos": {
         "x": 16,
-        "y": 76,
+        "y": 52,
         "w": 8,
         "h": 7
       },
@@ -1895,7 +1490,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 83,
+        "y": 59,
         "w": 24,
         "h": 1
       },
@@ -1908,7 +1503,7 @@
       "description": "container_memory_working_set_bytes -- non-reclaimable memory, what the kernel OOM-killer actually looks at, not container_memory_usage_bytes (which includes reclaimable page cache and overstates real pressure).",
       "gridPos": {
         "x": 0,
-        "y": 84,
+        "y": 60,
         "w": 12,
         "h": 8
       },
@@ -1971,7 +1566,7 @@
       "description": "working_set / spec_memory_limit -- only meaningful for containers with mem_limit actually set in docker-compose.prod.yml (currently api, cadvisor); containers with no configured limit report 0 as their limit and will show no data here, not 0%.",
       "gridPos": {
         "x": 12,
-        "y": 84,
+        "y": 60,
         "w": 12,
         "h": 8
       },
@@ -2054,7 +1649,7 @@
       "title": "CPU Usage (cores) by Container",
       "gridPos": {
         "x": 0,
-        "y": 92,
+        "y": 68,
         "w": 12,
         "h": 8
       },
@@ -2118,7 +1713,7 @@
       "description": "increase(container_oom_events_total) -- should be a flat zero line always. Any nonzero point means that container actually hit its mem_limit and was killed by the kernel; the direct answer to 'did a limit trip yet'.",
       "gridPos": {
         "x": 12,
-        "y": 92,
+        "y": 68,
         "w": 12,
         "h": 8
       },
@@ -2198,7 +1793,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 100,
+        "y": 76,
         "w": 24,
         "h": 1
       },
@@ -2211,7 +1806,7 @@
       "description": "{service=\"ocar\", env=\"$env\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $env, $host, and $min_level dropdowns above (Pino numeric levels: 30=info, 40=warn, 50=error) — all are line/label filters, not extra Loki stream labels, so they cost nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
       "gridPos": {
         "x": 0,
-        "y": 101,
+        "y": 77,
         "w": 24,
         "h": 12
       },
