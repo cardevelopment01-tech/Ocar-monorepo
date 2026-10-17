@@ -100,8 +100,10 @@ jobs:
           else
             BASE="$PREV_SHA"
           fi
+          # infra/alloy/: config.alloy reaches servers via SSM at boot, so a change there only
+          # takes effect once a deploy replaces the servers (merging it used to skip the deploy).
           echo "Diffing $BASE..HEAD"
-          if git diff --name-only "$BASE" HEAD | grep -qE '^(api/|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|\.github/workflows/deploy\.yml)'; then
+          if git diff --name-only "$BASE" HEAD | grep -qE '^(api/|infra/alloy/|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|\.github/workflows/deploy\.yml)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
