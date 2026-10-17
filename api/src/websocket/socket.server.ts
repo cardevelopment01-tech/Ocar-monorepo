@@ -1,6 +1,6 @@
 import { Server } from 'socket.io'
 import type { Server as HttpServer } from 'http'
-import { createAdapter } from '@socket.io/redis-adapter'
+import { createAdapter } from '@socket.io/redis-streams-adapter'
 import { verifyAccessToken } from '@/lib/jwt'
 import { config } from '@/config'
 import { pool } from '@/db/client'
@@ -75,9 +75,18 @@ export function initSocketServer(httpServer: HttpServer): Server {
   // Without this, io.to(room).emit(...) only reaches sockets connected to THIS
   // process — a client connected to a different API instance would silently
   // never receive the event the moment this runs as more than one instance.
-  const pubClient = redis.duplicate()
-  const subClient = redis.duplicate()
-  io.adapter(createAdapter(pubClient, subClient))
+  //
+  // The Redis STREAMS adapter, not the classic pub/sub one: connectionStateRecovery
+  // (above) is documented as unsupported by the pub/sub adapter ("persisting the
+  // packets is not compatible with the Redis PUB/SUB mechanism"), so after a deploy
+  // or an instance loss a client that reconnected to a DIFFERENT instance got a
+  // fresh session and silently lost the packets emitted while it was away. With
+  // streams, the session and missed packets live in Redis, so any instance can
+  // restore them. https://socket.io/docs/v4/redis-streams-adapter (Valkey is supported)
+  // It reads with a blocking XREAD, so it needs its own connection: never the shared
+  // `redis` client (BullMQ's), hence duplicate(). One connection instead of the two
+  // the pub/sub adapter held.
+  io.adapter(createAdapter(redis.duplicate()))
 
   io.use((socket, next) => {
     const token =

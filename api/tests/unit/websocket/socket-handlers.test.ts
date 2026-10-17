@@ -14,7 +14,7 @@ const { ServerCtor, connectionHandlers } = vi.hoisted(() => {
   }
 })
 vi.mock('socket.io', () => ({ Server: ServerCtor }))
-vi.mock('@socket.io/redis-adapter', () => ({ createAdapter: vi.fn() }))
+vi.mock('@socket.io/redis-streams-adapter', () => ({ createAdapter: vi.fn() }))
 vi.mock('@/lib/jwt', () => ({ verifyAccessToken: vi.fn() }))
 vi.mock('@/config', () => ({ config: { ALLOWED_ORIGINS: 'http://localhost:3000' } }))
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
