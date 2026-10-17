@@ -154,9 +154,15 @@ because they're exactly what you'll see again if they recur:
   alone exposed ~3,400 series (`pg_stat_user_tables_*` + `pg_statio_user_tables_*` ~2,800),
   ~80% of the ~4,300 a host shipped, and every instance repeats it against the same
   database, so 3 hosts is ~13,000 and a deploy's 6 hosts is far over 15,000. Since then
-  `config.alloy`'s `prometheus.relabel "postgres"` keeps only an allow-list (255 series
-  per host); add a metric name there before building a panel or alert on a new `pg_*`
-  metric. Series budget: ~1,000 per host × the most hosts alive at once (both colours,
+  `config.alloy` archives EVERY scrape (api, node, postgres, cadvisor, alloy) to S3, unfiltered,
+  in parallel with Grafana: `s3://<logs-archive-bucket>/metrics/year=/month=/day=/hour=/`
+  (OTLP JSON, one document per object, gzip, 5 min batches, 90 day expiry,
+  `s3-logs-archive.tf`), so a Grafana blackout loses nothing. Postgres metrics go to S3
+  ONLY (no `pg_*` series in Grafana; the dashboard has no DB-internals row; slow queries
+  are also in RDS Performance Insights). The exporter has no retry in Alloy v1.18.1: a
+  failed upload drops that batch (same as the log archive). Query the archive with SQL
+  over the nested OTLP JSON (`unnest(resourceMetrics)` > `scopeMetrics` > `metrics` >
+  `gauge|sum.dataPoints`, labels in `attributes`, time in `timeUnixNano`). Series budget in Grafana (api, node, cadvisor, alloy only): ~700 per host × the most hosts alive at once (both colours,
   plus the ~20 min retired hosts stay active) must stay under 15,000. Applying a change
   to `config.alloy` needs a `terraform apply` (the SSM copy, 8 KB cap, ~6.2 KB now) and
   a deploy: running hosts keep their old config until replaced.
