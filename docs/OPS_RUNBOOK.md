@@ -146,9 +146,20 @@ because they're exactly what you'll see again if they recur:
   Docker's ephemeral veth/docker/br/cni interfaces at the source) — if this
   recurs, it's either another unusually rapid burst of instance churn (should
   self-resolve in 15-30 min as stale series age out) or a new metrics source
-  that also needs the same two-layer filtering treatment (`postgres_exporter`
-  and the API's own `http_request_duration_seconds` are both real
-  contributors that were deliberately left unfiltered this round).
+  that also needs the same two-layer filtering treatment (the API's own
+  `http_request_duration_seconds` is still unfiltered: 396 of the API's 667
+  series on one host in the 2026-10-17 tests, and it grows with every route used).
+  **It recurred on 2026-10-17** (soak tests parts 2 and 3: every scaled-out deploy
+  blanked all dashboards for 25+ minutes). Measured on one host: `postgres_exporter`
+  alone exposed ~3,400 series (`pg_stat_user_tables_*` + `pg_statio_user_tables_*` ~2,800),
+  ~80% of the ~4,300 a host shipped, and every instance repeats it against the same
+  database, so 3 hosts is ~13,000 and a deploy's 6 hosts is far over 15,000. Since then
+  `config.alloy`'s `prometheus.relabel "postgres"` keeps only an allow-list (255 series
+  per host); add a metric name there before building a panel or alert on a new `pg_*`
+  metric. Series budget: ~1,000 per host × the most hosts alive at once (both colours,
+  plus the ~20 min retired hosts stay active) must stay under 15,000. Applying a change
+  to `config.alloy` needs a `terraform apply` (the SSM copy, 8 KB cap, ~6.2 KB now) and
+  a deploy: running hosts keep their old config until replaced.
 
 ## Scale capacity (more/fewer instances)
 
