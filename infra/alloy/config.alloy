@@ -123,13 +123,13 @@ prometheus.scrape "api" {
   targets       = [{"__address__" = "api:4000", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   metrics_path  = "/metrics"
   sample_limit  = 20000
-  forward_to    = [prometheus.remote_write.grafana_cloud.receiver]
+  forward_to    = [prometheus.remote_write.grafana_cloud.receiver, otelcol.receiver.prometheus.metrics_s3.receiver]
 }
 
 prometheus.scrape "node" {
   targets      = [{"__address__" = "node_exporter:9100", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   sample_limit = 20000
-  forward_to   = [prometheus.relabel.node.receiver]
+  forward_to   = [prometheus.relabel.node.receiver, otelcol.receiver.prometheus.metrics_s3.receiver]
 }
 
 // node_exporter ships ~500-700 series/host unfiltered -- tipped the 15k cap
@@ -144,41 +144,41 @@ prometheus.relabel "node" {
   }
 }
 
-// Postgres metrics go to S3 ONLY, never to Grafana Cloud. Every host runs its own
-// exporter against the SAME database and one host exposes ~3,400 series (per-table
-// pg_stat_user_tables/pg_statio_user_tables ~2,800); shipped to Mimir that blew the
-// 15,000 active-series cap during scaled-out deploys and every write was rejected
-// (HTTP 429 err-mimir-max-active-series), blanking all dashboards, in two tests.
-// S3 has no series cap, so the full unfiltered set is kept here (OTLP JSON, gzip,
-// 5 min batches, s3://<logs-archive-bucket>/metrics/postgres/, expires per
-// s3-logs-archive.tf). Slow queries live in RDS Performance Insights meanwhile.
+// ALL scrapes (api, node, postgres, cadvisor, alloy) are also archived to S3,
+// unfiltered, so nothing is lost when Grafana Cloud rejects writes (15,000
+// active-series cap, HTTP 429 err-mimir-max-active-series, blanked every
+// dashboard twice on 2026-10-17). One shared pipeline "metrics_s3" below:
+// OTLP JSON, gzip, 5 min batches, s3://<logs-archive-bucket>/metrics/year=/
+// month=/day=/hour=/ (expiry in s3-logs-archive.tf). Postgres metrics go to S3
+// ONLY: one host exposes ~3,400 pg series (per-table ~2,800), repeated by every
+// host against the same database, which is what blew the cap.
 prometheus.scrape "postgres" {
   targets      = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   sample_limit = 20000
-  forward_to   = [otelcol.receiver.prometheus.postgres_s3.receiver]
+  forward_to   = [otelcol.receiver.prometheus.metrics_s3.receiver]
 }
 
-otelcol.receiver.prometheus "postgres_s3" {
+otelcol.receiver.prometheus "metrics_s3" {
   output {
-    metrics = [otelcol.processor.batch.postgres_s3.input]
+    metrics = [otelcol.processor.batch.metrics_s3.input]
   }
 }
 
-otelcol.processor.batch "postgres_s3" {
+otelcol.processor.batch "metrics_s3" {
   timeout             = "5m"
   send_batch_size     = 8192
   send_batch_max_size = 8192
 
   output {
-    metrics = [otelcol.exporter.awss3.postgres.input]
+    metrics = [otelcol.exporter.awss3.metrics.input]
   }
 }
 
-otelcol.exporter.awss3 "postgres" {
+otelcol.exporter.awss3 "metrics" {
   s3_uploader {
     region                = sys.env("LOGS_ARCHIVE_REGION")
     s3_bucket             = sys.env("LOGS_ARCHIVE_BUCKET")
-    s3_prefix             = "metrics/postgres"
+    s3_prefix             = "metrics"
     s3_partition_format   = "year=%Y/month=%m/day=%d/hour=%H"
     s3_partition_timezone = "UTC"
     compression           = "gzip"
@@ -194,7 +194,7 @@ otelcol.exporter.awss3 "postgres" {
 prometheus.scrape "cadvisor" {
   targets      = [{"__address__" = "cadvisor:8080", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   sample_limit = 30000
-  forward_to   = [prometheus.relabel.cadvisor.receiver]
+  forward_to   = [prometheus.relabel.cadvisor.receiver, otelcol.receiver.prometheus.metrics_s3.receiver]
 }
 
 // Keep only the cadvisor families the dashboards query (tipped the series cap
@@ -227,7 +227,7 @@ prometheus.relabel "cadvisor" {
 prometheus.scrape "alloy" {
   targets      = [{"__address__" = "127.0.0.1:12345", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   sample_limit = 5000
-  forward_to   = [prometheus.relabel.alloy.receiver]
+  forward_to   = [prometheus.relabel.alloy.receiver, otelcol.receiver.prometheus.metrics_s3.receiver]
 }
 
 prometheus.relabel "alloy" {
