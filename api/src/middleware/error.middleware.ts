@@ -2,6 +2,8 @@ import { ErrorRequestHandler } from 'express'
 import { ZodError } from 'zod'
 import multer from 'multer'
 import { config } from '@/config'
+import { AppErrors } from '@/constants/errors'
+import { isDbUnavailable, DB_RETRY_AFTER_SEC } from '@/lib/db-errors'
 
 interface PgError extends Error {
   code?: string
@@ -41,6 +43,11 @@ export const errorMiddleware: ErrorRequestHandler = (err, req, res, _next) => {
   } else if ((err as PgError).code === '23503') {
     status = 409
     body = { error: 'Referenced record not found', code: 'FK_VIOLATION', requestId }
+  } else if (isDbUnavailable(err)) {
+    // DB unreachable / failing over: retryable dependency outage, not an app bug
+    status = 503
+    body = { error: AppErrors.SERVICE_UNAVAILABLE.message, code: AppErrors.SERVICE_UNAVAILABLE.code, requestId }
+    res.set('Retry-After', String(DB_RETRY_AFTER_SEC))
   } else {
     status = 500
     body = {

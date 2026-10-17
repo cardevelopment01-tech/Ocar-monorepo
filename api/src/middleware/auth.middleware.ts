@@ -5,6 +5,7 @@ import { PrincipalRole, AdminRole } from '@/constants/enums'
 import { getJSON, setWithTTL, client as redis } from '@/db/redis'
 import { withTimeout } from '@/lib/with-timeout'
 import { logger } from '@/lib/logger'
+import { isDbUnavailable, DB_RETRY_AFTER_SEC } from '@/lib/db-errors'
 import {
   findUserById,
   findDriverById,
@@ -177,6 +178,17 @@ export function authenticate(): RequestHandler {
 
       next()
     } catch (err: unknown) {
+      // The principal lookup hits the DB. If the DB is down or failing over that is OUR outage, not a bad token:
+      // answering 401 makes every client refresh (more DB load) or log the user out. 503 + Retry-After keeps the
+      // session and tells clients to retry.
+      if (isDbUnavailable(err)) {
+        logger.error({ err }, 'auth: database unavailable')
+        res.set('Retry-After', String(DB_RETRY_AFTER_SEC)).status(503).json({
+          error: AppErrors.SERVICE_UNAVAILABLE.message,
+          code: AppErrors.SERVICE_UNAVAILABLE.code,
+        })
+        return
+      }
       const msg = err instanceof Error ? err.message : ''
       if (msg.includes('jwt expired') || msg.includes('TokenExpiredError')) {
         res.status(401).json({
