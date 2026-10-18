@@ -163,9 +163,16 @@ because they're exactly what you'll see again if they recur:
   are also in RDS Performance Insights). The exporter has no retry in Alloy v1.18.1: a
   failed upload drops that batch (same as the log archive). Query the archive with SQL
   over the nested OTLP JSON (`unnest(resourceMetrics)` > `scopeMetrics` > `metrics` >
-  `gauge|sum.dataPoints`, labels in `attributes`, time in `timeUnixNano`). Series budget in Grafana (api, node, cadvisor, alloy only): ~700 per host × the most hosts alive at once (both colours,
-  plus the ~20 min retired hosts stay active) must stay under 15,000. Applying a change
-  to `config.alloy` needs a `terraform apply` (the SSM copy, 8 KB cap, ~6.2 KB now) and
+  `gauge|sum.dataPoints`, labels in `attributes`, time in `timeUnixNano`).
+  Series budget in Grafana (api, node, cadvisor, alloy only): per host = ~314 + 5.6 x C, where C is the
+  number of route x method x status combinations the API has served since it started (the latency
+  histogram is trimmed in `config.alloy`'s `prometheus.relabel "api"`: buckets only for 2xx responses and
+  only 0.1, 0.25, 0.5, 1, 2.5 s and +Inf; `_count`/`_sum` stay for every status; S3 keeps the full
+  histogram). Without the trim it was ~314 + 14 x C. Hosts alive at once: 4 steady, 8 during a deploy
+  at full size, up to 12 with retired hosts (they stay active ~20 min). At C = 150 that is about 1,150
+  per host, so 12 hosts is ~13,800: count C from the S3 archive after real traffic. Percentiles from
+  these buckets describe successful (2xx) requests only. Applying a change
+  to `config.alloy` needs a `terraform apply` (the SSM copy, 8 KB cap, ~7.2 KB now) and
   a deploy: running hosts keep their old config until replaced.
 
 ## Scale capacity (more/fewer instances)
