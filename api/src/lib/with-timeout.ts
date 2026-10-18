@@ -5,10 +5,10 @@
 // routinely exceeded 200ms on cold-booted instances (see the history note in db/redis.ts).
 const CACHE_COMMAND_TIMEOUT_MS = 1000
 
-export function withTimeout<T>(promise: Promise<T>): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number = CACHE_COMMAND_TIMEOUT_MS): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('redis command timeout')), CACHE_COMMAND_TIMEOUT_MS)
+    timer = setTimeout(() => reject(new Error('redis command timeout')), timeoutMs)
   })
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
