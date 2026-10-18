@@ -186,6 +186,26 @@ cost-driven) and is enforced by `min_size`, which is runtime-managed by
 `deploy.yml` on whichever color is active — see "Diagnose a failed
 blue/green deploy" above if you ever see it drop below 2 unexpectedly.
 
+How a color scales out (two policies on each color's ASG, `asg.tf`):
+
+- **Steady state:** target tracking on `ALBRequestCountPerTarget`, target 1,000 requests per server per minute. AWS manages
+  its alarms and they cannot be tuned; in the 2026-10-17 tests the first extra server launched 5.3 and 5.7 minutes after a
+  fivefold jump in load. Scale-in (after about 15 quiet minutes) is done by this policy only.
+- **Sudden jumps:** step policy `request-burst-<color>` (`aws_cloudwatch_metric_alarm.request_burst`): ONE one-minute reading
+  of requests per server at or above 1,500 adds 1 server (above 2,500 adds 2), up to `max_size`. Replaying the recorded data,
+  that alarm fires about 2 minutes after the jump instead of about 5.3 (estimate: assumes about a minute for CloudWatch to
+  publish the reading; confirm with the test below). It only adds capacity, so a false alarm costs an extra server for about
+  15 minutes. The metric only reached 1,500 in the two deliberate read bursts in the last five days.
+- **Why no CPU rule:** EC2 CPU is reported every 5 minutes (detailed monitoring is off), so a CPU rule would be slower than
+  the request rules. Enable detailed monitoring in the launch template first, and only after a realistic-mix load run shows
+  CPU is the limit (one server did 2,200 requests a minute at about 20% CPU on light reads).
+- **Idle color:** has no targets, so the alarm sees no data (not a breach); `deploy.yml` suspends `AlarmNotification` on the
+  idle color, which also silences this alarm until the cutover.
+- **Test it (adds one server for about 15 minutes):**
+  `aws cloudwatch set-alarm-state --alarm-name ocar-prod-request-burst-<active color> --state-value ALARM --state-reason test`
+  then watch `aws autoscaling describe-scaling-activities --auto-scaling-group-name <asg> --max-items 3`. A new server should
+  launch within seconds; target tracking removes it again after about 15 minutes.
+
 To change the range itself (e.g. raise `max_size` past 4, change the
 redundancy floor, or raise the `t3.medium` baseline), edit
 `infra/terraform/asg.tf` (`min_size` / `desired_capacity` / `max_size` —

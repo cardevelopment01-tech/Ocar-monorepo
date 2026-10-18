@@ -20,6 +20,13 @@
 # problem again, that's the earlier incident repeating -- raise this back to
 # 2, don't silently re-lower it.
 
+locals {
+  asg_names = {
+    for color in local.colors :
+    color => color == "blue" ? "${var.project_name}-${var.environment}-asg" : "${var.project_name}-${var.environment}-asg-${color}"
+  }
+}
+
 resource "aws_autoscaling_group" "api" {
   for_each = local.colors
 
@@ -29,7 +36,7 @@ resource "aws_autoscaling_group" "api" {
   # replacement, meaning a real capacity-to-zero window). "green" has no
   # such constraint (nothing exists yet) and uses the clean convention.
   # Asymmetric on purpose -- mirrored in deploy.yml's own name computation.
-  name                = each.key == "blue" ? "${var.project_name}-${var.environment}-asg" : "${var.project_name}-${var.environment}-asg-${each.key}"
+  name                = local.asg_names[each.key]
   vpc_zone_identifier = aws_subnet.public[*].id
   target_group_arns   = [aws_lb_target_group.api[each.key].arn]
 
@@ -124,4 +131,68 @@ resource "aws_autoscaling_policy" "request_count_tracking" {
 
     target_value = 1000
   }
+}
+
+# Faster scale-out for a SUDDEN jump in load. The target tracking policy above is the steady-state controller, but its
+# alarms are managed by AWS and cannot be tuned: in the 2026-10-17 load tests it raised the alarm 5.1 and 5.5 minutes
+# after a fivefold jump, and the first extra server launched then. During those minutes one server carried two to
+# three times its share (p95 up to 2.0 s, no errors). This step policy reacts to a single one-minute reading of
+# requests per target above 1,500 (1.5x the tracking target): replaying the recorded data, that alarm could have fired
+# about 2 minutes after the jump instead of about 5.3 (an estimate: it assumes about a minute for CloudWatch to publish
+# the reading). It only ADDS capacity; target tracking alone scales in (after about 15 quiet minutes), so a false alarm
+# costs one extra server for a short time. In the last five days of real data the metric reached 1,500 only in the two
+# deliberate read bursts. Alarm-driven, so deploy.yml's "suspend AlarmNotification" on the idle color covers it too.
+#
+# The ASG is referenced by NAME (local.asg_names), not by resource, on purpose: a reference makes a targeted apply pull
+# in the ASG and everything it depends on, and while Terraform and production disagree (database multi_az, machine
+# image, parameter group; see tracker item 7) that would apply those unrelated changes too. Once the plan is clean,
+# switch to aws_autoscaling_group.api[each.key].name. On a fresh environment the ASG must exist first: if the first
+# apply says the group is not found, apply again.
+#
+# A CPU rule is deliberately not added: EC2 CPU is reported every 5 minutes (detailed monitoring is off), which would
+# make it slower than the rule it would sit beside. Revisit after a realistic-mix load run (docs/OPS_RUNBOOK.md).
+resource "aws_autoscaling_policy" "request_burst_step_out" {
+  for_each = local.colors
+
+  name                      = "${var.project_name}-${var.environment}-request-burst-${each.key}"
+  autoscaling_group_name    = local.asg_names[each.key]
+  policy_type               = "StepScaling"
+  adjustment_type           = "ChangeInCapacity"
+  metric_aggregation_type   = "Maximum"
+  estimated_instance_warmup = 180 # a server is serving about 150 s after launch (2026-10-17 tests)
+
+  # Intervals are measured from the alarm threshold (1,500): up to 2,500 adds one server, above that adds two.
+  step_adjustment {
+    metric_interval_lower_bound = 0
+    metric_interval_upper_bound = 1000
+    scaling_adjustment          = 1
+  }
+  step_adjustment {
+    metric_interval_lower_bound = 1000
+    scaling_adjustment          = 2
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "request_burst" {
+  for_each = local.colors
+
+  alarm_name          = "${var.project_name}-${var.environment}-request-burst-${each.key}"
+  alarm_description   = "Requests per server above 1,500 in one minute: add capacity now instead of waiting for target tracking (see asg.tf)"
+  namespace           = "AWS/ApplicationELB"
+  metric_name         = "RequestCountPerTarget"
+  statistic           = "Sum"
+  period              = 60
+  evaluation_periods  = 1
+  datapoints_to_alarm = 1
+  threshold           = 1500
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  # The idle color has no targets, so no data: that is not a breach.
+  treat_missing_data = "notBreaching"
+
+  dimensions = {
+    LoadBalancer = aws_lb.main.arn_suffix
+    TargetGroup  = aws_lb_target_group.api[each.key].arn_suffix
+  }
+
+  alarm_actions = [aws_autoscaling_policy.request_burst_step_out[each.key].arn]
 }
