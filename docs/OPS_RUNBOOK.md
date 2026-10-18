@@ -201,6 +201,27 @@ Opening a PR that touches `infra/**` also gets you the same plan for free as
 a PR comment (`.github/workflows/terraform-plan.yml`) before you apply
 locally.
 
+## Database connection budget
+
+The database (`db.t4g.small`) allows `max_connections` = memory / 9,531,392 = **181**; 3 are reserved for the
+superuser, so about **178 are usable**. Every API server opens up to three pools:
+`DATABASE_POOL_MAX` (requests) + `WORKER_POOL_MAX` (background jobs) + `ANALYTICS_POOL_MAX` (reports), plus one
+connection for its Postgres exporter. A deployment runs the old and the new colour together (up to 4 + 4 = 8 servers).
+
+- **Prod values** (SSM `/ocar/prod/api-env`): 8 + 6 + 2 = 16 per server (they were 15 + 10 + 4 = 29, which is 232 for
+  8 servers, over the limit). 8 servers x 16 = 128, plus 8 exporters and 1 migration = about 137, 77% of 178.
+- **Rule:** servers at the same time x (sum of the three caps + 1) + about 5 must stay under 80% of 178 (about 142).
+  Raise a cap, or the maximum fleet size, only with that sum redone. Pools fill lazily and idle connections close
+  after 30 s, so the real count follows load: the highest seen in the 2026-10-17 tests was 43 with 6 servers.
+- **Watch:** dashboard panels "Database connections by pool" and "Waiting for a database connection"; Grafana alerts
+  "Database connections high" (over 100 for 5 min), "Background job pool waiting" and "pg.Pool exhaustion".
+  A pool that waits over 5 s errors, so sustained waiting means its cap is too low for the load.
+- **Change a value:** edit the three keys in SSM `/ocar/prod/api-env`; servers read it when they boot, so it takes
+  effect on the next deployment (or any server the autoscaler starts).
+- **RDS Proxy** was considered and declined on 2026-10-18 (new cost and failure point; the session advisory lock in
+  the report refresh and the connect-time statement timeout would pin connections). Revisit it if the fleet grows past
+  4 servers per colour or pool waits show up under real load.
+
 ## Make any other infra change
 
 Same three commands as above (`init` → `plan` → `apply`) for anything in

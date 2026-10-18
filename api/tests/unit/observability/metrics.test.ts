@@ -10,6 +10,15 @@ describe('metrics registry', () => {
     expect(output).toContain('route="/health"')
   })
 
+  it('reports all three database pools so the connection budget can be watched', async () => {
+    const output = await register.metrics()
+    for (const name of ['pg_pool_connections', 'pg_worker_pool_connections', 'pg_analytics_pool_connections']) {
+      for (const state of ['total', 'idle', 'waiting']) {
+        expect(output).toContain(`${name}{state="${state}"}`)
+      }
+    }
+  })
+
   it('does not blank the whole scrape when one queue fails to report job counts', async () => {
     const spy = vi
       .spyOn(queues.dispatch, 'getJobCounts')
