@@ -61,7 +61,7 @@
   ],
   "title": "Ocar — Overview",
   "uid": "ocar-overview",
-  "description": "Single dashboard for the whole ASG fleet: at-a-glance health, RED-method golden signals for the API, fleet and autoscaling, DB pool and queues, per-instance and per-container resources, and a live log stream. Edited here, applied with Terraform (infra/terraform/observability/dashboards.tf); fixed uid 'ocar-overview' so applies update it in place. Postgres metrics are not in Grafana (they are archived to S3, infra/alloy/config.alloy). Deployment markers come from the annotation the deploy workflow posts at every cutover (tags deploy, blue-green, cutover).",
+  "description": "Single dashboard for the whole ASG fleet: at-a-glance health, RED-method golden signals for the API, fleet and autoscaling, DB pool and queues, Node.js runtime (file descriptors, event loop, memory), per-instance and per-container resources, and a live log stream. Edited here, applied with Terraform (infra/terraform/observability/dashboards.tf); fixed uid 'ocar-overview' so applies update it in place. Postgres metrics are not in Grafana (they are archived to S3, infra/alloy/config.alloy). Deployment markers come from the annotation the deploy workflow posts at every cutover (tags deploy, blue-green, cutover).",
   "editable": true,
   "timezone": "",
   "schemaVersion": 39,
@@ -1085,13 +1085,347 @@
       }
     },
     {
+      "id": 108,
+      "type": "row",
+      "title": "Node.js runtime",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 40,
+      "type": "timeseries",
+      "title": "File descriptors (% of the limit)",
+      "description": "Open files and network connections as a share of what each API process may open (open / limit). Every rider and driver socket, database and Redis connection uses one. Near 100% the server refuses new connections while still looking up. Amber from 60%, red from 80% (the alert fires at 80% for 5 minutes).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max by (host) (process_open_fds{host=~\"$host\"} / process_max_fds{host=~\"$host\"})",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.6
+              },
+              {
+                "color": "red",
+                "value": 0.8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 41,
+      "type": "timeseries",
+      "title": "Event loop lag (p99)",
+      "description": "How late the API's single main thread is getting to its next turn. About 10 ms is healthy; above 100 ms every request on that server is slowing down together (CPU can still look fine). The alert fires above 250 ms for 5 minutes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max by (host) (nodejs_eventloop_lag_p99_seconds{host=~\"$host\"})",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.25
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 42,
+      "type": "timeseries",
+      "title": "Memory: heap used and process RSS",
+      "description": "Heap is the memory Node uses for objects; RSS is everything the process holds in RAM. A line that only climbs and never comes back down is a memory leak, and the container is eventually killed (dropping every connected socket).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max by (host) (nodejs_heap_size_used_bytes{host=~\"$host\"})",
+          "refId": "A",
+          "legendFormat": "{{host}} heap used"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max by (host) (process_resident_memory_bytes{host=~\"$host\"})",
+          "refId": "B",
+          "legendFormat": "{{host}} RSS"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 43,
+      "type": "timeseries",
+      "title": "Time spent in garbage collection",
+      "description": "Share of each second Node spends pausing to free memory. Under 5% is normal; sustained higher values mean memory pressure and show up as latency spikes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (host) (rate(nodejs_gc_duration_seconds_sum{host=~\"$host\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.15
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
       "id": 101,
       "type": "row",
       "title": "Database & queues",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 59,
         "w": 24,
         "h": 1
       },
@@ -1104,7 +1438,7 @@
       "description": "pg_pool_connections{state=~\"total|idle|waiting\"} — a rising 'waiting' with flat 'total' at DATABASE_POOL_MAX means requests are queuing for a connection.",
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 60,
         "w": 12,
         "h": 8
       },
@@ -1168,7 +1502,7 @@
       "description": "bullmq_queue_job_counts{state=~\"waiting|active|delayed|failed\"} — a queue stuck rising in 'waiting' or 'failed' needs attention.",
       "gridPos": {
         "x": 12,
-        "y": 43,
+        "y": 60,
         "w": 12,
         "h": 8
       },
@@ -1227,7 +1561,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 51,
+        "y": 68,
         "w": 24,
         "h": 1
       },
@@ -1240,7 +1574,7 @@
       "description": "100 - idle%, broken out by the host label (EC2 instance ID) — a single aggregate number hides one hot instance behind a healthy average.",
       "gridPos": {
         "x": 0,
-        "y": 52,
+        "y": 69,
         "w": 8,
         "h": 7
       },
@@ -1323,7 +1657,7 @@
       "title": "Memory % by Instance",
       "gridPos": {
         "x": 8,
-        "y": 52,
+        "y": 69,
         "w": 8,
         "h": 7
       },
@@ -1406,7 +1740,7 @@
       "title": "Disk % by Instance (root volume)",
       "gridPos": {
         "x": 16,
-        "y": 52,
+        "y": 69,
         "w": 8,
         "h": 7
       },
@@ -1490,7 +1824,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 59,
+        "y": 76,
         "w": 24,
         "h": 1
       },
@@ -1503,7 +1837,7 @@
       "description": "container_memory_working_set_bytes -- non-reclaimable memory, what the kernel OOM-killer actually looks at, not container_memory_usage_bytes (which includes reclaimable page cache and overstates real pressure).",
       "gridPos": {
         "x": 0,
-        "y": 60,
+        "y": 77,
         "w": 12,
         "h": 8
       },
@@ -1566,7 +1900,7 @@
       "description": "working_set / spec_memory_limit -- only meaningful for containers with mem_limit actually set in docker-compose.prod.yml (currently api, cadvisor); containers with no configured limit report 0 as their limit and will show no data here, not 0%.",
       "gridPos": {
         "x": 12,
-        "y": 60,
+        "y": 77,
         "w": 12,
         "h": 8
       },
@@ -1649,7 +1983,7 @@
       "title": "CPU Usage (cores) by Container",
       "gridPos": {
         "x": 0,
-        "y": 68,
+        "y": 85,
         "w": 12,
         "h": 8
       },
@@ -1713,7 +2047,7 @@
       "description": "increase(container_oom_events_total) -- should be a flat zero line always. Any nonzero point means that container actually hit its mem_limit and was killed by the kernel; the direct answer to 'did a limit trip yet'.",
       "gridPos": {
         "x": 12,
-        "y": 68,
+        "y": 85,
         "w": 12,
         "h": 8
       },
@@ -1793,7 +2127,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 76,
+        "y": 93,
         "w": 24,
         "h": 1
       },
@@ -1806,7 +2140,7 @@
       "description": "{service=\"ocar\", env=\"$env\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $env, $host, and $min_level dropdowns above (Pino numeric levels: 30=info, 40=warn, 50=error) — all are line/label filters, not extra Loki stream labels, so they cost nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
       "gridPos": {
         "x": 0,
-        "y": 77,
+        "y": 94,
         "w": 24,
         "h": 12
       },
