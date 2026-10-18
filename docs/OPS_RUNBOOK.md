@@ -63,8 +63,8 @@ if [ "$ACTIVE" = "blue" ]; then IDLE="green"; else IDLE="blue"; fi
 if [ "$IDLE" = "blue" ]; then IDLE_ASG="ocar-prod-asg"; IDLE_TG="ocar-prod-api-tg"; else IDLE_ASG="ocar-prod-asg-green"; IDLE_TG="ocar-prod-api-tg-green"; fi
 echo "Rolling back: $ACTIVE (currently live) -> $IDLE"
 
-# Bring the target color back up if it had already been scaled to 0 (harmless no-op if it's still at 2)
-aws autoscaling update-auto-scaling-group --auto-scaling-group-name "$IDLE_ASG" --min-size 2 --desired-capacity 2
+# Bring the target color back up if it had already been scaled to 0 (harmless no-op if it's still at 1)
+aws autoscaling update-auto-scaling-group --auto-scaling-group-name "$IDLE_ASG" --min-size 1 --desired-capacity 1
 
 # Wait until it's healthy before flipping -- poll this until targets show "healthy"
 IDLE_TG_ARN=$(aws elbv2 describe-target-groups --names "$IDLE_TG" --query 'TargetGroups[0].TargetGroupArn' --output text)
@@ -77,8 +77,8 @@ LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn \
 aws elbv2 modify-listener --listener-arn "$LISTENER_ARN" --default-actions "Type=forward,TargetGroupArn=$IDLE_TG_ARN"
 aws ssm put-parameter --name /ocar/prod/active-color --type String --value "$IDLE" --overwrite
 
-# Restore the redundancy floor on the color that's now live, drop it on the one going idle
-aws autoscaling update-auto-scaling-group --auto-scaling-group-name "$IDLE_ASG" --min-size 2
+# Restore the minimum on the color that's now live, drop it on the one going idle
+aws autoscaling update-auto-scaling-group --auto-scaling-group-name "$IDLE_ASG" --min-size 1
 aws autoscaling resume-processes --auto-scaling-group-name "$IDLE_ASG" --scaling-processes AlarmNotification
 OLD_ASG=$([ "$ACTIVE" = "blue" ] && echo "ocar-prod-asg" || echo "ocar-prod-asg-green")
 aws autoscaling update-auto-scaling-group --auto-scaling-group-name "$OLD_ASG" --min-size 0
@@ -102,9 +102,9 @@ because they're exactly what you'll see again if they recur:
   poll fails and the deploy times out after burning its full retry budget.
   Check `aws_iam_role_policy.github_actions_deploy` in
   `infra/terraform/github-oidc.tf` first if you see this.
-- **The live color quietly drops to 1 instance (or fewer) during a quiet
-  traffic period, with no deploy running.** The redundancy floor
-  (`min_size=2` on whichever color is active) is runtime-managed by
+- **The live color quietly drops to 0 instances during a quiet
+  traffic period, with no deploy running.** The minimum
+  (`min_size=1` on whichever color is active) is runtime-managed by
   `deploy.yml`, not Terraform — if `asg.tf`'s `lifecycle.ignore_changes`
   ever loses `min_size` (e.g. someone "simplifies" it), the next
   unrelated `terraform apply` silently resets it to 0, and the
@@ -113,7 +113,7 @@ because they're exactly what you'll see again if they recur:
   `aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names
   ocar-prod-asg ocar-prod-asg-green --query 'AutoScalingGroups[].{Name:AutoScalingGroupName,Min:MinSize,Desired:DesiredCapacity}'`
   — whichever is currently active per `/ocar/prod/active-color` should
-  always show `Min: 2`.
+  always show `Min: 1`.
 - **Terraform wants to destroy/recreate `ocar-prod-asg` (or the target
   group / launch template / scaling policy) on an unrelated `plan`.**
   Their `name`/`name_prefix` is immutable — if that diff ever appears,
@@ -185,10 +185,42 @@ Within the existing 2–4 range, nothing to do for whichever color is
 currently active — its target-tracking policy
 (`aws_autoscaling_policy.request_count_tracking` in `asg.tf`, one per
 color) already adds/removes instances on `ALBRequestCountPerTarget`
-between 2 and 4. The **floor of 2 is load-bearing** (redundancy, not
-cost-driven) and is enforced by `min_size`, which is runtime-managed by
-`deploy.yml` on whichever color is active — see "Diagnose a failed
-blue/green deploy" above if you ever see it drop below 2 unexpectedly.
+between 1 and 4. The **minimum is 1** (owner decision 2026-10-18: one server
+while traffic is small, to be raised gradually as it grows). It is enforced by
+`min_size`, which is runtime-managed by `deploy.yml` on whichever color is
+active — see "Diagnose a failed blue/green deploy" above if you ever see it
+drop to 0 unexpectedly. Trade-off, from the 2026-10-17 load tests: with one
+server there is no redundancy and a sudden jump in load has nothing to share
+it for the 5 minutes the autoscaler needs (p95 reached 2 s for a minute, no
+errors). Moving the minimum to 2 across two Availability Zones removes most
+of that and costs one more `t3.medium`.
+
+How a color scales out (two policies on each color's ASG, `asg.tf`):
+
+- **Steady state:** target tracking on `ALBRequestCountPerTarget`, target 1,000 requests per server per minute. AWS manages
+  its alarms and they cannot be tuned; in the 2026-10-17 tests the first extra server launched 5.3 and 5.7 minutes after a
+  fivefold jump in load. Scale-in (after about 15 quiet minutes) is done by this policy only.
+- **Sudden jumps:** step policy `request-burst-<color>` (`aws_cloudwatch_metric_alarm.request_burst`): ONE one-minute reading
+  of requests per server at or above 1,500 adds 1 server (above 2,500 adds 2), up to `max_size`. Measured live on
+  2026-10-18 (4 minutes of about 2,400 requests/min): the alarm fired 3.1 minutes after the load began and the first extra
+  server was healthy about 5.2 minutes after it, against 5.1-5.5 and 7.5-8.5 minutes for target tracking alone (CloudWatch
+  publishes a reading about 2 minutes after its minute ends). It only adds capacity, but target tracking keeps working on
+  top: in that test it then added two more servers (to the maximum of 4) while the first was starting, and all scaled in
+  again by themselves, so a burst can cost a server or two for about an hour. The metric only reached 1,500 in the two
+  deliberate read bursts in the last five days.
+- **Why no CPU rule:** EC2 CPU is reported every 5 minutes (detailed monitoring is off), so a CPU rule would be slower than
+  the request rules. Enable detailed monitoring in the launch template first, and only after a realistic-mix load run shows
+  CPU is the limit (one server did 2,200 requests a minute at about 20% CPU on light reads).
+- **Idle color:** has no targets, so the alarm sees no data (not a breach); `deploy.yml` suspends `AlarmNotification` on the
+  idle color, which also silences this alarm until the cutover.
+- **Test it with real traffic (adds one server for about 15 minutes):**
+  `k6 run -e BASE_URL=https://<api host> load-tests/k6/scale-out-burst.js` sends about 2,400 requests a minute to a public
+  read for 4 minutes (over the 1,500 threshold, under the 2,500 that adds two servers); watch
+  `aws autoscaling describe-scaling-activities --auto-scaling-group-name <active asg> --max-items 3`: the launch cause names
+  the `request-burst` alarm. Target tracking removes the extra server again after about 15 quiet minutes.
+  **Do not use `aws cloudwatch set-alarm-state`:** a step policy needs a real metric value, so CloudWatch records
+  "Failed to execute AutoScaling action: Metric data points and threshold must be set when executing step/fuzzy
+  policies" and nothing scales (found when testing this policy on 2026-10-18).
 
 To change the range itself (e.g. raise `max_size` past 4, change the
 redundancy floor, or raise the `t3.medium` baseline), edit
@@ -204,6 +236,29 @@ pnpm infra:prod:apply  # applies infra/terraform/prod.tfplan
 Opening a PR that touches `infra/**` also gets you the same plan for free as
 a PR comment (`.github/workflows/terraform-plan.yml`) before you apply
 locally.
+
+## Graceful socket drain (deploys and scale-in)
+
+When a server is removed, the load balancer keeps its WebSockets open until the deregistration delay (300 s) ends and
+then closes ALL of them in the same instant, so every user on that server reconnects together (measured 2026-10: about
+720 new connections in one minute against a normal 20-30). Draining closes them one by one, in random order, over
+`SOCKET_DRAIN_SECONDS` (default 90) before that cut-off; each client reconnects by itself and recovers its session.
+
+- **Deploys:** the step "Drain the old color's sockets gradually before scaling it down" in `deploy.yml` sends `SIGUSR2`
+  to `ocar_api` on every old-color instance after a clean bake, then waits `DRAIN_SECONDS + 15` s before the scale-down.
+  `DRAIN_SECONDS` there must match `SOCKET_DRAIN_SECONDS` (`api/src/config/index.ts`), and stay well under 300. The step is
+  best effort (`continue-on-error`): if it cannot run, the scale-down behaves exactly as before.
+- **Autoscaler scale-in and any other termination:** in production the API watches its instance's Auto Scaling target
+  lifecycle state (IMDSv2, `api/src/websocket/termination-watcher.ts`) and starts the same drain when it becomes
+  `Terminated`. AWS does not document whether that happens before or after the load balancer starts draining, so the
+  API logs the moment it sees it (`instance target lifecycle state`): compare that time with the Auto Scaling activity
+  time after the first real scale-in. Turn the watcher off with `DRAIN_ON_TERMINATION=false` in SSM `/ocar/prod/api-env`.
+- **How a socket is closed matters:** `socket.conn.close()` (the transport) makes the client reconnect by itself and
+  recover; `socket.disconnect(true)` makes it report "io server disconnect" and NOT reconnect. A draining server also must
+  not refuse connections from a middleware (a refused client does not retry), so a late arrival is accepted and closed.
+- **Manual drain of one server:** `docker kill --signal=SIGUSR2 ocar_api` on the instance (through SSM). Look for
+  `socket drain started` and `socket drain finished` in `docker logs ocar_api`.
+- **Not covered:** `docker stop`/`SIGTERM` (an instance shutting down) still closes every socket at once within 10 s.
 
 ## Database connection budget
 

@@ -634,6 +634,48 @@ jobs:
             || echo "Grafana annotation failed (non-fatal)" >&2
           exit 1
 
+      # Without this, scaling the old color down leaves every WebSocket on it open until the load balancer's
+      # deregistration delay (300 s) ends and then closes them ALL in the same instant: all of that color's users
+      # reconnect at once (measured: ~720 new connections in a minute against a normal 20-30). SIGUSR2 makes each
+      # old API container close its sockets one by one, in random order, over SOCKET_DRAIN_SECONDS (see
+      # api/src/websocket/drain.ts), so the reconnects arrive as a trickle and clients recover their sessions.
+      # Best effort: if the drain cannot run, the scale-down below behaves exactly as it did before.
+      - name: Drain the old color's sockets gradually before scaling it down
+        id: drain
+        if: steps.flip.conclusion == 'success' && steps.bake.outputs.result == 'success'
+        continue-on-error: true
+        env:
+          DRAIN_SECONDS: 90 # must match SOCKET_DRAIN_SECONDS (api/src/config/index.ts), and stay well under 300
+        run: |
+          set +e
+          IDS=$(aws ec2 describe-instances \
+            --filters "Name=tag:aws:autoscaling:groupName,Values=${{ steps.colors.outputs.active_asg }}" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          if [ -z "$IDS" ] || [ "$IDS" = "None" ]; then echo "No running instance on the old color; nothing to drain"; exit 0; fi
+          echo "Draining sockets on: $IDS"
+          # Only signal a container whose image has the drain code: an older image has no SIGUSR2 handler, and
+          # node's default for an unhandled SIGUSR2 is to exit, which would cut every socket at once.
+          cat > /tmp/drain.json <<'EOF2'
+          {"commands": ["if docker exec ocar_api test -f dist/websocket/drain.js; then docker kill --signal=SIGUSR2 ocar_api && sleep 3 && docker logs --since 30s ocar_api 2>&1 | grep 'socket drain started' | tail -1; else echo 'old image has no drain support, skipping'; fi"]}
+          EOF2
+          CMD_ID=$(aws ssm send-command --instance-ids $IDS --document-name AWS-RunShellScript \
+            --comment "drain sockets before scale-down" --parameters file:///tmp/drain.json \
+            --query 'Command.CommandId' --output text)
+          sleep 10
+          STARTED=0
+          for ID in $IDS; do
+            OUT=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$ID" \
+              --query '[Status,StandardOutputContent,StandardErrorContent]' --output text 2>&1 | head -5)
+            echo "--- $ID: $OUT"
+            echo "$OUT" | grep -q 'socket drain started' && STARTED=1
+          done
+          if [ "$STARTED" = 1 ]; then
+            echo "Waiting $((DRAIN_SECONDS + 15))s for the sockets to move to the new color"
+            sleep $((DRAIN_SECONDS + 15))
+          else
+            echo "No drain started (old image without drain support, or the command failed): scaling down as before"
+          fi
+
       - name: Bake clean -- scale the old color down
         if: steps.flip.conclusion == 'success' && steps.bake.outputs.result == 'success'
         run: |
