@@ -251,8 +251,13 @@ then closes ALL of them in the same instant, so every user on that server reconn
 - **Autoscaler scale-in and any other termination:** in production the API watches its instance's Auto Scaling target
   lifecycle state (IMDSv2, `api/src/websocket/termination-watcher.ts`) and starts the same drain when it becomes
   `Terminated`. AWS does not document whether that happens before or after the load balancer starts draining, so the
-  API logs the moment it sees it (`instance target lifecycle state`): compare that time with the Auto Scaling activity
-  time after the first real scale-in. Turn the watcher off with `DRAIN_ON_TERMINATION=false` in SSM `/ocar/prod/api-env`.
+  API logs the moment it sees it (`instance target lifecycle state`). **Measured in production on 2026-10-18** (three
+  autoscaler scale-ins after a load test): the state became `Terminated` and the watcher saw it 11 to 14 seconds after
+  the scaling activity started, and the load balancer's drain finished 5.7 minutes after that, so the drain starts at the
+  beginning of the 300 s window with the whole window available. Those three servers had no sockets connected, so the
+  drain logged `total: 0`; a drain of live sockets on a real scale-in is not yet observed (read `socket drain started` /
+  `socket drain finished` in the logs). The `SIGTERM` log line (`shutting down gracefully`) comes at the end of the load
+  balancer's drain, about 5 minutes later. Turn the watcher off with `DRAIN_ON_TERMINATION=false` in SSM `/ocar/prod/api-env`.
 - **How a socket is closed matters:** `socket.conn.close()` (the transport) makes the client reconnect by itself and
   recover; `socket.disconnect(true)` makes it report "io server disconnect" and NOT reconnect. A draining server also must
   not refuse connections from a middleware (a refused client does not retry), so a late arrival is accepted and closed.
