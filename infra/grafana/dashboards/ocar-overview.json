@@ -16,24 +16,65 @@
     }
   ],
   "__requires": [
-    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
-    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
-    { "type": "datasource", "id": "loki", "name": "Loki", "version": "1.0.0" },
-    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
-    { "type": "panel", "id": "logs", "name": "Logs", "version": "" },
-    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
-    { "type": "panel", "id": "table", "name": "Table", "version": "" }
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "loki",
+      "name": "Loki",
+      "version": "1.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "logs",
+      "name": "Logs",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "Table",
+      "version": ""
+    }
   ],
   "title": "Ocar — Overview",
   "uid": "ocar-overview",
-  "description": "Single dashboard for the whole ASG fleet: live instance count/autoscaling activity, RED-method golden signals for the API, DB pool, BullMQ queue depth, per-instance host resources, and a live log stream. Built from the observability stack in docs/superpowers/specs/2026-08-08-observability-stack-design.md — see docs/superpowers/plans/2026-08-08-grafana-overview-dashboard.md for panel-by-panel rationale. Previously split across this file and a separate ocar-fleet-dashboard.json; merged into one file on 2026-08-13 so fleet/host panels and the log-level-filtered Live Logs panel can never drift out of sync with each other again (that drift is exactly how the Live Logs panel ended up querying the wrong env label for several days). Fixed uid added 2026-08-14 -- without it, Grafana's Import treated every re-import as a brand-new dashboard (uid-less JSON always gets a random uid on import), so past re-imports silently piled up duplicate stale dashboards instead of updating this one in place.",
+  "description": "Single dashboard for the whole ASG fleet: at-a-glance health, RED-method golden signals for the API, fleet and autoscaling, DB pool and queues, Node.js runtime (file descriptors, event loop, memory), per-instance and per-container resources, and a live log stream. Edited here, applied with Terraform (infra/terraform/observability/dashboards.tf); fixed uid 'ocar-overview' so applies update it in place. Postgres metrics are not in Grafana (they are archived to S3, infra/alloy/config.alloy). Deployment markers come from the annotation the deploy workflow posts at every cutover (tags deploy, blue-green, cutover).",
   "editable": true,
   "timezone": "",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "30s",
-  "time": { "from": "now-6h", "to": "now" },
-  "tags": ["ocar", "observability"],
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "tags": [
+    "ocar",
+    "observability"
+  ],
   "templating": {
     "list": [
       {
@@ -41,10 +82,20 @@
         "label": "Environment",
         "type": "custom",
         "query": "prod : prod,staging : staging",
-        "current": { "text": "prod", "value": "prod" },
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        },
         "options": [
-          { "text": "prod", "value": "prod", "selected": true },
-          { "text": "staging", "value": "staging" }
+          {
+            "text": "prod",
+            "value": "prod",
+            "selected": true
+          },
+          {
+            "text": "staging",
+            "value": "staging"
+          }
         ]
       },
       {
@@ -52,390 +103,2109 @@
         "label": "Log level",
         "type": "custom",
         "query": "All : 0,Warnings & Errors : 40,Errors only : 50",
-        "current": { "text": "Errors only", "value": "50" },
+        "current": {
+          "text": "Errors only",
+          "value": "50"
+        },
         "options": [
-          { "text": "All", "value": "0" },
-          { "text": "Warnings & Errors", "value": "40" },
-          { "text": "Errors only", "value": "50", "selected": true }
+          {
+            "text": "All",
+            "value": "0"
+          },
+          {
+            "text": "Warnings & Errors",
+            "value": "40"
+          },
+          {
+            "text": "Errors only",
+            "value": "50",
+            "selected": true
+          }
         ]
       },
       {
         "name": "host",
-        "label": "Instance",
+        "label": "Server",
         "type": "query",
-        "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-        "query": "label_values({service=\"ocar\", env=\"$env\"}, host)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(node_load1{instance=\"node_exporter:9100\"}, host)",
+        "query": {
+          "query": "label_values(node_load1{instance=\"node_exporter:9100\"}, host)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
         "refresh": 2,
-        "includeAll": true,
+        "sort": 1,
         "multi": true,
-        "current": { "text": "All", "value": "$__all" }
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "description": "Instance ids that reported host metrics in the selected time range (from Prometheus, so it always agrees with the panels; it was built from log labels before)."
       }
     ]
   },
   "panels": [
-    { "id": 104, "type": "row", "title": "Fleet Overview", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
-
+    {
+      "id": 107,
+      "type": "row",
+      "title": "At a glance",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
     {
       "id": 10,
       "type": "stat",
-      "title": "Live Instances",
-      "description": "count(up{instance=\"api:4000\"} == 1) — an instant query, not a range, so a since-terminated instance's stale series can't inflate the count.",
-      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "title": "Servers up",
+      "description": "Servers currently reporting up (count of up{instance=\"api:4000\"} == 1). An instant query, so a terminated server's stale series cannot inflate the count.",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{instance=\"api:4000\", host=~\"$host\"} == 1)", "refId": "A", "instant": true }
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "count(up{instance=\"api:4000\", host=~\"$host\"} == 1)",
+          "refId": "A",
+          "instant": true
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
-      "options": { "colorMode": "value", "graphMode": "area" }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
     },
     {
-      "id": 11,
-      "type": "timeseries",
-      "title": "Instance Count Over Time (autoscaling activity)",
-      "gridPos": { "h": 6, "w": 18, "x": 6, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "id": 30,
+      "type": "stat",
+      "title": "Requests / sec",
+      "description": "All HTTP requests handled by the API across the selected servers. The R in RED.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "expr": "count(up{instance=\"api:4000\", host=~\"$host\"})", "refId": "A", "legendFormat": "instances" }
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(http_request_duration_seconds_count{host=~\"$host\"}[5m]))",
+          "refId": "A",
+          "instant": false,
+          "legendFormat": ""
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "no data",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
     },
-
-    { "id": 100, "type": "row", "title": "Golden Signals — API", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }, "panels": [] },
-
+    {
+      "id": 31,
+      "type": "stat",
+      "title": "p95 latency",
+      "description": "95% of successful (2xx) requests are faster than this (all routes; latency buckets are kept for successful requests only). Green under 300 ms, amber to 500 ms, red above: 500 ms is the project target.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])))",
+          "refId": "A",
+          "instant": false,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.3
+              },
+              {
+                "color": "red",
+                "value": 0.5
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "no data",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 32,
+      "type": "stat",
+      "title": "5xx rate",
+      "description": "Share of requests answered with a server error. Zero is the goal; red above 1%. Shows 0 when there are no errors.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "(sum(rate(http_request_duration_seconds_count{status_code=~\"5..\", host=~\"$host\"}[5m])) or vector(0)) / sum(rate(http_request_duration_seconds_count{host=~\"$host\"}[5m]))",
+          "refId": "A",
+          "instant": false,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.001
+              },
+              {
+                "color": "red",
+                "value": 0.01
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "no data",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 33,
+      "type": "stat",
+      "title": "DB pool waiting",
+      "description": "Requests waiting for a database connection, summed over servers (pg_pool_connections{state=\"waiting\"}). Should stay 0; anything above means the pool is saturated.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(pg_pool_connections{state=\"waiting\", host=~\"$host\"})",
+          "refId": "A",
+          "instant": false,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "no data",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 34,
+      "type": "stat",
+      "title": "Requests / server / min",
+      "description": "Average requests per minute each server handles. The autoscaler adds servers when the load balancer's requests per server stays above 1,000 per minute; amber from 700.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "avg(sum by (host) (rate(http_request_duration_seconds_count{host=~\"$host\"}[5m]))) * 60",
+          "refId": "A",
+          "instant": false,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 700
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "no data",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Golden signals — API",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
     {
       "id": 1,
       "type": "timeseries",
       "title": "Request rate by route",
       "description": "sum(rate(http_request_duration_seconds_count[5m])) by (route) — the R in RED.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "sum(rate(http_request_duration_seconds_count{host=~\"$host\"}[5m])) by (route)",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 2,
       "type": "timeseries",
       "title": "Error rate (5xx ratio)",
       "description": "sum(rate(...{status_code=~\"5..\"}[5m])) / sum(rate(...[5m])) — the E in RED. A route with zero traffic in the window shows no data, not a false 0%.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "sum(rate(http_request_duration_seconds_count{status_code=~\"5..\", host=~\"$host\"}[5m])) by (route) / sum(rate(http_request_duration_seconds_count{host=~\"$host\"}[5m])) by (route)",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1,
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.001
+              },
+              {
+                "color": "red",
+                "value": 0.01
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 3,
       "type": "timeseries",
       "title": "Request duration — p50 / p95 / p99",
-      "description": "histogram_quantile over http_request_duration_seconds_bucket — the D in RED.",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "description": "Latency percentiles of successful (2xx) requests across the selected servers (buckets are kept for successful requests only; error responses are counted in the rate and error panels). Under 100 ms all land in the first bucket, so fast requests are measured coarsely.",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])) by (le, route))",
-          "legendFormat": "p50 {{route}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])) by (le))",
+          "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])) by (le, route))",
-          "legendFormat": "p95 {{route}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])) by (le))",
+          "legendFormat": "p95",
           "refId": "B"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])) by (le, route))",
-          "legendFormat": "p99 {{route}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])) by (le))",
+          "legendFormat": "p99",
           "refId": "C"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.3
+              },
+              {
+                "color": "red",
+                "value": 0.5
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 12,
       "type": "table",
       "title": "Top Routes by Traffic",
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 24 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "topk(10, sum by (route, method) (rate(http_request_duration_seconds_count{host=~\"$host\"}[5m])))",
-          "refId": "A", "format": "table", "instant": true
+          "refId": "A",
+          "format": "table",
+          "instant": true
         }
       ],
-      "fieldConfig": { "defaults": {}, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requests / sec"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "reqps"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "Requests / sec",
+              "queryid": "Query ID",
+              "query": "Query",
+              "route": "Route",
+              "method": "Method"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Requests / sec",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
     },
-
-    { "id": 101, "type": "row", "title": "Database & Queues", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 }, "panels": [] },
-
+    {
+      "id": 104,
+      "type": "row",
+      "title": "Fleet & autoscaling",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Servers over time (autoscaling activity)",
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "count(up{instance=\"api:4000\", host=~\"$host\"})",
+          "refId": "A",
+          "legendFormat": "instances"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "description": "count(up{instance=\"api:4000\"}): servers reporting up. Steps up when the autoscaler adds capacity and during a deployment (old and new colour overlap); deployment markers are drawn from the workflow annotations.",
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 35,
+      "type": "timeseries",
+      "title": "Requests per server per minute (autoscale metric)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Requests per minute handled by each server. The autoscaler adds servers when the load balancer's requests per server stays above 1,000 per minute (dashed red line); this is the same quantity measured at the API. One server comfortably handled 2,200/min at about 20% CPU in the 2026-10-17 tests, so the trigger is conservative for light read traffic.",
+      "gridPos": {
+        "x": 12,
+        "y": 35,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (host) (rate(http_request_duration_seconds_count{host=~\"$host\"}[5m])) * 60",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 700
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 108,
+      "type": "row",
+      "title": "Node.js runtime",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 40,
+      "type": "timeseries",
+      "title": "File descriptors (% of the limit)",
+      "description": "Open files and network connections as a share of what each API process may open (open / limit). Every rider and driver socket, database and Redis connection uses one. Near 100% the server refuses new connections while still looking up. Amber from 60%, red from 80% (the alert fires at 80% for 5 minutes).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max by (host) (process_open_fds{host=~\"$host\"} / process_max_fds{host=~\"$host\"})",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.6
+              },
+              {
+                "color": "red",
+                "value": 0.8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 41,
+      "type": "timeseries",
+      "title": "Event loop lag (p99)",
+      "description": "How late the API's single main thread is getting to its next turn. About 10 ms is healthy; above 100 ms every request on that server is slowing down together (CPU can still look fine). The alert fires above 250 ms for 5 minutes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max by (host) (nodejs_eventloop_lag_p99_seconds{host=~\"$host\"})",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.25
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 42,
+      "type": "timeseries",
+      "title": "Memory: heap used and process RSS",
+      "description": "Heap is the memory Node uses for objects; RSS is everything the process holds in RAM. A line that only climbs and never comes back down is a memory leak, and the container is eventually killed (dropping every connected socket).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max by (host) (nodejs_heap_size_used_bytes{host=~\"$host\"})",
+          "refId": "A",
+          "legendFormat": "{{host}} heap used"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max by (host) (process_resident_memory_bytes{host=~\"$host\"})",
+          "refId": "B",
+          "legendFormat": "{{host}} RSS"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 43,
+      "type": "timeseries",
+      "title": "Time spent in garbage collection",
+      "description": "Share of each second Node spends pausing to free memory. Under 5% is normal; sustained higher values mean memory pressure and show up as latency spikes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (host) (rate(nodejs_gc_duration_seconds_sum{host=~\"$host\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.15
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "Database & queues",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
     {
       "id": 4,
       "type": "timeseries",
       "title": "pg.Pool connections by state",
       "description": "pg_pool_connections{state=~\"total|idle|waiting\"} — a rising 'waiting' with flat 'total' at DATABASE_POOL_MAX means requests are queuing for a connection.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "pg_pool_connections{host=~\"$host\"}",
           "legendFormat": "{{state}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 5,
       "type": "timeseries",
       "title": "BullMQ job counts by queue and state",
       "description": "bullmq_queue_job_counts{state=~\"waiting|active|delayed|failed\"} — a queue stuck rising in 'waiting' or 'failed' needs attention.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 12,
+        "y": 60,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "bullmq_queue_job_counts{host=~\"$host\"}",
           "legendFormat": "{{queue}} — {{state}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
-
-    { "id": 102, "type": "row", "title": "Per-Instance Saturation", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 }, "panels": [] },
-
+    {
+      "id": 102,
+      "type": "row",
+      "title": "Per-server saturation",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
     {
       "id": 6,
       "type": "timeseries",
       "title": "CPU % by Instance",
       "description": "100 - idle%, broken out by the host label (EC2 instance ID) — a single aggregate number hides one hot instance behind a healthy average.",
-      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 40 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 0,
+        "y": 69,
+        "w": 8,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "100 - (avg by (host) (rate(node_cpu_seconds_total{instance=\"node_exporter:9100\", mode=\"idle\", host=~\"$host\"}[5m])) * 100)",
           "legendFormat": "{{host}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 7,
       "type": "timeseries",
       "title": "Memory % by Instance",
-      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 40 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 8,
+        "y": 69,
+        "w": 8,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "100 * (1 - (node_memory_MemAvailable_bytes{instance=\"node_exporter:9100\", host=~\"$host\"} / node_memory_MemTotal_bytes{instance=\"node_exporter:9100\", host=~\"$host\"}))",
           "legendFormat": "{{host}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 8,
       "type": "timeseries",
       "title": "Disk % by Instance (root volume)",
-      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 40 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 16,
+        "y": 69,
+        "w": 8,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "100 * (1 - (node_filesystem_avail_bytes{instance=\"node_exporter:9100\", mountpoint=\"/\", host=~\"$host\"} / node_filesystem_size_bytes{instance=\"node_exporter:9100\", mountpoint=\"/\", host=~\"$host\"}))",
           "legendFormat": "{{host}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
-    },
-
-    { "id": 105, "type": "row", "title": "DB Internals (pg_stat_statements)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 }, "panels": [] },
-
-    {
-      "id": 13,
-      "type": "table",
-      "title": "Top 10 Slow Queries (mean exec time)",
-      "description": "rate(pg_stat_statements_seconds_total) / rate(pg_stat_statements_calls_total), joined to the queryid→query text lookup metric (only populated because postgres_exporter runs with --collector.stat_statements.include_query). Uses max() across instances, not sum() -- every instance's exporter reports identical numbers since they all query the same shared Neon DB.",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 48 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "topk(10, max by (queryid, query) ((rate(pg_stat_statements_seconds_total{host=~\"$host\"}[5m]) / rate(pg_stat_statements_calls_total{host=~\"$host\"}[5m])) * on(queryid, host) group_left(query) pg_stat_statements_query_id))",
-          "refId": "A", "format": "table", "instant": true
-        }
-      ],
-      "fieldConfig": { "defaults": {}, "overrides": [
-        { "matcher": { "id": "byName", "options": "Value" }, "properties": [ { "id": "unit", "value": "s" }, { "id": "decimals", "value": 2 } ] }
-      ] }
-    },
-    {
-      "id": 14,
-      "type": "table",
-      "title": "Top 10 Queries by Total Time",
-      "description": "The queries actually costing the most aggregate DB time -- a query that's individually fast but called constantly can outweigh a rare slow one. Same max()-not-sum() reasoning as the panel above.",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 56 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "topk(10, max by (queryid, query) (rate(pg_stat_statements_seconds_total{host=~\"$host\"}[5m]) * on(queryid, host) group_left(query) pg_stat_statements_query_id))",
-          "refId": "A", "format": "table", "instant": true
-        }
-      ],
-      "fieldConfig": { "defaults": {}, "overrides": [
-        { "matcher": { "id": "byName", "options": "Value" }, "properties": [ { "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 3 } ] }
-      ] }
-    },
-    {
-      "id": 15,
-      "type": "timeseries",
-      "title": "Cache Hit Ratio by Database",
-      "description": "blks_hit / (blks_hit + blks_read) -- a healthy Postgres should stay >99%. A sustained drop means working-set data no longer fits in shared_buffers and queries are hitting disk more.",
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 64 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "max by (datname) (rate(pg_stat_database_blks_hit{host=~\"$host\"}[5m])) / (max by (datname) (rate(pg_stat_database_blks_hit{host=~\"$host\"}[5m])) + max by (datname) (rate(pg_stat_database_blks_read{host=~\"$host\"}[5m])))",
-          "legendFormat": "{{datname}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] }
-    },
-    {
-      "id": 16,
-      "type": "timeseries",
-      "title": "Deadlocks & Rollbacks by Database",
-      "description": "Either climbing is a real correctness/contention signal, not just a performance one.",
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 64 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "max by (datname) (rate(pg_stat_database_deadlocks{host=~\"$host\"}[5m]))",
-          "legendFormat": "deadlocks {{datname}}",
-          "refId": "A"
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          }
         },
-        {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "max by (datname) (rate(pg_stat_database_xact_rollback{host=~\"$host\"}[5m]))",
-          "legendFormat": "rollbacks {{datname}}",
-          "refId": "B"
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
         }
-      ],
-      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+      }
     },
-
-    { "id": 103, "type": "row", "title": "Live Logs", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 71 }, "panels": [] },
-
     {
-      "id": 9,
-      "type": "logs",
-      "title": "ocar-api logs",
-      "description": "{service=\"ocar\", env=\"$env\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $env, $host, and $min_level dropdowns above (Pino numeric levels: 30=info, 40=warn, 50=error) — all are line/label filters, not extra Loki stream labels, so they cost nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 72 },
-      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-      "targets": [
-        {
-          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-          "expr": "{service=\"ocar\", env=\"$env\", host=~\"$host\"} | json | level >= $min_level",
-          "refId": "A"
-        }
-      ],
-      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" }
+      "id": 106,
+      "type": "row",
+      "title": "Per-container resource usage",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
     },
-
-    { "id": 106, "type": "row", "title": "Per-Container Resource Usage", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 83 }, "panels": [] },
-
     {
       "id": 17,
       "type": "timeseries",
       "title": "Memory Working Set by Container",
       "description": "container_memory_working_set_bytes -- non-reclaimable memory, what the kernel OOM-killer actually looks at, not container_memory_usage_bytes (which includes reclaimable page cache and overstates real pressure).",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 84 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 0,
+        "y": 77,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "container_memory_working_set_bytes{name=~\"ocar_.*\", host=~\"$host\"}",
           "legendFormat": "{{host}} — {{name}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 18,
       "type": "timeseries",
       "title": "Memory Usage as % of Limit by Container",
       "description": "working_set / spec_memory_limit -- only meaningful for containers with mem_limit actually set in docker-compose.prod.yml (currently api, cadvisor); containers with no configured limit report 0 as their limit and will show no data here, not 0%.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 84 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 12,
+        "y": 77,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "container_memory_working_set_bytes{name=~\"ocar_.*\", host=~\"$host\"} / container_spec_memory_limit_bytes{name=~\"ocar_.*\", host=~\"$host\"}",
           "legendFormat": "{{host}} — {{name}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0 }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 0.85
+              }
+            ]
+          },
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 19,
       "type": "timeseries",
       "title": "CPU Usage (cores) by Container",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 92 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 0,
+        "y": 85,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "rate(container_cpu_usage_seconds_total{name=~\"ocar_.*\", host=~\"$host\"}[5m])",
           "legendFormat": "{{host}} — {{name}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cores",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 20,
       "type": "timeseries",
       "title": "OOM Events by Container",
       "description": "increase(container_oom_events_total) -- should be a flat zero line always. Any nonzero point means that container actually hit its mem_limit and was killed by the kernel; the direct answer to 'did a limit trip yet'.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 92 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": {
+        "x": 12,
+        "y": 85,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "expr": "increase(container_oom_events_total{name=~\"ocar_.*\", host=~\"$host\"}[5m])",
           "legendFormat": "{{host}} — {{name}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 103,
+      "type": "row",
+      "title": "Live logs",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 93,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 9,
+      "type": "logs",
+      "title": "ocar-api logs",
+      "description": "{service=\"ocar\", env=\"$env\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $env, $host, and $min_level dropdowns above (Pino numeric levels: 30=info, 40=warn, 50=error) — all are line/label filters, not extra Loki stream labels, so they cost nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
+      "gridPos": {
+        "x": 0,
+        "y": 94,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "${DS_LOKI}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${DS_LOKI}"
+          },
+          "expr": "{service=\"ocar\", env=\"$env\", host=~\"$host\"} | json | level >= $min_level",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      }
     }
-  ]
+  ],
+  "graphTooltip": 1,
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "iconColor": "#B877D9",
+        "name": "Deployments",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "deploy"
+          ],
+          "type": "tags"
+        }
+      }
+    ]
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "1h"
+    ]
+  }
 }
