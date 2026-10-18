@@ -137,11 +137,15 @@ resource "aws_autoscaling_policy" "request_count_tracking" {
 # alarms are managed by AWS and cannot be tuned: in the 2026-10-17 load tests it raised the alarm 5.1 and 5.5 minutes
 # after a fivefold jump, and the first extra server launched then. During those minutes one server carried two to
 # three times its share (p95 up to 2.0 s, no errors). This step policy reacts to a single one-minute reading of
-# requests per target above 1,500 (1.5x the tracking target): replaying the recorded data, that alarm could have fired
-# about 2 minutes after the jump instead of about 5.3 (an estimate: it assumes about a minute for CloudWatch to publish
-# the reading). It only ADDS capacity; target tracking alone scales in (after about 15 quiet minutes), so a false alarm
-# costs one extra server for a short time. In the last five days of real data the metric reached 1,500 only in the two
-# deliberate read bursts. Alarm-driven, so deploy.yml's "suspend AlarmNotification" on the idle color covers it too.
+# requests per target above 1,500 (1.5x the tracking target). Measured live on 2026-10-18 (4 minutes of about 2,400
+# requests/min): the alarm fired 3.1 minutes after the load began and the first extra server was healthy about 5.2
+# minutes after it, against 5.1-5.5 and 7.5-8.5 minutes for target tracking alone. CloudWatch publishes a reading about
+# 2 minutes after its minute ends (a replay of the recorded data that assumed 1 minute was optimistic). It only ADDS
+# capacity. Target tracking keeps working on top of it: in that test it then added two more servers (to the maximum of 4)
+# because its metric lagged while the first extra server was starting, and all of them scale in again by themselves, so
+# a burst can cost a server or two for about an hour. In the last five days of real data the metric reached 1,500 only
+# in the two deliberate read bursts. Alarm-driven, so deploy.yml's "suspend AlarmNotification" on the idle color covers
+# it too.
 #
 # The ASG is referenced by NAME (local.asg_names), not by resource, on purpose: a reference makes a targeted apply pull
 # in the ASG and everything it depends on, and while Terraform and production disagree (database multi_az, machine
