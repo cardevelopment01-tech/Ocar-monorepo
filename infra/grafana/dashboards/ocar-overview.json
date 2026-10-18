@@ -297,7 +297,7 @@
       "id": 31,
       "type": "stat",
       "title": "p95 latency",
-      "description": "95% of requests are faster than this (all routes). Green under 300 ms, amber to 500 ms, red above: 500 ms is the project target.",
+      "description": "95% of successful (2xx) requests are faster than this (all routes; latency buckets are kept for successful requests only). Green under 300 ms, amber to 500 ms, red above: 500 ms is the project target.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -723,7 +723,7 @@
       "id": 3,
       "type": "timeseries",
       "title": "Request duration — p50 / p95 / p99",
-      "description": "histogram_quantile over http_request_duration_seconds_bucket — the D in RED.",
+      "description": "Latency percentiles of successful (2xx) requests across the selected servers (buckets are kept for successful requests only; error responses are counted in the rate and error panels). Under 100 ms all land in the first bucket, so fast requests are measured coarsely.",
       "gridPos": {
         "x": 0,
         "y": 14,
