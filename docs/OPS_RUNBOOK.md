@@ -247,6 +247,15 @@ Prod **metrics** are not archived to S3 — they live in Grafana Cloud only
   group `ocar-alloy-pipeline`): heartbeat lost, config load failed, unhealthy
   components, S3 archive failing, remote_write failing. Those alerts need
   `terraform apply` in `infra/terraform/observability/` (separate state).
+- **Runtime health alerts** (group `ocar-runtime-health`, `alerts-runtime.tf`; they read
+  series already shipped, so they add no active series): API p95 latency over 500 ms
+  (warning) / 2 s (critical), 5xx over 2% on any route, an API server down, Node.js event
+  loop p99 lag over 250 ms, host CPU over 85% for 10 m, host memory over 90%, a container
+  OOM kill, requests per server per minute over 1,500 for 10 m (scale-out lagging or at the
+  maximum size), queue backlog over 200 waiting jobs. "File descriptor exhaustion" watches
+  the API process (`process_open_fds / process_max_fds`, over 80%), not the host-wide
+  kernel maximum, which these servers report as effectively unlimited. "Active series
+  usage" warns at 70% (early) and 85% of the 15,000 cap.
 
 ## Reports: digest did not arrive / Reports slow
 

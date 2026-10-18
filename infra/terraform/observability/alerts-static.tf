@@ -522,7 +522,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "node_filefd_allocated / node_filefd_maximum"
+        expr    = "max(process_open_fds / process_max_fds)"
       })
     }
 
@@ -537,12 +537,12 @@ resource "grafana_rule_group" "static_thresholds" {
         refId      = "C"
         type       = "threshold"
         expression = "A"
-        conditions = [{ evaluator = { type = "gt", params = [0.85] } }]
+        conditions = [{ evaluator = { type = "gt", params = [0.8] } }]
       })
     }
 
     annotations = {
-      summary     = "Host file descriptor usage exceeded 85% for 5m -- classic Node.js failure mode under connection/file-handle leaks"
+      summary     = "API process file descriptor usage exceeded 80% of its limit for 5m -- classic Node.js failure mode under connection/file-handle leaks"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
     }
     labels         = { severity = "warning" }
