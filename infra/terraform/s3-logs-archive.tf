@@ -305,22 +305,28 @@ resource "aws_glue_catalog_table" "app_metrics" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    EXTERNAL                    = "TRUE"
-    "projection.enabled"        = "true"
-    "projection.year.type"      = "integer"
-    "projection.year.range"     = "2026,2035"
-    "projection.month.type"     = "integer"
-    "projection.month.range"    = "1,12"
-    "projection.month.digits"   = "2"
-    "projection.day.type"       = "integer"
-    "projection.day.range"      = "1,31"
-    "projection.day.digits"     = "2"
-    "projection.hour.type"      = "integer"
-    "projection.hour.range"     = "0,23"
-    "projection.hour.digits"    = "2"
-    "storage.location.template" = "s3://${aws_s3_bucket.logs_archive.bucket}/metrics/year=$${year}/month=$${month}/day=$${day}/hour=$${hour}"
+    EXTERNAL                     = "TRUE"
+    "projection.enabled"         = "true"
+    "projection.exporter.type"   = "enum"
+    "projection.exporter.values" = "api,node,postgres,cadvisor,alloy"
+    "projection.year.type"       = "integer"
+    "projection.year.range"      = "2026,2035"
+    "projection.month.type"      = "integer"
+    "projection.month.range"     = "1,12"
+    "projection.month.digits"    = "2"
+    "projection.day.type"        = "integer"
+    "projection.day.range"       = "1,31"
+    "projection.day.digits"      = "2"
+    "projection.hour.type"       = "integer"
+    "projection.hour.range"      = "0,23"
+    "projection.hour.digits"     = "2"
+    "storage.location.template"  = "s3://${aws_s3_bucket.logs_archive.bucket}/metrics/$${exporter}/year=$${year}/month=$${month}/day=$${day}/hour=$${hour}"
   }
 
+  partition_keys {
+    name = "exporter"
+    type = "string"
+  }
   partition_keys {
     name = "year"
     type = "int"
@@ -362,8 +368,8 @@ resource "aws_athena_named_query" "metric_over_time" {
   workgroup = aws_athena_workgroup.logs.id
   database  = aws_glue_catalog_database.logs.name
   query     = <<-SQL
-    -- One metric, one row per sample. Replace the date, hour and metric name.
-    -- Keep the partition filters (year/month/day/hour) or the scan is the whole prefix.
+    -- One metric, one row per sample. Replace the exporter, date, hour and metric name.
+    -- Keep the partition filters (exporter/year/month/day/hour) or the scan is the whole prefix.
     SELECT from_unixtime(CAST(dp.timeunixnano AS bigint) / 1e9) AS ts,
            element_at(filter(dp.attributes, a -> a.key = 'host'), 1).value.stringvalue AS host,
            dp.asdouble AS value
@@ -372,7 +378,7 @@ resource "aws_athena_named_query" "metric_over_time" {
     CROSS JOIN UNNEST(rm.scopemetrics) AS s(sm)
     CROSS JOIN UNNEST(sm.metrics) AS u(m)
     CROSS JOIN UNNEST(m.gauge.datapoints) AS v(dp)
-    WHERE year = 2026 AND month = 10 AND day = 18 AND hour = 12
+    WHERE exporter = 'node' AND year = 2026 AND month = 10 AND day = 18 AND hour = 12
       AND m.name = 'node_load1'
     ORDER BY ts
     LIMIT 500
@@ -393,7 +399,7 @@ resource "aws_athena_named_query" "series_per_host" {
     CROSS JOIN UNNEST(rm.scopemetrics) AS s(sm)
     CROSS JOIN UNNEST(sm.metrics) AS u(m)
     CROSS JOIN UNNEST(m.gauge.datapoints) AS v(dp)
-    WHERE year = 2026 AND month = 10 AND day = 18 AND hour = 12
+    WHERE year = 2026 AND month = 10 AND day = 18 AND hour = 12   -- all exporters; add exporter = '...' to scan one
     GROUP BY 1, 2
     ORDER BY 3 DESC
   SQL
@@ -413,11 +419,59 @@ resource "aws_athena_named_query" "postgres_table_stat" {
     CROSS JOIN UNNEST(rm.scopemetrics) AS s(sm)
     CROSS JOIN UNNEST(sm.metrics) AS u(m)
     CROSS JOIN UNNEST(m.gauge.datapoints) AS v(dp)
-    WHERE year = 2026 AND month = 10 AND day = 18 AND hour = 12
+    WHERE exporter = 'postgres' AND year = 2026 AND month = 10 AND day = 18 AND hour = 12
       AND m.name = 'pg_stat_user_tables_seq_scan'
     GROUP BY 1
     ORDER BY 2 DESC
     LIMIT 25
+  SQL
+}
+
+resource "aws_athena_named_query" "slow_statements" {
+  name      = "app-metrics-slow-statements-over-100ms"
+  workgroup = aws_athena_workgroup.logs.id
+  database  = aws_glue_catalog_database.logs.name
+  query     = <<-SQL
+    -- Database statements whose MEAN execution time is 100 ms or more (pg_stat_statements,
+    -- cumulative since the last stats reset). Faster statements are left out on purpose.
+    -- Mean = seconds_total / calls_total at the newest sample in the hour. Change the date/hour.
+    -- Only the 25 heaviest statements are tracked by the exporter. Every host reports the
+    -- same database; the newest sample from any host is used.
+    WITH flat AS (
+      SELECT m.name AS metric,
+             element_at(filter(dp.attributes, a -> a.key = 'queryid'), 1).value.stringvalue AS queryid,
+             element_at(filter(dp.attributes, a -> a.key = 'query'), 1).value.stringvalue AS query,
+             CAST(dp.timeunixnano AS bigint) AS ts,
+             dp.asdouble AS v
+      FROM app_metrics
+      CROSS JOIN UNNEST(resourcemetrics) AS r(rm)
+      CROSS JOIN UNNEST(rm.scopemetrics) AS s(sm)
+      CROSS JOIN UNNEST(sm.metrics) AS u(m)
+      CROSS JOIN UNNEST(m.gauge.datapoints) AS v(dp)
+      WHERE exporter = 'postgres' AND year = 2026 AND month = 10 AND day = 18 AND hour = 12
+        AND m.name IN ('pg_stat_statements_calls_total', 'pg_stat_statements_seconds_total', 'pg_stat_statements_query_id')
+    ),
+    newest AS (
+      SELECT queryid, metric, max_by(v, ts) AS v, max_by(query, ts) AS query
+      FROM flat
+      GROUP BY queryid, metric
+    ),
+    per_statement AS (
+      SELECT queryid,
+             max(IF(metric = 'pg_stat_statements_calls_total', v)) AS calls,
+             max(IF(metric = 'pg_stat_statements_seconds_total', v)) AS total_s,
+             max(IF(metric = 'pg_stat_statements_query_id', query)) AS query
+      FROM newest
+      GROUP BY queryid
+    )
+    SELECT queryid,
+           calls,
+           round(total_s / calls * 1000, 1) AS mean_ms,
+           round(total_s, 1) AS total_s,
+           replace(query, chr(10), ' ') AS query
+    FROM per_statement
+    WHERE calls > 0 AND total_s / calls >= 0.1
+    ORDER BY mean_ms DESC
   SQL
 }
 
