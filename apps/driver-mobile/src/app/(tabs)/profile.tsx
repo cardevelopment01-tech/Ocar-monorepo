@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn, useAnimatedStyle } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, fonts, useKeyboardOffset, mapSaveError, useNavClearance, card, sectionLabel, Text } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, fonts, useKeyboardOffset, mapSaveError, useNavClearance, card, sectionLabel, Text, hasStorePage, openStorePage } from '@ocar/mobile-shared'
 import Constants from 'expo-constants'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -309,6 +309,18 @@ export default function ProfileScreen() {
               </View>
               <Feather name="chevron-right" size={14} color={colors.ink400} />
             </Pressable>
+            {hasStorePage() ? (
+              <Pressable style={[styles.menuRow, styles.menuRowBorder]} onPress={() => void openStorePage(null, { writeReview: true })} accessibilityRole="button">
+                <View style={styles.menuIcon}>
+                  <Feather name="star" size={15} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuLabel}>Rate Ocar</Text>
+                  <Text style={styles.menuSub}>Tell others what you think</Text>
+                </View>
+                <Feather name="chevron-right" size={14} color={colors.ink400} />
+              </Pressable>
+            ) : null}
             {/* Deep-links to apps/user's hosted /legal/terms (cross-links to /legal/privacy) instead of duplicating legal text. */}
             <Pressable style={styles.menuRow} onPress={() => void Linking.openURL(TERMS_URL)}>
               <View style={styles.menuIcon}>

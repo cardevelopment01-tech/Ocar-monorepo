@@ -9,7 +9,7 @@ import { card, geo, sectionLabel } from '@/theme/homeTokens'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn, useAnimatedStyle } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, fonts, useKeyboardOffset, mapSaveError } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, fonts, useKeyboardOffset, mapSaveError, hasStorePage, openStorePage } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { EMAIL_ERROR, isPlausibleEmail } from '@/utils/email'
@@ -182,6 +182,18 @@ export default function ProfileScreen() {
                 </Pressable>
               )
             })}
+            {hasStorePage() ? (
+              <Pressable style={[styles.menuRow, styles.menuRowBorder]} onPress={() => void openStorePage(null, { writeReview: true })} accessibilityRole="button">
+                <View style={styles.menuIcon}>
+                  <Feather name="star" size={15} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuLabel}>Rate Ocar</Text>
+                  <Text style={styles.menuSub}>Tell others what you think</Text>
+                </View>
+                <Feather name="chevron-right" size={14} color={colors.ink400} />
+              </Pressable>
+            ) : null}
             {/* The only functional row in this menu -- deep-links to apps/user's
                 hosted /legal/terms (which itself cross-links to /legal/privacy)
                 rather than duplicating the legal text natively. */}

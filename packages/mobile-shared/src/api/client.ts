@@ -66,6 +66,10 @@ export type ApiClientConfig = {
   /** Driver logged in on another device (401 AUTH_SESSION_REPLACED). Falls back to onAuthFailure. */
   onSessionReplaced?: () => void
   isAuthEndpoint?: (url: string | undefined) => boolean
+  /** Sent on every request as X-App-Name / -Platform / -Version / -Build so the API can gate old builds. */
+  appInfo?: { app: string; platform: string; version: string; build: string }
+  /** The API answered 426 UPGRADE_REQUIRED: this build is below the server's minimum version. */
+  onUpgradeRequired?: () => void
 }
 
 function defaultIsAuthEndpoint(url?: string): boolean {
@@ -102,6 +106,13 @@ export function createApiClient(config: ApiClientConfig): AxiosInstance {
 
   api.interceptors.request.use(
     async (requestConfig) => {
+      const info = config.appInfo
+      if (info) {
+        requestConfig.headers['X-App-Name'] = info.app
+        requestConfig.headers['X-App-Platform'] = info.platform
+        requestConfig.headers['X-App-Version'] = info.version
+        requestConfig.headers['X-App-Build'] = info.build
+      }
       let token = getAccessToken()
       if (token && !isAuthEndpoint(requestConfig.url) && tokenExpiresSoon(token)) {
         try {
@@ -125,6 +136,11 @@ export function createApiClient(config: ApiClientConfig): AxiosInstance {
       const code = axios.isAxiosError(error) ? (error.response?.data as ApiError | undefined)?.code : undefined
       const isTokenError = code === 'AUTH_UNAUTHORIZED' || code === 'AUTH_TOKEN_INVALID' || code === 'AUTH_TOKEN_EXPIRED'
       const original = error.config as RetriableRequest | undefined
+
+      if (code === 'UPGRADE_REQUIRED') {
+        config.onUpgradeRequired?.()
+        return Promise.reject(error)
+      }
 
       if (code === 'AUTH_SESSION_REPLACED') {
         onSessionReplaced()
