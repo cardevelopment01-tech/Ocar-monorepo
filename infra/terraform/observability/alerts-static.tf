@@ -166,9 +166,13 @@ resource "grafana_rule_group" "static_thresholds" {
         from = 300
         to   = 0
       }
+      # queryType must be set BOTH here and above: Loki reads it from the model (without it the rule
+      # returns a time series and errors with "only reduced data can be alerted on", which fires the
+      # alert), while the provider reads the data-level field (without it every plan shows a diff).
       model = jsonencode({
-        refId = "A"
-        expr  = "sum(count_over_time({container=\"ocar_api\"} |= \"admin digest sent\" [26h])) or vector(0)"
+        refId     = "A"
+        queryType = "instant"
+        expr      = "sum(count_over_time({container=\"ocar_api\"} |= \"admin digest sent\" [26h])) or vector(0)"
       })
     }
 
