@@ -206,7 +206,7 @@ How a color scales out (two policies on each color's ASG, `asg.tf`):
   server was healthy about 5.2 minutes after it, against 5.1-5.5 and 7.5-8.5 minutes for target tracking alone (CloudWatch
   publishes a reading about 2 minutes after its minute ends). It only adds capacity, but target tracking keeps working on
   top: in that test it then added two more servers (to the maximum of 4) while the first was starting, and all scaled in
-  again by themselves, so a burst can cost a server or two for about an hour. The metric only reached 1,500 in the two
+  again by themselves (all gone 26 minutes after the burst ended), so a burst can cost a server or two for about half an hour. The metric only reached 1,500 in the two
   deliberate read bursts in the last five days.
 - **Why no CPU rule:** EC2 CPU is reported every 5 minutes (detailed monitoring is off), so a CPU rule would be slower than
   the request rules. Enable detailed monitoring in the launch template first, and only after a realistic-mix load run shows
