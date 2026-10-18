@@ -18,6 +18,8 @@ import adminRouter from '@/modules/admin/admin.routes'
 import geoRouter from '@/modules/geo/geo.routes'
 import pricingRouter from '@/modules/pricing/pricing.routes'
 import ridesRouter from '@/modules/rides/rides.routes'
+import appVersionRouter from '@/modules/app-version/app-version.routes'
+import { identityFromHeaders } from '@/modules/app-version/app-version.policy'
 import rideChatRouter from '@/modules/ride-chat/ride-chat.routes'
 import paymentsRouter from '@/modules/payments/payments.routes'
 import safetyRouter     from '@/modules/safety/safety.routes'
@@ -60,6 +62,12 @@ export function createApp(): Application {
     // line count for every real request.
     autoLogging: {
       ignore: (req) => req.url === '/health' || req.url === '/metrics' || req.method === 'OPTIONS',
+    },
+    // Which app build made the request, so Loki can answer "what share of drivers are on >= 1.3.0" before
+    // anyone raises a minimum version. Validated, so a hostile header can't inject log content.
+    customProps: (req) => {
+      const id = identityFromHeaders(req.headers)
+      return id ? { app_name: id.app, app_platform: id.platform, app_version: id.version } : {}
     },
     customLogLevel: (req, res, err) => {
       if (res.statusCode >= 500 || err) return 'error'
@@ -196,6 +204,7 @@ export function createApp(): Application {
   apiRouter.use('/admin/invites', adminInvitesRouter)
   apiRouter.use('/admin/totp', adminTotpRouter)
   apiRouter.use('/admin', adminRouter)
+  apiRouter.use('/app', appVersionRouter)
   apiRouter.use('/geo', geoRouter)
   apiRouter.use('/pricing', pricingRouter)
   apiRouter.use('/rides', ridesRouter)

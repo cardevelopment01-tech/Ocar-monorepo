@@ -1,0 +1,19 @@
+{
+  "name": "@ocar/expo-play-update",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react-native": "*"
+  },
+  "devDependencies": {
+    "expo": "57.0.22",
+    "react-native": "0.86.3",
+    "typescript": "^5.0.0"
+  }
+}

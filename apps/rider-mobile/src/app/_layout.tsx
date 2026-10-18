@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Stack } from 'expo-router'
+import { Stack, usePathname } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { KeyboardProvider } from 'react-native-keyboard-controller'
 import * as SplashScreen from 'expo-splash-screen'
-import { SplashOverlay, useAppFonts } from '@ocar/mobile-shared'
+import { SplashOverlay, UpdateGate, useAppFonts } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useLocationStore } from '@/store/useLocationStore'
 import { useSocketLifecycle } from '@/services/socket/useSocketLifecycle'
 import { usePushNotificationRouting } from '@/features/notifications/usePushNotificationRouting'
 import { usePushRegistration } from '@/features/notifications/usePushSetup'
+import { API_URL } from '@/services/api'
 import logoMarkImage from '../../assets/brand/logo-mark.png'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
@@ -30,6 +31,10 @@ export default function RootLayout() {
     return () => clearTimeout(t)
   }, [])
   const locationReady = locationHydrated || locationCapHit
+
+  // Never interrupt a trip, or the fare / payment step, with an update prompt.
+  const pathname = usePathname()
+  const updateBusy = pathname.startsWith('/ride/') || pathname === '/booking/fare'
 
   usePushNotificationRouting()
   usePushRegistration()
@@ -64,6 +69,7 @@ export default function RootLayout() {
         <KeyboardProvider>
           <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false, freezeOnBlur: true }} />
+          <UpdateGate app="rider" baseURL={API_URL} isBusy={updateBusy} logoSource={logoMarkImage} supportMailto="mailto:grievance@ocarindia.com?subject=Ocar%20rider%20support" />
           {showSplashOverlay ? (
             <SplashOverlay
               logoSource={logoMarkImage}

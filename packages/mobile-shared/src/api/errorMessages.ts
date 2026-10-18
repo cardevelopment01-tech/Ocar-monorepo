@@ -37,6 +37,7 @@ export function mapSaveError(err: unknown, fallback = 'Could not save. Please tr
 }
 
 const API_CODE_MESSAGES: Record<string, string> = {
+  UPGRADE_REQUIRED: 'Please update Ocar to continue.',
   DRIVER_ONBOARDING_INCOMPLETE: 'Finish your onboarding to go online.',
   DRIVER_NOT_APPROVED: "Your account is still under review. You can go online once it's approved.",
   DRIVER_SUSPENDED: 'Your account is suspended. Please contact Ocar support.',

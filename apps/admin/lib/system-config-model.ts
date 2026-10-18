@@ -9,7 +9,7 @@ import type { SystemConfig } from './system-config-api'
 // Numeric ranges are NOT duplicated here: the API owns them (api/src/lib/system-config-bounds.ts)
 // and returns min/max on each row.
 
-export type GroupId = 'payments' | 'payouts' | 'cash' | 'masking' | 'drivers' | 'rewards' | 'other' | 'legacy'
+export type GroupId = 'payments' | 'payouts' | 'cash' | 'masking' | 'drivers' | 'rewards' | 'app' | 'other' | 'legacy'
 export type Kind = 'switch' | 'number' | 'text' | 'json'
 
 export interface Group { id: GroupId; title: string; blurb: string }
@@ -21,6 +21,7 @@ export const GROUPS: readonly Group[] = [
   { id: 'masking',  title: 'Call masking',            blurb: 'Private calls between riders and drivers.' },
   { id: 'drivers',  title: 'Driver conduct',          blurb: 'Warnings and automatic suspension.' },
   { id: 'rewards',  title: 'Rewards & referrals',     blurb: 'Cashback and sign-up bonuses.' },
+  { id: 'app',      title: 'App updates',            blurb: 'Ask or require riders and drivers to update their app.' },
   { id: 'other',    title: 'Other',                   blurb: 'Settings without a dedicated group yet.' },
   { id: 'legacy',   title: 'Unused (legacy)',         blurb: 'Kept in the database but no longer read by the platform.' },
 ]
@@ -67,6 +68,16 @@ const META: Record<string, Meta> = {
   cashback_expiry_days:    { group: 'rewards', title: 'Cashback expiry', help: 'Days before unused cashback credits expire.', suffix: ' days' },
   referral_referrer_bonus: { group: 'rewards', title: 'Referrer bonus', help: 'Credited to the existing user when their referral takes a first ride.', prefix: '₹' },
   referral_referee_bonus:  { group: 'rewards', title: 'New-user bonus', help: 'Credited to the new user on their first ride.', prefix: '₹' },
+
+  app_update_enabled: { group: 'app', kind: 'switch', title: 'App update prompts', help: 'Master switch. Off stops every update prompt and the forced-update block within about 30 seconds. Use it if a wrong version was typed.', critical: true },
+  app_update_rider_android_recommended:  { group: 'app', kind: 'text', title: 'Rider (Android): suggest update below', help: 'Riders on an older version are asked to update and can dismiss it. 0.0.0 = never ask.' },
+  app_update_rider_android_min:          { group: 'app', kind: 'text', title: 'Rider (Android): require update below', help: 'Anyone below this version must update before booking. Only raise it to a version that is 100% rolled out on the store.', critical: true },
+  app_update_driver_android_recommended: { group: 'app', kind: 'text', title: 'Driver (Android): suggest update below', help: 'Drivers on an older version are asked to update and can dismiss it. 0.0.0 = never ask.' },
+  app_update_driver_android_min:         { group: 'app', kind: 'text', title: 'Driver (Android): require update below', help: 'Anyone below this version must update before going online. Only raise it to a version that is 100% rolled out on the store.', critical: true },
+  app_update_rider_ios_recommended:  { group: 'app', kind: 'text', title: 'Rider (iOS): suggest update below', help: 'Riders on an older version are asked to update and can dismiss it. 0.0.0 = never ask.' },
+  app_update_rider_ios_min:          { group: 'app', kind: 'text', title: 'Rider (iOS): require update below', help: 'Anyone below this version must update before booking. Only raise it to a version that is live on the App Store.', critical: true },
+  app_update_driver_ios_recommended: { group: 'app', kind: 'text', title: 'Driver (iOS): suggest update below', help: 'Drivers on an older version are asked to update and can dismiss it. 0.0.0 = never ask.' },
+  app_update_driver_ios_min:         { group: 'app', kind: 'text', title: 'Driver (iOS): require update below', help: 'Anyone below this version must update before going online. Only raise it to a version that is live on the App Store.', critical: true },
 
   exotel_masking_enabled:         { group: 'legacy', title: 'Exotel masked calling', help: LEGACY_HELP },
   exotel_max_calls_per_ride:      { group: 'legacy', title: 'Exotel calls per ride', help: LEGACY_HELP, suffix: ' calls' },

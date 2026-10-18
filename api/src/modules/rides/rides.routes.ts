@@ -5,6 +5,7 @@ import { client as redis } from '@/db/redis'
 import { startOtpKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
 import { withTripWindow } from '@/lib/trip-window'
+import { requireSupportedApp } from '@/modules/app-version/app-version.routes'
 import * as service from './rides.service'
 import * as repo from './rides.repository'
 import * as paymentsService from '@/modules/payments/payments.service'
@@ -117,7 +118,7 @@ router.get('/me/active', authenticate(), onlyDriver, async (req, res, next) => {
 
 // ── Driver session ────────────────────────────────────────────
 
-router.post('/sessions/online', authenticate(), onlyDriver, canTakeWork, async (req, res, next) => {
+router.post('/sessions/online', authenticate(), onlyDriver, canTakeWork, requireSupportedApp, async (req, res, next) => {
   try {
     const driverId = req.driver!.id
     const session = await service.goOnline(driverId, req.body as Parameters<typeof service.goOnline>[1])
@@ -148,7 +149,7 @@ router.post('/sessions/pause', authenticate(), onlyDriver, async (req, res, next
   } catch (err) { next(err) }
 })
 
-router.post('/sessions/resume', authenticate(), onlyDriver, canTakeWork, async (req, res, next) => {
+router.post('/sessions/resume', authenticate(), onlyDriver, canTakeWork, requireSupportedApp, async (req, res, next) => {
   try {
     await service.resumeAvailability(req.driver!.id)
     res.json({ success: true })
@@ -165,7 +166,7 @@ router.get('/sessions/current', authenticate(), onlyDriver, async (req, res, nex
 
 // ── Ride booking (user) ───────────────────────────────────────
 
-router.post('/', authenticate(), onlyUser, canBook, async (req, res, next) => {
+router.post('/', authenticate(), onlyUser, canBook, requireSupportedApp, async (req, res, next) => {
   try {
     const userId = req.user!.id
     const result = await service.createBooking(userId, req.body as import('./rides.types').BookingRequest)

@@ -1,16 +1,18 @@
-import { createApiClient } from '@ocar/mobile-shared'
+import { createApiClient, forceHardUpdate, getAppInfo } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { handleSessionReplaced } from '@/services/sessionReplaced'
 import { tokenRefresher } from '@/services/tokenRefresher'
 import { restrictionFromErrorCode } from '@/features/account/accountStanding'
 
-const API_URL = process.env['EXPO_PUBLIC_API_URL'] ?? 'http://10.0.2.2:4000'
+export const API_URL = process.env['EXPO_PUBLIC_API_URL'] ?? 'http://10.0.2.2:4000'
 
 export const api = createApiClient({
   baseURL: API_URL,
   getAccessToken: () => useAuthStore.getState().token,
   refresher: tokenRefresher,
   onAuthFailure: () => useAuthStore.getState().clearAuth(),
+  appInfo: getAppInfo('driver'),
+  onUpgradeRequired: forceHardUpdate,
   onSessionReplaced: handleSessionReplaced,
 })
 
