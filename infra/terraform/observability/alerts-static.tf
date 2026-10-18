@@ -148,7 +148,10 @@ resource "grafana_rule_group" "static_thresholds" {
   }
 
   # Reports daily admin digest (docs/superpowers/specs/2026-09-29-reports-page-redesign-plan.md, CEO D11).
-  # `or vector(0)` matters: before the first successful send the counter series does not exist, and
+  # Reads the LOG line "admin digest sent" (Loki), not admin_digest_runs_total: that counter lives in one
+  # server process, starts at 1 on its first send (which increase() does not count) and disappears on every
+  # deploy, so a metric version alerted falsely whenever the fleet had been replaced since 09:00 IST.
+  # `or vector(0)` matters: with no matching line at all the query returns nothing, and
   # no_data_state = "OK" would otherwise hide a digest that has never worked.
   rule {
     name      = "Admin daily digest not sent"
@@ -157,15 +160,15 @@ resource "grafana_rule_group" "static_thresholds" {
 
     data {
       ref_id         = "A"
-      datasource_uid = local.prometheus_datasource_uid
+      datasource_uid = local.loki_datasource_uid
+      query_type     = "instant"
       relative_time_range {
-        from = 93600
+        from = 300
         to   = 0
       }
       model = jsonencode({
-        refId   = "A"
-        instant = true
-        expr    = "sum(increase(admin_digest_runs_total{result=\"sent\"}[26h])) or vector(0)"
+        refId = "A"
+        expr  = "sum(count_over_time({container=\"ocar_api\"} |= \"admin digest sent\" [26h])) or vector(0)"
       })
     }
 
