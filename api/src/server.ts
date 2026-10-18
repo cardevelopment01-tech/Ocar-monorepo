@@ -7,6 +7,8 @@ import { createApp } from './app'
 import { testConnection, pool } from './db/client'
 import { testConnection as testRedis, client as redisClient } from './db/redis'
 import { initSocketServer, getIO } from './websocket/socket.server'
+import { startDrain } from './websocket/drain'
+import { startTerminationWatcher } from './websocket/termination-watcher'
 import { flushBreadcrumbs } from './lib/gps-buffer'
 import { isSmsBypassActive } from './providers/sms.provider'
 import { notificationsWorker } from './jobs/workers/notifications.worker'
@@ -246,6 +248,19 @@ async function start(): Promise<void> {
 
   process.on('SIGTERM', () => void shutdown())
   process.on('SIGINT', () => void shutdown())
+
+  // Graceful socket drain. The deploy workflow sends SIGUSR2 to every old-color container before it scales that color
+  // down; the watcher covers autoscaler scale-ins. Both close the sockets slowly instead of all at the load balancer's
+  // cut-off. node is PID 1 (api/entrypoint.sh execs it), so the signal reaches this handler.
+  const drainMs = config.SOCKET_DRAIN_SECONDS * 1000
+  process.on('SIGUSR2', () => {
+    startDrain(getIO(), drainMs, 'SIGUSR2')
+  })
+  if (config.NODE_ENV === 'production' && config.DRAIN_ON_TERMINATION === 'true') {
+    startTerminationWatcher(() => {
+      startDrain(getIO(), drainMs, 'instance is being terminated')
+    })
+  }
 }
 
 start().catch((err) => {
