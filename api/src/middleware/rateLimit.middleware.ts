@@ -25,21 +25,43 @@ import { logger } from '@/lib/logger'
 // request through, skip rate limiting for this one" rather than either a
 // hang or a hard failure -- rate limiting is an abuse-mitigation control,
 // not a correctness-critical path, so failing open is the right tradeoff.
+//
+// rate-limit-redis issues two SCRIPT LOADs per store the moment the store is constructed, i.e. when this module is
+// imported -- before the Redis (TLS) connection exists. ioredis would queue them and run them once connected, but on a
+// cold-booted instance that takes ~2.5 s, so the 1 s bound above rejected all of them (7 stores x 2 scripts = 14 errors
+// in the first second of some cold servers, logged as "unhandled promise rejection"). Nothing was lost -- the library
+// reloads a script on the first real request -- but it is noise and a pointless extra round trip. SCRIPT LOAD runs
+// once at startup and never on a request path, so it gets a longer bound; request-time commands keep the 1 s fail-open.
+const SCRIPT_LOAD_TIMEOUT_MS = 15_000
+
+export function makeStoreSendCommand(call: (...args: string[]) => Promise<unknown>, prefix: string) {
+  return async (...args: string[]): Promise<RedisReply> => {
+    const isScriptLoad = args[0]?.toUpperCase() === 'SCRIPT'
+    try {
+      return (await withTimeout(call(...args), isScriptLoad ? SCRIPT_LOAD_TIMEOUT_MS : undefined)) as RedisReply
+    } catch (err) {
+      logger.warn(
+        { err, prefix },
+        isScriptLoad
+          ? 'rate-limit: script preload failed, it is reloaded on first use'
+          : 'rate-limit: redis command failed, allowing request through',
+      )
+      throw err
+    }
+  }
+}
+
 function redisStore(prefix: string): RedisStore | undefined {
   if (skipInTest()) return undefined
-  return new RedisStore({
+  const store = new RedisStore({
     prefix,
-    sendCommand: async (...args: string[]) => {
-      try {
-        return (await withTimeout(
-          redis.call(...(args as [string, ...string[]]))
-        )) as RedisReply
-      } catch (err) {
-        logger.warn({ err, prefix }, 'rate-limit: redis command failed, allowing request through')
-        throw err
-      }
-    },
+    sendCommand: makeStoreSendCommand((...args) => redis.call(...(args as [string, ...string[]])), prefix),
   })
+  // The library keeps these preload promises and awaits them on the first request, where a failure reloads the
+  // script. Mark them handled so a failed preload is not also reported as an unhandled rejection.
+  store.incrementScriptSha.catch(() => undefined)
+  store.getScriptSha.catch(() => undefined)
+  return store
 }
 
 // Bypass IP-based limiters in test environment — tests use a shared localhost
