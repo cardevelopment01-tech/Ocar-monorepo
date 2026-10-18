@@ -164,13 +164,17 @@ because they're exactly what you'll see again if they recur:
   failed upload drops that batch (same as the log archive). Query the archive with SQL
   over the nested OTLP JSON (`unnest(resourceMetrics)` > `scopeMetrics` > `metrics` >
   `gauge|sum.dataPoints`, labels in `attributes`, time in `timeUnixNano`).
-  Series budget in Grafana (api, node, cadvisor, alloy only): per host = ~314 + 5.6 x C, where C is the
-  number of route x method x status combinations the API has served since it started (the latency
-  histogram is trimmed in `config.alloy`'s `prometheus.relabel "api"`: buckets only for 2xx responses and
-  only 0.1, 0.25, 0.5, 1, 2.5 s and +Inf; `_count`/`_sum` stay for every status; S3 keeps the full
-  histogram). Without the trim it was ~314 + 14 x C. Hosts alive at once: 4 steady, 8 during a deploy
-  at full size, up to 12 with retired hosts (they stay active ~20 min). At C = 150 that is about 1,150
-  per host, so 12 hosts is ~13,800: count C from the S3 archive after real traffic. Percentiles from
+  Series budget in Grafana (api, node, cadvisor, alloy only): per server = ~283 fixed series + ~5.6 x C, where C is
+  the number of route x method x status combinations the API has served since it started, plus ~105 series that do
+  not come from the servers (mostly the synthetic-monitoring probe `ocar-api-health`, 79). The latency histogram is
+  trimmed in `config.alloy`'s `prometheus.relabel "api"` (buckets only for 2xx responses and only 0.1, 0.25, 0.5, 1,
+  2.5 s and +Inf; `_count`/`_sum` stay for every status; S3 keeps the full histogram): measured 4.3 series per
+  combination against 14 untrimmed (5.6 is the conservative figure). Measured in Grafana on 2026-10-18: 444 active
+  series in total (3% of the 15,000 cap): 339 on the one server (API 223, node 77, containers 25, Alloy 14) at C = 13.
+  Hosts alive at once: 4 steady, 8 during a deploy at full size, up to 12 with retired hosts (they stay active ~20
+  min). The cap is reached at about C = 170 with 12 hosts, 280 with 8, 610 with 4 (untrimmed: 68, 112, 245). Read the
+  real numbers any time: `grafanacloud_instance_active_series` in the `grafanacloud-usage` datasource, and
+  `count by (host) ({__name__=~".+"})`; count C from the S3 archive after real traffic. Percentiles from
   these buckets describe successful (2xx) requests only. Applying a change
   to `config.alloy` needs a `terraform apply` (the SSM copy, 8 KB cap, ~7.2 KB now) and
   a deploy: running hosts keep their old config until replaced.
@@ -202,7 +206,7 @@ How a color scales out (two policies on each color's ASG, `asg.tf`):
   server was healthy about 5.2 minutes after it, against 5.1-5.5 and 7.5-8.5 minutes for target tracking alone (CloudWatch
   publishes a reading about 2 minutes after its minute ends). It only adds capacity, but target tracking keeps working on
   top: in that test it then added two more servers (to the maximum of 4) while the first was starting, and all scaled in
-  again by themselves, so a burst can cost a server or two for about an hour. The metric only reached 1,500 in the two
+  again by themselves (all gone 26 minutes after the burst ended), so a burst can cost a server or two for about half an hour. The metric only reached 1,500 in the two
   deliberate read bursts in the last five days.
 - **Why no CPU rule:** EC2 CPU is reported every 5 minutes (detailed monitoring is off), so a CPU rule would be slower than
   the request rules. Enable detailed monitoring in the launch template first, and only after a realistic-mix load run shows
@@ -247,8 +251,13 @@ then closes ALL of them in the same instant, so every user on that server reconn
 - **Autoscaler scale-in and any other termination:** in production the API watches its instance's Auto Scaling target
   lifecycle state (IMDSv2, `api/src/websocket/termination-watcher.ts`) and starts the same drain when it becomes
   `Terminated`. AWS does not document whether that happens before or after the load balancer starts draining, so the
-  API logs the moment it sees it (`instance target lifecycle state`): compare that time with the Auto Scaling activity
-  time after the first real scale-in. Turn the watcher off with `DRAIN_ON_TERMINATION=false` in SSM `/ocar/prod/api-env`.
+  API logs the moment it sees it (`instance target lifecycle state`). **Measured in production on 2026-10-18** (three
+  autoscaler scale-ins after a load test): the state became `Terminated` and the watcher saw it 11 to 14 seconds after
+  the scaling activity started, and the load balancer's drain finished 5.7 minutes after that, so the drain starts at the
+  beginning of the 300 s window with the whole window available. Those three servers had no sockets connected, so the
+  drain logged `total: 0`; a drain of live sockets on a real scale-in is not yet observed (read `socket drain started` /
+  `socket drain finished` in the logs). The `SIGTERM` log line (`shutting down gracefully`) comes at the end of the load
+  balancer's drain, about 5 minutes later. Turn the watcher off with `DRAIN_ON_TERMINATION=false` in SSM `/ocar/prod/api-env`.
 - **How a socket is closed matters:** `socket.conn.close()` (the transport) makes the client reconnect by itself and
   recover; `socket.disconnect(true)` makes it report "io server disconnect" and NOT reconnect. A draining server also must
   not refuse connections from a middleware (a refused client does not retry), so a late arrival is accepted and closed.

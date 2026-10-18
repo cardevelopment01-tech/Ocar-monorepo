@@ -143,7 +143,7 @@ resource "aws_autoscaling_policy" "request_count_tracking" {
 # 2 minutes after its minute ends (a replay of the recorded data that assumed 1 minute was optimistic). It only ADDS
 # capacity. Target tracking keeps working on top of it: in that test it then added two more servers (to the maximum of 4)
 # because its metric lagged while the first extra server was starting, and all of them scale in again by themselves, so
-# a burst can cost a server or two for about an hour. In the last five days of real data the metric reached 1,500 only
+# a burst can cost a server or two for about half an hour (all gone 26 minutes after the burst ended). In the last five days of real data the metric reached 1,500 only
 # in the two deliberate read bursts. Alarm-driven, so deploy.yml's "suspend AlarmNotification" on the idle color covers
 # it too.
 #
