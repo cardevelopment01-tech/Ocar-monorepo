@@ -45,7 +45,7 @@ permissions:
 env:
   # Pinned (supply chain), not "latest".
   VERCEL_CLI_VERSION: 60.1.1
-  API_URL: https://ocar-api.clienttesting.in
+  API_URL: https://api.ocarindia.com
 
 jobs:
   # Production only: did CI pass and did the API deploy succeed (or have nothing to deploy)?
@@ -98,15 +98,15 @@ jobs:
           - app: admin
             project_secret: VERCEL_PROJECT_ID_ADMIN
             env_secret: WEB_ENV_ADMIN
-            domain: https://ocar-admin.clienttesting.in
+            domain: https://admin.ocarindia.com
           - app: driver
             project_secret: VERCEL_PROJECT_ID_DRIVER
             env_secret: WEB_ENV_DRIVER
-            domain: https://ocar-driver.clienttesting.in
+            domain: https://driver.ocarindia.com
           - app: user
             project_secret: VERCEL_PROJECT_ID_USER
             env_secret: WEB_ENV_USER
-            domain: https://ocar-user.clienttesting.in
+            domain: https://ocarindia.com
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}

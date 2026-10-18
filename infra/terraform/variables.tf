@@ -24,7 +24,7 @@ variable "project_name" {
 variable "domain_name" {
   type        = string
   description = "Domain the ALB serves, used for the ACM certificate"
-  default     = "ocar-api.clienttesting.in"
+  default     = "api.ocarindia.com"
 }
 
 variable "vpc_cidr" {
