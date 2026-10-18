@@ -3,7 +3,7 @@
 # "Is something wrong with the API or its servers" alerts that the route-specific rules
 # in alerts-static.tf don't cover: overall latency and errors, a server down, Node.js
 # health (event loop lag), CPU, memory and OOM kills, scale-out falling behind, and
-# queue backlog. Every expression reads a series Alloy already ships to Grafana, so
+# queue backlog. Latency buckets in Grafana cover successful (2xx) requests only. Every expression reads a series Alloy already ships to Grafana, so
 # these add NO active series. Same group layout as alerts-alloy.tf. Thresholds are
 # starting points (the project latency target is p95 under 500 ms); tune from real data.
 #
@@ -16,14 +16,14 @@ locals {
       threshold = 0.5
       for       = "5m"
       severity  = "warning"
-      summary   = "API p95 latency above the 500 ms target for 5m"
+      summary   = "API p95 latency of successful requests above the 500 ms target for 5m"
     }
     "API p95 latency (critical)" = {
       expr      = "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{route!~\"/health|/metrics\"}[5m])) by (le))"
       threshold = 2
       for       = "5m"
       severity  = "critical"
-      summary   = "API p95 latency above 2s for 5m: users are waiting"
+      summary   = "API p95 latency of successful requests above 2s for 5m: users are waiting"
     }
     "API 5xx rate (all routes)" = {
       expr      = "sum(rate(http_request_duration_seconds_count{status_code=~\"5..\"}[5m])) / sum(rate(http_request_duration_seconds_count[5m]))"
