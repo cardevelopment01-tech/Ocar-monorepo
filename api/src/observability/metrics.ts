@@ -1,5 +1,5 @@
 import { Registry, collectDefaultMetrics, Histogram, Gauge, Counter } from 'prom-client'
-import { pool, analyticsPool } from '@/db/client'
+import { pool, workerPool, analyticsPool } from '@/db/client'
 import { queues } from '@/jobs/queues'
 import { logger } from '@/lib/logger'
 
@@ -77,6 +77,21 @@ new Gauge({
     this.set({ state: 'total' }, analyticsPool.totalCount)
     this.set({ state: 'idle' }, analyticsPool.idleCount)
     this.set({ state: 'waiting' }, analyticsPool.waitingCount)
+  },
+})
+
+// The background-job pool (WORKER_POOL_MAX) was the only one of the three with no metric, so the
+// connection budget (docs/OPS_RUNBOOK.md "Database connection budget") could not be watched in full.
+// Its own gauge for the same reason as the analytics one: the existing series stay exactly as they were.
+new Gauge({
+  name: 'pg_worker_pool_connections',
+  help: 'Background-job (worker) pg.Pool connection counts by state',
+  labelNames: ['state'],
+  registers: [register],
+  collect() {
+    this.set({ state: 'total' }, workerPool.totalCount)
+    this.set({ state: 'idle' }, workerPool.idleCount)
+    this.set({ state: 'waiting' }, workerPool.waitingCount)
   },
 })
 

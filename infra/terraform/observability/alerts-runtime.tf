@@ -75,6 +75,20 @@ locals {
       severity  = "warning"
       summary   = "Requests per server per minute stayed above 1,500 for 10m (autoscale target is 1,000): scale-out is lagging or the fleet is at its maximum size"
     }
+    "Database connections high" = {
+      expr      = "sum(pg_pool_connections{state=\"total\"}) + (sum(pg_worker_pool_connections{state=\"total\"}) or vector(0)) + sum(pg_analytics_pool_connections{state=\"total\"})"
+      threshold = 100
+      for       = "5m"
+      severity  = "warning"
+      summary   = "The API holds more than 100 database connections across all servers (about 178 usable, 128 the most the pool caps allow with 8 servers): pools are close to saturating"
+    }
+    "Background job pool waiting" = {
+      expr      = "max(pg_worker_pool_connections{state=\"waiting\"})"
+      threshold = 3
+      for       = "10m"
+      severity  = "warning"
+      summary   = "Background jobs have waited for a database connection for 10m: the worker pool cap is too low for the load"
+    }
     "Queue backlog" = {
       expr      = "max(bullmq_queue_job_counts{queue=~\"dispatch|payments|notifications|push\", state=\"waiting\"})"
       threshold = 200

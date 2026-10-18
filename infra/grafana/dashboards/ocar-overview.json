@@ -1555,13 +1555,221 @@
       }
     },
     {
+      "id": 44,
+      "type": "timeseries",
+      "title": "Database connections by pool (all servers)",
+      "description": "Connections the API holds open to the database, summed over the selected servers, per pool: requests (pg_pool_connections), background jobs (pg_worker_pool_connections) and reports (pg_analytics_pool_connections). The database allows 181 connections, 3 reserved, so about 178 are usable. With the pool caps in the runbook (8 + 6 + 2 per server) 8 servers, the most a deployment runs, can hold at most 128. Amber from 100 (the alert), red at 178.",
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(pg_pool_connections{state=\"total\", host=~\"$host\"})",
+          "legendFormat": "requests",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(pg_worker_pool_connections{state=\"total\", host=~\"$host\"})",
+          "legendFormat": "background jobs",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(pg_analytics_pool_connections{state=\"total\", host=~\"$host\"})",
+          "legendFormat": "reports",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            },
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "min": 0,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 178
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 45,
+      "type": "timeseries",
+      "title": "Waiting for a database connection, by pool",
+      "description": "Requests, background jobs or reports that had to wait because every connection in their pool was busy (largest value on any selected server). Should stay 0. A pool that waits more than about 5 seconds errors, so sustained waiting means the pool cap is too low for the load.",
+      "gridPos": {
+        "x": 12,
+        "y": 68,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max(pg_pool_connections{state=\"waiting\", host=~\"$host\"})",
+          "legendFormat": "requests",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max(pg_worker_pool_connections{state=\"waiting\", host=~\"$host\"})",
+          "legendFormat": "background jobs",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max(pg_analytics_pool_connections{state=\"waiting\", host=~\"$host\"})",
+          "legendFormat": "reports",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "min": 0,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
       "id": 102,
       "type": "row",
       "title": "Per-server saturation",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 68,
+        "y": 76,
         "w": 24,
         "h": 1
       },
@@ -1574,7 +1782,7 @@
       "description": "100 - idle%, broken out by the host label (EC2 instance ID) — a single aggregate number hides one hot instance behind a healthy average.",
       "gridPos": {
         "x": 0,
-        "y": 69,
+        "y": 77,
         "w": 8,
         "h": 7
       },
@@ -1657,7 +1865,7 @@
       "title": "Memory % by Instance",
       "gridPos": {
         "x": 8,
-        "y": 69,
+        "y": 77,
         "w": 8,
         "h": 7
       },
@@ -1740,7 +1948,7 @@
       "title": "Disk % by Instance (root volume)",
       "gridPos": {
         "x": 16,
-        "y": 69,
+        "y": 77,
         "w": 8,
         "h": 7
       },
@@ -1824,7 +2032,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 76,
+        "y": 84,
         "w": 24,
         "h": 1
       },
@@ -1837,7 +2045,7 @@
       "description": "container_memory_working_set_bytes -- non-reclaimable memory, what the kernel OOM-killer actually looks at, not container_memory_usage_bytes (which includes reclaimable page cache and overstates real pressure).",
       "gridPos": {
         "x": 0,
-        "y": 77,
+        "y": 85,
         "w": 12,
         "h": 8
       },
@@ -1900,7 +2108,7 @@
       "description": "working_set / spec_memory_limit -- only meaningful for containers with mem_limit actually set in docker-compose.prod.yml (currently api, cadvisor); containers with no configured limit report 0 as their limit and will show no data here, not 0%.",
       "gridPos": {
         "x": 12,
-        "y": 77,
+        "y": 85,
         "w": 12,
         "h": 8
       },
@@ -1983,7 +2191,7 @@
       "title": "CPU Usage (cores) by Container",
       "gridPos": {
         "x": 0,
-        "y": 85,
+        "y": 93,
         "w": 12,
         "h": 8
       },
@@ -2047,7 +2255,7 @@
       "description": "increase(container_oom_events_total) -- should be a flat zero line always. Any nonzero point means that container actually hit its mem_limit and was killed by the kernel; the direct answer to 'did a limit trip yet'.",
       "gridPos": {
         "x": 12,
-        "y": 85,
+        "y": 93,
         "w": 12,
         "h": 8
       },
@@ -2127,7 +2335,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 93,
+        "y": 101,
         "w": 24,
         "h": 1
       },
@@ -2140,7 +2348,7 @@
       "description": "{service=\"ocar\", env=\"$env\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $env, $host, and $min_level dropdowns above (Pino numeric levels: 30=info, 40=warn, 50=error) — all are line/label filters, not extra Loki stream labels, so they cost nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
       "gridPos": {
         "x": 0,
-        "y": 94,
+        "y": 102,
         "w": 24,
         "h": 12
       },
