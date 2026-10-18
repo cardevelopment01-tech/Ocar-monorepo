@@ -123,13 +123,13 @@ prometheus.scrape "api" {
   targets       = [{"__address__" = "api:4000", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   metrics_path  = "/metrics"
   sample_limit  = 20000
-  forward_to    = [prometheus.remote_write.grafana_cloud.receiver, otelcol.receiver.prometheus.metrics_s3.receiver]
+  forward_to    = [prometheus.remote_write.grafana_cloud.receiver, metrics_s3.api.receiver]
 }
 
 prometheus.scrape "node" {
   targets      = [{"__address__" = "node_exporter:9100", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   sample_limit = 20000
-  forward_to   = [prometheus.relabel.node.receiver, otelcol.receiver.prometheus.metrics_s3.receiver]
+  forward_to   = [prometheus.relabel.node.receiver, metrics_s3.node.receiver]
 }
 
 // node_exporter ships ~500-700 series/host unfiltered -- tipped the 15k cap
@@ -147,54 +147,69 @@ prometheus.relabel "node" {
 // ALL scrapes (api, node, postgres, cadvisor, alloy) are also archived to S3,
 // unfiltered, so nothing is lost when Grafana Cloud rejects writes (15,000
 // active-series cap, HTTP 429 err-mimir-max-active-series, blanked every
-// dashboard twice on 2026-10-17). One shared pipeline "metrics_s3" below:
-// OTLP JSON, gzip, 5 min batches, s3://<logs-archive-bucket>/metrics/year=/
-// month=/day=/hour=/ (expiry in s3-logs-archive.tf). Postgres metrics go to S3
+// dashboard twice on 2026-10-17). One pipeline per exporter ("metrics_s3" below,
+// declared once): OTLP JSON, gzip, 5 min batches, s3://<logs-archive-bucket>/
+// metrics/<api|node|postgres|cadvisor|alloy>/year=/month=/day=/hour=/ (expiry in
+// s3-logs-archive.tf). Postgres metrics go to S3
 // ONLY: one host exposes ~3,400 pg series (per-table ~2,800), repeated by every
 // host against the same database, which is what blew the cap.
 prometheus.scrape "postgres" {
   targets      = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   sample_limit = 20000
-  forward_to   = [otelcol.receiver.prometheus.metrics_s3.receiver]
+  forward_to   = [metrics_s3.postgres.receiver]
 }
 
-otelcol.receiver.prometheus "metrics_s3" {
-  output {
-    metrics = [otelcol.processor.batch.metrics_s3.input]
+declare "metrics_s3" {
+  argument "prefix" { }
+
+  otelcol.receiver.prometheus "in" {
+    output {
+      metrics = [otelcol.processor.batch.in.input]
+    }
+  }
+
+  otelcol.processor.batch "in" {
+    timeout             = "5m"
+    send_batch_size     = 8192
+    send_batch_max_size = 8192
+
+    output {
+      metrics = [otelcol.exporter.awss3.out.input]
+    }
+  }
+
+  otelcol.exporter.awss3 "out" {
+    s3_uploader {
+      region                = sys.env("LOGS_ARCHIVE_REGION")
+      s3_bucket             = sys.env("LOGS_ARCHIVE_BUCKET")
+      s3_prefix             = argument.prefix.value
+      s3_partition_format   = "year=%Y/month=%m/day=%d/hour=%H"
+      s3_partition_timezone = "UTC"
+      compression           = "gzip"
+    }
+
+    marshaler {
+      type = "otlp_json"
+    }
+  }
+
+  export "receiver" {
+    value = otelcol.receiver.prometheus.in.receiver
   }
 }
 
-otelcol.processor.batch "metrics_s3" {
-  timeout             = "5m"
-  send_batch_size     = 8192
-  send_batch_max_size = 8192
-
-  output {
-    metrics = [otelcol.exporter.awss3.metrics.input]
-  }
-}
-
-otelcol.exporter.awss3 "metrics" {
-  s3_uploader {
-    region                = sys.env("LOGS_ARCHIVE_REGION")
-    s3_bucket             = sys.env("LOGS_ARCHIVE_BUCKET")
-    s3_prefix             = "metrics"
-    s3_partition_format   = "year=%Y/month=%m/day=%d/hour=%H"
-    s3_partition_timezone = "UTC"
-    compression           = "gzip"
-  }
-
-  marshaler {
-    type = "otlp_json"
-  }
-}
+metrics_s3 "api"      { prefix = "metrics/api" }
+metrics_s3 "node"     { prefix = "metrics/node" }
+metrics_s3 "postgres" { prefix = "metrics/postgres" }
+metrics_s3 "cadvisor" { prefix = "metrics/cadvisor" }
+metrics_s3 "alloy"    { prefix = "metrics/alloy" }
 
 // Per-container CPU/memory -- node_exporter above is host-wide only, this is
 // what lets the dashboard tell api's usage apart from alloy's/postgres_exporter's.
 prometheus.scrape "cadvisor" {
   targets      = [{"__address__" = "cadvisor:8080", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   sample_limit = 30000
-  forward_to   = [prometheus.relabel.cadvisor.receiver, otelcol.receiver.prometheus.metrics_s3.receiver]
+  forward_to   = [prometheus.relabel.cadvisor.receiver, metrics_s3.cadvisor.receiver]
 }
 
 // Keep only the cadvisor families the dashboards query (tipped the series cap
@@ -227,7 +242,7 @@ prometheus.relabel "cadvisor" {
 prometheus.scrape "alloy" {
   targets      = [{"__address__" = "127.0.0.1:12345", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   sample_limit = 5000
-  forward_to   = [prometheus.relabel.alloy.receiver, otelcol.receiver.prometheus.metrics_s3.receiver]
+  forward_to   = [prometheus.relabel.alloy.receiver, metrics_s3.alloy.receiver]
 }
 
 prometheus.relabel "alloy" {
