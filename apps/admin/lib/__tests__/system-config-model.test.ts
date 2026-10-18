@@ -22,6 +22,12 @@ describe('resolve', () => {
     const r = resolve(cfg({ key: 'mobile_payments_enabled', valueType: 'string', value: 'false' }))
     expect(r).toMatchObject({ title: 'Driver app payments (PayU)', group: 'payments', kind: 'switch', critical: true })
   })
+  it('puts the app-update rows in their own group; versions are text, the kill switch a switch', () => {
+    expect(resolve(cfg({ key: 'app_update_driver_android_min', valueType: 'string', value: '0.0.0' })))
+      .toMatchObject({ group: 'app', kind: 'text', critical: true })
+    expect(resolve(cfg({ key: 'app_update_enabled', valueType: 'string', value: 'true' })))
+      .toMatchObject({ group: 'app', kind: 'switch' })
+  })
   it('never hides an unknown key: humanised title, DB description, "Other" group, control from valueType', () => {
     const r = resolve(cfg({ key: 'brand_new_flag', valueType: 'boolean', description: 'Does a new thing' }))
     expect(r).toMatchObject({ title: 'Brand new flag', help: 'Does a new thing', group: 'other', kind: 'switch', critical: false })
