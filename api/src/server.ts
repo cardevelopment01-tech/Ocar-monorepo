@@ -270,3 +270,4 @@ start().catch((err) => {
 
 // Deploy-during-load test marker (2026-10): a comment-only change so a production deploy can be triggered on demand.
 // Deploy-while-scaled-out test marker (2026-10, part 2): comment-only, merged on purpose once two instances are serving.
+// Deploy-during-load test marker (2026-10, part 4): comment-only, merged on purpose with the fleet at its maximum and live sockets connected.
