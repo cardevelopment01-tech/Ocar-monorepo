@@ -90,8 +90,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs_archive" {
     }
   }
 
-  # Postgres exporter metrics (config.alloy "postgres_s3"): OTLP JSON, written
-  # instead of shipping to Grafana Cloud. 90 days is a starting point for
+  # Metrics archive (config.alloy "metrics_s3", metrics/<exporter>/): OTLP JSON,
+  # every scrape, Postgres only here. 90 days is a starting point for
   # forensics, raise it if you want a longer history.
   rule {
     id     = "expire-metrics-after-90-days"
