@@ -164,13 +164,17 @@ because they're exactly what you'll see again if they recur:
   failed upload drops that batch (same as the log archive). Query the archive with SQL
   over the nested OTLP JSON (`unnest(resourceMetrics)` > `scopeMetrics` > `metrics` >
   `gauge|sum.dataPoints`, labels in `attributes`, time in `timeUnixNano`).
-  Series budget in Grafana (api, node, cadvisor, alloy only): per host = ~314 + 5.6 x C, where C is the
-  number of route x method x status combinations the API has served since it started (the latency
-  histogram is trimmed in `config.alloy`'s `prometheus.relabel "api"`: buckets only for 2xx responses and
-  only 0.1, 0.25, 0.5, 1, 2.5 s and +Inf; `_count`/`_sum` stay for every status; S3 keeps the full
-  histogram). Without the trim it was ~314 + 14 x C. Hosts alive at once: 4 steady, 8 during a deploy
-  at full size, up to 12 with retired hosts (they stay active ~20 min). At C = 150 that is about 1,150
-  per host, so 12 hosts is ~13,800: count C from the S3 archive after real traffic. Percentiles from
+  Series budget in Grafana (api, node, cadvisor, alloy only): per server = ~283 fixed series + ~5.6 x C, where C is
+  the number of route x method x status combinations the API has served since it started, plus ~105 series that do
+  not come from the servers (mostly the synthetic-monitoring probe `ocar-api-health`, 79). The latency histogram is
+  trimmed in `config.alloy`'s `prometheus.relabel "api"` (buckets only for 2xx responses and only 0.1, 0.25, 0.5, 1,
+  2.5 s and +Inf; `_count`/`_sum` stay for every status; S3 keeps the full histogram): measured 4.3 series per
+  combination against 14 untrimmed (5.6 is the conservative figure). Measured in Grafana on 2026-10-18: 444 active
+  series in total (3% of the 15,000 cap): 339 on the one server (API 223, node 77, containers 25, Alloy 14) at C = 13.
+  Hosts alive at once: 4 steady, 8 during a deploy at full size, up to 12 with retired hosts (they stay active ~20
+  min). The cap is reached at about C = 170 with 12 hosts, 280 with 8, 610 with 4 (untrimmed: 68, 112, 245). Read the
+  real numbers any time: `grafanacloud_instance_active_series` in the `grafanacloud-usage` datasource, and
+  `count by (host) ({__name__=~".+"})`; count C from the S3 archive after real traffic. Percentiles from
   these buckets describe successful (2xx) requests only. Applying a change
   to `config.alloy` needs a `terraform apply` (the SSM copy, 8 KB cap, ~7.2 KB now) and
   a deploy: running hosts keep their old config until replaced.
