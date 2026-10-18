@@ -20,6 +20,49 @@ resource "grafana_rule_group" "billing_usage" {
   interval_seconds = 300
 
   rule {
+    name      = "Active series usage >= 70% of free tier (early warning)"
+    condition = "C"
+    for       = "5m"
+
+    data {
+      ref_id         = "A"
+      datasource_uid = local.usage_insights_datasource_uid
+      relative_time_range {
+        from = 60
+        to   = 0
+      }
+      model = jsonencode({
+        refId   = "A"
+        instant = true
+        expr    = "grafanacloud_instance_active_series / ${local.free_tier_active_series}"
+      })
+    }
+
+    data {
+      ref_id         = "C"
+      datasource_uid = "__expr__"
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+      model = jsonencode({
+        refId      = "C"
+        type       = "threshold"
+        expression = "A"
+        conditions = [{ evaluator = { type = "gt", params = [0.7] } }]
+      })
+    }
+
+    annotations = {
+      summary     = "Active series usage is at or above 70% of the ${local.free_tier_active_series}-series free-tier cap: servers or series are growing, check before a deploy pushes it over"
+      runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
+    }
+    labels         = { severity = "warning" }
+    no_data_state  = "OK"
+    exec_err_state = "Alerting"
+  }
+
+  rule {
     name      = "Active series usage >= 85% of free tier"
     condition = "C"
     for       = "10m"
