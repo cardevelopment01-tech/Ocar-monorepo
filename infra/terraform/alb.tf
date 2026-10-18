@@ -46,6 +46,8 @@ resource "aws_lb_target_group" "api" {
   # client's Socket.io library auto-reconnects onto the new color anyway
   # (see the design doc's section 3.3) -- this value bounds the blast
   # radius, it doesn't need to cover every ride.
+  # Sockets are no longer left to hit this cut-off all at once: deploy.yml drains the
+  # old color gradually (SIGUSR2, api/src/websocket/drain.ts) before scaling it down.
   deregistration_delay = 300
 
   health_check {

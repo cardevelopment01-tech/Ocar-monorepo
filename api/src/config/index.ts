@@ -123,6 +123,12 @@ const envSchema = z.object({
   TEST_DATABASE_URL: z.string().default(''),
 
   // Demo — set DEMO_MODE=true on staging/demo VPS to unlock demo-force endpoints
+  // Graceful socket drain (api/src/websocket/drain.ts): how long a server spends closing its WebSockets, one by one in
+  // random order, when it is being removed. Must stay well under the load balancer's deregistration delay (300 s) and
+  // match DRAIN_SECONDS in .github/workflows/deploy.yml, which waits this long before scaling the old color down.
+  SOCKET_DRAIN_SECONDS: z.coerce.number().int().min(1).max(280).default(90),
+  // Production only: watch the Auto Scaling lifecycle state and drain when this instance is being scaled in.
+  DRAIN_ON_TERMINATION: z.enum(['true', 'false']).default('true'),
   DEMO_MODE: z.enum(['true', 'false']).default('false'),
 
   // Staging / load-test / smoke environments run NODE_ENV=production but may deliberately have no SMS vendor
