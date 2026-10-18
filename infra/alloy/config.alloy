@@ -123,7 +123,29 @@ prometheus.scrape "api" {
   targets       = [{"__address__" = "api:4000", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
   metrics_path  = "/metrics"
   sample_limit  = 20000
-  forward_to    = [prometheus.remote_write.grafana_cloud.receiver, metrics_s3.api.receiver]
+  forward_to    = [prometheus.relabel.api.receiver, metrics_s3.api.receiver]
+}
+
+// Latency histogram cost in Grafana = 14 series per route x method x status combination, kept for
+// the life of the process; the API has ~230 routes, so it was the one series source that grows
+// with use (and tipped the 15,000 cap in the worst-case maths). Grafana gets buckets only for
+// 2xx responses and only the boundaries the dashboards and alerts need (0.1 .. 2.5 s and +Inf);
+// _count and _sum stay for every status code, so 5xx ratios and request rates are unchanged.
+// S3 gets the untouched scrape (metrics_s3.api above).
+prometheus.relabel "api" {
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  rule {
+    source_labels = ["__name__", "status_code"]
+    regex         = "http_request_duration_seconds_bucket;[^2].."
+    action        = "drop"
+  }
+
+  rule {
+    source_labels = ["__name__", "le"]
+    regex         = "http_request_duration_seconds_bucket;(0\\.005|0\\.01|0\\.025|0\\.05|5|5\\.0|10|10\\.0)"
+    action        = "drop"
+  }
 }
 
 prometheus.scrape "node" {
