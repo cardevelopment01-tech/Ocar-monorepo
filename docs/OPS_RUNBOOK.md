@@ -155,7 +155,8 @@ because they're exactly what you'll see again if they recur:
   ~80% of the ~4,300 a host shipped, and every instance repeats it against the same
   database, so 3 hosts is ~13,000 and a deploy's 6 hosts is far over 15,000. Since then
   `config.alloy` archives EVERY scrape (api, node, postgres, cadvisor, alloy) to S3, unfiltered,
-  in parallel with Grafana: `s3://<logs-archive-bucket>/metrics/year=/month=/day=/hour=/`
+  in parallel with Grafana, one folder per exporter:
+  `s3://<logs-archive-bucket>/metrics/<api|node|postgres|cadvisor|alloy>/year=/month=/day=/hour=/`
   (OTLP JSON, one document per object, gzip, 5 min batches, 90 day expiry,
   `s3-logs-archive.tf`), so a Grafana blackout loses nothing. Postgres metrics go to S3
   ONLY (no `pg_*` series in Grafana; the dashboard has no DB-internals row; slow queries
