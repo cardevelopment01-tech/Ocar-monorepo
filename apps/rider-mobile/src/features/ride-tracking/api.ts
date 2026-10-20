@@ -25,8 +25,8 @@ export async function fetchRide(rideId: string): Promise<RideDetailExtra> {
   return coerceRideCoords(camelizeKeys<RideDetailExtra>(res.data))
 }
 
-// GET /rides/me/active-user 404s when there's no active ride -- that's the expected
-// "nothing to recover" outcome here, not an error worth surfacing.
+// GET /rides/me/active-user answers 204 (older API builds: 404) when there's no active ride -- that's the
+// expected "nothing to recover" outcome here, not an error worth surfacing.
 // Cold start asks from the tab layout AND from the history hook at the same moment, so callers
 // arriving while a request is in flight share it. Nothing is cached once it settles: whether a
 // ride is active changes on the rider's own actions.
@@ -36,7 +36,7 @@ export function fetchActiveRideId(): Promise<string | null> {
   if (activeRideInFlight) return activeRideInFlight
   activeRideInFlight = api
     .get<{ rideId: string }>('/api/v1/rides/me/active-user')
-    .then((res) => res.data.rideId as string | null)
+    .then((res) => (res.status === 204 ? null : (res.data.rideId as string | null)))
     .catch(() => null)
     .finally(() => { activeRideInFlight = null })
   return activeRideInFlight

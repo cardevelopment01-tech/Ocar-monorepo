@@ -133,7 +133,9 @@ export default function OverviewPage() {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
 
         {/* Recent Rides: 3 cols */}
-        <div className="col-span-3 admin-card">
+        {/* min-w-0: a grid item will not shrink below its content by default, so the wide table pushed this card
+            over the Live Stats column at ~1280px. The table scrolls inside the card instead. */}
+        <div className="col-span-3 min-w-0 admin-card">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="text-md font-bold text-text-primary">Recent Rides</h2>
@@ -146,6 +148,7 @@ export default function OverviewPage() {
               View all →
             </a>
           </div>
+          <div className="overflow-x-auto">
           <table className="data-table">
             <thead>
               <tr>
@@ -191,6 +194,7 @@ export default function OverviewPage() {
               }
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* Right column: 2 cols */}
