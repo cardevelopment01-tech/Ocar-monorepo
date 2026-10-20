@@ -1,6 +1,6 @@
 # Location permission denied: the home pill offers a way out instead of "Finding..." forever.
 # Prerequisite: the device is already signed in (see README).
-appId: com.ocar.rider
+appId: com.ocarindia.rider
 ---
 - launchApp:
     stopApp: true

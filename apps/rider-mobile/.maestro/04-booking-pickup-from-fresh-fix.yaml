@@ -1,5 +1,5 @@
 # Booking pickup is filled from a fresh fix only, and never left on "Finding..." once a fix exists.
-appId: com.ocar.rider
+appId: com.ocarindia.rider
 ---
 - setLocation:
     latitude: 20.2961
