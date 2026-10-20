@@ -61,7 +61,7 @@ certificate validation. Run:
 Add that CNAME in Cloudflare (DNS only, **not proxied** -- same as prod's
 existing record). Once it propagates, the apply finishes and outputs
 `alb_dns_name`. Add a second Cloudflare CNAME:
-`staging.ocar-api.clienttesting.in` -> that ALB DNS name (DNS only, not
+`staging.api.ocarindia.com` -> that ALB DNS name (DNS only, not
 proxied -- proxying would break the ALB's own TLS termination).
 
 ## 3. Staging RDS instance (restored from a production snapshot)

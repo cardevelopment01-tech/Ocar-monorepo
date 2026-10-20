@@ -29,7 +29,7 @@
 
 resource "grafana_synthetic_monitoring_check" "health" {
   job       = "ocar-api-health"
-  target    = "https://ocar-api.clienttesting.in/health"
+  target    = "https://api.ocarindia.com/health"
   enabled   = true
   probes    = local.synthetic_probe_ids # Mumbai/Singapore -- closest to the Odisha user base
   frequency = 60000

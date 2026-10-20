@@ -214,7 +214,7 @@ jobs:
       ALB_NAME: ocar-${{ needs.changes.outputs.deploy_env }}-alb
       # Host header the smoke test presents to the ALB -- prod and staging
       # are on different domains (infra/terraform/staging.tfvars).
-      SMOKE_TEST_HOST: ${{ needs.changes.outputs.deploy_env == 'staging' && 'staging.ocar-api.clienttesting.in' || 'ocar-api.clienttesting.in' }}
+      SMOKE_TEST_HOST: ${{ needs.changes.outputs.deploy_env == 'staging' && 'staging.api.ocarindia.com' || 'api.ocarindia.com' }}
       BAKE_SECONDS: 600
       # Must stay a multiple of 60: HTTPCode_Target_5XX_Count is a
       # standard-resolution ALB metric, and CloudWatch's GetMetricStatistics

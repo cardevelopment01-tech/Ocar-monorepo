@@ -297,7 +297,7 @@ aren't cheaply reversible the way an app deploy is).
 
 ## Check health / logs / metrics
 
-- `GET https://ocar-api.clienttesting.in/health` — same check the ALB target
+- `GET https://api.ocarindia.com/health` — same check the ALB target
   group and deploy pipeline use.
 - Grafana Cloud (Loki/Mimir/Tempo, shipped by the Alloy agent on each
   instance) — logs, `pg_pool_connections`, `http_request_duration_seconds`,

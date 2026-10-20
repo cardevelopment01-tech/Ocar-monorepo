@@ -12,7 +12,7 @@ environment = "staging"
 # runbook) -- prod's domain_name default can't be reused here, ACM would be
 # requesting/validating a cert for the same hostname a second, unrelated
 # Terraform state doesn't own.
-domain_name = "staging.ocar-api.clienttesting.in"
+domain_name = "staging.api.ocarindia.com"
 
 # db_instance_class/valkey_node_type temporarily downgraded back to
 # variables.tf's defaults (2026-09-08) -- the real high-volume load test is
