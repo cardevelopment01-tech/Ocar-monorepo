@@ -249,7 +249,8 @@ export const rideApi = {
   getActiveRide: async (): Promise<{ rideId: string } | null> => {
     try {
       const res = await api.get('/api/v1/rides/me/active-user')
-      return res.data as { rideId: string }
+      // 204 = no active ride (older API builds answered 404, handled by the catch below).
+      return res.status === 204 ? null : (res.data as { rideId: string })
     } catch {
       return null
     }

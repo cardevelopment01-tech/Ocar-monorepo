@@ -96,7 +96,10 @@ router.get('/me/active-user', authenticate(), onlyUser, async (req, res, next) =
   try {
     const userId = req.user!.id
     const rideId = await repo.getActiveRideIdForUser(userId)
-    if (!rideId) { res.status(404).json({ error: 'No active ride' }); return }
+    // 204, not 404: "no active ride" is the normal state, and clients ask on every page load. A 404 shows up as a
+    // red console/network error and inflates the 4xx counts for something that is not an error. Every client reads
+    // this with a truthiness check, so a missing body behaves exactly like the old 404 did.
+    if (!rideId) { res.status(204).end(); return }
     res.json({ rideId })
   } catch (err) { next(err) }
 })
