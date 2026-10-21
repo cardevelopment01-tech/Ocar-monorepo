@@ -464,6 +464,13 @@ export async function updateDriverStatus(
          WHERE id = $2`,
         [toStatus, driverId, onboardingStep ?? null, adminId],
       );
+      // Approving the driver is the admin's sign-off on their vehicle too: go-online requires status = 'active'
+      // (DEF-24) and nothing else moves a new vehicle off 'pending'. Never touches blacklisted/inactive ones.
+      await client.query(
+        `UPDATE driver_vehicles SET status = 'active', updated_at = now()
+         WHERE driver_id = $1 AND is_primary = true AND status = 'pending'`,
+        [driverId],
+      );
     } else {
       await client.query(
         `UPDATE drivers
