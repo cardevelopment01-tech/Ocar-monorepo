@@ -2916,7 +2916,15 @@ export async function settleRideCompletionPayment(
 // debit dedupes on its ledger row.
 const STRANDED_SETTLE_COOLDOWN_SEC = 30 * 60
 
-export async function settleStrandedRideCompletions(): Promise<number> {
+// The sweep runs every 5 minutes and the anti-join below probes `payments` once per ride in the window, so the window IS the
+// cost: 3 days is ~81k probes on the 10M-ride test data (50-80 ms warm, 0.7 s mean and 9.7 s max cold in production), 6 hours is
+// ~0.25 ms. Every tick therefore looks at the last 6 hours only (a ride stranded by a crash is found within minutes); the full
+// 3-day window runs once an hour (the tick that falls in minutes 0-4 of the hour) to catch anything older.
+const STRANDED_RECENT_WINDOW = '6 hours'
+const STRANDED_FULL_WINDOW = '3 days'
+
+export async function settleStrandedRideCompletions(now: Date = new Date()): Promise<number> {
+  const window = now.getUTCMinutes() < 5 ? STRANDED_FULL_WINDOW : STRANDED_RECENT_WINDOW
   const res = await pool.query<{ id: string; driver_id: string }>(
     `SELECT r.id::text, r.driver_id::text
        FROM rides r
@@ -2924,7 +2932,7 @@ export async function settleStrandedRideCompletions(): Promise<number> {
         AND r.payment_channel IN ('online', 'wallet')
         AND r.driver_id IS NOT NULL
         AND r.completed_at < now() - interval '3 minutes'
-        AND r.completed_at > now() - interval '3 days'
+        AND r.completed_at > now() - interval '${window}'
         AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.ride_id = r.id)
       ORDER BY random()
       LIMIT 100`

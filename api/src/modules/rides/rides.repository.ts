@@ -1655,10 +1655,7 @@ export async function getPendingAssignmentsForDriver(
 
 // ── Driver earnings summary ───────────────────────────────────
 
-export async function getDriverEarningsSummary(
-  driverId: bigint,
-  period: 'today' | 'week' | 'month'
-): Promise<{
+export type DriverEarningsSummary = {
   total_earnings: number
   trip_count: number
   online_hours: string
@@ -1666,7 +1663,12 @@ export async function getDriverEarningsSummary(
   chart: number[]
   chart_labels: string[]
   breakdown: { base_fare: number; tips: number; incentives: number; platform_fee: number }
-}> {
+}
+
+export async function getDriverEarningsSummary(
+  driverId: bigint,
+  period: 'today' | 'week' | 'month'
+): Promise<DriverEarningsSummary> {
   const IST = `'Asia/Kolkata'`
   const rangeFrom = period === 'today'
     ? `DATE_TRUNC('day', NOW() AT TIME ZONE ${IST}) AT TIME ZONE ${IST}`
@@ -1680,18 +1682,13 @@ export async function getDriverEarningsSummary(
   const where = `r.driver_id = $1 AND r.status = 'completed'
                  AND r.completed_at >= ${rangeFrom} AND r.completed_at < ${rangeTo}`
 
-  const [summaryRes, hoursRes, chartRes, ratingRes] = await Promise.all([
-    pool.query<{ total_earnings: string; trip_count: string; total_fare: string }>(
-      `SELECT
-         COALESCE(SUM(p.driver_earning)::numeric, 0)::text                                AS total_earnings,
-         COUNT(r.id)::text                                                                  AS trip_count,
-         COALESCE(SUM(COALESCE(fs.total_final, fs.total_estimated)::numeric), 0)::text     AS total_fare
-       FROM rides r
-       LEFT JOIN payments p        ON p.ride_id = r.id
-       LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
-       WHERE ${where}`,
-      [driverId]
-    ),
+  // ONE pass over the driver's rides: per-bucket rows for the chart plus, from ROLLUP, a grand-total row (is_total = 1) for the
+  // headline numbers. This replaces a separate totals query that ran the same rides/payments/fare_snapshots join a second time.
+  const bucketExpr = period === 'today'
+    ? `EXTRACT(HOUR FROM r.completed_at AT TIME ZONE ${IST})::int`
+    : `(DATE_TRUNC('day', r.completed_at AT TIME ZONE ${IST}) AT TIME ZONE ${IST})::date::text`
+
+  const [hoursRes, pointsRes, ratingRes] = await Promise.all([
     pool.query<{ online_hours: string }>(
       `SELECT COALESCE(
          EXTRACT(EPOCH FROM SUM(COALESCE(went_offline_at, NOW()) - went_online_at)) / 3600,
@@ -1702,34 +1699,35 @@ export async function getDriverEarningsSummary(
          AND went_online_at >= ${rangeFrom} AND went_online_at < ${rangeTo}`,
       [driverId]
     ),
-    period === 'today'
-      ? pool.query<{ bucket: number; earnings: string }>(
-          `SELECT EXTRACT(HOUR FROM r.completed_at AT TIME ZONE ${IST})::int AS bucket,
-                  COALESCE(SUM(p.driver_earning)::numeric, 0)::text          AS earnings
-           FROM rides r
-           LEFT JOIN payments p ON p.ride_id = r.id
-           WHERE ${where}
-           GROUP BY bucket ORDER BY bucket`,
-          [driverId]
-        )
-      : pool.query<{ bucket: string; earnings: string }>(
-          `SELECT (DATE_TRUNC('day', r.completed_at AT TIME ZONE ${IST}) AT TIME ZONE ${IST})::date::text AS bucket,
-                  COALESCE(SUM(p.driver_earning)::numeric, 0)::text                                       AS earnings
-           FROM rides r
-           LEFT JOIN payments p ON p.ride_id = r.id
-           WHERE ${where}
-           GROUP BY bucket ORDER BY bucket`,
-          [driverId]
-        ),
+    pool.query<{ bucket: number | string | null; is_total: number; earnings: string; trips: string; fare: string }>(
+      `SELECT bucket, GROUPING(bucket)::int AS is_total,
+              COALESCE(SUM(earn), 0)::text AS earnings,
+              COUNT(*)::text               AS trips,
+              COALESCE(SUM(fare), 0)::text AS fare
+       FROM (
+         SELECT ${bucketExpr} AS bucket,
+                p.driver_earning::numeric AS earn,
+                COALESCE(fs.total_final, fs.total_estimated)::numeric AS fare
+         FROM rides r
+         LEFT JOIN payments p        ON p.ride_id = r.id
+         LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+         WHERE ${where}
+       ) t
+       GROUP BY ROLLUP (bucket)
+       ORDER BY is_total, bucket`,
+      [driverId]
+    ),
     pool.query<{ rating_avg: string | null }>(
       `SELECT rating_avg::text FROM drivers WHERE id = $1`,
       [driverId]
     ),
   ])
 
-  const totalEarnings = parseFloat(summaryRes.rows[0]?.total_earnings ?? '0')
-  const tripCount     = parseInt(summaryRes.rows[0]?.trip_count ?? '0', 10)
-  const totalFare     = parseFloat(summaryRes.rows[0]?.total_fare ?? '0')
+  const totalRow      = pointsRes.rows.find(r => r.is_total === 1)
+  const bucketRows    = pointsRes.rows.filter(r => r.is_total !== 1)
+  const totalEarnings = parseFloat(totalRow?.earnings ?? '0')
+  const tripCount     = parseInt(totalRow?.trips ?? '0', 10)
+  const totalFare     = parseFloat(totalRow?.fare ?? '0')
   const rawHours      = parseFloat(hoursRes.rows[0]?.online_hours ?? '0')
   const rating        = ratingRes.rows[0]?.rating_avg != null ? parseFloat(ratingRes.rows[0]!.rating_avg) : null
 
@@ -1743,7 +1741,7 @@ export async function getDriverEarningsSummary(
 
   if (period === 'today') {
     const map = new Map<number, number>()
-    for (const row of chartRes.rows as { bucket: number; earnings: string }[]) {
+    for (const row of bucketRows as { bucket: number; earnings: string }[]) {
       const slot = Math.floor(row.bucket / 3)
       map.set(slot, (map.get(slot) ?? 0) + parseFloat(row.earnings))
     }
@@ -1752,7 +1750,7 @@ export async function getDriverEarningsSummary(
   } else {
     const days = period === 'week' ? 7 : 30
     const map = new Map<string, number>()
-    for (const row of chartRes.rows as { bucket: string; earnings: string }[]) {
+    for (const row of bucketRows as { bucket: string; earnings: string }[]) {
       map.set(row.bucket, parseFloat(row.earnings))
     }
     chart = []

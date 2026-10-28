@@ -54,6 +54,17 @@ describe('settleStrandedRideCompletions', () => {
     expect(sql).not.toMatch(/ORDER BY r\.completed_at/)
   })
 
+  it('scans only the last 6 hours on a normal tick and the full 3 days once an hour (minutes 0-4)', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 0 } as never)
+    await settleStrandedRideCompletions(new Date('2026-10-28T10:20:00Z'))
+    await settleStrandedRideCompletions(new Date('2026-10-28T10:02:00Z'))
+    await settleStrandedRideCompletions(new Date('2026-10-28T10:05:00Z'))
+    const sqls = vi.mocked(pool.query).mock.calls.map(c => c[0] as string)
+    expect(sqls[0]).toContain("now() - interval '6 hours'")
+    expect(sqls[1]).toContain("now() - interval '3 days'")
+    expect(sqls[2]).toContain("now() - interval '6 hours'")
+  })
+
   it('puts a ride that fails on a 30-minute cooldown so it is not retried every tick', async () => {
     vi.mocked(pool.query).mockResolvedValueOnce({ rows: [{ id: '11', driver_id: '9' }], rowCount: 1 } as never)
     vi.mocked(repo.getRideCoreById).mockRejectedValueOnce(new Error('missing fare snapshot'))
