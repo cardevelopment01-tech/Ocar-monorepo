@@ -4,7 +4,6 @@ import { processCreateNextPartition } from '@/jobs/processors/partition-creator.
 import { processPurgeOldPartitions } from '@/jobs/processors/partition-purge.processor'
 import { processPurgeOldNotifications } from '@/jobs/processors/notification-purge.processor'
 import { processPurgeAuthTables } from '@/jobs/processors/auth-tables-purge.processor'
-import { processRefreshReportRollups } from '@/jobs/processors/report-rollups-refresh.processor'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
 const log = createWorkerLogger('partition-maintenance')
@@ -14,7 +13,6 @@ const log = createWorkerLogger('partition-maintenance')
 //  - 'create_next_partition'    — pre-creates next month's gps_tracks partition
 //  - 'purge_old_partitions'     — drops gps_tracks partitions past the retention window
 //  - 'purge_old_notifications'  — deletes notification_logs rows past their retention window
-//  - 'refresh_report_rollups'   — hourly refresh of the rpt_* views behind the Reports pages (migration 117)
 export const partitionMaintenanceWorker = new Worker(
   QUEUE_NAMES.PARTITION_MAINTENANCE,
   async (job) => {
@@ -33,9 +31,6 @@ export const partitionMaintenanceWorker = new Worker(
     if (job.name === 'purge_auth_tables') {
       await processPurgeAuthTables()
       return
-    }
-    if (job.name === 'refresh_report_rollups') {
-      await processRefreshReportRollups()
     }
   },
   { connection: redisConnection }

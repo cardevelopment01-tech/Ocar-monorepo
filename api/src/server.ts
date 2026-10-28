@@ -154,13 +154,11 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '30 4 * * *' }, removeOnComplete: true, removeOnFail: true }
   )
-  // Reports read past days from pre-aggregated views (migration 117); hourly refresh keeps them current and
-  // moves the cutoff, so a failed or late run only makes the reports read a few more days from the raw tables.
-  await partitionMaintenanceQueue.add(
-    'refresh_report_rollups',
-    {},
-    { repeat: { pattern: '5 * * * *' }, removeOnComplete: true, removeOnFail: true }
-  )
+  // The report rollups were removed (the hourly full refresh cost minutes of DB CPU and disk at 10M rides); drop the leftover
+  // hourly repeat from Redis, or it keeps enqueuing a job nobody handles. Safe to delete once every environment has booted this.
+  for (const j of await partitionMaintenanceQueue.getRepeatableJobs()) {
+    if (j.name === 'refresh_report_rollups') await partitionMaintenanceQueue.removeRepeatableByKey(j.key)
+  }
 
   void paymentReconcileWorker
   logger.info('payment reconciliation worker started')
