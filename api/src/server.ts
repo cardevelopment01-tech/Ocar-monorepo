@@ -154,8 +154,8 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '30 4 * * *' }, removeOnComplete: true, removeOnFail: true }
   )
-  // Migration 119 removed the report rollups (the hourly full refresh cost minutes of DB CPU and disk at 10M rides); drop the
-  // leftover hourly repeat from Redis, or it keeps enqueuing a job nobody handles. Safe to delete once every environment has run it.
+  // The report rollups were removed (the hourly full refresh cost minutes of DB CPU and disk at 10M rides); drop the leftover
+  // hourly repeat from Redis, or it keeps enqueuing a job nobody handles. Safe to delete once every environment has booted this.
   for (const j of await partitionMaintenanceQueue.getRepeatableJobs()) {
     if (j.name === 'refresh_report_rollups') await partitionMaintenanceQueue.removeRepeatableByKey(j.key)
   }
