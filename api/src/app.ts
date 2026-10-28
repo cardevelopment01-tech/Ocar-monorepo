@@ -3,7 +3,8 @@ import helmet from 'helmet'
 import cors from 'cors'
 import pinoHttp from 'pino-http'
 import { logger } from '@/lib/logger'
-import { register, httpRequestDuration } from '@/observability/metrics'
+import { register } from '@/observability/metrics'
+import { httpMetricsMiddleware } from '@/observability/http-metrics'
 import { config } from '@/config'
 import { testConnection } from '@/db/client'
 import { testConnection as testRedis } from '@/db/redis'
@@ -96,27 +97,8 @@ export function createApp(): Application {
     },
   }))
 
-  // Request-duration metric — route (not req.url) keeps Mimir series count
-  // bounded the same way Loki labels are (see MUST-DO #2's reasoning).
-  // req.route.path alone is only the innermost router's local fragment (this
-  // app nests routers under /api/v1/<module>/...), so '/:id' from rides and
-  // '/:id' from drivers would otherwise collapse into the same label —
-  // prepend req.baseUrl for the full mounted path.
-  app.use((req, res, next) => {
-    const start = process.hrtime.bigint()
-    res.on('finish', () => {
-      const durationSeconds = Number(process.hrtime.bigint() - start) / 1e9
-      httpRequestDuration.observe(
-        {
-          method: req.method,
-          route: req.route ? `${req.baseUrl}${req.route.path}` : 'unmatched',
-          status_code: String(res.statusCode),
-        },
-        durationSeconds
-      )
-    })
-    next()
-  })
+  // Request-duration metric, labelled with the full mounted route pattern (see observability/http-metrics.ts).
+  app.use(httpMetricsMiddleware)
 
   // 1c. Maintenance short-circuit — after logging/metrics (so blocked
   // requests still show up there) but before rate-limiting/auth and every

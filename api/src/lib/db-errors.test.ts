@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isDbUnavailable } from './db-errors'
+import { isDbUnavailable, isDbStatementTimeout } from './db-errors'
 
 describe('isDbUnavailable', () => {
   it('flags connection-class and failover errors', () => {
@@ -17,5 +17,17 @@ describe('isDbUnavailable', () => {
     expect(isDbUnavailable(new Error('jwt expired'))).toBe(false)
     expect(isDbUnavailable(null)).toBe(false)
     expect(isDbUnavailable('boom')).toBe(false)
+  })
+})
+
+describe('isDbStatementTimeout', () => {
+  it('flags a statement timeout', () => {
+    expect(isDbStatementTimeout(Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' }))).toBe(true)
+  })
+  it('does not flag a user cancel, other 57014-less errors, or junk', () => {
+    expect(isDbStatementTimeout(Object.assign(new Error('canceling statement due to user request'), { code: '57014' }))).toBe(false)
+    expect(isDbStatementTimeout(Object.assign(new Error('canceling statement due to statement timeout'), { code: '40001' }))).toBe(false)
+    expect(isDbStatementTimeout(new Error('statement timeout'))).toBe(false)
+    expect(isDbStatementTimeout(null)).toBe(false)
   })
 })

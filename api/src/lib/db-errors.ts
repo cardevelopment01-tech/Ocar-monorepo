@@ -25,3 +25,15 @@ export function isDbUnavailable(err: unknown): boolean {
 }
 
 export const DB_RETRY_AFTER_SEC = 2
+
+// "canceling statement due to statement timeout" (SQLSTATE 57014): the database is up, but a query ran past its time budget,
+// which in practice means it is overloaded (saturated disk, a runaway query). Retryable like an outage, yet kept apart from
+// isDbUnavailable so logs and callers can tell "restarting" from "too busy". A user-requested cancel is also 57014 and is
+// NOT a timeout, hence the message check.
+export function isDbStatementTimeout(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false
+  const e = err as { code?: unknown; message?: unknown }
+  return e.code === '57014' && typeof e.message === 'string' && e.message.includes('statement timeout')
+}
+
+export const DB_BUSY_RETRY_AFTER_SEC = 5
