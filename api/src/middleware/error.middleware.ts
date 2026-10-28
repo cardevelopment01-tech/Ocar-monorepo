@@ -3,7 +3,7 @@ import { ZodError } from 'zod'
 import multer from 'multer'
 import { config } from '@/config'
 import { AppErrors } from '@/constants/errors'
-import { isDbUnavailable, DB_RETRY_AFTER_SEC } from '@/lib/db-errors'
+import { isDbUnavailable, DB_RETRY_AFTER_SEC, isDbStatementTimeout, DB_BUSY_RETRY_AFTER_SEC } from '@/lib/db-errors'
 
 interface PgError extends Error {
   code?: string
@@ -52,6 +52,12 @@ export const errorMiddleware: ErrorRequestHandler = (err, req, res, _next) => {
     status = 503
     body = { error: AppErrors.SERVICE_UNAVAILABLE.message, code: AppErrors.SERVICE_UNAVAILABLE.code, requestId }
     res.set('Retry-After', String(DB_RETRY_AFTER_SEC))
+  } else if (isDbStatementTimeout(err)) {
+    // The database answered but the query blew its time budget (overloaded, not down). Same client-facing code as an outage
+    // so existing clients already retry it; a longer Retry-After than a failover gives the database room to drain.
+    status = 503
+    body = { error: AppErrors.SERVICE_UNAVAILABLE.message, code: AppErrors.SERVICE_UNAVAILABLE.code, requestId }
+    res.set('Retry-After', String(DB_BUSY_RETRY_AFTER_SEC))
   } else {
     status = 500
     body = {

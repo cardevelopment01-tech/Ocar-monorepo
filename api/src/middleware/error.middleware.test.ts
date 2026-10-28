@@ -24,4 +24,14 @@ describe('errorMiddleware', () => {
     expect(status).toBe(500)
     expect(body.error).toBe('Internal server error')
   })
+
+  it('answers 503 + Retry-After for a statement timeout instead of a 500', () => {
+    const res: any = { status: vi.fn(() => res), json: vi.fn(() => res), set: vi.fn(() => res) }
+    const err = Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' })
+    errorMiddleware(err, { requestId: 'r1' } as any, res, vi.fn() as any)
+    expect(res.status).toHaveBeenCalledWith(503)
+    expect(res.set).toHaveBeenCalledWith('Retry-After', '5')
+    expect(res.json.mock.calls[0][0]).toMatchObject({ code: 'SERVICE_UNAVAILABLE', requestId: 'r1' })
+    expect(JSON.stringify(res.json.mock.calls[0][0])).not.toContain('statement timeout')
+  })
 })
