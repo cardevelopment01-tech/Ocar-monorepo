@@ -16,7 +16,9 @@ on:
       environment:
         description: Environment to deploy
         type: choice
-        options: [staging]
+        # prd = the new production stack (infra/terraform/prd.tfvars). Manual-only for now: the automatic
+        # main -> prod trigger above is deliberately unchanged until prd has passed its tests and been cut over.
+        options: [staging, prd]
         required: true
 
 jobs:
@@ -78,6 +80,11 @@ jobs:
             DEPLOY_ENV="staging"
           else
             DEPLOY_ENV="prod"
+          fi
+          # prd is production: only main may ever be deployed to it (a manual dispatch can pick any branch).
+          if [ "$DEPLOY_ENV" = "prd" ] && [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "prd deploys must be dispatched from main (this run is on ${{ github.ref }})" >&2
+            exit 1
           fi
           echo "deploy_env=$DEPLOY_ENV" >> "$GITHUB_OUTPUT"
 
@@ -180,11 +187,12 @@ jobs:
     # Sets the OIDC sub claim's environment segment (see
     # infra/terraform/github-oidc.tf's local.gha_environment_name) -- "prod"
     # maps to the pre-existing "production" GitHub Environment name, staging
-    # passes through as-is.
+    # and prd pass through as-is (create a "prd" Environment with a required
+    # reviewer before the first prd deploy).
     # `needs` (unlike `env`) IS available in jobs.<job_id>.environment/
     # .concurrency, so this reads needs.changes.outputs.deploy_env directly
     # instead of re-deriving the trigger-type ternary here.
-    environment: ${{ needs.changes.outputs.deploy_env == 'staging' && 'staging' || 'production' }}
+    environment: ${{ needs.changes.outputs.deploy_env == 'staging' && 'staging' || needs.changes.outputs.deploy_env == 'prd' && 'prd' || 'production' }}
     concurrency:
       # Per-environment, not shared -- a staging deploy shouldn't queue
       # behind a prod bake window (or vice versa), they touch entirely
@@ -210,10 +218,12 @@ jobs:
       PROJECT: ocar
       ENVIRONMENT: ${{ needs.changes.outputs.deploy_env }}
       ACTIVE_COLOR_PARAM: /ocar/${{ needs.changes.outputs.deploy_env }}/active-color
-      ALB_DNS_NAME: ${{ needs.changes.outputs.deploy_env == 'staging' && vars.STAGING_ALB_DNS_NAME || vars.ALB_DNS_NAME }}
+      # A prd run with PRD_ALB_DNS_NAME unset would fall through to prod's ALB here -- the "Guard" step below fails
+      # the run before anything uses it.
+      ALB_DNS_NAME: ${{ needs.changes.outputs.deploy_env == 'staging' && vars.STAGING_ALB_DNS_NAME || needs.changes.outputs.deploy_env == 'prd' && vars.PRD_ALB_DNS_NAME || vars.ALB_DNS_NAME }}
       ALB_NAME: ocar-${{ needs.changes.outputs.deploy_env }}-alb
-      # Host header the smoke test presents to the ALB -- prod and staging
-      # are on different domains (infra/terraform/staging.tfvars).
+      # Host header the smoke test presents to the ALB -- staging is on its own domain
+      # (infra/terraform/staging.tfvars); prod and prd both serve api.ocarindia.com.
       SMOKE_TEST_HOST: ${{ needs.changes.outputs.deploy_env == 'staging' && 'staging.api.ocarindia.com' || 'api.ocarindia.com' }}
       BAKE_SECONDS: 600
       # Must stay a multiple of 60: HTTPCode_Target_5XX_Count is a
@@ -237,10 +247,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Guard -- prd needs its own repo variables
+        if: env.ENVIRONMENT == 'prd'
+        env:
+          PRD_ALB_DNS_NAME: ${{ vars.PRD_ALB_DNS_NAME }}
+          PRD_GHA_DEPLOY_ROLE_ARN: ${{ vars.PRD_GHA_DEPLOY_ROLE_ARN }}
+        run: |
+          # An unset variable would silently fall back to prod's value in the expressions above.
+          if [ -z "$PRD_ALB_DNS_NAME" ] || [ -z "$PRD_GHA_DEPLOY_ROLE_ARN" ]; then
+            echo "PRD_ALB_DNS_NAME and PRD_GHA_DEPLOY_ROLE_ARN must both be set (repo or prd Environment variables) before deploying prd" >&2
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ env.ENVIRONMENT == 'staging' && vars.STAGING_GHA_DEPLOY_ROLE_ARN || vars.GHA_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'staging' && vars.STAGING_GHA_DEPLOY_ROLE_ARN || env.ENVIRONMENT == 'prd' && vars.PRD_GHA_DEPLOY_ROLE_ARN || vars.GHA_DEPLOY_ROLE_ARN }}
           aws-region: ap-south-1
 
       - name: Read active color, compute idle color and resource names
@@ -260,9 +282,11 @@ jobs:
           # destroy/recreate of a live, traffic-serving resource; see
           # infra/terraform/asg.tf's matching comment). "green" is brand new
           # and always uses the clean "-<color>" convention. This asymmetry
-          # is permanent, not just a one-time migration artifact.
-          asg_name() { if [ "$1" = "blue" ]; then echo "${PROJECT}-${ENVIRONMENT}-asg"; else echo "${PROJECT}-${ENVIRONMENT}-asg-$1"; fi; }
-          tg_name()  { if [ "$1" = "blue" ]; then echo "${PROJECT}-${ENVIRONMENT}-api-tg"; else echo "${PROJECT}-${ENVIRONMENT}-api-tg-$1"; fi; }
+          # is permanent for prod/staging. "prd" was built after the fact with
+          # clean names for both colors (terraform local.legacy_names).
+          LEGACY=yes; [ "$ENVIRONMENT" = "prd" ] && LEGACY=no
+          asg_name() { if [ "$1" = "blue" ] && [ "$LEGACY" = yes ]; then echo "${PROJECT}-${ENVIRONMENT}-asg"; else echo "${PROJECT}-${ENVIRONMENT}-asg-$1"; fi; }
+          tg_name()  { if [ "$1" = "blue" ] && [ "$LEGACY" = yes ]; then echo "${PROJECT}-${ENVIRONMENT}-api-tg"; else echo "${PROJECT}-${ENVIRONMENT}-api-tg-$1"; fi; }
 
           echo "active=$ACTIVE" >> "$GITHUB_OUTPUT"
           echo "idle=$IDLE" >> "$GITHUB_OUTPUT"

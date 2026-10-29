@@ -24,7 +24,7 @@ resource "aws_launch_template" "api" {
   # name_prefix is also immutable (AWS generates the actual unique name
   # from it once, at creation), and "ocar-prod-" is what the live launch
   # template was already created under.
-  name_prefix   = each.key == "blue" ? "${var.project_name}-${var.environment}-" : "${var.project_name}-${var.environment}-${each.key}-"
+  name_prefix   = local.legacy_names && each.key == "blue" ? "${var.project_name}-${var.environment}-" : "${var.project_name}-${var.environment}-${each.key}-"
   image_id      = data.aws_ami.ubuntu.id
   instance_type = var.instance_type
 

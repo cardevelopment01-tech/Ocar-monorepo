@@ -18,6 +18,19 @@ data "aws_region" "current" {}
 locals {
   colors = toset(["blue", "green"])
 
+  # Immutable AWS names (ASG, target group, launch template prefix, scaling
+  # policy, security groups) keep their pre-blue/green form everywhere except
+  # the new "prd" environment, which uses the clean ocar-<env>-<thing>[-<color>]
+  # convention. Flipping this for prod/staging would force-replace live
+  # resources -- never widen it to them.
+  legacy_names = var.environment != "prd"
+
+  # Real production environments: the DB gets deletion protection + a final
+  # snapshot, and the logs bucket can't be force-destroyed. "prod" is the
+  # current live stack, "prd" its replacement -- both are protected. Never
+  # test `== "prd"` alone for this: it silently un-protects prod.
+  protected = contains(["prod", "prd"], var.environment)
+
   # deploy.yml's job-level `environment:` key (which sets the OIDC sub claim
   # github_actions_deploy's trust policy checks) uses GitHub's own
   # Environment name, not var.environment's value -- "prod" maps to the

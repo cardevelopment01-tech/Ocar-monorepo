@@ -3,7 +3,7 @@
 # never a CIDR, since the ALB's own IPs can change as AWS scales it).
 
 resource "aws_security_group" "alb" {
-  name        = "${var.project_name}-alb-sg"
+  name        = local.legacy_names ? "${var.project_name}-alb-sg" : "${var.project_name}-${var.environment}-alb-sg"
   description = "Allow inbound HTTP/HTTPS from the internet"
   vpc_id      = aws_vpc.main.id
 
@@ -36,12 +36,12 @@ resource "aws_security_group" "alb" {
   }
 
   tags = {
-    Name = "${var.project_name}-alb-sg"
+    Name = "${var.project_name}-${var.environment}-alb-sg"
   }
 }
 
 resource "aws_security_group" "ec2" {
-  name        = "${var.project_name}-ec2-sg"
+  name        = local.legacy_names ? "${var.project_name}-ec2-sg" : "${var.project_name}-${var.environment}-ec2-sg"
   description = "Allow inbound API traffic from the ALB only, plus optional SSH for debugging"
   vpc_id      = aws_vpc.main.id
 
@@ -74,6 +74,6 @@ resource "aws_security_group" "ec2" {
   }
 
   tags = {
-    Name = "${var.project_name}-ec2-sg"
+    Name = "${var.project_name}-${var.environment}-ec2-sg"
   }
 }

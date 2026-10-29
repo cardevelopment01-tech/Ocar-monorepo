@@ -13,7 +13,7 @@ resource "aws_s3_bucket" "logs_archive" {
 
   # Staging is torn down after every load test -- a non-empty bucket would
   # block `terraform destroy`. Prod never auto-empties.
-  force_destroy = var.environment != "prod"
+  force_destroy = !local.protected
 
   tags = {
     Name = "${var.project_name}-${var.environment}-logs-archive"

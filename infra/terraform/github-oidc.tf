@@ -153,15 +153,22 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
       },
       {
         # Runs the migration container on that instance via SSM instead of
-        # `docker run` on this runner. Needs both the built-in document ARN
-        # and the target instance ARN allowed -- instance/* because, same as
-        # above, the specific instance ID isn't known ahead of time.
-        Effect = "Allow"
-        Action = ["ssm:SendCommand"]
-        Resource = [
-          "arn:aws:ssm:${data.aws_region.current.region}::document/AWS-RunShellScript",
-          "arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:instance/*",
-        ]
+        # `docker run` on this runner. The built-in document ARN is allowed
+        # as-is...
+        Effect   = "Allow"
+        Action   = ["ssm:SendCommand"]
+        Resource = ["arn:aws:ssm:${data.aws_region.current.region}::document/AWS-RunShellScript"]
+      },
+      {
+        # ...and the target instance is instance/* because the specific ID isn't known ahead of time, but only
+        # instances tagged Environment=<this environment> (the ASG's propagate_at_launch tag) -- so this role can
+        # never run commands on another environment's fleet that shares the account (prod / prd).
+        Effect   = "Allow"
+        Action   = ["ssm:SendCommand"]
+        Resource = ["arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:instance/*"]
+        Condition = {
+          StringEquals = { "ssm:resourceTag/Environment" = var.environment }
+        }
       },
       {
         # Same non-scopability situation as DescribeInstanceRefreshes used to
@@ -228,9 +235,10 @@ resource "aws_iam_role_policy" "github_actions_plan_state" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = "${data.aws_s3_bucket.terraform_state.arn}/prod/*"
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        # prd has its own state key (prd/terraform.tfstate); prod and staging keep prod/*.
+        Resource = "${data.aws_s3_bucket.terraform_state.arn}/${var.environment == "prd" ? "prd" : "prod"}/*"
       },
       {
         Effect   = "Allow"

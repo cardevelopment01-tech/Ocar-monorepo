@@ -16,7 +16,7 @@ resource "aws_acm_certificate" "main" {
   }
 
   tags = {
-    Name = "${var.project_name}-cert"
+    Name = "${var.project_name}-${var.environment}-cert"
   }
 }
 

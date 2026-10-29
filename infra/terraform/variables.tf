@@ -12,7 +12,12 @@ variable "aws_region" {
 
 variable "environment" {
   type        = string
-  description = "Deployment environment (prod, staging) -- no default, must be passed explicitly"
+  description = "Deployment environment -- no default, must be passed explicitly. prod = the current live stack (becomes the new staging once prd is live; keep the value, renaming would replace immutable resources). prd = the new production. staging = the old staging, to be deleted."
+
+  validation {
+    condition     = contains(["prod", "prd", "staging"], var.environment)
+    error_message = "environment must be \"prod\", \"prd\" or \"staging\" -- a typo would silently skip local.protected's deletion protection."
+  }
 }
 
 variable "project_name" {
@@ -84,19 +89,19 @@ variable "db_engine_version" {
 variable "db_instance_class" {
   type        = string
   description = "RDS instance class -- t4g.small default gives ~225 max_connections, comfortable headroom over the ASG's current 100-connection peak (see docs on connection math)"
-  default     = "db.t4g.small"
+  default     = "db.t4g.medium"
 }
 
 variable "db_allocated_storage" {
   type        = number
   description = "Initial RDS storage in GB"
-  default     = 20
+  default     = 100
 }
 
 variable "db_max_allocated_storage" {
   type        = number
   description = "RDS storage autoscaling ceiling in GB"
-  default     = 100
+  default     = 500
 }
 
 variable "db_name" {
@@ -113,11 +118,29 @@ variable "db_master_username" {
 
 variable "active_color" {
   type        = string
-  description = "Which color's ASG starts at desired_capacity=2 and is the listener's initial default_action target -- only consulted on first apply / full recreate. Every deploy after that flips the live color via the deploy workflow's own active-color SSM parameter and a direct modify-listener call, never by re-applying Terraform with a different value here."
+  description = "Which color's ASG starts at desired_capacity=1 and is the listener's initial default_action target -- only consulted on first apply / full recreate. Every deploy after that flips the live color via the deploy workflow's own active-color SSM parameter and a direct modify-listener call, never by re-applying Terraform with a different value here."
   default     = "blue"
 
   validation {
     condition     = contains(["blue", "green"], var.active_color)
     error_message = "active_color must be \"blue\" or \"green\"."
   }
+}
+
+variable "asg_cpu_target_percent" {
+  type        = number
+  description = "Average CPU % the ASG target-tracking policy holds each color at -- 19 matches the live prod policy"
+  default     = 19
+}
+
+variable "db_multi_az" {
+  type        = bool
+  description = "Run a Multi-AZ standby for automatic failover -- false matches the live prod stack, prd sets true"
+  default     = false
+}
+
+variable "db_snapshot_identifier" {
+  type        = string
+  description = "Snapshot to restore the database from on first creation (prd only) -- null creates an empty database. Ignored after creation, so it never rebuilds a live instance."
+  default     = null
 }
