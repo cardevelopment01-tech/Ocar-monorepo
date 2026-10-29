@@ -147,6 +147,6 @@ variable "db_snapshot_identifier" {
 
 variable "db_availability_zone" {
   type        = string
-  description = "Pin the database to one zone -- null lets AWS pick (the live prod stack). prd pins ap-south-1a, the only zone with db.t4g.medium capacity on 2026-10-29"
+  description = "Pin the database to one zone -- null lets AWS pick (the live prod stack and prd). Pinning is fragile: the only zone with db.t4g.medium capacity changed from ap-south-1a to ap-south-1c within an hour on 2026-10-29"
   default     = null
 }
