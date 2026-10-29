@@ -86,7 +86,11 @@ function checkBackend() {
 // Everything in a prd plan must be about prd. A resource that already exists (non-null "before") and mentions an
 // ocar-prod-* name means this plan is touching prod. Creating things is fine, and snapshot_identifier legitimately
 // names a prod snapshot, so only "before" is scanned.
-function checkPlanFile(planFile, { allowDelete }) {
+// A plan that deletes something is refused unless EVERY deleted address is named in GUARD_ALLOW_DELETE
+// (comma-separated, exact Terraform addresses). Anything else in the plan that deletes still fails the check, and a
+// database, load balancer, bucket or key can never be allow-listed: removing a subnet is the only intended use.
+const NEVER_DELETE = /^(aws_db_instance|aws_lb\.|aws_elasticache_replication_group|aws_s3_bucket\.|aws_kms_key|aws_vpc)/
+function checkPlanFile(planFile) {
   const show = run(['show', '-json', planFile], { capture: true })
   if (show.status !== 0) fail(`terraform show failed for ${planFile}`)
   const plan = JSON.parse(show.stdout)
@@ -96,12 +100,14 @@ function checkPlanFile(planFile, { allowDelete }) {
 
   const changes = (plan.resource_changes ?? []).filter((c) => !c.change.actions.every((a) => a === 'no-op'))
   const destructive = changes.filter((c) => c.change.actions.includes('delete'))
-  if (destructive.length && !allowDelete) {
-    fail(`plan deletes/replaces: ${destructive.map((c) => c.address).join(', ')} (refused; review by hand)`)
+  const allowed = new Set((process.env.GUARD_ALLOW_DELETE || '').split(',').map((s) => s.trim()).filter(Boolean))
+  const refused = destructive.filter((c) => !allowed.has(c.address) || NEVER_DELETE.test(c.address))
+  if (refused.length) {
+    fail(`plan deletes/replaces: ${refused.map((c) => c.address).join(', ')} (refused; to allow an exact address set GUARD_ALLOW_DELETE, never for databases, load balancers, caches, buckets, keys or the VPC)`)
   }
   const touchesProd = changes.filter((c) => c.change.before && JSON.stringify(c.change.before).includes('ocar-prod'))
   if (touchesProd.length) fail(`plan modifies existing objects that mention ocar-prod: ${touchesProd.map((c) => c.address).join(', ')}`)
-  ok(`${changes.length} resource change(s); none delete anything, none touch ocar-prod-*`)
+  ok(`${changes.length} resource change(s); ${destructive.length ? 'deletes only the allow-listed ' + destructive.map((c) => c.address).join(', ') : 'none delete anything'}; none touch ocar-prod-*`)
 }
 
 async function confirm(phrase) {
@@ -133,6 +139,6 @@ if (envName !== 'prd') {
   fail('applying to prod is refused by this guard. prod is the live stack; changes to it need an explicit, separate decision.')
 }
 if (!existsSync(join(TF_DIR, 'prd.tfplan'))) fail('prd.tfplan not found -- run the plan step first')
-checkPlanFile('prd.tfplan', { allowDelete: false })
+checkPlanFile("prd.tfplan")
 await confirm('apply prd')
 process.exit(run(['apply', 'prd.tfplan']).status ?? 1)

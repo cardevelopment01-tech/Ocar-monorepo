@@ -28,6 +28,16 @@ resource "aws_launch_template" "api" {
   image_id      = data.aws_ami.ubuntu.id
   instance_type = var.instance_type
 
+  # 1-minute EC2 metrics instead of 5-minute ones: the CPU target-tracking policy (asg.tf) can only react as fast as
+  # CPU is reported. Costs about $2.10 per server per month. The block is only emitted when on: an explicit
+  # `enabled = false` still shows as a change on the live prod launch template, which would roll its instance.
+  dynamic "monitoring" {
+    for_each = var.detailed_monitoring ? [1] : []
+    content {
+      enabled = true
+    }
+  }
+
   vpc_security_group_ids = [aws_security_group.ec2.id]
 
   iam_instance_profile {

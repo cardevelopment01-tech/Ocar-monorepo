@@ -157,8 +157,10 @@ resource "aws_autoscaling_policy" "request_count_tracking" {
 # switch to aws_autoscaling_group.api[each.key].name. On a fresh environment the ASG must exist first: if the first
 # apply says the group is not found, apply again.
 #
-# A CPU rule is deliberately not added: EC2 CPU is reported every 5 minutes (detailed monitoring is off), which would
-# make it slower than the rule it would sit beside. Revisit after a realistic-mix load run (docs/OPS_RUNBOOK.md).
+# A separate CPU rule is deliberately not added: with detailed monitoring off, EC2 CPU is reported every 5 minutes,
+# which would make it slower than the rule it would sit beside. (prd turns detailed monitoring on, see
+# var.detailed_monitoring, so its CPU target-tracking policy sees 1-minute data.) Revisit after a realistic-mix load
+# run (docs/OPS_RUNBOOK.md).
 resource "aws_autoscaling_policy" "request_burst_step_out" {
   for_each = local.colors
 

@@ -31,10 +31,12 @@ domain_name = "api.ocarindia.com"
 # --- network --------------------------------------------------------------------------------------------------------
 # A different range from the current VPC (10.0.0.0/16) so the two can be peered for the data migration if needed.
 vpc_cidr            = "10.1.0.0/16"
-# Three AZs: RDS refused a Multi-AZ db.t4g.medium (gp3) restore with only 1a+1b ("1 more must be created in other
-# Availability Zones: ap-south-1c", 2026-10-29), so the DB subnet group needs a third zone.
-availability_zones  = ["ap-south-1a", "ap-south-1b", "ap-south-1c"]
-public_subnet_cidrs = ["10.1.0.0/24", "10.1.1.0/24", "10.1.2.0/24"]
+# Two AZs. A third (1c) was added on 2026-10-29 because RDS refused a Multi-AZ db.t4g.medium (gp3) restore with only
+# 1a+1b ("1 more must be created in other Availability Zones: ap-south-1c"); it was removed the same day, and Multi-AZ
+# was then switched on again with these two zones (primary 1b, standby 1a). If a future restore or rebuild hits the same
+# capacity error, adding "ap-south-1c" and "10.1.2.0/24" here (and applying) gives RDS a third zone to choose from.
+availability_zones  = ["ap-south-1a", "ap-south-1b"]
+public_subnet_cidrs = ["10.1.0.0/24", "10.1.1.0/24"]
 
 # --- compute --------------------------------------------------------------------------------------------------------
 # Live today: t3.medium, CPU target-tracking at 19%, min 1 / max 4. The load tests showed one server carries about
@@ -42,17 +44,18 @@ public_subnet_cidrs = ["10.1.0.0/24", "10.1.1.0/24", "10.1.2.0/24"]
 instance_type = "t3.medium"
 active_color  = "blue"
 # CPU target 19% (asg_cpu_target_percent default) and max_size 4 (hard-coded in asg.tf) match the live prod policy.
-# TODO(decide): enable detailed monitoring in the launch template (~$2.10/server/month) so the CPU rule reacts in
-# minutes instead of 5-15.
+# 1-minute EC2 metrics (~$2.10/server/month) so the CPU target-tracking policy reacts in a few minutes instead of 5-15.
+detailed_monitoring = true
 
 # --- database -------------------------------------------------------------------------------------------------------
 # Live today: db.t4g.medium, PG 18.4, gp3 100 GB (3,000 IOPS), Single-AZ, 14-day backups, Performance Insights on.
 # TODO(decide after the doubling-ramp result): class / IOPS headroom.
-# Built single-AZ on 2026-10-29 because AWS had no db.t4g.medium capacity for a Multi-AZ restore ("insufficient-capacity").
-# Pinning a zone does not work either: the one zone with capacity changed within the hour (1a, then 1c), so the zone is
-# left to AWS (db_availability_zone unset). Once the instance existed and capacity returned, it was converted in place
-# with `aws rds modify-db-instance --multi-az --apply-immediately` (same day), hence true here. A fresh restore at
-# cutover (option A) can hit the same capacity error -- db.t3.medium / db.t4g.large had capacity in several zones.
+# Multi-AZ on (2026-10-29): primary 1b, standby 1a. It was built single-AZ because AWS had no db.t4g.medium capacity for a
+# Multi-AZ restore ("insufficient-capacity"), then converted online with
+# `aws rds modify-db-instance --multi-az --apply-immediately` once the instance existed (a fresh snapshot was taken first).
+# That path worked three times in a day; a fresh Multi-AZ restore is the one that failed. Pinning a zone does not work: the
+# zone with capacity changed within the hour (1a, then 1c), so db_availability_zone is unset. A standby is a second db
+# instance and RDS picks its zone itself. db.t3.medium / db.t4g.large had capacity in several zones if a rebuild is needed.
 db_multi_az              = true
 db_engine_version        = "18.4"
 db_instance_class        = "db.t4g.medium"
@@ -66,3 +69,8 @@ db_snapshot_identifier   = "ocar-prod-db-keep-pre-seed-20261016"
 # --- cache ----------------------------------------------------------------------------------------------------------
 # Live today: one cache.t4g.micro Valkey node, no replica. TODO(decide): replica or a larger node for real production.
 valkey_node_type = "cache.t4g.micro"
+
+# --- test hostname --------------------------------------------------------------------------------------------------
+# Lets prd be tested on its own name while api.ocarindia.com still serves the live stack (acm-test.tf). Remove after
+# cutover. Add two Cloudflare records, DNS only: the certificate's validation CNAME and a CNAME to the prd ALB.
+test_domain_name = "staging.ocarindia.com"

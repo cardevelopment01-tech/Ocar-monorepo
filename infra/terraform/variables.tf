@@ -150,3 +150,15 @@ variable "db_availability_zone" {
   description = "Pin the database to one zone -- null lets AWS pick (the live prod stack and prd). Pinning is fragile: the only zone with db.t4g.medium capacity changed from ap-south-1a to ap-south-1c within an hour on 2026-10-29"
   default     = null
 }
+
+variable "detailed_monitoring" {
+  type        = bool
+  description = "Detailed (1-minute) EC2 monitoring on the API instances, so CPU-based scaling sees data every minute instead of every 5. Costs about $2.10 per server per month. false matches the live prod stack; prd sets true"
+  default     = false
+}
+
+variable "test_domain_name" {
+  type        = string
+  description = "Extra hostname served by the same ALB with its own certificate, for testing a stack before it takes the main hostname (acm-test.tf) -- null disables it. Needs a Cloudflare validation CNAME and a CNAME to the ALB"
+  default     = null
+}
