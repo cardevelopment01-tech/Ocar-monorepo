@@ -12,28 +12,28 @@
 locals {
   runtime_rules = {
     "API p95 latency (all routes)" = {
-      expr      = "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{route!~\"/health|/metrics\"}[5m])) by (le))"
+      expr      = "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{__ENV__, route!~\"/health|/metrics\"}[5m])) by (le))"
       threshold = 0.5
       for       = "5m"
       severity  = "warning"
       summary   = "API p95 latency of successful requests above the 500 ms target for 5m"
     }
     "API p95 latency (critical)" = {
-      expr      = "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{route!~\"/health|/metrics\"}[5m])) by (le))"
+      expr      = "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{__ENV__, route!~\"/health|/metrics\"}[5m])) by (le))"
       threshold = 2
       for       = "5m"
       severity  = "critical"
       summary   = "API p95 latency of successful requests above 2s for 5m: users are waiting"
     }
     "API 5xx rate (all routes)" = {
-      expr      = "sum(rate(http_request_duration_seconds_count{status_code=~\"5..\"}[5m])) / sum(rate(http_request_duration_seconds_count[5m]))"
+      expr      = "sum(rate(http_request_duration_seconds_count{__ENV__, status_code=~\"5..\"}[5m])) / sum(rate(http_request_duration_seconds_count{__ENV__}[5m]))"
       threshold = 0.02
       for       = "5m"
       severity  = "warning"
       summary   = "More than 2% of API requests failed with a server error for 5m"
     }
     "API server down" = {
-      expr      = "min(up{instance=\"api:4000\"})"
+      expr      = "min(up{__ENV__, instance=\"api:4000\"})"
       threshold = 1
       invert    = true
       for       = "3m"
@@ -41,56 +41,56 @@ locals {
       summary   = "At least one API server stopped answering its metrics scrape for 3m"
     }
     "Node.js event loop lag" = {
-      expr      = "max(nodejs_eventloop_lag_p99_seconds)"
+      expr      = "max(nodejs_eventloop_lag_p99_seconds{__ENV__})"
       threshold = 0.25
       for       = "5m"
       severity  = "warning"
       summary   = "Node.js event loop p99 lag above 250 ms for 5m: a server is saturated and every request on it is slowing"
     }
     "Host CPU high" = {
-      expr      = "100 - (avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+      expr      = "100 - (avg by (host) (rate(node_cpu_seconds_total{__ENV__, mode=\"idle\"}[5m])) * 100)"
       threshold = 85
       for       = "10m"
       severity  = "warning"
       summary   = "A server's CPU has been above 85% for 10m. If the fleet is already at its maximum size this is a capacity problem"
     }
     "Host memory high" = {
-      expr      = "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)"
+      expr      = "100 * (1 - node_memory_MemAvailable_bytes{__ENV__} / node_memory_MemTotal_bytes{__ENV__})"
       threshold = 90
       for       = "5m"
       severity  = "warning"
       summary   = "A server has used more than 90% of its memory for 5m"
     }
     "Container OOM kill" = {
-      expr      = "sum(increase(container_oom_events_total[10m]))"
+      expr      = "sum(increase(container_oom_events_total{__ENV__}[10m]))"
       threshold = 0
       for       = "1m"
       severity  = "critical"
       summary   = "A container was killed for running out of memory in the last 10m (its sockets were dropped)"
     }
     "Scale-out not keeping up" = {
-      expr      = "avg(sum by (host) (rate(http_request_duration_seconds_count[5m]))) * 60"
+      expr      = "avg(sum by (host) (rate(http_request_duration_seconds_count{__ENV__}[5m]))) * 60"
       threshold = 1500
       for       = "10m"
       severity  = "warning"
       summary   = "Requests per server per minute stayed above 1,500 for 10m (autoscale target is 1,000): scale-out is lagging or the fleet is at its maximum size"
     }
     "Database connections high" = {
-      expr      = "sum(pg_pool_connections{state=\"total\"}) + (sum(pg_worker_pool_connections{state=\"total\"}) or vector(0)) + sum(pg_analytics_pool_connections{state=\"total\"})"
+      expr      = "sum(pg_pool_connections{__ENV__, state=\"total\"}) + (sum(pg_worker_pool_connections{__ENV__, state=\"total\"}) or vector(0)) + sum(pg_analytics_pool_connections{__ENV__, state=\"total\"})"
       threshold = 100
       for       = "5m"
       severity  = "warning"
       summary   = "The API holds more than 100 database connections across all servers (about 178 usable, 128 the most the pool caps allow with 8 servers): pools are close to saturating"
     }
     "Background job pool waiting" = {
-      expr      = "max(pg_worker_pool_connections{state=\"waiting\"})"
+      expr      = "max(pg_worker_pool_connections{__ENV__, state=\"waiting\"})"
       threshold = 3
       for       = "10m"
       severity  = "warning"
       summary   = "Background jobs have waited for a database connection for 10m: the worker pool cap is too low for the load"
     }
     "Queue backlog" = {
-      expr      = "max(bullmq_queue_job_counts{queue=~\"dispatch|payments|notifications|push\", state=\"waiting\"})"
+      expr      = "max(bullmq_queue_job_counts{__ENV__, queue=~\"dispatch|payments|notifications|push\", state=\"waiting\"})"
       threshold = 200
       for       = "5m"
       severity  = "warning"
@@ -121,7 +121,7 @@ resource "grafana_rule_group" "runtime_health" {
         model = jsonencode({
           refId   = "A"
           instant = true
-          expr    = rule.value.expr
+          expr    = replace(rule.value.expr, "__ENV__", local.alert_env.prod)
         })
       }
 

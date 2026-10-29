@@ -81,7 +81,7 @@
         "name": "env",
         "label": "Environment",
         "type": "custom",
-        "query": "prod : prod,staging : staging",
+        "query": "prod : prod,staging : staging,prd : prd",
         "current": {
           "text": "prod",
           "value": "prod"
@@ -95,6 +95,10 @@
           {
             "text": "staging",
             "value": "staging"
+          },
+          {
+            "text": "prd",
+            "value": "prd"
           }
         ]
       },
