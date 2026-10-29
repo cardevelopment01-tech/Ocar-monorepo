@@ -31,8 +31,10 @@ domain_name = "api.ocarindia.com"
 # --- network --------------------------------------------------------------------------------------------------------
 # A different range from the current VPC (10.0.0.0/16) so the two can be peered for the data migration if needed.
 vpc_cidr            = "10.1.0.0/16"
-availability_zones  = ["ap-south-1a", "ap-south-1b"]
-public_subnet_cidrs = ["10.1.0.0/24", "10.1.1.0/24"]
+# Three AZs: RDS refused a Multi-AZ db.t4g.medium (gp3) restore with only 1a+1b ("1 more must be created in other
+# Availability Zones: ap-south-1c", 2026-10-29), so the DB subnet group needs a third zone.
+availability_zones  = ["ap-south-1a", "ap-south-1b", "ap-south-1c"]
+public_subnet_cidrs = ["10.1.0.0/24", "10.1.1.0/24", "10.1.2.0/24"]
 
 # --- compute --------------------------------------------------------------------------------------------------------
 # Live today: t3.medium, CPU target-tracking at 19%, min 1 / max 4. The load tests showed one server carries about
@@ -45,8 +47,12 @@ active_color  = "blue"
 
 # --- database -------------------------------------------------------------------------------------------------------
 # Live today: db.t4g.medium, PG 18.4, gp3 100 GB (3,000 IOPS), Single-AZ, 14-day backups, Performance Insights on.
-# TODO(decide after the doubling-ramp result): class / IOPS headroom. Multi-AZ is on for prd (decided 2026-10-29);
-# the current prod stack stays Single-AZ via the variable's false default.
+# TODO(decide after the doubling-ramp result): class / IOPS headroom.
+# Built single-AZ on 2026-10-29 because AWS had no db.t4g.medium capacity for a Multi-AZ restore ("insufficient-capacity").
+# Pinning a zone does not work either: the one zone with capacity changed within the hour (1a, then 1c), so the zone is
+# left to AWS (db_availability_zone unset). Once the instance existed and capacity returned, it was converted in place
+# with `aws rds modify-db-instance --multi-az --apply-immediately` (same day), hence true here. A fresh restore at
+# cutover (option A) can hit the same capacity error -- db.t3.medium / db.t4g.large had capacity in several zones.
 db_multi_az              = true
 db_engine_version        = "18.4"
 db_instance_class        = "db.t4g.medium"

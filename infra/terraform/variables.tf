@@ -144,3 +144,9 @@ variable "db_snapshot_identifier" {
   description = "Snapshot to restore the database from on first creation (prd only) -- null creates an empty database. Ignored after creation, so it never rebuilds a live instance."
   default     = null
 }
+
+variable "db_availability_zone" {
+  type        = string
+  description = "Pin the database to one zone -- null lets AWS pick (the live prod stack). prd pins ap-south-1a, the only zone with db.t4g.medium capacity on 2026-10-29"
+  default     = null
+}

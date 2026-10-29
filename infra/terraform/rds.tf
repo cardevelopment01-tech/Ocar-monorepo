@@ -77,9 +77,9 @@ resource "aws_db_instance" "main" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
-  # Defaults to false (the current prod stack is Single-AZ; Multi-AZ was deferred 2026-10-27). prd sets it true in
-  # prd.tfvars for automatic failover.
-  multi_az = var.db_multi_az
+  # Both default to the current prod stack's shape (Single-AZ, AWS picks the zone). prd.tfvars overrides them.
+  multi_az          = var.db_multi_az
+  availability_zone = var.db_availability_zone
 
   # postgresql.conf setting needed on the SOURCE for logical replication to
   # work at all -- must be set before CREATE PUBLICATION is attempted.
