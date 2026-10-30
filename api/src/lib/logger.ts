@@ -30,6 +30,18 @@ export function buildLoggerOptions(level: string = 'info'): pino.LoggerOptions {
         'driverPhone',
         'recipientPhone',
         'riderPhone',
+        // Identity-document and contact fields: no code path logs them today, but a future log.error({ driver }) would
+        // otherwise ship a whole row (Aadhaar, licence, address ...) to Grafana and the S3 archive.
+        'aadhaar_number',
+        'license_number',
+        'email',
+        'date_of_birth',
+        'residential_address',
+        '*.aadhaar_number',
+        '*.license_number',
+        '*.email',
+        '*.date_of_birth',
+        '*.residential_address',
         '*.otp',
         '*.phone',
         '*.password',

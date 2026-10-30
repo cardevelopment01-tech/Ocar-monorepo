@@ -64,6 +64,12 @@ export async function triggerSos(input: TriggerSosInput) {
 
   await repo.markRideSosTriggered(input.rideId)
 
+  // Evidence trail for a safety report: who, which ride, when. Coordinates stay in the sos_alerts row, not in the log.
+  log.info(
+    { event: 'sos.triggered', sos_id: String(alert.id), ride_id: String(input.rideId), severity: alert.severity, by_role: principal.role, by_id: String(principal.id), has_location: input.lat != null && input.lng != null },
+    'sos.triggered'
+  )
+
   const triggeredUserId = input.triggeredByUserId ?? (ride.user_id != null ? BigInt(ride.user_id) : null)
   let userPhone = ''
   if (triggeredUserId != null) {
@@ -120,6 +126,7 @@ export async function listSosAlerts(opts: {
 export async function acknowledgeSosAlert(id: bigint, adminId: bigint) {
   const alert = await repo.updateSosStatus(id, 'acknowledged', adminId)
   if (!alert) throw httpError(404, 'SOS alert not found', 'SOS_ALERT_NOT_FOUND')
+  log.info({ event: 'sos.acknowledged', sos_id: String(id), admin_id: String(adminId) }, 'sos.acknowledged')
   return alert
 }
 
@@ -131,5 +138,6 @@ export async function resolveSosAlert(
 ) {
   const alert = await repo.updateSosStatus(id, status, adminId, note)
   if (!alert) throw httpError(404, 'SOS alert not found', 'SOS_ALERT_NOT_FOUND')
+  log.info({ event: 'sos.resolved', sos_id: String(id), admin_id: String(adminId), status }, 'sos.resolved')
   return alert
 }
