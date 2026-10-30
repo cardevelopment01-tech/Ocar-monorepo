@@ -40,13 +40,14 @@ state loaded, that would plan to replace prod's resources.
 
 ## Deploying the API
 
-- **prod:** automatic. A push to `main` runs CI, then `.github/workflows/deploy.yml` (blue/green, see
-  `docs/BLUE_GREEN_ARCHITECTURE.md` and the "Deploy new API code" section of `docs/OPS_RUNBOOK.md`).
-- **prd:** manual. GitHub Actions, workflow **Deploy**, Run workflow, environment `prd`, branch `main` only (the
-  workflow fails on any other branch). It needs the `prd` GitHub Environment (main-only, required reviewer) and the
-  repo variables `PRD_ALB_DNS_NAME` and `PRD_GHA_DEPLOY_ROLE_ARN` (Terraform outputs `alb_dns_name` and `github_actions_deploy_role_arn` of the prd apply).
-- After cutover, `main` deploys prd and the old stack deploys from a staging trigger. That switch is one edit in the
-  `changes` job of `deploy.yml`; it is listed in the cutover checklist.
+- **prd (production):** automatic. A push to `main` runs CI, then `.github/workflows/deploy.yml` (blue/green, see
+  `docs/BLUE_GREEN_ARCHITECTURE.md` and the "Deploy new API code" section of `docs/OPS_RUNBOOK.md`). The deploy job
+  waits for the `prd` GitHub Environment's required reviewer. A manual run (Actions, **Deploy**, Run workflow,
+  environment `prd`) redeploys a commit and works from `main` only (the workflow fails on any other branch). It needs the
+  repo variables `PRD_ALB_DNS_NAME` and `PRD_GHA_DEPLOY_ROLE_ARN` (Terraform outputs `alb_dns_name` and
+  `github_actions_deploy_role_arn` of the prd apply).
+- **old prod stack (`ocar-prod-*`):** no longer deployed to, by push or by dispatch. It is to be destroyed and rebuilt as
+  staging; `develop` then deploys to it through the existing `staging` branch of the `changes` job.
 
 ## Configuration and secrets
 

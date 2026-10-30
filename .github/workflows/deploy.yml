@@ -4,8 +4,10 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    # main -> prod, develop -> staging (see the `changes` job's `deploy_env`
-    # output below, resolved from `github.event.workflow_run.head_branch`).
+    # main -> prd (production), develop -> staging (see the `changes` job's `deploy_env`
+    # output below, resolved from `github.event.workflow_run.head_branch`). The old
+    # ocar-prod-* stack is no longer an automatic or manual target: it is being retired
+    # and rebuilt as staging, which develop will then deploy to.
     branches: [main, develop]
   # Manual deploy on top of the two automatic branch triggers above -- e.g.
   # redeploying the same commit, or a staging hotfix without a new develop
@@ -16,8 +18,8 @@ on:
       environment:
         description: Environment to deploy
         type: choice
-        # prd = the new production stack (infra/terraform/prd.tfvars). Manual-only for now: the automatic
-        # main -> prod trigger above is deliberately unchanged until prd has passed its tests and been cut over.
+        # prd = production (infra/terraform/prd.tfvars). main deploys to it automatically (behind the prd
+        # Environment's required reviewer); dispatch is for redeploying the same commit.
         options: [staging, prd]
         required: true
 
@@ -55,7 +57,7 @@ jobs:
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
       # Single source of truth for which environment this run targets --
-      # "prod"/"staging", matching Terraform's var.environment values (every
+      # "prd"/"staging", matching Terraform's var.environment values (every
       # AWS resource name and SSM parameter path downstream is built from
       # this). Computed once here and read via needs.changes.outputs.deploy_env
       # everywhere else in this file, rather than each job/step re-deriving
@@ -79,7 +81,7 @@ jobs:
           elif [ "${{ github.event.workflow_run.head_branch }}" = "develop" ]; then
             DEPLOY_ENV="staging"
           else
-            DEPLOY_ENV="prod"
+            DEPLOY_ENV="prd"
           fi
           # prd is production: only main may ever be deployed to it (a manual dispatch can pick any branch).
           if [ "$DEPLOY_ENV" = "prd" ] && [ "${{ github.ref }}" != "refs/heads/main" ]; then
