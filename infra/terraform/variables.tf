@@ -133,6 +133,12 @@ variable "asg_cpu_target_percent" {
   default     = 19
 }
 
+variable "asg_request_burst_enabled" {
+  type        = bool
+  description = "Add the request-burst step policy and alarm (asg.tf) on top of the CPU target. true matches prd; stg turns it off so only CPU scales it"
+  default     = true
+}
+
 variable "db_multi_az" {
   type        = bool
   description = "Run a Multi-AZ standby for automatic failover -- false matches the live prod stack, prd sets true"

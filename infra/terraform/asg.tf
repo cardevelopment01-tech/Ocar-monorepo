@@ -162,7 +162,7 @@ resource "aws_autoscaling_policy" "request_count_tracking" {
 # var.detailed_monitoring, so its CPU target-tracking policy sees 1-minute data.) Revisit after a realistic-mix load
 # run (docs/OPS_RUNBOOK.md).
 resource "aws_autoscaling_policy" "request_burst_step_out" {
-  for_each = local.colors
+  for_each = var.asg_request_burst_enabled ? local.colors : toset([])
 
   name                      = "${var.project_name}-${var.environment}-request-burst-${each.key}"
   autoscaling_group_name    = local.asg_names[each.key]
@@ -184,7 +184,7 @@ resource "aws_autoscaling_policy" "request_burst_step_out" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "request_burst" {
-  for_each = local.colors
+  for_each = var.asg_request_burst_enabled ? local.colors : toset([])
 
   alarm_name          = "${var.project_name}-${var.environment}-request-burst-${each.key}"
   alarm_description   = "Requests per server above 1,500 in one minute: add capacity now instead of waiting for target tracking (see asg.tf)"
