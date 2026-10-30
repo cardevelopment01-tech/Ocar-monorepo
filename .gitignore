@@ -43,6 +43,8 @@ load-tests/k6/tokens.json
 # (that's the provider version lock, meant to be version-controlled).
 infra/terraform/**/.terraform/
 infra/terraform/.terraform-prd/
+infra/terraform/.terraform-stg/
+infra/terraform/.terraform-proddestroy/
 infra/terraform/observability/.terraform-obs/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.backup

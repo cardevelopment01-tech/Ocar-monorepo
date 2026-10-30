@@ -1,5 +1,8 @@
 name: Terraform Plan
 
+# Plans the prd environment (production) for every PR that touches infra/. The old prod stack was destroyed on
+# 2026-10-30, so this no longer assumes its plan role or reads its state. It is read-only: nothing is applied here.
+
 on:
   pull_request:
     branches: [main]
@@ -29,14 +32,14 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.TF_PLAN_ROLE_ARN }}
+          role-to-assume: ${{ vars.PRD_GHA_PLAN_ROLE_ARN }}
           aws-region: ap-south-1
 
       - name: Terraform fmt
         run: terraform fmt -check -recursive
 
       - name: Terraform init
-        run: terraform init -backend-config=prod.backend.hcl
+        run: terraform init -backend-config=prd.backend.hcl
 
       - name: Terraform validate
         run: terraform validate
@@ -45,7 +48,7 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform plan -var="environment=prod" -no-color -input=false > plan_output.txt
+          terraform plan -var-file=prd.tfvars -no-color -input=false > plan_output.txt
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
           set -e
 

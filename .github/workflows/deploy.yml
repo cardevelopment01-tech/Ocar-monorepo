@@ -4,10 +4,10 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    # main -> prd (production), develop -> staging (see the `changes` job's `deploy_env`
+    # main -> prd (production), develop -> stg (see the `changes` job's `deploy_env`
     # output below, resolved from `github.event.workflow_run.head_branch`). The old
     # ocar-prod-* stack is no longer an automatic or manual target: it is being retired
-    # and rebuilt as staging, which develop will then deploy to.
+    # and replaced by stg (see docs/STG_ENVIRONMENT.md), which develop deploys to.
     branches: [main, develop]
   # Manual deploy on top of the two automatic branch triggers above -- e.g.
   # redeploying the same commit, or a staging hotfix without a new develop
@@ -20,7 +20,7 @@ on:
         type: choice
         # prd = production (infra/terraform/prd.tfvars). main deploys to it automatically (behind the prd
         # Environment's required reviewer); dispatch is for redeploying the same commit.
-        options: [staging, prd]
+        options: [stg, prd]
         required: true
 
 jobs:
@@ -57,7 +57,7 @@ jobs:
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
       # Single source of truth for which environment this run targets --
-      # "prd"/"staging", matching Terraform's var.environment values (every
+      # "prd"/"stg", matching Terraform's var.environment values (every
       # AWS resource name and SSM parameter path downstream is built from
       # this). Computed once here and read via needs.changes.outputs.deploy_env
       # everywhere else in this file, rather than each job/step re-deriving
@@ -79,7 +79,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             DEPLOY_ENV="${{ inputs.environment }}"
           elif [ "${{ github.event.workflow_run.head_branch }}" = "develop" ]; then
-            DEPLOY_ENV="staging"
+            DEPLOY_ENV="stg"
           else
             DEPLOY_ENV="prd"
           fi
@@ -102,7 +102,7 @@ jobs:
           # -- main's deploy history and develop's are unrelated, diffing a
           # staging (develop) push against main's last-deployed SHA would
           # compare against the wrong baseline entirely.
-          TARGET_BRANCH=$([ "$DEPLOY_ENV" = "staging" ] && echo "develop" || echo "main")
+          TARGET_BRANCH=$([ "$DEPLOY_ENV" = "stg" ] && echo "develop" || echo "main")
           PREV_SHA=$(gh run list --workflow=deploy.yml --status=success --branch="$TARGET_BRANCH" --limit=1 --json headSha --jq '.[0].headSha' 2>/dev/null || echo "")
           if [ -z "$PREV_SHA" ] || ! git cat-file -e "$PREV_SHA" 2>/dev/null; then
             BASE="HEAD^"
@@ -194,7 +194,7 @@ jobs:
     # `needs` (unlike `env`) IS available in jobs.<job_id>.environment/
     # .concurrency, so this reads needs.changes.outputs.deploy_env directly
     # instead of re-deriving the trigger-type ternary here.
-    environment: ${{ needs.changes.outputs.deploy_env == 'staging' && 'staging' || needs.changes.outputs.deploy_env == 'prd' && 'prd' || 'production' }}
+    environment: ${{ needs.changes.outputs.deploy_env == 'stg' && 'stg' || needs.changes.outputs.deploy_env == 'prd' && 'prd' || 'production' }}
     concurrency:
       # Per-environment, not shared -- a staging deploy shouldn't queue
       # behind a prod bake window (or vice versa), they touch entirely
@@ -222,11 +222,11 @@ jobs:
       ACTIVE_COLOR_PARAM: /ocar/${{ needs.changes.outputs.deploy_env }}/active-color
       # A prd run with PRD_ALB_DNS_NAME unset would fall through to prod's ALB here -- the "Guard" step below fails
       # the run before anything uses it.
-      ALB_DNS_NAME: ${{ needs.changes.outputs.deploy_env == 'staging' && vars.STAGING_ALB_DNS_NAME || needs.changes.outputs.deploy_env == 'prd' && vars.PRD_ALB_DNS_NAME || vars.ALB_DNS_NAME }}
+      ALB_DNS_NAME: ${{ needs.changes.outputs.deploy_env == 'stg' && vars.STG_ALB_DNS_NAME || needs.changes.outputs.deploy_env == 'prd' && vars.PRD_ALB_DNS_NAME || vars.ALB_DNS_NAME }}
       ALB_NAME: ocar-${{ needs.changes.outputs.deploy_env }}-alb
       # Host header the smoke test presents to the ALB -- staging is on its own domain
-      # (infra/terraform/staging.tfvars); prod and prd both serve api.ocarindia.com.
-      SMOKE_TEST_HOST: ${{ needs.changes.outputs.deploy_env == 'staging' && 'staging.api.ocarindia.com' || 'api.ocarindia.com' }}
+      # (infra/terraform/stg.tfvars); prod and prd both serve api.ocarindia.com.
+      SMOKE_TEST_HOST: ${{ needs.changes.outputs.deploy_env == 'stg' && 'stg.api.ocarindia.com' || 'api.ocarindia.com' }}
       BAKE_SECONDS: 600
       # Must stay a multiple of 60: HTTPCode_Target_5XX_Count is a
       # standard-resolution ALB metric, and CloudWatch's GetMetricStatistics
@@ -249,22 +249,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Guard -- prd needs its own repo variables
-        if: env.ENVIRONMENT == 'prd'
+      - name: Guard -- prd and stg need their own repo variables
+        if: env.ENVIRONMENT == 'prd' || env.ENVIRONMENT == 'stg'
         env:
-          PRD_ALB_DNS_NAME: ${{ vars.PRD_ALB_DNS_NAME }}
-          PRD_GHA_DEPLOY_ROLE_ARN: ${{ vars.PRD_GHA_DEPLOY_ROLE_ARN }}
+          ALB_VAR: ${{ env.ENVIRONMENT == 'stg' && vars.STG_ALB_DNS_NAME || vars.PRD_ALB_DNS_NAME }}
+          ROLE_VAR: ${{ env.ENVIRONMENT == 'stg' && vars.STG_GHA_DEPLOY_ROLE_ARN || vars.PRD_GHA_DEPLOY_ROLE_ARN }}
         run: |
           # An unset variable would silently fall back to prod's value in the expressions above.
-          if [ -z "$PRD_ALB_DNS_NAME" ] || [ -z "$PRD_GHA_DEPLOY_ROLE_ARN" ]; then
-            echo "PRD_ALB_DNS_NAME and PRD_GHA_DEPLOY_ROLE_ARN must both be set (repo or prd Environment variables) before deploying prd" >&2
+          if [ -z "$ALB_VAR" ] || [ -z "$ROLE_VAR" ]; then
+            echo "${ENVIRONMENT^^}_ALB_DNS_NAME and ${ENVIRONMENT^^}_GHA_DEPLOY_ROLE_ARN must both be set (repo or ${ENVIRONMENT} Environment variables) before deploying ${ENVIRONMENT}" >&2
             exit 1
           fi
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ env.ENVIRONMENT == 'staging' && vars.STAGING_GHA_DEPLOY_ROLE_ARN || env.ENVIRONMENT == 'prd' && vars.PRD_GHA_DEPLOY_ROLE_ARN || vars.GHA_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.ENVIRONMENT == 'stg' && vars.STG_GHA_DEPLOY_ROLE_ARN || env.ENVIRONMENT == 'prd' && vars.PRD_GHA_DEPLOY_ROLE_ARN || vars.GHA_DEPLOY_ROLE_ARN }}
           aws-region: ap-south-1
 
       - name: Read active color, compute idle color and resource names
@@ -284,9 +284,9 @@ jobs:
           # destroy/recreate of a live, traffic-serving resource; see
           # infra/terraform/asg.tf's matching comment). "green" is brand new
           # and always uses the clean "-<color>" convention. This asymmetry
-          # is permanent for prod/staging. "prd" was built after the fact with
+          # is permanent for prod/staging. "prd" and "stg" were built after the fact with
           # clean names for both colors (terraform local.legacy_names).
-          LEGACY=yes; [ "$ENVIRONMENT" = "prd" ] && LEGACY=no
+          LEGACY=yes; { [ "$ENVIRONMENT" = "prd" ] || [ "$ENVIRONMENT" = "stg" ]; } && LEGACY=no
           asg_name() { if [ "$1" = "blue" ] && [ "$LEGACY" = yes ]; then echo "${PROJECT}-${ENVIRONMENT}-asg"; else echo "${PROJECT}-${ENVIRONMENT}-asg-$1"; fi; }
           tg_name()  { if [ "$1" = "blue" ] && [ "$LEGACY" = yes ]; then echo "${PROJECT}-${ENVIRONMENT}-api-tg"; else echo "${PROJECT}-${ENVIRONMENT}-api-tg-$1"; fi; }
 
