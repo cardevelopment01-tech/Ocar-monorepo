@@ -13,13 +13,13 @@ resource "grafana_folder" "alerts" {
   title = "Ocar Alerts"
 }
 
-resource "grafana_rule_group" "static_thresholds" {
-  name             = "ocar-static-thresholds"
+resource "grafana_rule_group" "static_thresholds_stg" {
+  name             = "ocar-static-thresholds-stg"
   folder_uid       = grafana_folder.alerts.uid
   interval_seconds = 60
 
   rule {
-    name      = "Error rate - rides & payments (warning)"
+    name      = "Error rate - rides & payments (warning) [stg]"
     condition = "C"
     for       = "5m"
 
@@ -33,7 +33,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace(local.rides_payments_error_rate_expr, "__ENV__", local.alert_env.prod)
+        expr    = replace(local.rides_payments_error_rate_expr, "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -56,13 +56,13 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "5xx ratio on rides/payments routes exceeded 5% over 5m"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
     }
-    labels         = { severity = "warning" }
+    labels         = { severity = "warning", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
 
   rule {
-    name      = "Error rate - rides & payments (critical)"
+    name      = "Error rate - rides & payments (critical) [stg]"
     condition = "C"
     for       = "2m"
 
@@ -76,7 +76,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace(local.rides_payments_error_rate_expr, "__ENV__", local.alert_env.prod)
+        expr    = replace(local.rides_payments_error_rate_expr, "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -99,13 +99,13 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "5xx ratio on rides/payments routes exceeded 15% over 2m"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
     }
-    labels         = { severity = "critical" }
+    labels         = { severity = "critical", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
 
   rule {
-    name      = "pg.Pool exhaustion"
+    name      = "pg.Pool exhaustion [stg]"
     condition = "C"
     for       = "5m"
 
@@ -119,7 +119,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace("pg_pool_connections{__ENV__, state=\"waiting\"}", "__ENV__", local.alert_env.prod)
+        expr    = replace("pg_pool_connections{__ENV__, state=\"waiting\"}", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -142,7 +142,7 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "pg.Pool has >= 3 connections waiting for 5m -- requests are queuing behind the pool"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
     }
-    labels         = { severity = "warning" }
+    labels         = { severity = "warning", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
@@ -154,7 +154,7 @@ resource "grafana_rule_group" "static_thresholds" {
   # `or vector(0)` matters: with no matching line at all the query returns nothing, and
   # no_data_state = "OK" would otherwise hide a digest that has never worked.
   rule {
-    name      = "Admin daily digest not sent"
+    name      = "Admin daily digest not sent [stg]"
     condition = "C"
     for       = "30m"
 
@@ -172,7 +172,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId     = "A"
         queryType = "instant"
-        expr      = replace("sum(count_over_time({container=\"ocar_api\", __ENV__} |= \"admin digest sent\" [26h])) or vector(0)", "__ENV__", local.alert_env.prod)
+        expr      = replace("sum(count_over_time({container=\"ocar_api\", __ENV__} |= \"admin digest sent\" [26h])) or vector(0)", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -195,13 +195,13 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "No admin daily digest was sent in the last 26h -- see OPS_RUNBOOK.md 'Admin daily digest did not arrive'"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
     }
-    labels         = { severity = "warning" }
+    labels         = { severity = "warning", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
 
   rule {
-    name      = "GPS-flush write latency p95"
+    name      = "GPS-flush write latency p95 [stg]"
     condition = "C"
     for       = "5m"
 
@@ -215,7 +215,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace("histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{__ENV__, route=\"/api/v1/geo/tracks/flush\"}[5m])) by (le))", "__ENV__", local.alert_env.prod)
+        expr    = replace("histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{__ENV__, route=\"/api/v1/geo/tracks/flush\"}[5m])) by (le))", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -238,13 +238,13 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "GPS breadcrumb flush p95 latency exceeded 1s for 5m"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
     }
-    labels         = { severity = "warning" }
+    labels         = { severity = "warning", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
 
   rule {
-    name      = "Host disk usage"
+    name      = "Host disk usage [stg]"
     condition = "C"
     for       = "10m"
 
@@ -258,7 +258,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace("100 - ((node_filesystem_avail_bytes{__ENV__, mountpoint=\"/\"} * 100) / node_filesystem_size_bytes{__ENV__, mountpoint=\"/\"})", "__ENV__", local.alert_env.prod)
+        expr    = replace("100 - ((node_filesystem_avail_bytes{__ENV__, mountpoint=\"/\"} * 100) / node_filesystem_size_bytes{__ENV__, mountpoint=\"/\"})", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -281,7 +281,7 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "Host disk usage exceeded 85% for 10m"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
     }
-    labels         = { severity = "warning" }
+    labels         = { severity = "warning", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
@@ -293,7 +293,7 @@ resource "grafana_rule_group" "static_thresholds" {
   # OPS_RUNBOOK.md's troubleshooting section (not the general alerting design
   # doc) since that's where the actual response steps for these live.
   rule {
-    name      = "Host swap in use"
+    name      = "Host swap in use [stg]"
     condition = "C"
     for       = "10m"
 
@@ -307,7 +307,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace("node_memory_SwapTotal_bytes{__ENV__} - node_memory_SwapFree_bytes{__ENV__}", "__ENV__", local.alert_env.prod)
+        expr    = replace("node_memory_SwapTotal_bytes{__ENV__} - node_memory_SwapFree_bytes{__ENV__}", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -332,13 +332,13 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "Host has used >50MB of swap for 10m -- memory pressure"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
     }
-    labels         = { severity = "warning" }
+    labels         = { severity = "warning", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
 
   rule {
-    name      = "Disk I/O saturation"
+    name      = "Disk I/O saturation [stg]"
     condition = "C"
     for       = "10m"
 
@@ -352,7 +352,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace("rate(node_disk_io_time_seconds_total{__ENV__}[5m])", "__ENV__", local.alert_env.prod)
+        expr    = replace("rate(node_disk_io_time_seconds_total{__ENV__}[5m])", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -377,13 +377,13 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "A disk device was >=90% busy servicing I/O for 10m"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
     }
-    labels         = { severity = "warning" }
+    labels         = { severity = "warning", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
 
   rule {
-    name      = "Network errors or drops"
+    name      = "Network errors or drops [stg]"
     condition = "C"
     for       = "5m"
 
@@ -397,7 +397,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace("rate(node_network_receive_errs_total{__ENV__}[5m]) + rate(node_network_transmit_errs_total{__ENV__}[5m]) + rate(node_network_receive_drop_total{__ENV__}[5m]) + rate(node_network_transmit_drop_total{__ENV__}[5m])", "__ENV__", local.alert_env.prod)
+        expr    = replace("rate(node_network_receive_errs_total{__ENV__}[5m]) + rate(node_network_transmit_errs_total{__ENV__}[5m]) + rate(node_network_receive_drop_total{__ENV__}[5m]) + rate(node_network_transmit_drop_total{__ENV__}[5m])", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -420,13 +420,13 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "Real network interface errors or drops sustained for 5m (ephemeral Docker interfaces are already excluded at the source)"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
     }
-    labels         = { severity = "warning" }
+    labels         = { severity = "warning", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
 
   rule {
-    name      = "Host inode usage"
+    name      = "Host inode usage [stg]"
     condition = "C"
     for       = "10m"
 
@@ -440,7 +440,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace("100 - ((node_filesystem_files_free{__ENV__, mountpoint=\"/\"} * 100) / node_filesystem_files{__ENV__, mountpoint=\"/\"})", "__ENV__", local.alert_env.prod)
+        expr    = replace("100 - ((node_filesystem_files_free{__ENV__, mountpoint=\"/\"} * 100) / node_filesystem_files{__ENV__, mountpoint=\"/\"})", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -466,13 +466,13 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "Host inode usage exceeded 85% for 10m -- disk can still show free space while writes fail"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
     }
-    labels         = { severity = "warning" }
+    labels         = { severity = "warning", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
 
   rule {
-    name      = "Filesystem remounted read-only"
+    name      = "Filesystem remounted read-only [stg]"
     condition = "C"
     for       = "1m"
 
@@ -486,7 +486,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace("node_filesystem_readonly{__ENV__, mountpoint=\"/\"} and (time() - node_boot_time_seconds{__ENV__}) > 300", "__ENV__", local.alert_env.prod)
+        expr    = replace("node_filesystem_readonly{__ENV__, mountpoint=\"/\"} and (time() - node_boot_time_seconds{__ENV__}) > 300", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -509,13 +509,13 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "Root filesystem was remounted read-only -- almost always follows an unrecovered disk error, not a config change"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
     }
-    labels         = { severity = "critical" }
+    labels         = { severity = "critical", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
 
   rule {
-    name      = "File descriptor exhaustion"
+    name      = "File descriptor exhaustion [stg]"
     condition = "C"
     for       = "5m"
 
@@ -529,7 +529,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace("max(process_open_fds{__ENV__} / process_max_fds{__ENV__})", "__ENV__", local.alert_env.prod)
+        expr    = replace("max(process_open_fds{__ENV__} / process_max_fds{__ENV__})", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -552,7 +552,7 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "API process file descriptor usage exceeded 80% of its limit for 5m -- classic Node.js failure mode under connection/file-handle leaks"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
     }
-    labels         = { severity = "warning" }
+    labels         = { severity = "warning", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
@@ -564,7 +564,7 @@ resource "grafana_rule_group" "static_thresholds" {
   # queryable at all -- 1m/>0 because a real auth break means every single
   # query fails immediately and repeatedly, not an occasional blip.
   rule {
-    name      = "Postgres auth errors (28P01/28000)"
+    name      = "Postgres auth errors (28P01/28000) [stg]"
     condition = "C"
     for       = "1m"
 
@@ -578,7 +578,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace("sum(increase(pg_query_errors_total{__ENV__, code=~\"28P01|28000\"}[1m]))", "__ENV__", local.alert_env.prod)
+        expr    = replace("sum(increase(pg_query_errors_total{__ENV__, code=~\"28P01|28000\"}[1m]))", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -601,7 +601,7 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "Postgres rejected a query with an auth error (28P01 invalid_password or 28000 invalid_authorization_specification) -- check DB_AUTH_MODE and the credential source before assuming it's transient"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md"
     }
-    labels         = { severity = "critical" }
+    labels         = { severity = "critical", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }
@@ -612,7 +612,7 @@ resource "grafana_rule_group" "static_thresholds" {
   # (disk usage) for a background job class where an isolated retry isn't
   # actionable but a sustained pile-up is.
   rule {
-    name      = "BullMQ scheduler job failures"
+    name      = "BullMQ scheduler job failures [stg]"
     condition = "C"
     for       = "10m"
 
@@ -626,7 +626,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = replace("bullmq_queue_job_counts{__ENV__, queue=\"scheduler\", state=\"failed\"}", "__ENV__", local.alert_env.prod)
+        expr    = replace("bullmq_queue_job_counts{__ENV__, queue=\"scheduler\", state=\"failed\"}", "__ENV__", local.alert_env.stg)
       })
     }
 
@@ -649,7 +649,7 @@ resource "grafana_rule_group" "static_thresholds" {
       summary     = "The BullMQ scheduler queue has more than 2 failed jobs sustained for 10m"
       runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/superpowers/plans/2026-08-09-grafana-alerting-billing-synthetic-runbook.md"
     }
-    labels         = { severity = "warning" }
+    labels         = { severity = "warning", env = "stg" }
     no_data_state  = "OK"
     exec_err_state = "Alerting"
   }

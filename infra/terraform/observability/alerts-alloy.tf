@@ -50,15 +50,15 @@ locals {
   }
 }
 
-resource "grafana_rule_group" "alloy_pipeline" {
-  name             = "ocar-alloy-pipeline"
+resource "grafana_rule_group" "alloy_pipeline_stg" {
+  name             = "ocar-alloy-pipeline-stg"
   folder_uid       = grafana_folder.alerts.uid
   interval_seconds = 60
 
   dynamic "rule" {
     for_each = local.alloy_rules
     content {
-      name      = rule.key
+      name      = "${rule.key} [stg]"
       condition = "C"
       for       = rule.value.for
 
@@ -72,7 +72,7 @@ resource "grafana_rule_group" "alloy_pipeline" {
         model = jsonencode({
           refId   = "A"
           instant = true
-          expr    = replace(rule.value.expr, "__ENV__", local.alert_env.prod)
+          expr    = replace(rule.value.expr, "__ENV__", local.alert_env.stg)
         })
       }
 
@@ -95,7 +95,7 @@ resource "grafana_rule_group" "alloy_pipeline" {
         summary     = rule.value.summary
         runbook_url = "https://github.com/cardevelopment01-tech/Ocar-monorepo/blob/main/docs/OPS_RUNBOOK.md"
       }
-      labels         = { severity = rule.value.severity }
+      labels         = { severity = rule.value.severity, env = "stg" }
       no_data_state  = "OK"
       exec_err_state = "Alerting"
     }
