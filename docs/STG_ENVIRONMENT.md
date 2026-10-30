@@ -102,9 +102,9 @@ Connection limit: a `db.t4g.small` has 2 GiB, so its `max_connections` is far be
 `DATABASE_POOL_MAX` + `WORKER_POOL_MAX` + `ANALYTICS_POOL_MAX` connections (set in `api-env`; prod ran 50 for the main pool), so
 keep those small, or run one server, on stg.
 
-## Pause and resume (saves about half the cost; the nightly schedule does it for you)
+## Pause and resume (manual only, saves about half the cost)
 
-Stg only costs money while it runs, so it sleeps nights and weekends.
+Nothing pauses stg on a timer, so a night-time test is never interrupted. Pause it yourself when you are done.
 
 | Command | What it does |
 |---|---|
@@ -117,24 +117,15 @@ Add `--dry-run` (`node infra/scripts/stg-power.mjs pause --dry-run`) to see the 
 
 **What a pause saves, and what keeps billing.** Saved: the server and the database compute. Still billed: database storage, the cache
 node, the load balancer and its public IPs (they cannot be paused), about half of the running cost. AWS restarts a stopped database
-by itself after 7 days, so a pause longer than a week needs another `pause`; for weeks of idleness use `pnpm infra:stg:destroy`.
+by itself after 7 days, so a pause longer than a week needs another `pause`; for weeks of idleness use `pnpm infra:stg:destroy`
+(and `pnpm infra:stg:apply` to build it again).
 
-**Nightly schedule** (`.github/workflows/stg-power.yml`, runs from `main`):
-
-| When (IST) | Action |
-|---|---|
-| Mon to Fri 08:00 | resume |
-| Mon to Fri 21:00 | pause (Friday's pause lasts until Monday 08:00) |
-
-- **Run it by hand:** Actions, **Stg Power (pause / resume)**, Run workflow, pick `status`, `pause` or `resume`.
-- **Switch the schedule off:** set the repo variable `STG_AUTO_POWER` to `off` (e.g. before a long load test). Remove it or set `on` to turn it back on.
-- **Needs** the repo variable `STG_GHA_POWER_ROLE_ARN` (Terraform output `github_actions_power_role_arn` of the stg apply). The role can only
-  resize the two stg ASGs, stop/start `ocar-stg-db`, and read the active colour and target health.
-- **The schedule waits for deploys:** it shares the lock `deploy-api-stg` with the stg deploy job, so a pause never lands mid-deploy.
+- **From GitHub instead of a terminal:** Actions, **Stg Power (pause / resume)**, Run workflow, pick `status`, `pause` or `resume`.
+  It needs the repo variable `STG_GHA_POWER_ROLE_ARN` (Terraform output `github_actions_power_role_arn`); the role can only resize
+  the two stg ASGs, stop/start `ocar-stg-db`, and read the active colour and target health.
 - **A deploy while stg is paused fails** at the migration step (no server to run it on). Resume first, then re-run the deploy.
-- **Alerts:** while stg sleeps, "Alloy heartbeat lost" and the admin-digest alert would fire, so Grafana mutes notifications for `env="stg"`
-  from 21:00 to 08:00 IST and all weekend (mute timing `stg-paused`, `infra/terraform/observability/notifications.tf`). Change the
-  workflow's cron and that mute timing together. If you resume outside those hours, stg alerts stay muted until the next window.
+- **Alerts:** a paused stg trips "Alloy heartbeat lost" and the admin-digest alert (`env="stg"`). Expect them, or silence them in
+  Grafana for the time you are paused.
 
 ## Take it down
 
