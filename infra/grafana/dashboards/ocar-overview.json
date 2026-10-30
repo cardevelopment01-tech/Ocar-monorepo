@@ -13,6 +13,14 @@
       "description": "The Grafana Cloud Loki datasource",
       "type": "datasource",
       "pluginId": "loki"
+    },
+    {
+      "name": "DS_CLOUDWATCH",
+      "label": "CloudWatch",
+      "description": "CloudWatch datasource (uid ocar-cloudwatch, created by infra/terraform/observability/cloudwatch-datasource.tf)",
+      "type": "datasource",
+      "pluginId": "cloudwatch",
+      "pluginName": "CloudWatch"
     }
   ],
   "__requires": [
@@ -65,7 +73,7 @@
   "editable": true,
   "timezone": "",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "30s",
   "time": {
     "from": "now-6h",
@@ -81,24 +89,20 @@
         "name": "env",
         "label": "Environment",
         "type": "custom",
-        "query": "prod : prod,staging : staging,prd : prd",
+        "query": "prd : prd,stg : stg",
         "current": {
-          "text": "prod",
-          "value": "prod"
+          "text": "prd",
+          "value": "prd"
         },
         "options": [
           {
-            "text": "prod",
-            "value": "prod",
+            "text": "prd",
+            "value": "prd",
             "selected": true
           },
           {
-            "text": "staging",
-            "value": "staging"
-          },
-          {
-            "text": "prd",
-            "value": "prd"
+            "text": "stg",
+            "value": "stg"
           }
         ]
       },
@@ -135,16 +139,15 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(node_load1{instance=\"node_exporter:9100\"}, host)",
+        "definition": "label_values(node_load1{instance=\"node_exporter:9100\", env=~\"$env\"}, host)",
         "query": {
-          "query": "label_values(node_load1{instance=\"node_exporter:9100\"}, host)",
+          "query": "label_values(node_load1{instance=\"node_exporter:9100\", env=~\"$env\"}, host)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
         "sort": 1,
         "multi": true,
         "includeAll": true,
-        "allValue": ".*",
         "current": {
           "selected": true,
           "text": [
@@ -634,9 +637,15 @@
       },
       "options": {
         "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
           "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
         },
         "tooltip": {
           "mode": "multi",
@@ -713,9 +722,15 @@
       },
       "options": {
         "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
           "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
         },
         "tooltip": {
           "mode": "multi",
@@ -726,8 +741,8 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "Request duration — p50 / p95 / p99",
-      "description": "Latency percentiles of successful (2xx) requests across the selected servers (buckets are kept for successful requests only; error responses are counted in the rate and error panels). Under 100 ms all land in the first bucket, so fast requests are measured coarsely.",
+      "title": "Request duration — p50 / p95 / p99 / max",
+      "description": "Latency percentiles of successful (2xx) requests across the selected servers (buckets are kept for successful requests only; error responses are counted in the rate and error panels). Under 100 ms all land in the first bucket, so fast requests are measured coarsely. max = upper bound of the slowest populated bucket, not an exact value.",
       "gridPos": {
         "x": 0,
         "y": 14,
@@ -765,6 +780,15 @@
           "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])) by (le))",
           "legendFormat": "p99",
           "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(1, sum(rate(http_request_duration_seconds_bucket{host=~\"$host\"}[5m])) by (le))",
+          "legendFormat": "max",
+          "refId": "D"
         }
       ],
       "fieldConfig": {
@@ -809,9 +833,15 @@
       },
       "options": {
         "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
           "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
         },
         "tooltip": {
           "mode": "multi",
@@ -995,9 +1025,15 @@
       "description": "count(up{instance=\"api:4000\"}): servers reporting up. Steps up when the autoscaler adds capacity and during a deployment (old and new colour overlap); deployment markers are drawn from the workflow annotations.",
       "options": {
         "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
           "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
         },
         "tooltip": {
           "mode": "multi",
@@ -1073,12 +1109,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -1169,12 +1206,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -1252,12 +1290,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -1324,12 +1363,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -1407,12 +1447,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -1484,12 +1525,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -1548,9 +1590,15 @@
       },
       "options": {
         "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
           "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
         },
         "tooltip": {
           "mode": "multi",
@@ -1649,12 +1697,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -1751,12 +1800,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -1848,12 +1898,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -1931,12 +1982,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -2014,12 +2066,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -2030,13 +2083,661 @@
       }
     },
     {
+      "id": 300,
+      "type": "row",
+      "title": "Disk I/O",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 301,
+      "type": "timeseries",
+      "title": "Server disk throughput (read / write)",
+      "gridPos": {
+        "x": 0,
+        "y": 85,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (host) (rate(node_disk_read_bytes_total{instance=\"node_exporter:9100\", host=~\"$host\"}[5m]))",
+          "legendFormat": "{{host}} read",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (host) (rate(node_disk_written_bytes_total{instance=\"node_exporter:9100\", host=~\"$host\"}[5m]))",
+          "legendFormat": "{{host}} write",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "node_disk_read_bytes_total / node_disk_written_bytes_total, per server, 5 min rate. The API server's root volume is normally near idle; a sustained climb points at logs or a runaway write."
+    },
+    {
+      "id": 302,
+      "type": "timeseries",
+      "title": "Server disk busy %",
+      "gridPos": {
+        "x": 12,
+        "y": 85,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "100 * sum by (host) (rate(node_disk_io_time_seconds_total{instance=\"node_exporter:9100\", host=~\"$host\"}[5m]))",
+          "legendFormat": "{{host}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          },
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "rate(node_disk_io_time_seconds_total) x 100: share of time the root volume had I/O in flight. Near 100% means the disk is saturated."
+    },
+    {
+      "id": 310,
+      "type": "timeseries",
+      "title": "Database IOPS (CloudWatch)",
+      "gridPos": {
+        "x": 0,
+        "y": 92,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${DS_CLOUDWATCH}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${DS_CLOUDWATCH}"
+          },
+          "queryMode": "Metrics",
+          "queryType": "timeSeriesQuery",
+          "region": "ap-south-1",
+          "namespace": "AWS/RDS",
+          "metricName": "ReadIOPS",
+          "dimensions": {
+            "DBInstanceIdentifier": "ocar-$env-db"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "matchExact": true,
+          "id": "",
+          "expression": "",
+          "label": "read",
+          "refId": "A",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "sqlExpression": ""
+        },
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${DS_CLOUDWATCH}"
+          },
+          "queryMode": "Metrics",
+          "queryType": "timeSeriesQuery",
+          "region": "ap-south-1",
+          "namespace": "AWS/RDS",
+          "metricName": "WriteIOPS",
+          "dimensions": {
+            "DBInstanceIdentifier": "ocar-$env-db"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "matchExact": true,
+          "id": "",
+          "expression": "",
+          "label": "write",
+          "refId": "B",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "sqlExpression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "iops",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 3000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "AWS/RDS ReadIOPS + WriteIOPS, 1 min average. The gp3 volume is provisioned at 3,000 IOPS: the red line is the combined limit, so read + write near 3,000 means the disk is the bottleneck."
+    },
+    {
+      "id": 311,
+      "type": "timeseries",
+      "title": "Database I/O latency (CloudWatch)",
+      "gridPos": {
+        "x": 6,
+        "y": 92,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${DS_CLOUDWATCH}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${DS_CLOUDWATCH}"
+          },
+          "queryMode": "Metrics",
+          "queryType": "timeSeriesQuery",
+          "region": "ap-south-1",
+          "namespace": "AWS/RDS",
+          "metricName": "ReadLatency",
+          "dimensions": {
+            "DBInstanceIdentifier": "ocar-$env-db"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "matchExact": true,
+          "id": "",
+          "expression": "",
+          "label": "read",
+          "refId": "A",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "sqlExpression": ""
+        },
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${DS_CLOUDWATCH}"
+          },
+          "queryMode": "Metrics",
+          "queryType": "timeSeriesQuery",
+          "region": "ap-south-1",
+          "namespace": "AWS/RDS",
+          "metricName": "WriteLatency",
+          "dimensions": {
+            "DBInstanceIdentifier": "ocar-$env-db"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "matchExact": true,
+          "id": "",
+          "expression": "",
+          "label": "write",
+          "refId": "B",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "sqlExpression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.02
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "AWS/RDS ReadLatency + WriteLatency, seconds per I/O. Healthy gp3 stays in single-digit ms; sustained tens of ms means the disk is queuing."
+    },
+    {
+      "id": 312,
+      "type": "timeseries",
+      "title": "Database disk queue depth (CloudWatch)",
+      "gridPos": {
+        "x": 12,
+        "y": 92,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${DS_CLOUDWATCH}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${DS_CLOUDWATCH}"
+          },
+          "queryMode": "Metrics",
+          "queryType": "timeSeriesQuery",
+          "region": "ap-south-1",
+          "namespace": "AWS/RDS",
+          "metricName": "DiskQueueDepth",
+          "dimensions": {
+            "DBInstanceIdentifier": "ocar-$env-db"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "matchExact": true,
+          "id": "",
+          "expression": "",
+          "label": "queue depth",
+          "refId": "A",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "sqlExpression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "AWS/RDS DiskQueueDepth: I/O requests waiting for the disk. It climbs when IOPS are saturated, before CPU moves."
+    },
+    {
+      "id": 313,
+      "type": "timeseries",
+      "title": "Database EBS burst balance (CloudWatch)",
+      "gridPos": {
+        "x": 18,
+        "y": 92,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${DS_CLOUDWATCH}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${DS_CLOUDWATCH}"
+          },
+          "queryMode": "Metrics",
+          "queryType": "timeSeriesQuery",
+          "region": "ap-south-1",
+          "namespace": "AWS/RDS",
+          "metricName": "EBSIOBalance%",
+          "dimensions": {
+            "DBInstanceIdentifier": "ocar-$env-db"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "matchExact": true,
+          "id": "",
+          "expression": "",
+          "label": "IO balance",
+          "refId": "A",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "sqlExpression": ""
+        },
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${DS_CLOUDWATCH}"
+          },
+          "queryMode": "Metrics",
+          "queryType": "timeSeriesQuery",
+          "region": "ap-south-1",
+          "namespace": "AWS/RDS",
+          "metricName": "EBSByteBalance%",
+          "dimensions": {
+            "DBInstanceIdentifier": "ocar-$env-db"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "matchExact": true,
+          "id": "",
+          "expression": "",
+          "label": "byte balance",
+          "refId": "B",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "sqlExpression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1.5,
+            "fillOpacity": 14,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 30
+              },
+              {
+                "color": "green",
+                "value": 60
+              }
+            ]
+          },
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "AWS/RDS EBSIOBalance% and EBSByteBalance%: remaining burst credit. Falling toward 0 means burst is being used up; flat near 100 means a real limit, not burst exhaustion."
+    },
+    {
       "id": 106,
       "type": "row",
       "title": "Per-container resource usage",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 84,
+        "y": 99,
         "w": 24,
         "h": 1
       },
@@ -2049,7 +2750,7 @@
       "description": "container_memory_working_set_bytes -- non-reclaimable memory, what the kernel OOM-killer actually looks at, not container_memory_usage_bytes (which includes reclaimable page cache and overstates real pressure).",
       "gridPos": {
         "x": 0,
-        "y": 85,
+        "y": 100,
         "w": 12,
         "h": 8
       },
@@ -2090,12 +2791,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -2112,7 +2814,7 @@
       "description": "working_set / spec_memory_limit -- only meaningful for containers with mem_limit actually set in docker-compose.prod.yml (currently api, cadvisor); containers with no configured limit report 0 as their limit and will show no data here, not 0%.",
       "gridPos": {
         "x": 12,
-        "y": 85,
+        "y": 100,
         "w": 12,
         "h": 8
       },
@@ -2174,12 +2876,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -2195,7 +2898,7 @@
       "title": "CPU Usage (cores) by Container",
       "gridPos": {
         "x": 0,
-        "y": 93,
+        "y": 108,
         "w": 12,
         "h": 8
       },
@@ -2237,12 +2940,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -2259,7 +2963,7 @@
       "description": "increase(container_oom_events_total) -- should be a flat zero line always. Any nonzero point means that container actually hit its mem_limit and was killed by the kernel; the direct answer to 'did a limit trip yet'.",
       "gridPos": {
         "x": 12,
-        "y": 93,
+        "y": 108,
         "w": 12,
         "h": 8
       },
@@ -2317,12 +3021,13 @@
       },
       "options": {
         "legend": {
-          "showLegend": true,
           "displayMode": "table",
           "placement": "bottom",
+          "showLegend": true,
           "calcs": [
-            "mean",
+            "min",
             "max",
+            "mean",
             "lastNotNull"
           ]
         },
@@ -2339,7 +3044,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 101,
+        "y": 116,
         "w": 24,
         "h": 1
       },
@@ -2352,7 +3057,7 @@
       "description": "{service=\"ocar\", env=\"$env\"} — same low-cardinality labels as MUST-DO #2. Filtered by the $env, $host, and $min_level dropdowns above (Pino numeric levels: 30=info, 40=warn, 50=error) — all are line/label filters, not extra Loki stream labels, so they cost nothing in stream cardinality. Click a trace_id field on any line, then paste it into a Tempo TraceQL query ({trace:id=\"...\"}) to jump from a log to its trace.",
       "gridPos": {
         "x": 0,
-        "y": 102,
+        "y": 117,
         "w": 24,
         "h": 12
       },
@@ -2366,7 +3071,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{service=\"ocar\", env=\"$env\", host=~\"$host\"} | json | level >= $min_level",
+          "expr": "{service=\"ocar\", env=~\"$env\", host=~\"$host\"} | json | level >= $min_level",
           "refId": "A"
         }
       ],
@@ -2374,6 +3079,600 @@
         "showTime": true,
         "wrapLogMessage": true,
         "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 200,
+      "type": "row",
+      "title": "Runtime detail: GC pauses, event loop, CPU (with min / max / average)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 129
+      },
+      "panels": []
+    },
+    {
+      "id": 201,
+      "type": "timeseries",
+      "title": "GC pause duration: average / p95 / p99",
+      "description": "Length of one garbage-collection pause (nodejs_gc_duration_seconds). Average = sum/count; percentiles from the histogram buckets over 5 minutes.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 130
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * sum(rate(nodejs_gc_duration_seconds_sum{host=~\"$host\"}[2m])) / sum(rate(nodejs_gc_duration_seconds_count{host=~\"$host\"}[2m]))",
+          "legendFormat": "average",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * histogram_quantile(0.95, sum by (le) (rate(nodejs_gc_duration_seconds_bucket{host=~\"$host\"}[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(nodejs_gc_duration_seconds_bucket{host=~\"$host\"}[5m])))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 202,
+      "type": "timeseries",
+      "title": "GC runs per second by kind",
+      "description": "minor / incremental / major / weakcb collections per second, summed over the selected hosts.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 130
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (kind) (rate(nodejs_gc_duration_seconds_count{host=~\"$host\"}[2m]))",
+          "legendFormat": "{{kind}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 204,
+      "type": "timeseries",
+      "title": "Event-loop lag: min / average / p99 / max",
+      "description": "How late the Node event loop runs its timers (prom-client nodejs_eventloop_lag_*). The single Node thread is the capacity ceiling, so this is the earliest saturation signal.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 138
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * min(nodejs_eventloop_lag_min_seconds{host=~\"$host\"})",
+          "legendFormat": "min",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * avg(nodejs_eventloop_lag_mean_seconds{host=~\"$host\"})",
+          "legendFormat": "average",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * max(nodejs_eventloop_lag_p99_seconds{host=~\"$host\"})",
+          "legendFormat": "p99",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * max(nodejs_eventloop_lag_max_seconds{host=~\"$host\"})",
+          "legendFormat": "max",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 203,
+      "type": "timeseries",
+      "title": "API process CPU (cores) by host",
+      "description": "rate(process_cpu_seconds_total): about 1.0 means the single Node thread is fully busy.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 130
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (host) (rate(process_cpu_seconds_total{host=~\"$host\",job=\"prometheus.scrape.api\"}[2m]))",
+          "legendFormat": "{{host}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 205,
+      "type": "timeseries",
+      "title": "Active handles, requests and open file descriptors",
+      "description": "nodejs_active_handles_total, nodejs_active_requests_total and process_open_fds: a rising line that never falls back is a leak.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 138
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(nodejs_active_handles_total{host=~\"$host\"})",
+          "legendFormat": "active handles",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(nodejs_active_requests_total{host=~\"$host\"})",
+          "legendFormat": "active requests",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(process_open_fds{host=~\"$host\",job=\"prometheus.scrape.api\"})",
+          "legendFormat": "open file descriptors",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max",
+            "mean",
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 206,
+      "type": "row",
+      "title": "Statistics over the selected time range (min / max / average)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 146
+      },
+      "panels": []
+    },
+    {
+      "id": 207,
+      "type": "table",
+      "title": "Min / max / average / last of the key metrics, for the time range chosen at the top right",
+      "description": "Every row is one metric (units are in the name). Min, Max and Mean are taken over the dashboard time range, so change the range to get the numbers for a test window. Built with the Reduce transformation on 2-minute rate windows.",
+      "gridPos": {
+        "h": 13,
+        "w": 24,
+        "x": 0,
+        "y": 147
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(http_request_duration_seconds_count{host=~\"$host\"}[2m]))",
+          "legendFormat": "Requests per second",
+          "refId": "S0",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(http_request_duration_seconds_count{host=~\"$host\",status_code=~\"5..\"}[2m])) or vector(0)",
+          "legendFormat": "5xx errors per second",
+          "refId": "S1",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * sum(rate(http_request_duration_seconds_sum{host=~\"$host\"}[2m])) / sum(rate(http_request_duration_seconds_count{host=~\"$host\"}[2m]))",
+          "legendFormat": "Request average (ms)",
+          "refId": "S2",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket{host=~\"$host\"}[2m])))",
+          "legendFormat": "Request p50 (ms)",
+          "refId": "S3",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{host=~\"$host\"}[2m])))",
+          "legendFormat": "Request p95 (ms)",
+          "refId": "S4",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{host=~\"$host\"}[2m])))",
+          "legendFormat": "Request p99 (ms)",
+          "refId": "S5",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "100 * sum(rate(nodejs_gc_duration_seconds_sum{host=~\"$host\"}[2m]))",
+          "legendFormat": "GC time (% of wall-clock)",
+          "refId": "S6",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * sum(rate(nodejs_gc_duration_seconds_sum{host=~\"$host\"}[2m])) / sum(rate(nodejs_gc_duration_seconds_count{host=~\"$host\"}[2m]))",
+          "legendFormat": "GC pause average (ms)",
+          "refId": "S7",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(nodejs_gc_duration_seconds_bucket{host=~\"$host\"}[5m])))",
+          "legendFormat": "GC pause p99 (ms)",
+          "refId": "S8",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * avg(nodejs_eventloop_lag_mean_seconds{host=~\"$host\"})",
+          "legendFormat": "Event-loop lag average (ms)",
+          "refId": "S9",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * max(nodejs_eventloop_lag_p99_seconds{host=~\"$host\"})",
+          "legendFormat": "Event-loop lag p99 (ms)",
+          "refId": "S10",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1000 * max(nodejs_eventloop_lag_max_seconds{host=~\"$host\"})",
+          "legendFormat": "Event-loop lag max (ms)",
+          "refId": "S11",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(process_cpu_seconds_total{host=~\"$host\",job=\"prometheus.scrape.api\"}[2m]))",
+          "legendFormat": "API process CPU (cores)",
+          "refId": "S12",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(nodejs_heap_size_used_bytes{host=~\"$host\"}) / 1e6",
+          "legendFormat": "Heap used (MB)",
+          "refId": "S13",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(process_resident_memory_bytes{host=~\"$host\",job=\"prometheus.scrape.api\"}) / 1e6",
+          "legendFormat": "API memory RSS (MB)",
+          "refId": "S14",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(pg_pool_connections{host=~\"$host\",state=\"total\"})",
+          "legendFormat": "DB pool connections open",
+          "refId": "S15",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(pg_pool_connections{host=~\"$host\",state=\"waiting\"})",
+          "legendFormat": "DB pool requests waiting",
+          "refId": "S16",
+          "range": true,
+          "instant": false,
+          "format": "time_series"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "min",
+              "max",
+              "mean",
+              "lastNotNull"
+            ],
+            "includeTimeField": false
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "custom": {
+            "align": "right"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Field"
+            },
+            "properties": [
+              {
+                "id": "custom.align",
+                "value": "left"
+              },
+              {
+                "id": "custom.width",
+                "value": 320
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
       }
     }
   ],

@@ -14,10 +14,13 @@
 resource "grafana_dashboard" "ocar_overview" {
   config_json = replace(
     replace(
-      file("${path.module}/../../grafana/dashboards/ocar-overview.json"),
-      "$${DS_PROMETHEUS}", local.prometheus_datasource_uid
+      replace(
+        file("${path.module}/../../grafana/dashboards/ocar-overview.json"),
+        "$${DS_PROMETHEUS}", local.prometheus_datasource_uid
+      ),
+      "$${DS_LOKI}", local.loki_datasource_uid
     ),
-    "$${DS_LOKI}", local.loki_datasource_uid
+    "$${DS_CLOUDWATCH}", grafana_data_source.cloudwatch.uid
   )
 
   # The dashboard already exists live (uid ocar-overview) -- must be
