@@ -2,8 +2,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Pencil, Layers, AlertCircle, AlertTriangle, Trash2 } from 'lucide-react'
+import { Pencil, Layers, AlertCircle, AlertTriangle, Trash2, MoreHorizontal } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import ReasonDialog from '@/components/ui/ReasonDialog'
@@ -47,15 +48,17 @@ function AlertStrip({ d }: { d: DriverDetail }) {
 
   const alerts: { text: string; tone: 'danger' | 'warning' }[] = []
   if (d.wallet?.is_frozen) alerts.push({ text: 'Wallet is frozen', tone: 'danger' })
-  else if (balance < 500) alerts.push({ text: `Wallet below ₹500 minimum (₹${balance.toLocaleString('en-IN')})`, tone: 'warning' })
+  else if (balance < 500 && (d.status === 'active' || d.status === 'suspended')) alerts.push({ text: `Wallet below ₹500 minimum (₹${balance.toLocaleString('en-IN')})`, tone: 'warning' })
   if (d.status === 'docs_rejected') alerts.push({ text: 'Documents were rejected — awaiting resubmission', tone: 'warning' })
-  if (totalUnapproved > 0) alerts.push({ text: `${totalUnapproved} required document${totalUnapproved !== 1 ? 's' : ''} not yet approved`, tone: 'warning' })
+  const requiredTotal = REQUIRED_DRIVER_DOCS.length + REQUIRED_VEHICLE_DOCS.length
+  // pending_approval already shows this as the header button count and summary tile
+  if (totalUnapproved > 0 && d.status !== 'pending_approval') alerts.push({ text: `${requiredTotal - totalUnapproved} of ${requiredTotal} required documents approved`, tone: 'warning' })
   if (unacknowledged > 0) alerts.push({ text: `${unacknowledged} unacknowledged warning${unacknowledged !== 1 ? 's' : ''}`, tone: 'danger' })
   if (d.total_ratings > 0 && parseFloat(d.rating_avg) < 3.5) alerts.push({ text: `Low rating (★ ${parseFloat(d.rating_avg).toFixed(2)})`, tone: 'warning' })
 
   if (alerts.length === 0) return null
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="mt-4 flex flex-wrap gap-2">
       <AnimatePresence initial={false}>
         {alerts.map(a => (
           <motion.span
@@ -477,7 +480,12 @@ export default function DriverDetailPage() {
   const requiredUnapprovedCount =
     REQUIRED_DRIVER_DOCS.filter(k => d.documents.find(x => x.doc_type === k)?.status !== 'approved').length +
     REQUIRED_VEHICLE_DOCS.filter(k => d.vehicle_documents.find(x => x.doc_type === k)?.status !== 'approved').length
+  const requiredTotal = REQUIRED_DRIVER_DOCS.length + REQUIRED_VEHICLE_DOCS.length
   const canActivate = requiredUnapprovedCount === 0
+  const isQueue = d.status === 'pending_approval' || d.status === 'pending_docs'
+  // time in the review queue (latest move into pending_approval), not account age: a resubmitted driver starts over
+  const queuedSince = d.status_history.filter(h => h.to_status === 'pending_approval').map(h => h.created_at).sort().pop() ?? d.created_at
+  const waitDays = Math.max(0, Math.floor((Date.now() - new Date(queuedSince).getTime()) / 86_400_000))
   const unacknowledgedWarnings = d.warnings.filter(w => !w.acknowledged_at).length
   // The same ordered list the review modal builds, so a position here opens the same document there.
   const allDocs = buildDocs(d)
@@ -489,9 +497,11 @@ export default function DriverDetailPage() {
 
   return (
     <div className="space-y-5">
-      <button onClick={() => router.push('/drivers')} className="flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-text-primary transition-colors">
-        <ArrowLeft size={14} /> Back to Drivers
-      </button>
+      <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs font-semibold text-text-muted">
+        <button onClick={() => router.push('/drivers')} className="hover:text-text-primary transition-colors">Drivers</button>
+        <span aria-hidden>/</span>
+        <span className="text-text-primary">{d.full_name ?? d.phone}</span>
+      </nav>
 
       {/* Sticky header */}
       <div className="admin-card">
@@ -502,7 +512,7 @@ export default function DriverDetailPage() {
               <div className="flex items-center gap-2 mb-1">
                 <h1 className="text-xl font-bold text-text-primary">{d.full_name ?? '—'}</h1>
                 <StatusPill status={d.status} />
-                {(d.status === 'pending_docs' || d.status === 'pending_approval') && (
+                {d.status === 'pending_docs' && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-surface-3 text-text-muted capitalize">
                     {d.onboarding_step.replace(/_/g, ' ')}
                   </span>
@@ -514,19 +524,18 @@ export default function DriverDetailPage() {
           </div>
 
           {/* Persistent action bar — lifecycle actions live here, not buried in a tab */}
-          <div className="flex gap-2 flex-wrap">
-            {d.status === 'pending_approval' && <>
-              <button
-                onClick={() => openAction('approve')}
-                disabled={!canActivate}
-                title={canActivate ? undefined : `${requiredUnapprovedCount} required document${requiredUnapprovedCount === 1 ? '' : 's'} still ${requiredUnapprovedCount === 1 ? 'needs' : 'need'} approval`}
-                className="px-4 py-2 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-success"
-              >
-                Activate
+          <div className="flex items-center gap-2 flex-wrap">
+            {d.status === 'pending_approval' && (canActivate ? <>
+              <button onClick={() => openAction('approve')} className="px-4 py-2 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 active:scale-[0.97] transition-[background-color,transform] duration-150">Activate driver</button>
+              <button onClick={() => openReview(0)} className="px-4 py-2 border border-border text-text-secondary font-semibold rounded-xl text-sm hover:bg-surface-2 active:scale-[0.97] transition-[background-color,transform] duration-150">Review documents</button>
+            </> : (
+              <button onClick={() => openReview(0)} disabled={allDocs.length === 0}
+                title={`${requiredUnapprovedCount} required document${requiredUnapprovedCount === 1 ? '' : 's'} still ${requiredUnapprovedCount === 1 ? 'needs' : 'need'} approval before this driver can be activated`}
+                className="px-4 py-2 bg-primary text-white font-semibold rounded-xl text-sm hover:bg-primary-dark active:scale-[0.97] transition-[background-color,transform] duration-150 disabled:opacity-50 flex items-center gap-2">
+                <Layers size={15} aria-hidden /> Review documents
+                <span className="tabular-nums text-white/80 font-medium">{requiredTotal - requiredUnapprovedCount}/{requiredTotal}</span>
               </button>
-              <button onClick={() => openAction('rejectDocs')} className="px-4 py-2 border border-warning text-warning font-semibold rounded-xl text-sm hover:bg-warning/6 transition-colors">Reject Docs</button>
-              <button onClick={() => openAction('ban')}        className="px-4 py-2 border border-danger text-danger font-semibold rounded-xl text-sm hover:bg-danger/6 transition-colors">Ban</button>
-            </>}
+            ))}
             {d.status === 'docs_rejected' && <>
               <button
                 onClick={() => openAction('approve')}
@@ -544,28 +553,48 @@ export default function DriverDetailPage() {
             {d.status === 'suspended' && (
               <button onClick={() => openAction('reinstate')} className="px-4 py-2 bg-success text-white font-semibold rounded-xl text-sm hover:bg-emerald-600 transition-colors">Reinstate</button>
             )}
-            <button
-              onClick={() => { setDeleteReason(''); setDeleteConfirm(''); setDeleteError(''); setDeleteOpen(true) }}
-              className="px-4 py-2 border border-danger text-danger font-semibold rounded-xl text-sm hover:bg-danger/6 transition-colors flex items-center gap-1.5"
-              title="Permanently delete this driver — for removing fake/test accounts before launch"
-            >
-              <Trash2 size={14} /> Delete
-            </button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button type="button" aria-label="More actions" className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors">
+                  <MoreHorizontal size={16} aria-hidden />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content align="end" sideOffset={6} className="z-50 bg-surface border border-border rounded-xl py-1 min-w-[184px] animate-fade-in"
+                  style={{ boxShadow: '0 8px 32px rgba(15,23,42,0.12), 0 0 0 1px #DCEBEE' }}>
+                  {d.status === 'pending_approval' && <>
+                    <DropdownMenu.Item onSelect={() => openAction('rejectDocs')} className="px-3 py-2 mx-1 rounded-lg text-sm font-medium text-text-secondary cursor-pointer outline-none data-[highlighted]:bg-surface-2 data-[highlighted]:text-text-primary">Reject documents…</DropdownMenu.Item>
+                    <DropdownMenu.Item onSelect={() => openAction('ban')} className="px-3 py-2 mx-1 rounded-lg text-sm font-medium text-danger cursor-pointer outline-none data-[highlighted]:bg-danger-light">Ban driver…</DropdownMenu.Item>
+                    <DropdownMenu.Separator className="my-1 h-px bg-border-light" />
+                  </>}
+                  <DropdownMenu.Item
+                    onSelect={() => { setDeleteReason(''); setDeleteConfirm(''); setDeleteError(''); setDeleteOpen(true) }}
+                    className="px-3 py-2 mx-1 rounded-lg text-sm font-medium text-danger cursor-pointer outline-none data-[highlighted]:bg-danger-light flex items-center gap-2"
+                  >
+                    <Trash2 size={14} aria-hidden /> Delete driver…
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
         </div>
 
-        <div className="mt-4"><AlertStrip d={d} /></div>
+        <AlertStrip d={d} />
 
         {/* Summary rail */}
-        <div className="mt-4 grid grid-cols-3 md:grid-cols-6 gap-3">
-          {[
+        <div className={cn('mt-4 grid grid-cols-3 gap-3', !isQueue && 'md:grid-cols-6')}>
+          {(isQueue ? [
+            { label: 'Required documents', value: `${requiredTotal - requiredUnapprovedCount}/${requiredTotal} approved` },
+            { label: 'Applied', value: fmt(d.created_at) },
+            { label: 'Waiting', value: waitDays === 0 ? 'Today' : `${waitDays} day${waitDays === 1 ? '' : 's'}` },
+          ] : [
             { label: 'Rating', value: d.total_ratings > 0 ? `★ ${parseFloat(d.rating_avg).toFixed(2)}` : '—' },
             { label: 'Documents', value: `${d.documents.length + d.vehicle_documents.length} uploaded` },
             { label: 'Experience', value: d.experience_years != null ? `${d.experience_years} yr${d.experience_years !== 1 ? 's' : ''}` : '—' },
             { label: 'Joined', value: fmt(d.created_at) },
             { label: 'Wallet', value: d.wallet ? `₹${parseFloat(d.wallet.balance).toLocaleString('en-IN')}` : '₹0.00' },
             { label: 'Warnings', value: unacknowledgedWarnings > 0 ? `${unacknowledgedWarnings} open` : `${d.warnings.length} total` },
-          ].map(s => (
+          ]).map(s => (
             <div key={s.label} className="bg-surface-2 rounded-xl p-3 text-center border border-border-light">
               <p className="text-sm font-black text-text-primary">{s.value}</p>
               <p className="text-xs text-text-muted">{s.label}</p>
@@ -772,7 +801,7 @@ export default function DriverDetailPage() {
               {d.documents.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-text-secondary mb-2">Identity Documents</p>
-                  <div className="space-y-1.5">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-1.5">
                     {[...d.documents].sort((a, b) => docRank(a.doc_type) - docRank(b.doc_type)).map(doc => (
                       <DocCheckItem key={doc.doc_type} docType={doc.doc_type} fileUrl={doc.file_url} status={doc.status} rejectionNote={doc.rejection_note} onClick={() => openReview(docIdx(doc.doc_type))} />
                     ))}
@@ -783,7 +812,7 @@ export default function DriverDetailPage() {
               {(d.vehicle_documents.length > 0 || missingVehicle.length > 0) && (
                 <div>
                   <p className="text-xs font-semibold text-text-secondary mb-2">Vehicle Documents</p>
-                  <div className="space-y-1.5">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-1.5">
                     {[
                       ...d.vehicle_documents.map(doc => ({ type: doc.doc_type, doc })),
                       ...missingVehicle.map(key => ({ type: key, doc: null })),
@@ -796,7 +825,7 @@ export default function DriverDetailPage() {
                 </div>
               )}
 
-              {allDocs.length > 0 && (
+              {allDocs.length > 0 && d.status !== 'pending_approval' && (
                 <button onClick={() => openReview(0)} className="w-full py-3 bg-primary text-white font-bold text-sm rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
                   <Layers size={15} /> Review All Documents
                 </button>

@@ -10,6 +10,8 @@ html.overflow-hidden {
   html { font-family: var(--font-sans), sans-serif; }
   body { background: #F6FBFB; color: #0F172A; }
   * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  /* thin, quiet scrollbars: drops the native arrow buttons on Windows */
+  * { scrollbar-width: thin; scrollbar-color: #C5D6DA transparent; }
 }
 
 @media (prefers-reduced-motion: reduce) {

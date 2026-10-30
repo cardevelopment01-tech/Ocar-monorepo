@@ -55,7 +55,7 @@ export function DocCheckItem({
         ) : isPdf ? (
           <div className="w-full h-full flex items-center justify-center bg-red-50"><FileText size={15} className="text-red-400" /></div>
         ) : (
-          <img src={fileUrl!} alt={docLabel(docType)} className="w-full h-full object-cover" />
+          <img src={fileUrl!} alt={docLabel(docType)} className="w-full h-full object-cover" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
         )}
       </div>
 

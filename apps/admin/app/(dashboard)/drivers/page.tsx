@@ -1,14 +1,13 @@
 'use client'
 import React, { Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Users, UserCheck, Clock, ShieldOff, MapPin, X } from 'lucide-react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { Users, UserCheck, Clock, ShieldOff, MapPin, X, MoreHorizontal } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import MultiSelectFilter from '@/components/ui/MultiSelectFilter'
-import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import ReasonDialog from '@/components/ui/ReasonDialog'
 import SuccessToast from '@/components/ui/SuccessToast'
 import { adminDriverApi, type DriverListItem, type DriverListSummary, type DriverListFacets } from '@/lib/admin-api'
@@ -38,10 +37,9 @@ function SkeletonRows() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-// Only actions reachable from the pending-approval banner's fast path.
-// Suspend/reinstate/ban-from-active live on the driver detail page's
-// persistent action bar now.
-type ActionType = 'approve' | 'rejectDocs' | 'ban'
+// Only the actions reachable from a pending row's overflow menu. Approving needs the
+// documents in front of you, so it lives on the driver page; suspend/reinstate too.
+type ActionType = 'rejectDocs' | 'ban'
 interface PendingAction { type: ActionType; driverId: string; driverName: string }
 const LIMIT = 20
 
@@ -65,6 +63,58 @@ function InlineError({ message, onRetry }: { message: string; onRetry: () => voi
     <div role="alert" className="py-12 text-center">
       <p className="text-sm text-text-secondary mb-3">{message}</p>
       <button type="button" onClick={onRetry} className="px-3 py-1.5 text-xs font-semibold border border-border rounded-lg hover:bg-surface-2 transition-colors">Retry</button>
+    </div>
+  )
+}
+
+
+// How long an applicant has been waiting; amber after two days, red after a week, so red stays rare.
+function waiting(iso: string): { label: string; cls: string } {
+  const h = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000))
+  const label = h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`
+  return { label, cls: h >= 168 ? 'text-danger' : h >= 48 ? 'text-warning' : 'text-text-secondary' }
+}
+
+function StatusTabs({ tabs, value, onChange }: {
+  tabs: { value: string; label: string; count?: number; alert?: boolean }[]
+  value: string
+  onChange: (v: string) => void
+}) {
+  const refs = useRef<Record<string, HTMLButtonElement | null>>({})
+  // WAI-ARIA tabs: roving tabindex + arrows/Home/End (same idiom as ReportTabs)
+  function onKeyDown(e: React.KeyboardEvent) {
+    const i = Math.max(0, tabs.findIndex(t => t.value === value))
+    const next = e.key === 'ArrowRight' ? (i + 1) % tabs.length
+      : e.key === 'ArrowLeft' ? (i - 1 + tabs.length) % tabs.length
+      : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1
+    if (next < 0) return
+    e.preventDefault()
+    const t = tabs[next]!
+    onChange(t.value)
+    refs.current[t.value]?.focus()
+  }
+  return (
+    <div role="tablist" aria-label="Driver status" onKeyDown={onKeyDown} className="flex gap-1 border-b border-border-light mb-4 -mt-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]">
+      {tabs.map(t => {
+        const on = t.value === value
+        return (
+          <button
+            key={t.value} ref={el => { refs.current[t.value] = el }} role="tab" type="button" aria-selected={on} tabIndex={on ? 0 : -1} onClick={() => onChange(t.value)}
+            className={cn(
+              'relative -mb-px px-3 py-2.5 text-sm font-semibold whitespace-nowrap inline-flex items-center gap-2 border-b-2 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-t-lg',
+              on ? 'text-primary border-primary' : 'text-text-muted border-transparent hover:text-text-primary',
+            )}
+          >
+            {t.label}
+            {t.count !== undefined && (
+              <span className={cn('min-w-[22px] px-1.5 rounded-full text-[11px] font-bold leading-5 text-center tabular-nums',
+                t.alert && t.count > 0 ? 'bg-warning-light text-warning' : 'bg-surface-2 text-text-muted')}>
+                {t.count}
+              </span>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -108,9 +158,6 @@ function DriversPageInner() {
   const [listLoading, setListLoading]     = useState(true)
   const [listError, setListError]         = useState(false)
 
-  const [pendingRows, setPendingRows]     = useState<DriverListItem[]>([])
-  const [bannerError, setBannerError]     = useState(false)
-
   const [cities, setCities]               = useState<AdminCity[]>([])
   const [categories, setCategories]       = useState<VehicleCategory[]>([])
 
@@ -142,7 +189,6 @@ function DriversPageInner() {
 
   // ── fetch list: latest request wins, so a slow older response never overwrites a newer one ──
   const listReq = useRef(0)
-  const bannerReq = useRef(0)
   const cityParam = cityIds.join(',')
   const vehicleParam = vehicleIds.join(',')
 
@@ -166,24 +212,9 @@ function DriversPageInner() {
     }
   }, [statusFilter, urlSearch, cityParam, vehicleParam, page])
 
-  // the approval banner has its own request so it never depends on the current page
-  const fetchBanner = useCallback(async () => {
-    const n = ++bannerReq.current
-    try {
-      const res = await adminDriverApi.list({
-        status: 'pending_approval', city: cityParam || undefined, vehicle: vehicleParam || undefined, limit: 50,
-      })
-      if (n !== bannerReq.current) return
-      setPendingRows(res.drivers); setBannerError(false)
-    } catch {
-      if (n === bannerReq.current) setBannerError(true)
-    }
-  }, [cityParam, vehicleParam])
-
   useEffect(() => { fetchList() }, [fetchList])
-  useEffect(() => { fetchBanner() }, [fetchBanner])
 
-  // ── inline banner actions (fast path — no navigation required) ────────────
+  // ── row overflow actions (reject docs / ban) ──────────────────────────────
   function openAction(type: ActionType, driver: DriverListItem) {
     setPendingAction({ type, driverId: driver.id, driverName: driver.full_name ?? driver.phone })
   }
@@ -192,12 +223,11 @@ function DriversPageInner() {
     setActionLoading(true); setActionError('')
     try {
       const { type, driverId } = pendingAction
-      if (type === 'approve')     await adminDriverApi.approve(driverId)
       if (type === 'rejectDocs')  await adminDriverApi.rejectDocs(driverId, reason!)
       if (type === 'ban')         await adminDriverApi.ban(driverId, reason!)
       setPendingAction(null)
-      await Promise.all([fetchList(), fetchBanner()])
-      setSuccessMsg(type === 'approve' ? 'Driver activated' : type === 'rejectDocs' ? 'Documents rejected' : 'Driver banned')
+      await fetchList()
+      setSuccessMsg(type === 'rejectDocs' ? 'Documents rejected' : 'Driver banned')
     } catch (err) {
       setActionError(extractErrorMessage(err, 'Action failed. Please try again.'))
     }
@@ -214,9 +244,11 @@ function DriversPageInner() {
   const vehicleOptions = useMemo(
     () => categories.map(c => ({ value: c.id, label: c.display_name, count: facets.categories[c.id] ?? 0 })),
     [categories, facets])
+  const inQueue = statusFilter === 'pending_approval'
+  const tabOwnsStatus = inQueue || statusFilter === 'suspended' // those statuses are tabs, not dropdown options
   const hasFilters = cityIds.length > 0 || vehicleIds.length > 0 || !!statusFilter || !!urlSearch
   const clearFilters = () => { setSearch(''); setParams({ city: null, vehicle: null, status: null, q: null }) }
-  const emptyMessage = !hasFilters ? 'No drivers yet' : 'No drivers' +
+  const emptyMessage = inQueue && !urlSearch && !cityIds.length && !vehicleIds.length ? 'All caught up. No drivers are waiting for approval.' : !hasFilters ? 'No drivers yet' : 'No drivers' +
     (cityIds.length ? ` in ${cityIds.map(cityName).join(', ')}` : '') +
     (vehicleIds.length ? ` with ${vehicleIds.map(categoryName).join(', ')} vehicles` : '') +
     (statusFilter ? ` with status ${statusFilter.replace(/_/g, ' ')}` : '') +
@@ -279,6 +311,86 @@ function DriversPageInner() {
     },
   ]
 
+  // Approval queue: oldest first (server-side), with wait time and one clear next step.
+  const queueColumns = [
+    {
+      key: 'name', header: 'Applicant',
+      render: (d: DriverListItem) => (
+        <div className="flex items-center gap-2.5">
+          <InitialsAvatar name={d.full_name ?? d.phone} />
+          <div>
+            <p className="font-semibold text-text-primary">{d.full_name ?? '—'}</p>
+            <p className="text-xs text-text-muted">{d.phone}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'vehicle', header: 'Vehicle',
+      render: (d: DriverListItem) => d.vehicle ? (
+        <div>
+          <p className="font-mono text-xs font-medium text-text-primary">{d.vehicle.number_plate}</p>
+          <p className="text-xs text-text-muted">{d.vehicle.category}</p>
+        </div>
+      ) : <span className="text-text-muted">—</span>,
+    },
+    {
+      key: 'docs', header: 'Documents',
+      render: (d: DriverListItem) => (
+        <span className="inline-flex items-center gap-2 text-xs font-semibold text-text-secondary tabular-nums">
+          {d.docs_approved}/{d.docs_submitted}
+          <span className="h-1 w-12 rounded-full bg-surface-2 overflow-hidden" aria-hidden>
+            <span className="block h-full bg-success" style={{ width: `${d.docs_submitted ? (d.docs_approved / d.docs_submitted) * 100 : 0}%` }} />
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: 'waiting', header: 'Waiting',
+      render: (d: DriverListItem) => {
+        const since = d.queued_at ?? d.created_at
+        const w = waiting(since)
+        return <span className={cn('text-sm font-semibold tabular-nums', w.cls)} title={`In the queue since ${fmt(since)}`}>{w.label}</span>
+      },
+    },
+    {
+      key: 'actions', header: '',
+      render: (d: DriverListItem) => (
+        <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => router.push(`/drivers/${d.id}?tab=documents`)}
+            className="px-3.5 py-1.5 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary-dark active:scale-[0.97] transition-[background-color,transform] duration-150"
+          >
+            Review
+          </button>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button type="button" aria-label={`More actions for ${d.full_name ?? d.phone}`}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors">
+                <MoreHorizontal size={16} aria-hidden />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content align="end" sideOffset={6}
+                className="z-50 bg-surface border border-border rounded-xl py-1 min-w-[168px] animate-fade-in"
+                style={{ boxShadow: '0 8px 32px rgba(15,23,42,0.12), 0 0 0 1px #DCEBEE' }}>
+                <DropdownMenu.Item onSelect={() => openAction('rejectDocs', d)}
+                  className="px-3 py-2 mx-1 rounded-lg text-sm font-medium text-text-secondary cursor-pointer outline-none data-[highlighted]:bg-surface-2 data-[highlighted]:text-text-primary">
+                  Reject documents…
+                </DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => openAction('ban', d)}
+                  className="px-3 py-2 mx-1 rounded-lg text-sm font-medium text-danger cursor-pointer outline-none data-[highlighted]:bg-danger-light">
+                  Ban driver…
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        </div>
+      ),
+    },
+  ]
+
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
@@ -292,60 +404,19 @@ function DriversPageInner() {
         <StatCard title="Suspended"        value={summary.suspended}        change="Under review"    changeType="neutral" icon={ShieldOff} gradient="purple" loading={cardsLoading} />
       </div>
 
-      {bannerError && (
-        <div role="alert" className="flex items-center justify-between gap-3 bg-warning-light border border-warning/20 rounded-2xl px-4 py-3 text-sm text-text-secondary">
-          Couldn&apos;t load drivers awaiting approval.
-          <button type="button" onClick={fetchBanner} className="px-3 py-1 text-xs font-semibold border border-border rounded-lg bg-surface hover:bg-surface-2">Retry</button>
-        </div>
-      )}
-
-      {/* Pending approval banner */}
-      <AnimatePresence initial={false}>
-        {pendingRows.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.18 }}
-            style={{ overflow: 'hidden' }}
-          >
-            <div className="bg-warning-light border border-warning/20 rounded-2xl p-4">
-              <p className="text-sm font-bold text-warning mb-3">
-                ⚡ {pendingRows.length} driver{pendingRows.length > 1 ? 's' : ''} awaiting approval
-              </p>
-              <table className="data-table">
-                <thead><tr><th>Driver</th><th>Phone</th><th>Vehicle</th><th>Applied</th><th>Actions</th></tr></thead>
-                <tbody>
-                  {pendingRows.map(d => (
-                    <tr key={d.id} className="group">
-                      <td className="font-semibold text-text-primary">{d.full_name ?? '—'}</td>
-                      <td>{d.phone}</td>
-                      <td>{d.vehicle?.number_plate ?? '—'}</td>
-                      <td className="text-text-muted">{fmt(d.created_at)}</td>
-                      <td>
-                        <div className="flex gap-2">
-                          <button onClick={() => openAction('approve', d)} className="px-3 py-1 text-xs font-semibold bg-success text-white rounded-lg hover:bg-emerald-600 transition-colors">Activate</button>
-                          <button
-                            onClick={() => router.push(`/drivers/${d.id}?tab=documents`)}
-                            className="px-3 py-1 text-xs font-semibold border border-primary text-primary rounded-lg hover:bg-primary-light transition-colors"
-                          >
-                            Review Docs
-                          </button>
-                          <button onClick={() => openAction('rejectDocs', d)} className="px-3 py-1 text-xs font-semibold border border-warning text-warning rounded-lg hover:bg-warning/8 transition-colors">Reject Docs</button>
-                          <button onClick={() => openAction('ban', d)} className="px-3 py-1 text-xs font-semibold border border-danger text-danger rounded-lg hover:bg-danger-light transition-colors">Ban</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Main table */}
       <div className="admin-card">
+        <StatusTabs
+          value={statusFilter === 'pending_approval' || statusFilter === 'suspended' ? statusFilter : statusFilter ? '_other' : ''}
+          onChange={v => { if (v !== '_other') setParams({ status: v || null }) }}
+          tabs={[
+            { value: '', label: 'All drivers' },
+            { value: 'pending_approval', label: 'Pending approval', count: summary.pending_approval, alert: true },
+            { value: 'suspended', label: 'Suspended', count: summary.suspended },
+            ...(statusFilter && statusFilter !== 'pending_approval' && statusFilter !== 'suspended'
+              ? [{ value: '_other', label: statusFilter.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase()) }] : []),
+          ]}
+        />
         <div className="mb-4 space-y-3">
           <FilterBar
             search={search}
@@ -362,14 +433,12 @@ function DriversPageInner() {
                 onChange={v => setParams({ vehicle: v.join(',') || null })}
               />
             </>}
-            filters={[{
-              key: 'status', label: 'All Statuses',
+            filters={tabOwnsStatus ? [] : [{
+              key: 'status', label: 'More statuses',
               options: [
-                { value: 'active',           label: 'Active' },
-                { value: 'pending_approval', label: 'Pending Approval' },
-                { value: 'docs_rejected',    label: 'Docs Rejected' },
-                { value: 'suspended',        label: 'Suspended' },
-                { value: 'pending_docs',     label: 'Pending Docs' },
+                { value: 'active',        label: 'Active' },
+                { value: 'docs_rejected', label: 'Docs Rejected' },
+                { value: 'pending_docs',  label: 'Pending Docs' },
               ],
               value: statusFilter,
               onChange: v => setParams({ status: v || null }),
@@ -403,9 +472,9 @@ function DriversPageInner() {
           <div aria-busy={listLoading} className={cn('transition-opacity', listLoading && 'opacity-50')}>
             <DataTable
               pinFirstColumn
-              columns={columns as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
+              columns={(inQueue ? queueColumns : columns) as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
               data={drivers as unknown as Record<string, unknown>[]}
-              onRowClick={row => router.push(`/drivers/${(row as unknown as DriverListItem).id}`)}
+              onRowClick={row => router.push(`/drivers/${(row as unknown as DriverListItem).id}${inQueue ? '?tab=documents' : ''}`)}
               emptyMessage={emptyMessage}
             />
           </div>
@@ -421,17 +490,6 @@ function DriversPageInner() {
           </div>
         )}
       </div>
-
-      {/* Approve confirm */}
-      <ConfirmDialog
-        open={pendingAction?.type === 'approve'}
-        onOpenChange={v => { if (!v) { setPendingAction(null); setActionError('') } }}
-        title="Activate Driver"
-        description={actionError || `Activate ${pendingAction?.driverName} as an active driver?`}
-        confirmLabel={actionLoading ? 'Submitting…' : 'Activate'}
-        variant={actionError ? 'danger' : 'success'}
-        onConfirm={() => { if (!actionLoading) executeAction() }}
-      />
 
       {/* Reject docs: recoverable, driver can fix and resubmit */}
       <ReasonDialog

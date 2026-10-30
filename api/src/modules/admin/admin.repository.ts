@@ -204,6 +204,9 @@ export async function listDrivers(
       `SELECT
          d.id, d.code, d.phone, d.full_name, d.email,
          d.status, d.onboarding_step, d.created_at,
+         CASE WHEN d.status = 'pending_approval' THEN COALESCE(
+           (SELECT MAX(h.created_at) FROM driver_status_history h WHERE h.driver_id = d.id AND h.to_status = 'pending_approval'),
+           d.created_at) END AS queued_at,
          d.city_id, c.name AS city_name,
          v.number_plate, v.vehicle_name,
          vc.display_name AS vehicle_category,
@@ -211,7 +214,7 @@ export async function listDrivers(
          (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'approved') AS docs_approved
        ${DRIVER_LIST_FROM}
        ${main.where}
-       ORDER BY d.created_at DESC
+       ORDER BY ${filters.status === "pending_approval" ? "queued_at ASC, d.id ASC" : "d.created_at DESC"}
        LIMIT $${n + 1} OFFSET $${n + 2}`,
       [...main.params, filters.limit, filters.offset],
     ),
@@ -258,6 +261,7 @@ export async function listDrivers(
     status: r.status as DriverStatus,
     onboarding_step: r.onboarding_step as string,
     created_at: r.created_at as string,
+    queued_at: (r.queued_at as string | null) ?? null,
     city: r.city_id
       ? { id: String(r.city_id), name: r.city_name as string }
       : null,
