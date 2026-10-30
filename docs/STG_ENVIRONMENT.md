@@ -91,7 +91,7 @@ without putting the same value in the file, or the next apply will undo it.
 | Database storage | `db_allocated_storage`, `db_max_allocated_storage` | Storage can only grow, never shrink. Shrinking means rebuilding the DB from a snapshot. |
 | Standby database | `db_multi_az = true` | Adds a failover standby (doubles the DB cost). |
 | Cache size | `valkey_node_type` | Changes the cache node (a brief interruption; cached data and queued jobs may be lost). |
-| When servers scale out | `asg_cpu_target_percent` (stg: 20, prd default 19) | Lower means earlier scale-out. stg scales on average CPU only: `asg_request_burst_enabled = false` removes the request-burst policy and alarm. |
+| When servers scale out | `asg_cpu_target_percent` (stg: 20, prd default 19) | Lower means earlier scale-out. Scaling is average CPU only (no request-based rule). |
 | Most servers it may start | `max_size = 4` in `asg.tf` | Hard-coded; applies to every environment. |
 | 1-minute CPU metrics | `detailed_monitoring = true` | About $2.10 per server per month; makes the scaling rule react in minutes. |
 | Hostname | `domain_name` | Replaces the certificate; needs a new Cloudflare validation CNAME. |

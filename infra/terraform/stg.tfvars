@@ -34,9 +34,8 @@ public_subnet_cidrs = ["10.2.0.0/24", "10.2.1.0/24"]
 instance_type = "t3.small"
 active_color  = "blue"
 # detailed_monitoring stays at its default (off): staging does not need 1-minute scaling metrics (~$2.10/server/month).
-# Scale on average CPU only (20%). No request-burst policy: a lone server booting must not trigger extra servers.
+# Scale on average CPU only (20%); there is no request-based scaling rule in any environment.
 asg_cpu_target_percent     = 20
-asg_request_burst_enabled   = false
 
 # --- database -------------------------------------------------------------------------------------------------------
 # Single-AZ (the variable's false default) and an empty database: the first deploy runs the migrations. Add a
