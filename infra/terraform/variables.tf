@@ -12,11 +12,11 @@ variable "aws_region" {
 
 variable "environment" {
   type        = string
-  description = "Deployment environment -- no default, must be passed explicitly. prod = the current live stack (becomes the new staging once prd is live; keep the value, renaming would replace immutable resources). prd = the new production. staging = the old staging, to be deleted."
+  description = "Deployment environment -- no default, must be passed explicitly. prd = production. stg = staging. (The old prod stack was destroyed on 2026-10-30 and the old staging is gone; neither value is accepted any more, so a stray apply cannot rebuild them.)"
 
   validation {
-    condition     = contains(["prod", "prd", "stg", "staging"], var.environment)
-    error_message = "environment must be \"prod\", \"prd\", \"stg\" or \"staging\" -- a typo would silently skip local.protected's deletion protection."
+    condition     = contains(["prd", "stg"], var.environment)
+    error_message = "environment must be \"prd\" or \"stg\"."
   }
 }
 

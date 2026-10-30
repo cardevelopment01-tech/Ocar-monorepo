@@ -3,21 +3,20 @@
 One Terraform code base (`infra/terraform`) builds every environment. An environment is just the value of
 `var.environment`; each one has its own state, names, database and secrets.
 
-**Status (update when it changes):** `prd` is production (cutover done 2026-10-29/30). The old `prod` stack is scaled
-to 0 and is to be destroyed. `stg` is the final staging environment: defined and planned, not yet applied; how to bring
-it up, change it and destroy it is in `docs/STG_ENVIRONMENT.md`. The old `staging` is empty and to be deleted.
+**Status (update when it changes):** two environments exist. `prd` is production (cutover 2026-10-29/30). `stg` is
+staging (built 2026-10-30; bring-up, changes and teardown are in `docs/STG_ENVIRONMENT.md`). The old `prod` stack was
+destroyed on 2026-10-30 and the old `staging` is gone; neither name is accepted by Terraform any more
+(`variables.tf` allows only `prd` and `stg`), so a stray apply cannot rebuild them.
 
 ## Environments
 
 | Terraform `environment` | Role | State key | Data dir | Names | SSM path | Database |
 |---|---|---|---|---|---|---|
-| `prod` | live production now; becomes staging after cutover (keep the value `prod`, renaming would replace the DB) | `prod/terraform.tfstate` | `.terraform` | `ocar-prod-*` | `/ocar/prod/*` | `ocar-prod-db` |
 | `prd` | new production | `prd/terraform.tfstate` | `.terraform-prd` | `ocar-prd-*` | `/ocar/prd/*` | `ocar-prd-db` (Multi-AZ) |
 | `stg` | the final staging environment (smaller than prd: `t3.small`, `db.t4g.small`); see `docs/STG_ENVIRONMENT.md` | `stg/terraform.tfstate` | `.terraform-stg` | `ocar-stg-*` | `/ocar/stg/*` | `ocar-stg-db` |
-| `staging` | old staging, to be deleted | `staging/terraform.tfstate` | `.terraform` | `ocar-staging-*` | `/ocar/staging/*` | its own |
 
 All live in AWS account `822127610728`, region `ap-south-1`, state bucket `ocar-terraform-state`.
-`prod` and `prd` are both protected (DB deletion protection and final snapshot); `stg` and `staging` are not.
+`prd` is protected (DB deletion protection and a final snapshot); `stg` is not and can be destroyed with one command.
 
 ## Commands
 
@@ -27,20 +26,18 @@ dir for you and refuses to run if the backend does not match the environment.
 | Task | Command |
 |---|---|
 | Set up prd locally (once) | `pnpm infra:prd:init` |
-| Check you are pointed at the right state | `pnpm infra:prd:check` / `pnpm infra:prod:check` |
+| Check you are pointed at the right state | `pnpm infra:prd:check` / `pnpm infra:stg:check` |
 | Preview prd changes | `pnpm infra:prd:plan` (saves `prd.tfplan`) |
 | Apply prd changes | `pnpm infra:prd:apply` (re-checks the plan file, then asks you to type `apply prd`) |
 | stg: set up, check, preview, apply | `pnpm infra:stg:init`, `infra:stg:check`, `infra:stg:plan`, `infra:stg:apply` (asks you to type `apply stg`) |
-| stg: **destroy everything** | `pnpm infra:stg:destroy` (lists what it will remove, then asks you to type `destroy stg`). Refused for prod and prd |
-| Preview prod changes | `pnpm infra:prod:init` once, then `pnpm infra:prod:check`, then `pnpm infra:prod:plan` (saves `prod.tfplan`; changes nothing in AWS) |
-| Apply to prod | **Refused by the guard.** Needs an explicit decision and approval; run `terraform apply prod.tfplan` by hand after `pnpm infra:prod:check` |
+| stg: **destroy everything** | `pnpm infra:stg:destroy` (lists what it will remove, then asks you to type `destroy stg`). Refused for prd |
 
 What the guard checks: the data dir's state key is exactly this environment's, the backend file and `prd.tfvars` agree
-with it, AWS credentials work, and, before an apply, that the plan was made for `prd`, deletes nothing, and touches
-nothing named `ocar-prod-*`.
+with it, AWS credentials work, and, before an apply, that the plan was made for that environment and deletes nothing
+unless every deleted address is allow-listed (never a database, load balancer, cache, bucket, key or the VPC).
 
-Never run a plan or apply by hand with `-var-file=prd.tfvars` unless `TF_DATA_DIR=.terraform-prd` is set. With prod's
-state loaded, that would plan to replace prod's resources.
+Never run a plan or apply by hand with `-var-file=prd.tfvars` (or `stg.tfvars`) unless the matching `TF_DATA_DIR`
+(`.terraform-prd` / `.terraform-stg`) is set. With the other environment's state loaded, that would plan to replace its resources.
 
 ## Deploying the API
 
@@ -57,7 +54,7 @@ state loaded, that would plan to replace prod's resources.
 
 | What | Where |
 |---|---|
-| Per-environment Terraform inputs | `infra/terraform/prd.tfvars`, `stg.tfvars`, `staging.tfvars`. **Gitignored**, so commit with `git add -f`. prod uses the defaults in `variables.tf`, so a changed default changes prod |
+| Per-environment Terraform inputs | `infra/terraform/prd.tfvars`, `stg.tfvars`. **Gitignored**, so commit with `git add -f`. prod uses the defaults in `variables.tf`, so a changed default changes prod |
 | API settings and secrets | SSM SecureString `/ocar/<env>/api-env` (edit with `pnpm env:edit <env>`, see "Editing API settings" below) |
 | Image tags, active colour | `/ocar/<env>/blue/image-tag`, `/ocar/<env>/green/image-tag`, `/ocar/<env>/active-color` |
 | GHCR pull token | `/ocar/<env>/ghcr-token` |

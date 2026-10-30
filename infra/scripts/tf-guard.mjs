@@ -1,17 +1,16 @@
 #!/usr/bin/env node
-// Preflight guard for Terraform runs in infra/terraform. Exists because prod (the live stack) and prd (the new
-// production) share one directory and one code base: running prd's tfvars while .terraform/ still points at prod's
-// state would plan to replace prod's resources with prd-named ones.
+// Preflight guard for Terraform runs in infra/terraform. prd (production) and stg (staging) share one directory and one code base:
+// running one environment's tfvars while .terraform/ points at another's state would plan to replace that environment's resources.
 //
-//   node infra/scripts/tf-guard.mjs <prod|prd|stg> <check|init|plan|apply|destroy>
+//   node infra/scripts/tf-guard.mjs <prd|stg> <check|init|plan|apply|destroy>
 //
 // check    verify only (backend key, tfvars, AWS identity); changes nothing
 // init     terraform init -reconfigure against <env>.backend.hcl, in that environment's own data dir
-// plan     guard, then plan. prod: read-only (-lock=false, no plan file). prd/stg: saves <env>.tfplan
-// apply    prd and stg, only a plan file this guard produced; prod apply is refused outright
+// plan     guard, then plan; saves <env>.tfplan
+// apply    only a plan file this guard produced
 // destroy  stg only (staging is disposable): shows the full destroy plan, then asks you to type "destroy stg"
 //
-// Data dirs: prod -> .terraform (unchanged), prd -> .terraform-prd, stg -> .terraform-stg. The guard sets TF_DATA_DIR itself, so there
+// Data dirs: prd -> .terraform-prd, stg -> .terraform-stg. The guard sets TF_DATA_DIR itself, so there
 // is nothing to remember. Extra terraform args after `--` are passed through to plan.
 
 import { spawnSync } from 'node:child_process'
@@ -23,7 +22,6 @@ import readline from 'node:readline/promises'
 const TF_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'terraform')
 const STATE_BUCKET = 'ocar-terraform-state'
 const ENVS = {
-  prod: { dataDir: '.terraform', backend: 'prod.backend.hcl', key: 'prod/terraform.tfstate', tfvars: null },
   prd: { dataDir: '.terraform-prd', backend: 'prd.backend.hcl', key: 'prd/terraform.tfstate', tfvars: 'prd.tfvars' },
   stg: { dataDir: '.terraform-stg', backend: 'stg.backend.hcl', key: 'stg/terraform.tfstate', tfvars: 'stg.tfvars' },
 }
@@ -37,7 +35,7 @@ const ok = (msg) => console.log(`  ok  ${msg}`)
 const [envName, cmd, ...rest] = process.argv.slice(2)
 const env = ENVS[envName]
 if (!env || !['check', 'init', 'plan', 'apply', 'destroy'].includes(cmd)) {
-  fail('usage: tf-guard.mjs <prod|prd|stg> <check|init|plan|apply|destroy> [-- extra terraform args]')
+  fail('usage: tf-guard.mjs <prd|stg> <check|init|plan|apply|destroy> [-- extra terraform args]')
 }
 const extra = rest[0] === '--' ? rest.slice(1) : []
 // Test-only override: it is still validated below, so pointing prd at prod's data dir just makes the guard fail.
@@ -125,20 +123,14 @@ if (cmd === 'init') {
 }
 
 if (cmd === 'destroy' && envName !== 'stg') {
-  fail('destroy is wired for stg only. prod and prd are protected; destroying them needs an explicit, separate decision.')
-}
-if (cmd === 'apply' && envName === 'prod') {
-  fail('applying to prod is refused by this guard. prod is the live stack; changes to it need an explicit, separate decision.')
+  fail('destroy is wired for stg only. prd is production and is protected; destroying it needs an explicit, separate decision.')
 }
 
 checkBackend()
 if (cmd === 'check') process.exit(0)
 
 if (cmd === 'plan') {
-  const args =
-    env.tfvars
-      ? ['plan', `-var-file=${env.tfvars}`, `-out=${envName}.tfplan`, '-input=false']
-      : ['plan', '-var=environment=prod', '-lock=false', '-input=false']
+  const args = ['plan', `-var-file=${env.tfvars}`, `-out=${envName}.tfplan`, '-input=false']
   const r = run([...args, ...extra])
   process.exit(r.status ?? 1)
 }
@@ -155,9 +147,6 @@ if (cmd === 'destroy') {
 }
 
 // apply
-if (envName === 'prod') {
-  fail('applying to prod is refused by this guard. prod is the live stack; changes to it need an explicit, separate decision.')
-}
 const planFile = `${envName}.tfplan`
 if (!existsSync(join(TF_DIR, planFile))) fail(`${planFile} not found -- run the plan step first`)
 checkPlanFile(planFile)
