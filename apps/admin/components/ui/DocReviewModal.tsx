@@ -152,12 +152,8 @@ function SidebarDoc({ doc, selected, idx, total, onClick }: {
         </p>
       </div>
 
-      {/* Status dot */}
-      <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors',
-        doc.status === 'approved'               ? 'bg-success' :
-        doc.status === 'rejected'               ? 'bg-danger'  :
-        doc.status === 'pending' && doc.fileUrl ? 'bg-warning' : 'bg-border'
-      )} />
+      {doc.status === 'approved' && <CheckCircle size={14} className="text-success flex-shrink-0" aria-hidden />}
+      {doc.status === 'rejected' && <XCircle size={14} className="text-danger flex-shrink-0" aria-hidden />}
     </button>
   )
 }
@@ -338,6 +334,10 @@ function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onC
   )
 }
 
+function Key({ children }: { children: React.ReactNode }) {
+  return <kbd aria-hidden className="hidden md:inline-block ml-0.5 min-w-[18px] px-1 rounded border border-current/25 text-[10px] font-semibold leading-[16px] text-center opacity-70">{children}</kbd>
+}
+
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 export default function DocReviewModal({
@@ -358,9 +358,11 @@ export default function DocReviewModal({
   const [rejectDoc, setRejectDoc]         = useState(false)
   const [approveDoc, setApproveDoc]       = useState(false)
   const [approveError, setApproveError]   = useState<string | null>(null)
-  const [driverMode, setDriverMode]       = useState<'rejectDocs' | 'ban' | 'suspend' | null>(null)
+  const [driverMode, setDriverMode]       = useState<'suspend' | null>(null)
   const [mounted, setMounted]             = useState(false)
   const scrollRef                         = useRef<HTMLDivElement>(null)
+  const startApproveRef                   = useRef<() => void>(() => {})
+  const approvingRef                      = useRef(false) // sync guard: state lags a frame, so a double 'A' could otherwise POST twice
   const isDragging                        = useRef(false)
   const dragStart                         = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 })
 
@@ -514,8 +516,15 @@ export default function DocReviewModal({
   ).length
   const canActivate = requiredMissingCount === 0
 
+  // No-expiry docs approve in one step (a mistake is one Reject away); the panel is only for a verified date.
+  function startApprove() {
+    if (docLoading || approvingRef.current) return
+    if (doc && NO_EXPIRY_DOC_TYPES.has(doc.docType)) void doDocApprove('')
+    else setApproveDoc(true)
+  }
   async function doDocApprove(verifiedValidUntil: string) {
-    if (!doc?.id) return
+    if (!doc?.id || approvingRef.current) return
+    approvingRef.current = true
     setDocLoading(true)
     setApproveError(null)
     try {
@@ -527,7 +536,8 @@ export default function DocReviewModal({
       if (next !== null) setIdx(next)
     } catch (err) {
       setApproveError(apiErrorText(err) ?? 'Could not approve. Please try again.')
-    } finally { setDocLoading(false) }
+      setApproveDoc(true) // surface the error with a retry
+    } finally { approvingRef.current = false; setDocLoading(false) }
   }
   async function doDocReject(reason: string) {
     if (!doc?.id) return
@@ -554,12 +564,14 @@ export default function DocReviewModal({
     } finally { setDriverLoading(false) }
   }
 
+  useEffect(() => { startApproveRef.current = startApprove })
+
   // Keyboard nav + action shortcuts (A = approve, R = reject, ←/→ = navigate)
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement).tagName
-      if (tag === 'TEXTAREA' || tag === 'INPUT') return
+      if (tag === 'TEXTAREA' || (tag === 'INPUT' && e.key !== 'Escape')) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === 'Escape') {
         if (rejectDoc || approveDoc || driverMode) { setRejectDoc(false); setApproveDoc(false); setDriverMode(null) }
@@ -569,7 +581,7 @@ export default function DocReviewModal({
       if (e.key === 'ArrowRight' && idx < allDocs.length - 1) setIdx(i => i + 1)
       const k = e.key.toLowerCase()
       if (!rejectDoc && !approveDoc && !driverMode) {
-        if (k === 'a' && canApprove) { e.preventDefault(); setApproveDoc(true) }
+        if (k === 'a' && canApprove) { e.preventDefault(); startApproveRef.current() }
         if (k === 'r' && canReject)  { e.preventDefault(); setRejectDoc(true) }
       }
     }
@@ -626,31 +638,14 @@ export default function DocReviewModal({
 
           {/* Application actions */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            {(detail.status === 'pending_approval' || detail.status === 'docs_rejected') && !driverMode && (
-              <>
-                <button
-                  onClick={() => void doDriverAction('approve')}
-                  disabled={driverLoading || !canActivate}
-                  title={canActivate ? undefined : `${requiredMissingCount} required document${requiredMissingCount === 1 ? '' : 's'} still ${requiredMissingCount === 1 ? 'needs' : 'need'} approval`}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-success text-white text-xs font-bold rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-success"
-                >
-                  <CheckCircle size={13} /> Activate
-                </button>
-                {detail.status === 'pending_approval' && (
-                  <button
-                    onClick={() => { setDriverMode('rejectDocs'); setDriverActionError(null) }}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 border border-warning/60 text-warning text-xs font-bold rounded-xl hover:bg-warning/8 transition-colors"
-                  >
-                    Reject Docs
-                  </button>
-                )}
-                <button
-                  onClick={() => { setDriverMode('ban'); setDriverActionError(null) }}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 border border-danger/60 text-danger text-xs font-bold rounded-xl hover:bg-danger/8 transition-colors"
-                >
-                  <XCircle size={13} /> Ban
-                </button>
-              </>
+            {(detail.status === 'pending_approval' || detail.status === 'docs_rejected') && !driverMode && canActivate && (
+              <button
+                onClick={() => void doDriverAction('approve')}
+                disabled={driverLoading}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-success text-white text-xs font-bold rounded-xl hover:bg-emerald-600 active:scale-[0.97] transition-[background-color,transform] duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <CheckCircle size={13} /> {driverLoading ? 'Activating…' : 'Activate driver'}
+              </button>
             )}
             {detail.status === 'active' && !driverMode && (
               <button onClick={() => { setDriverMode('suspend'); setDriverActionError(null) }} className="px-3.5 py-1.5 border border-warning/60 text-warning text-xs font-bold rounded-xl hover:bg-warning/8 transition-colors">
@@ -694,7 +689,7 @@ export default function DocReviewModal({
         <div className="flex flex-1 min-h-0">
 
           {/* Sidebar */}
-          <div className="w-[220px] flex-shrink-0 border-r border-border flex flex-col bg-surface">
+          <div className="hidden md:flex w-[244px] flex-shrink-0 border-r border-border flex-col bg-surface">
             {/* Driver identity card */}
             <div className="px-4 py-4 border-b border-border/60">
               <div className="flex items-center gap-2.5 mb-3">
@@ -919,18 +914,10 @@ export default function DocReviewModal({
                 {driverMode && (
                   <motion.div key="driver-form" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.15 }}>
                     <ReasonForm
-                      title={
-                        driverMode === 'rejectDocs' ? 'Reject Documents' :
-                        driverMode === 'ban'        ? 'Ban Driver' :
-                        'Suspend Driver'
-                      }
+                      title="Suspend Driver"
                       placeholder="Provide a clear reason (minimum 10 characters)…"
-                      confirmLabel={
-                        driverMode === 'rejectDocs' ? 'Reject Docs' :
-                        driverMode === 'ban'        ? 'Ban Driver' :
-                        'Suspend Driver'
-                      }
-                      danger={driverMode === 'ban'}
+                      confirmLabel="Suspend Driver"
+                      danger={false}
                       loading={driverLoading}
                       onSubmit={reason => void doDriverAction(driverMode, reason)}
                       onCancel={() => setDriverMode(null)}
@@ -971,7 +958,7 @@ export default function DocReviewModal({
 
                 {/* Normal state */}
                 {!driverMode && !rejectDoc && !approveDoc && (
-                  <motion.div key="normal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="flex items-center gap-3 h-full">
+                  <motion.div key="normal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="flex flex-wrap items-center gap-x-3 gap-y-2 h-full">
 
                     {/* Doc info */}
                     <div className="flex-1 min-w-0">
@@ -995,20 +982,22 @@ export default function DocReviewModal({
                       <div className="flex items-center gap-2 flex-shrink-0">
                         {canApprove && (
                           <button
-                            onClick={() => setApproveDoc(true)}
+                            onClick={startApprove}
+                            aria-keyshortcuts="A"
                             disabled={docLoading}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-success border border-success/35 rounded-xl bg-success/6 hover:bg-success/12 transition-colors disabled:opacity-50"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-success border border-success/35 rounded-xl bg-success/6 hover:bg-success/12 active:scale-[0.97] transition-[background-color,transform] duration-150 disabled:opacity-50"
                           >
-                            <CheckCircle size={13} /> Approve
+                            <CheckCircle size={13} /> {docLoading ? 'Approving…' : 'Approve'} <Key>A</Key>
                           </button>
                         )}
                         {canReject && (
                           <button
                             onClick={() => setRejectDoc(true)}
+                            aria-keyshortcuts="R"
                             disabled={docLoading}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-danger border border-danger/35 rounded-xl bg-danger/6 hover:bg-danger/12 transition-colors disabled:opacity-50"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-danger border border-danger/35 rounded-xl bg-danger/6 hover:bg-danger/12 active:scale-[0.97] transition-[background-color,transform] duration-150 disabled:opacity-50"
                           >
-                            <XCircle size={13} /> Reject
+                            <XCircle size={13} /> Reject <Key>R</Key>
                           </button>
                         )}
                       </div>
@@ -1033,7 +1022,7 @@ export default function DocReviewModal({
                       >
                         <ChevronRight size={13} className="text-text-secondary" />
                       </button>
-                      <span className="text-[10px] text-text-muted ml-1 hidden md:block">← →</span>
+                      <span className="ml-1 hidden md:flex gap-0.5 text-text-muted"><Key>←</Key><Key>→</Key></span>
                     </div>
                   </motion.div>
                 )}

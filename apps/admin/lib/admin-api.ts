@@ -11,6 +11,8 @@ export interface DriverListItem {
   status: DriverStatus
   onboarding_step: string
   created_at: string
+  /** When a pending_approval driver last entered the queue (null for any other status). */
+  queued_at?: string | null
   city: { id: string; name: string } | null
   vehicle: {
     number_plate: string
