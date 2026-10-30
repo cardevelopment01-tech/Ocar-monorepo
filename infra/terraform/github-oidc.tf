@@ -369,7 +369,7 @@ resource "aws_iam_role_policy" "github_actions_plan_read" {
           "glue:GetDatabase", "glue:GetTable", "glue:GetTags",
           "athena:GetWorkGroup", "athena:GetNamedQuery",
           "athena:ListTagsForResource",
-          # asg.tf: the request-burst alarms. Without this the CI plan fails with AccessDenied on
+          # asg.tf: CloudWatch alarms (scaling). Without this the CI plan fails with AccessDenied on
           # cloudwatch:DescribeAlarms as soon as the alarms exist in state.
           "cloudwatch:DescribeAlarms", "cloudwatch:ListTagsForResource",
         ]

@@ -199,32 +199,19 @@ it for the 5 minutes the autoscaler needs (p95 reached 2 s for a minute, no
 errors). Moving the minimum to 2 across two Availability Zones removes most
 of that and costs one more `t3.medium`.
 
-How a color scales out (two policies on each color's ASG, `asg.tf`):
+How a color scales out (one policy on each color's ASG, `asg.tf`, `request_count_tracking`; the name is historical):
 
-- **Steady state:** target tracking on `ALBRequestCountPerTarget`, target 1,000 requests per server per minute. AWS manages
-  its alarms and they cannot be tuned; in the 2026-10-17 tests the first extra server launched 5.3 and 5.7 minutes after a
-  fivefold jump in load. Scale-in (after about 15 quiet minutes) is done by this policy only.
-- **Sudden jumps:** step policy `request-burst-<color>` (`aws_cloudwatch_metric_alarm.request_burst`): ONE one-minute reading
-  of requests per server at or above 1,500 adds 1 server (above 2,500 adds 2), up to `max_size`. Measured live on
-  2026-10-18 (4 minutes of about 2,400 requests/min): the alarm fired 3.1 minutes after the load began and the first extra
-  server was healthy about 5.2 minutes after it, against 5.1-5.5 and 7.5-8.5 minutes for target tracking alone (CloudWatch
-  publishes a reading about 2 minutes after its minute ends). It only adds capacity, but target tracking keeps working on
-  top: in that test it then added two more servers (to the maximum of 4) while the first was starting, and all scaled in
-  again by themselves (all gone 26 minutes after the burst ended), so a burst can cost a server or two for about half an hour. The metric only reached 1,500 in the two
-  deliberate read bursts in the last five days.
-- **Why no CPU rule:** EC2 CPU is reported every 5 minutes (detailed monitoring is off), so a CPU rule would be slower than
-  the request rules. Enable detailed monitoring in the launch template first, and only after a realistic-mix load run shows
-  CPU is the limit (one server did 2,200 requests a minute at about 20% CPU on light reads).
-- **Idle color:** has no targets, so the alarm sees no data (not a breach); `deploy.yml` suspends `AlarmNotification` on the
-  idle color, which also silences this alarm until the cutover.
-- **Test it with real traffic (adds one server for about 15 minutes):**
-  `k6 run -e BASE_URL=https://<api host> load-tests/k6/scale-out-burst.js` sends about 2,400 requests a minute to a public
-  read for 4 minutes (over the 1,500 threshold, under the 2,500 that adds two servers); watch
-  `aws autoscaling describe-scaling-activities --auto-scaling-group-name <active asg> --max-items 3`: the launch cause names
-  the `request-burst` alarm. Target tracking removes the extra server again after about 15 quiet minutes.
-  **Do not use `aws cloudwatch set-alarm-state`:** a step policy needs a real metric value, so CloudWatch records
-  "Failed to execute AutoScaling action: Metric data points and threshold must be set when executing step/fuzzy
-  policies" and nothing scales (found when testing this policy on 2026-10-18).
+- **Average CPU only.** Target tracking on `ASGAverageCPUUtilization`, target `asg_cpu_target_percent` (prd 19, stg 20). There is
+  no request-based rule in any environment: a request-count or request-burst rule can add servers while the CPU is idle
+  (a freshly started server tripped one in stg on 2026-10-30). AWS manages the alarms of a target tracking policy and they
+  cannot be tuned. Scale-in (after about 15 quiet minutes) is done by this policy too.
+- **Metric resolution:** prd has detailed monitoring on (1-minute CPU); stg does not (5-minute CPU), so stg reacts more slowly.
+- **Cold start:** a server that has just booted (image pull, migrations) can lift average CPU above the target and make the group
+  add one more server; it scales back in by itself.
+- **Idle color:** has no targets; `deploy.yml` suspends `AlarmNotification` on it, which also silences its CPU alarm until the cutover.
+- **Test it:** `k6 run` a load against the API and watch
+  `aws autoscaling describe-scaling-activities --auto-scaling-group-name <active asg> --max-items 3`; the launch cause names the
+  `TargetTracking-...-AlarmHigh` alarm.
 
 To change the range itself (e.g. raise `max_size` past 4, change the
 redundancy floor, or raise the `t3.medium` baseline), edit
