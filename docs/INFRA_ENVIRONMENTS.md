@@ -58,13 +58,30 @@ state loaded, that would plan to replace prod's resources.
 | What | Where |
 |---|---|
 | Per-environment Terraform inputs | `infra/terraform/prd.tfvars`, `stg.tfvars`, `staging.tfvars`. **Gitignored**, so commit with `git add -f`. prod uses the defaults in `variables.tf`, so a changed default changes prod |
-| API settings and secrets | SSM SecureString `/ocar/<env>/api-env` (whole-value edit; see "Rotate a secret" in the runbook) |
+| API settings and secrets | SSM SecureString `/ocar/<env>/api-env` (edit with `pnpm env:edit <env>`, see "Editing API settings" below) |
 | Image tags, active colour | `/ocar/<env>/blue/image-tag`, `/ocar/<env>/green/image-tag`, `/ocar/<env>/active-color` |
 | GHCR pull token | `/ocar/<env>/ghcr-token` |
 | Grafana credentials (shared) | `/ocar/observability/*` |
 
 `DB_HOST`, `DB_NAME`, `DB_USER` and `DB_SECRET_ARN` are not in `api-env`: instances read them from RDS at boot. Do not
 put another environment's database or Redis URL into an `api-env`.
+
+## Editing API settings (`api-env`)
+
+`/ocar/<env>/api-env` is one SSM SecureString holding the whole environment file. Use the wrapper, not hand-written `aws ssm` commands:
+
+| Task | Command |
+|---|---|
+| Change one or more keys | `pnpm env:edit prd` (or `stg`): opens `$VISUAL`/`$EDITOR` on the decrypted value, shows what changed, asks you to type `push <env>`, then writes it |
+| See who changed what, and when | `pnpm env:history prd` (every stored version: time, IAM user, keys added/changed/removed) |
+| Compare a file with live | `pnpm env:diff prd <file>` |
+| Push a prepared file | `pnpm env:push stg <file>` |
+| Save a local copy | `pnpm env:pull prd [file]` (default `.api-env.<env>`, gitignored; it holds decrypted secrets, delete it after) |
+
+Values are masked in every output (`ab... (24 chars)`); add `--show-values` to see them and `--dry-run` to preview a push. A
+write is refused if the file does not parse, if someone changed the parameter after you read it, or if it would drop more
+than half of the live keys (`--force` overrides the last one). It keeps the parameter's tier and KMS key. New servers read
+the value at boot, so running ones need a redeploy to pick up a change. Tests: `node --test infra/scripts/api-env.test.mjs`.
 
 ## Common tasks
 

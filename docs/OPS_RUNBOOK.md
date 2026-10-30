@@ -434,6 +434,9 @@ the result (`--prebuilt`, which is not subject to that check).
 
 ## Rotate a secret (DB URL, JWT secret, Razorpay keys, etc.)
 
+> Use `pnpm env:edit <env>` (see `docs/INFRA_ENVIRONMENTS.md`, "Editing API settings"). It does the pull, the edit, a masked diff,
+> a version check and the push for you. The manual commands below are the same steps by hand.
+
 All of it lives in one SSM `SecureString` parameter, `/ocar/prod/api-env` —
 there's no Terraform resource for it (`iam.tf` only grants read access, it's
 never created by `apply`). To change one value you must pull the whole

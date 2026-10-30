@@ -31,7 +31,12 @@
     "infra:stg:check": "node infra/scripts/tf-guard.mjs stg check",
     "infra:stg:plan": "node infra/scripts/tf-guard.mjs stg plan",
     "infra:stg:apply": "node infra/scripts/tf-guard.mjs stg apply",
-    "infra:stg:destroy": "node infra/scripts/tf-guard.mjs stg destroy"
+    "infra:stg:destroy": "node infra/scripts/tf-guard.mjs stg destroy",
+    "env:pull": "node infra/scripts/api-env.mjs pull",
+    "env:edit": "node infra/scripts/api-env.mjs edit",
+    "env:push": "node infra/scripts/api-env.mjs push",
+    "env:diff": "node infra/scripts/api-env.mjs diff",
+    "env:history": "node infra/scripts/api-env.mjs history"
   },
   "devDependencies": {
     "turbo": "latest",
