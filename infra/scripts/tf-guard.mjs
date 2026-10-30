@@ -3,14 +3,15 @@
 // production) share one directory and one code base: running prd's tfvars while .terraform/ still points at prod's
 // state would plan to replace prod's resources with prd-named ones.
 //
-//   node infra/scripts/tf-guard.mjs <prod|prd> <check|init|plan|apply>
+//   node infra/scripts/tf-guard.mjs <prod|prd|stg> <check|init|plan|apply|destroy>
 //
-// check  verify only (backend key, tfvars, AWS identity); changes nothing
-// init   terraform init -reconfigure against <env>.backend.hcl, in that environment's own data dir
-// plan   guard, then plan. prod: read-only (-lock=false, no plan file). prd: saves prd.tfplan
-// apply  prd only, and only a plan file this guard produced; prod apply is refused outright
+// check    verify only (backend key, tfvars, AWS identity); changes nothing
+// init     terraform init -reconfigure against <env>.backend.hcl, in that environment's own data dir
+// plan     guard, then plan. prod: read-only (-lock=false, no plan file). prd/stg: saves <env>.tfplan
+// apply    prd and stg, only a plan file this guard produced; prod apply is refused outright
+// destroy  stg only (staging is disposable): shows the full destroy plan, then asks you to type "destroy stg"
 //
-// Data dirs: prod -> .terraform (unchanged), prd -> .terraform-prd. The guard sets TF_DATA_DIR itself, so there
+// Data dirs: prod -> .terraform (unchanged), prd -> .terraform-prd, stg -> .terraform-stg. The guard sets TF_DATA_DIR itself, so there
 // is nothing to remember. Extra terraform args after `--` are passed through to plan.
 
 import { spawnSync } from 'node:child_process'
@@ -24,6 +25,7 @@ const STATE_BUCKET = 'ocar-terraform-state'
 const ENVS = {
   prod: { dataDir: '.terraform', backend: 'prod.backend.hcl', key: 'prod/terraform.tfstate', tfvars: null },
   prd: { dataDir: '.terraform-prd', backend: 'prd.backend.hcl', key: 'prd/terraform.tfstate', tfvars: 'prd.tfvars' },
+  stg: { dataDir: '.terraform-stg', backend: 'stg.backend.hcl', key: 'stg/terraform.tfstate', tfvars: 'stg.tfvars' },
 }
 
 const fail = (msg) => {
@@ -34,8 +36,8 @@ const ok = (msg) => console.log(`  ok  ${msg}`)
 
 const [envName, cmd, ...rest] = process.argv.slice(2)
 const env = ENVS[envName]
-if (!env || !['check', 'init', 'plan', 'apply'].includes(cmd)) {
-  fail('usage: tf-guard.mjs <prod|prd> <check|init|plan|apply> [-- extra terraform args]')
+if (!env || !['check', 'init', 'plan', 'apply', 'destroy'].includes(cmd)) {
+  fail('usage: tf-guard.mjs <prod|prd|stg> <check|init|plan|apply|destroy> [-- extra terraform args]')
 }
 const extra = rest[0] === '--' ? rest.slice(1) : []
 // Test-only override: it is still validated below, so pointing prd at prod's data dir just makes the guard fail.
@@ -66,13 +68,13 @@ function checkBackend() {
   if (!hcl.includes(`"${env.key}"`)) fail(`${env.backend} does not set key = "${env.key}"`)
   ok(`${env.backend} sets the same key`)
 
-  if (envName === 'prd') {
+  if (env.tfvars) {
     const tfvars = join(TF_DIR, env.tfvars)
     if (!existsSync(tfvars)) fail(`${env.tfvars} is missing (it is gitignored -- restore it before planning)`)
-    if (!/^\s*environment\s*=\s*"prd"\s*$/m.test(readFileSync(tfvars, 'utf8'))) {
-      fail(`${env.tfvars} does not set environment = "prd"`)
+    if (!new RegExp(`^\\s*environment\\s*=\\s*"${envName}"\\s*$`, 'm').test(readFileSync(tfvars, 'utf8'))) {
+      fail(`${env.tfvars} does not set environment = "${envName}"`)
     }
-    ok(`${env.tfvars} sets environment = "prd"`)
+    ok(`${env.tfvars} sets environment = "${envName}"`)
   }
 
   const who = spawnSync('aws', ['sts', 'get-caller-identity', '--query', 'Account', '--output', 'text'], {
@@ -122,23 +124,42 @@ if (cmd === 'init') {
   process.exit(r.status ?? 1)
 }
 
+if (cmd === 'destroy' && envName !== 'stg') {
+  fail('destroy is wired for stg only. prod and prd are protected; destroying them needs an explicit, separate decision.')
+}
+if (cmd === 'apply' && envName === 'prod') {
+  fail('applying to prod is refused by this guard. prod is the live stack; changes to it need an explicit, separate decision.')
+}
+
 checkBackend()
 if (cmd === 'check') process.exit(0)
 
 if (cmd === 'plan') {
   const args =
-    envName === 'prd'
-      ? ['plan', `-var-file=${env.tfvars}`, '-out=prd.tfplan', '-input=false']
+    env.tfvars
+      ? ['plan', `-var-file=${env.tfvars}`, `-out=${envName}.tfplan`, '-input=false']
       : ['plan', '-var=environment=prod', '-lock=false', '-input=false']
   const r = run([...args, ...extra])
   process.exit(r.status ?? 1)
 }
 
+if (cmd === 'destroy') {
+  if (envName !== 'stg') {
+    fail('destroy is wired for stg only. prod and prd are protected; destroying them needs an explicit, separate decision.')
+  }
+  console.log('\nEverything `destroy` would remove from stg:\n')
+  const preview = run(['plan', '-destroy', `-var-file=${env.tfvars}`, '-input=false'])
+  if (preview.status !== 0) fail('terraform plan -destroy failed, nothing was destroyed')
+  await confirm('destroy stg')
+  process.exit(run(['destroy', `-var-file=${env.tfvars}`, '-input=false', '-auto-approve']).status ?? 1)
+}
+
 // apply
-if (envName !== 'prd') {
+if (envName === 'prod') {
   fail('applying to prod is refused by this guard. prod is the live stack; changes to it need an explicit, separate decision.')
 }
-if (!existsSync(join(TF_DIR, 'prd.tfplan'))) fail('prd.tfplan not found -- run the plan step first')
-checkPlanFile("prd.tfplan")
-await confirm('apply prd')
-process.exit(run(['apply', 'prd.tfplan']).status ?? 1)
+const planFile = `${envName}.tfplan`
+if (!existsSync(join(TF_DIR, planFile))) fail(`${planFile} not found -- run the plan step first`)
+checkPlanFile(planFile)
+await confirm(`apply ${envName}`)
+process.exit(run(['apply', planFile]).status ?? 1)

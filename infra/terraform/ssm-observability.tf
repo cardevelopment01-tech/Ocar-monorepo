@@ -50,14 +50,14 @@ resource "aws_ssm_parameter" "refresh_pg_exporter_secret_script" {
 # below, with zero further ad-hoc IAM grants. Staging-only -- this workflow
 # never runs against prod.
 resource "aws_ssm_parameter" "archive_metrics_to_s3_script" {
-  count = var.environment == "staging" ? 1 : 0
+  count = local.is_staging ? 1 : 0
   name  = "/${var.project_name}/${var.environment}/archive-metrics-to-s3-script"
   type  = "String"
   value = file("${path.module}/../scripts/archive-metrics-to-s3.sh")
 }
 
 resource "aws_ssm_parameter" "restore_temp_db_password" {
-  count = var.environment == "staging" ? 1 : 0
+  count = local.is_staging ? 1 : 0
   name  = "/${var.project_name}/${var.environment}/restore-temp-db-password"
   type  = "SecureString"
   value = "CHANGE ME -- see docs/superpowers/specs/2026-08-31-load-test-seed-data-spec.md"
