@@ -1,0 +1,57 @@
+name: Stg Power (pause / resume)
+
+# Manual only: Actions, Run workflow, pick status / pause / resume (infra/scripts/stg-power.mjs). Nothing runs on a timer, so a
+# night-time test is never interrupted.
+# A push to develop deploys to stg; if stg is paused that deploy fails at the migration step. Run "resume" first, then re-run.
+#
+# Needs the repo variable STG_GHA_POWER_ROLE_ARN (Terraform output github_actions_power_role_arn of the stg apply).
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do with stg
+        type: choice
+        options: [status, pause, resume]
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+# Same lock as the stg deploy job (deploy.yml: deploy-api-<env>), so a pause never lands in the middle of a deploy.
+concurrency:
+  group: deploy-api-stg
+  cancel-in-progress: false
+
+jobs:
+  power:
+    name: stg ${{ github.event.inputs.action }}
+    runs-on: ubuntu-latest
+    environment: stg
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard -- the power role variable must be set
+        env:
+          ROLE: ${{ vars.STG_GHA_POWER_ROLE_ARN }}
+        run: |
+          if [ -z "$ROLE" ]; then
+            echo "STG_GHA_POWER_ROLE_ARN is not set (Terraform output github_actions_power_role_arn of the stg apply)" >&2
+            exit 1
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.STG_GHA_POWER_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run
+        env:
+          ACTION: ${{ github.event.inputs.action }}
+        run: |
+          if [ "$ACTION" = "resume" ]; then node infra/scripts/stg-power.mjs resume --wait; else node infra/scripts/stg-power.mjs "$ACTION"; fi

@@ -102,13 +102,30 @@ Connection limit: a `db.t4g.small` has 2 GiB, so its `max_connections` is far be
 `DATABASE_POOL_MAX` + `WORKER_POOL_MAX` + `ANALYTICS_POOL_MAX` connections (set in `api-env`; prod ran 50 for the main pool), so
 keep those small, or run one server, on stg.
 
-## Pause it cheaply (without destroying)
+## Pause and resume (manual only, saves about half the cost)
 
-- **Stop the servers:** `aws autoscaling update-auto-scaling-group --auto-scaling-group-name ocar-stg-asg-blue --min-size 0 --desired-capacity 0`
-  (undo with `--min-size 1 --desired-capacity 1`). Terraform ignores `min_size` and `desired_capacity`, so it will not
-  fight this. The database, cache and load balancer keep costing money.
-- **Stop the database:** `aws rds stop-db-instance --db-instance-identifier ocar-stg-db`. AWS starts it again by itself
-  after 7 days.
+Nothing pauses stg on a timer, so a night-time test is never interrupted. Pause it yourself when you are done.
+
+| Command | What it does |
+|---|---|
+| `pnpm infra:stg:status` | servers, database, active colour, and whether stg is RUNNING or PAUSED |
+| `pnpm infra:stg:pause` | both ASGs to 0 servers, then stops the database |
+| `pnpm infra:stg:resume` | starts the database, waits for it, puts 1 server on the active colour, waits for a healthy target (about 5 to 10 minutes) |
+
+Add `--dry-run` (`node infra/scripts/stg-power.mjs pause --dry-run`) to see the steps without doing them. The script only touches
+`ocar-stg-*` resources, never lowers a running stg, and Terraform ignores the ASG sizes, so they do not fight.
+
+**What a pause saves, and what keeps billing.** Saved: the server and the database compute. Still billed: database storage, the cache
+node, the load balancer and its public IPs (they cannot be paused), about half of the running cost. AWS restarts a stopped database
+by itself after 7 days, so a pause longer than a week needs another `pause`; for weeks of idleness use `pnpm infra:stg:destroy`
+(and `pnpm infra:stg:apply` to build it again).
+
+- **From GitHub instead of a terminal:** Actions, **Stg Power (pause / resume)**, Run workflow, pick `status`, `pause` or `resume`.
+  It needs the repo variable `STG_GHA_POWER_ROLE_ARN` (Terraform output `github_actions_power_role_arn`); the role can only resize
+  the two stg ASGs, stop/start `ocar-stg-db`, and read the active colour and target health.
+- **A deploy while stg is paused fails** at the migration step (no server to run it on). Resume first, then re-run the deploy.
+- **Alerts:** a paused stg trips "Alloy heartbeat lost" and the admin-digest alert (`env="stg"`). Expect them, or silence them in
+  Grafana for the time you are paused.
 
 ## Take it down
 
