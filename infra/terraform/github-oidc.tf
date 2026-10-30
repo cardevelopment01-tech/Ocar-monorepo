@@ -238,7 +238,7 @@ resource "aws_iam_role_policy" "github_actions_plan_state" {
         Effect = "Allow"
         Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
         # prd has its own state key (prd/terraform.tfstate); prod and staging keep prod/*.
-        Resource = "${data.aws_s3_bucket.terraform_state.arn}/${var.environment == "prd" ? "prd" : "prod"}/*"
+        Resource = "${data.aws_s3_bucket.terraform_state.arn}/${contains(["prd", "stg"], var.environment) ? var.environment : "prod"}/*"
       },
       {
         Effect   = "Allow"
@@ -354,7 +354,7 @@ resource "aws_iam_role" "github_actions_staging" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:cardevelopment01-tech/Ocar-monorepo:environment:staging"
+          "token.actions.githubusercontent.com:sub" = "repo:cardevelopment01-tech/Ocar-monorepo:environment:${var.environment == "stg" ? "stg" : "staging"}"
         }
       }
     }]
@@ -377,7 +377,7 @@ resource "aws_iam_role_policy" "github_actions_staging" {
         # scoped to staging/* instead of prod/*.
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = "${data.aws_s3_bucket.terraform_state.arn}/staging/*"
+        Resource = "${data.aws_s3_bucket.terraform_state.arn}/${var.environment == "stg" ? "stg" : "staging"}/*"
       },
       {
         # GetBucketLocation added alongside the others -- the

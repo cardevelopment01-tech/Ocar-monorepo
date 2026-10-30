@@ -3,8 +3,9 @@
 One Terraform code base (`infra/terraform`) builds every environment. An environment is just the value of
 `var.environment`; each one has its own state, names, database and secrets.
 
-**Status (update when it changes):** `prd` is planned but not yet applied. See `docs/PRD_CUTOVER_CHECKLIST.md`
-for the build-and-cutover order. After cutover, `prd` is production and `prod` becomes staging.
+**Status (update when it changes):** `prd` is production (cutover done 2026-10-29/30). The old `prod` stack is scaled
+to 0 and is to be destroyed. `stg` is the final staging environment: defined and planned, not yet applied; how to bring
+it up, change it and destroy it is in `docs/STG_ENVIRONMENT.md`. The old `staging` is empty and to be deleted.
 
 ## Environments
 
@@ -12,10 +13,11 @@ for the build-and-cutover order. After cutover, `prd` is production and `prod` b
 |---|---|---|---|---|---|---|
 | `prod` | live production now; becomes staging after cutover (keep the value `prod`, renaming would replace the DB) | `prod/terraform.tfstate` | `.terraform` | `ocar-prod-*` | `/ocar/prod/*` | `ocar-prod-db` |
 | `prd` | new production | `prd/terraform.tfstate` | `.terraform-prd` | `ocar-prd-*` | `/ocar/prd/*` | `ocar-prd-db` (Multi-AZ) |
-| `staging` | old staging, to be deleted after cutover | `staging/terraform.tfstate` | `.terraform` | `ocar-staging-*` | `/ocar/staging/*` | its own |
+| `stg` | the final staging environment (smaller than prd: `t3.small`, `db.t4g.small`); see `docs/STG_ENVIRONMENT.md` | `stg/terraform.tfstate` | `.terraform-stg` | `ocar-stg-*` | `/ocar/stg/*` | `ocar-stg-db` |
+| `staging` | old staging, to be deleted | `staging/terraform.tfstate` | `.terraform` | `ocar-staging-*` | `/ocar/staging/*` | its own |
 
 All live in AWS account `822127610728`, region `ap-south-1`, state bucket `ocar-terraform-state`.
-`prod` and `prd` are both protected (DB deletion protection and final snapshot); `staging` is not.
+`prod` and `prd` are both protected (DB deletion protection and final snapshot); `stg` and `staging` are not.
 
 ## Commands
 
@@ -28,6 +30,8 @@ dir for you and refuses to run if the backend does not match the environment.
 | Check you are pointed at the right state | `pnpm infra:prd:check` / `pnpm infra:prod:check` |
 | Preview prd changes | `pnpm infra:prd:plan` (saves `prd.tfplan`) |
 | Apply prd changes | `pnpm infra:prd:apply` (re-checks the plan file, then asks you to type `apply prd`) |
+| stg: set up, check, preview, apply | `pnpm infra:stg:init`, `infra:stg:check`, `infra:stg:plan`, `infra:stg:apply` (asks you to type `apply stg`) |
+| stg: **destroy everything** | `pnpm infra:stg:destroy` (lists what it will remove, then asks you to type `destroy stg`). Refused for prod and prd |
 | Preview prod changes | `pnpm infra:prod:init` once, then `pnpm infra:prod:check`, then `pnpm infra:prod:plan` (saves `prod.tfplan`; changes nothing in AWS) |
 | Apply to prod | **Refused by the guard.** Needs an explicit decision and approval; run `terraform apply prod.tfplan` by hand after `pnpm infra:prod:check` |
 
@@ -53,7 +57,7 @@ state loaded, that would plan to replace prod's resources.
 
 | What | Where |
 |---|---|
-| Per-environment Terraform inputs | `infra/terraform/prd.tfvars`, `staging.tfvars`. **Gitignored**, so commit with `git add -f`. prod uses the defaults in `variables.tf`, so a changed default changes prod |
+| Per-environment Terraform inputs | `infra/terraform/prd.tfvars`, `stg.tfvars`, `staging.tfvars`. **Gitignored**, so commit with `git add -f`. prod uses the defaults in `variables.tf`, so a changed default changes prod |
 | API settings and secrets | SSM SecureString `/ocar/<env>/api-env` (whole-value edit; see "Rotate a secret" in the runbook) |
 | Image tags, active colour | `/ocar/<env>/blue/image-tag`, `/ocar/<env>/green/image-tag`, `/ocar/<env>/active-color` |
 | GHCR pull token | `/ocar/<env>/ghcr-token` |
@@ -80,5 +84,6 @@ put another environment's database or Redis URL into an `api-env`.
 ## Where to read more
 
 - Build and cutover order: `docs/PRD_CUTOVER_CHECKLIST.md`
+- Staging (stg): bring up, change, destroy: `docs/STG_ENVIRONMENT.md`
 - Deploy mechanics and failures: `docs/BLUE_GREEN_ARCHITECTURE.md`, `docs/OPS_RUNBOOK.md`
 - Staging spin-up and teardown: "Stand up / tear down staging" in `docs/OPS_RUNBOOK.md`

@@ -12,7 +12,7 @@
 # way (no repeated 1-4 instance load-test scaling), so there's nothing here
 # for prod to write.
 resource "aws_s3_bucket" "metrics_archive" {
-  count  = var.environment == "staging" ? 1 : 0
+  count  = local.is_staging ? 1 : 0
   bucket = "${var.project_name}-${var.environment}-metrics-archive"
 
   tags = {
@@ -25,20 +25,20 @@ resource "aws_s3_bucket" "metrics_archive" {
 # writers kms:Encrypt/Decrypt anyway) -- satisfies Trivy's AWS-0132
 # (SSE-S3/AES256 alone doesn't, it specifically wants a customer managed key).
 resource "aws_kms_key" "metrics_archive" {
-  count                   = var.environment == "staging" ? 1 : 0
+  count                   = local.is_staging ? 1 : 0
   description             = "${var.project_name}-${var.environment}-metrics-archive bucket encryption"
   enable_key_rotation     = true
   deletion_window_in_days = 7
 }
 
 resource "aws_kms_alias" "metrics_archive" {
-  count         = var.environment == "staging" ? 1 : 0
+  count         = local.is_staging ? 1 : 0
   name          = "alias/${var.project_name}-${var.environment}-metrics-archive"
   target_key_id = aws_kms_key.metrics_archive[0].key_id
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "metrics_archive" {
-  count  = var.environment == "staging" ? 1 : 0
+  count  = local.is_staging ? 1 : 0
   bucket = aws_s3_bucket.metrics_archive[0].id
 
   rule {
@@ -51,7 +51,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "metrics_archive" 
 }
 
 resource "aws_s3_bucket_public_access_block" "metrics_archive" {
-  count  = var.environment == "staging" ? 1 : 0
+  count  = local.is_staging ? 1 : 0
   bucket = aws_s3_bucket.metrics_archive[0].id
 
   block_public_acls       = true
@@ -63,7 +63,7 @@ resource "aws_s3_bucket_public_access_block" "metrics_archive" {
 # 14 days -- this is short-lived load-test forensics, not permanent storage.
 # Bump if a specific test needs a longer post-mortem window.
 resource "aws_s3_bucket_lifecycle_configuration" "metrics_archive" {
-  count  = var.environment == "staging" ? 1 : 0
+  count  = local.is_staging ? 1 : 0
   bucket = aws_s3_bucket.metrics_archive[0].id
 
   rule {
