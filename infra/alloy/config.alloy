@@ -47,8 +47,33 @@ discovery.relabel "containers" {
 loki.source.docker "containers" {
   host          = "unix:///var/run/docker.sock"
   targets       = discovery.relabel.containers.output
-  forward_to    = [loki.write.grafana_cloud.receiver, loki.process.s3_archive.receiver]
+  forward_to    = [loki.process.grafana_filter.receiver, loki.process.s3_archive.receiver]
   relabel_rules = discovery.relabel.containers.rules
+}
+
+// Grafana branch ONLY: the S3 archive below gets every line (it is the evidence copy); Loki gets what is worth reading.
+// Pino writes compact JSON (no spaces), info = level 30, so these line filters match exactly. Warnings, errors and
+// anything that is not a "request completed" line never match and pass through untouched.
+loki.process "grafana_filter" {
+  forward_to = [loki.write.grafana_cloud.receiver]
+
+  // info-level 404s = internet scanner probes and the driver app's deliberate "no active ride" (api/src/observability/http-log.ts).
+  stage.match {
+    selector            = "{service=\"ocar\", container=\"ocar_api\"} |= \"request completed\" |= \"\\\"level\\\":30\" |= \"\\\"statusCode\\\":404\""
+    action              = "drop"
+    drop_counter_reason = "expected_404"
+  }
+
+  // the rest of the successful requests (200/201/204/304): keep 1 in 10 for looking around; exact counts come from the
+  // http_request_duration_seconds metric, which is not sampled.
+  stage.match {
+    selector = "{service=\"ocar\", container=\"ocar_api\"} |= \"request completed\" |= \"\\\"level\\\":30\" != \"\\\"statusCode\\\":404\""
+
+    stage.sampling {
+      rate                = 0.1
+      drop_counter_reason = "sampled_requests"
+    }
+  }
 }
 
 // S3 log archive (s3-logs-archive.tf): api container only, `body` marshaler

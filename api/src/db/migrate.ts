@@ -129,6 +129,7 @@ async function migrate(): Promise<void> {
       .filter((f) => f.endsWith('.sql'))
       .sort()
 
+    let alreadyApplied = 0
     for (const filename of files) {
       const row = await client.query(
         'SELECT filename FROM schema_migrations WHERE filename = $1',
@@ -136,7 +137,8 @@ async function migrate(): Promise<void> {
       )
 
       if ((row.rowCount ?? 0) > 0) {
-        console.log(`skipped: ${filename}`)
+        // One summary line below instead of a "skipped:" line per file: ~120 lines on every boot, all noise in the logs.
+        alreadyApplied++
         continue
       }
 
@@ -159,7 +161,7 @@ async function migrate(): Promise<void> {
       }
     }
 
-    console.log('Migration complete.')
+    console.log(`Migration complete. ${alreadyApplied} already applied.`)
   } finally {
     await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY])
     client.release()
