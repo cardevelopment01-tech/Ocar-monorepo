@@ -99,8 +99,10 @@ const envSchema = z.object({
   // secrets-manager) needs this passed explicitly or it throws "region is
   // missing" at first use, not at boot.
   AWS_REGION: z.string().default('ap-south-1'),
-  S3_ACCESS_KEY: z.string().min(1),
-  S3_SECRET_KEY: z.string().min(1),
+  // Both empty = use the AWS credential chain (the EC2 instance role in prd, see lib/aws-credentials.ts). Set both for
+  // local dev or a host with no role; setting only one is a mistake and fails the boot check below.
+  S3_ACCESS_KEY: z.string().default(''),
+  S3_SECRET_KEY: z.string().default(''),
 
   // Email (AWS SES) — reuses the S3 AWS credentials/account, just a different service.
   // SES_FROM_EMAIL empty = dev bypass (logs instead of sending), same pattern as BULKSMSPLANS_API_ID.
@@ -159,6 +161,9 @@ export const envSchemaChecked = envSchema.superRefine((env, ctx) => {
   }
   if (env.REVIEW_OTP !== '' && !/^\d{6}$/.test(env.REVIEW_OTP)) {
     ctx.addIssue({ code: 'custom', path: ['REVIEW_OTP'], message: 'REVIEW_OTP must be 6 digits' })
+  }
+  if (Boolean(env.S3_ACCESS_KEY) !== Boolean(env.S3_SECRET_KEY)) {
+    ctx.addIssue({ code: 'custom', path: ['S3_ACCESS_KEY'], message: 'S3_ACCESS_KEY and S3_SECRET_KEY must be set together (or both left empty to use the instance role)' })
   }
   // Empty SMS credentials switch sendSms() into a dev mode that logs the message (the OTP) and reports success,
   // so a missing secret in production would silently ship every login code to the log pipeline instead of the user.
