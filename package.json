@@ -26,7 +26,12 @@
     "infra:prd:init": "node infra/scripts/tf-guard.mjs prd init",
     "infra:prd:check": "node infra/scripts/tf-guard.mjs prd check",
     "infra:prd:plan": "node infra/scripts/tf-guard.mjs prd plan",
-    "infra:prd:apply": "node infra/scripts/tf-guard.mjs prd apply"
+    "infra:prd:apply": "node infra/scripts/tf-guard.mjs prd apply",
+    "env:pull": "node infra/scripts/api-env.mjs pull",
+    "env:edit": "node infra/scripts/api-env.mjs edit",
+    "env:push": "node infra/scripts/api-env.mjs push",
+    "env:diff": "node infra/scripts/api-env.mjs diff",
+    "env:history": "node infra/scripts/api-env.mjs history"
   },
   "devDependencies": {
     "turbo": "latest",

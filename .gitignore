@@ -48,6 +48,8 @@ infra/terraform/*.tfstate
 infra/terraform/*.tfstate.backup
 infra/terraform/*tfplan
 infra/terraform/*-api-env.txt
+# decrypted API settings pulled by `pnpm env:pull` -- secrets, never commit
+.api-env.*
 infra/terraform/**/*.tfvars
 
 # Local scratch that must never be committed (load-test JWTs, env backups, debug builds)
