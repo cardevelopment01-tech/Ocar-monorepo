@@ -238,7 +238,7 @@ resource "aws_iam_role_policy" "github_actions_plan_state" {
         Effect = "Allow"
         Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
         # prd has its own state key (prd/terraform.tfstate); prod and staging keep prod/*.
-        Resource = "${data.aws_s3_bucket.terraform_state.arn}/${var.environment == "prd" ? "prd" : "prod"}/*"
+        Resource = "${data.aws_s3_bucket.terraform_state.arn}/${contains(["prd", "stg"], var.environment) ? var.environment : "prod"}/*"
       },
       {
         Effect   = "Allow"
@@ -320,9 +320,14 @@ resource "aws_iam_role_policy" "github_actions_plan_read" {
         # list failed CI one action at a time (s3:GetAccelerateConfiguration).
         # The resource is the bucket ARN without /*, so s3:Get* cannot read
         # any object; same pattern as the state bucket statement above.
-        Effect   = "Allow"
-        Action   = ["s3:Get*", "s3:List*"]
-        Resource = "arn:aws:s3:::${var.project_name}-${var.environment}-logs-archive"
+        Effect = "Allow"
+        Action = ["s3:Get*", "s3:List*"]
+        # Also the documents bucket (s3-documents.tf, prd only): without this the CI plan fails with AccessDenied on
+        # s3:GetBucketVersioning and friends as soon as that bucket is in state.
+        Resource = concat(
+          ["arn:aws:s3:::${var.project_name}-${var.environment}-logs-archive"],
+          [for b in local.documents_buckets : "arn:aws:s3:::${b}"],
+        )
       }
     ]
   })
@@ -354,7 +359,7 @@ resource "aws_iam_role" "github_actions_staging" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:cardevelopment01-tech/Ocar-monorepo:environment:staging"
+          "token.actions.githubusercontent.com:sub" = "repo:cardevelopment01-tech/Ocar-monorepo:environment:${var.environment == "stg" ? "stg" : "staging"}"
         }
       }
     }]
@@ -377,7 +382,7 @@ resource "aws_iam_role_policy" "github_actions_staging" {
         # scoped to staging/* instead of prod/*.
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = "${data.aws_s3_bucket.terraform_state.arn}/staging/*"
+        Resource = "${data.aws_s3_bucket.terraform_state.arn}/${var.environment == "stg" ? "stg" : "staging"}/*"
       },
       {
         # GetBucketLocation added alongside the others -- the

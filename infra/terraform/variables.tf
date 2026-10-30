@@ -15,8 +15,8 @@ variable "environment" {
   description = "Deployment environment -- no default, must be passed explicitly. prod = the current live stack (becomes the new staging once prd is live; keep the value, renaming would replace immutable resources). prd = the new production. staging = the old staging, to be deleted."
 
   validation {
-    condition     = contains(["prod", "prd", "staging"], var.environment)
-    error_message = "environment must be \"prod\", \"prd\" or \"staging\" -- a typo would silently skip local.protected's deletion protection."
+    condition     = contains(["prod", "prd", "stg", "staging"], var.environment)
+    error_message = "environment must be \"prod\", \"prd\", \"stg\" or \"staging\" -- a typo would silently skip local.protected's deletion protection."
   }
 }
 

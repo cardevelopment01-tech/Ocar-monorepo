@@ -23,7 +23,11 @@ locals {
   # the new "prd" environment, which uses the clean ocar-<env>-<thing>[-<color>]
   # convention. Flipping this for prod/staging would force-replace live
   # resources -- never widen it to them.
-  legacy_names = var.environment != "prd"
+  legacy_names = !contains(["prd", "stg"], var.environment)
+
+  # Staging-style environments: the old "staging" and its replacement "stg" (clean names, built from the old prod's
+  # shape). They get the load-test extras: the metrics-archive bucket, the restore/archive SSM scripts and their IAM.
+  is_staging = contains(["staging", "stg"], var.environment)
 
   # Real production environments: the DB gets deletion protection + a final
   # snapshot, and the logs bucket can't be force-destroyed. "prod" is the
@@ -92,7 +96,7 @@ resource "aws_iam_role_policy" "read_boot_parameters" {
             aws_ssm_parameter.alloy_config.arn,
             aws_ssm_parameter.refresh_pg_exporter_secret_script.arn,
           ],
-          var.environment == "staging" ? [
+          local.is_staging ? [
             aws_ssm_parameter.restore_temp_db_password[0].arn,
             aws_ssm_parameter.archive_metrics_to_s3_script[0].arn,
           ] : []
@@ -168,7 +172,7 @@ resource "aws_iam_role_policy" "rds_iam_connect" {
 # ad-hoc ops work (e.g. staging a k6 load-test runner instance under
 # tmp/ -- see load-tests/README.md) without needing a second bucket/role.
 resource "aws_iam_role_policy" "metrics_archive_write" {
-  count = var.environment == "staging" ? 1 : 0
+  count = local.is_staging ? 1 : 0
   name  = "${var.project_name}-${var.environment}-metrics-archive-write"
   role  = aws_iam_role.ec2.id
 

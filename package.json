@@ -26,7 +26,12 @@
     "infra:prd:init": "node infra/scripts/tf-guard.mjs prd init",
     "infra:prd:check": "node infra/scripts/tf-guard.mjs prd check",
     "infra:prd:plan": "node infra/scripts/tf-guard.mjs prd plan",
-    "infra:prd:apply": "node infra/scripts/tf-guard.mjs prd apply"
+    "infra:prd:apply": "node infra/scripts/tf-guard.mjs prd apply",
+    "infra:stg:init": "node infra/scripts/tf-guard.mjs stg init",
+    "infra:stg:check": "node infra/scripts/tf-guard.mjs stg check",
+    "infra:stg:plan": "node infra/scripts/tf-guard.mjs stg plan",
+    "infra:stg:apply": "node infra/scripts/tf-guard.mjs stg apply",
+    "infra:stg:destroy": "node infra/scripts/tf-guard.mjs stg destroy"
   },
   "devDependencies": {
     "turbo": "latest",
