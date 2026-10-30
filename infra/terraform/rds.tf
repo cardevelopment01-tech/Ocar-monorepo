@@ -46,8 +46,11 @@ resource "aws_db_instance" "main" {
   storage_type          = "gp3"
   storage_encrypted     = true
 
-  db_name                     = var.db_name
-  username                    = var.db_master_username
+  # Restoring from a snapshot (the new prd DB): the database and master user come from the snapshot, so these two
+  # must be unset. null on a normal create. manage_master_user_password still mints a fresh Secrets Manager secret.
+  snapshot_identifier         = var.db_snapshot_identifier
+  db_name                     = var.db_snapshot_identifier == null ? var.db_name : null
+  username                    = var.db_snapshot_identifier == null ? var.db_master_username : null
   manage_master_user_password = true
 
   # Lets IAM-authenticated connections (rds-db:connect, see iam.tf) request a
@@ -74,7 +77,9 @@ resource "aws_db_instance" "main" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
-  multi_az               = false
+  # Both default to the current prod stack's shape (Single-AZ, AWS picks the zone). prd.tfvars overrides them.
+  multi_az          = var.db_multi_az
+  availability_zone = var.db_availability_zone
 
   # postgresql.conf setting needed on the SOURCE for logical replication to
   # work at all -- must be set before CREATE PUBLICATION is attempted.
@@ -83,9 +88,9 @@ resource "aws_db_instance" "main" {
   # Real backups on the actual DB now (Neon handles this today) -- 14 days is
   # a starting point, not a tuned retention policy.
   backup_retention_period   = 14
-  skip_final_snapshot       = var.environment == "prod" ? false : true
-  final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-${var.environment}-db-final" : null
-  deletion_protection       = var.environment == "prod"
+  skip_final_snapshot       = local.protected ? false : true
+  final_snapshot_identifier = local.protected ? "${var.project_name}-${var.environment}-db-final" : null
+  deletion_protection       = local.protected
 
   # Neon's dashboard gave query-level and log visibility for free; matching
   # that on RDS needs both explicitly turned on, or the client DB load test
@@ -93,6 +98,11 @@ resource "aws_db_instance" "main" {
   enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
+
+  # Only consulted when the instance is first created: a later change must never rebuild a live database.
+  lifecycle {
+    ignore_changes = [snapshot_identifier]
+  }
 
   tags = {
     Name = "${var.project_name}-${var.environment}-db"

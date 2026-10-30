@@ -42,6 +42,8 @@ load-tests/k6/tokens.json
 # secrets, plan files are throwaway. .terraform.lock.hcl IS committed
 # (that's the provider version lock, meant to be version-controlled).
 infra/terraform/**/.terraform/
+infra/terraform/.terraform-prd/
+infra/terraform/observability/.terraform-obs/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.backup
 infra/terraform/*tfplan

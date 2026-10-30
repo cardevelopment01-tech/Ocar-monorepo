@@ -12,14 +12,14 @@
 locals {
   alloy_rules = {
     "Alloy heartbeat lost (no metrics arriving)" = {
-      expr      = "absent_over_time(alloy_config_last_load_successful[10m])"
+      expr      = "absent_over_time(alloy_config_last_load_successful{__ENV__}[10m])"
       threshold = 0
       for       = "5m"
       severity  = "critical"
       summary   = "No Alloy self-metrics for 10m -- every host's Alloy is down or can't reach Grafana Cloud. All other alerts are blind."
     }
     "Alloy config failed to load" = {
-      expr      = "min(alloy_config_last_load_successful)"
+      expr      = "min(alloy_config_last_load_successful{__ENV__})"
       threshold = 0.5 # gauge is 1 (ok) / 0 (failed); fires when < 0.5
       invert    = true
       for       = "5m"
@@ -27,21 +27,21 @@ locals {
       summary   = "An Alloy instance's last config load failed (bad SSM alloy-config?) -- it is running the previous config or nothing."
     }
     "Alloy unhealthy components" = {
-      expr      = "sum(alloy_component_controller_running_components{health_type=\"unhealthy\"})"
+      expr      = "sum(alloy_component_controller_running_components{__ENV__, health_type=\"unhealthy\"})"
       threshold = 0
       for       = "10m"
       severity  = "warning"
       summary   = "One or more Alloy components report unhealthy for 10m (check `docker logs ocar_alloy`)."
     }
     "Alloy S3 log archive failing" = {
-      expr      = "sum(increase(otelcol_exporter_send_failed_log_records_total[15m]))"
+      expr      = "sum(increase(otelcol_exporter_send_failed_log_records_total{__ENV__}[15m]))"
       threshold = 0
       for       = "10m"
       severity  = "critical"
       summary   = "Alloy is failing to write logs to the S3 archive (IAM/KMS/bucket?). Loki still receives logs; the 6-month archive has a gap."
     }
     "Alloy remote_write to Grafana failing" = {
-      expr      = "sum(increase(prometheus_remote_storage_samples_failed_total[10m]))"
+      expr      = "sum(increase(prometheus_remote_storage_samples_failed_total{__ENV__}[10m]))"
       threshold = 0
       for       = "10m"
       severity  = "warning"
@@ -72,7 +72,7 @@ resource "grafana_rule_group" "alloy_pipeline" {
         model = jsonencode({
           refId   = "A"
           instant = true
-          expr    = rule.value.expr
+          expr    = replace(rule.value.expr, "__ENV__", local.alert_env.prod)
         })
       }
 

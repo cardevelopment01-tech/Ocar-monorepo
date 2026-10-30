@@ -23,7 +23,7 @@
 locals {
   asg_names = {
     for color in local.colors :
-    color => color == "blue" ? "${var.project_name}-${var.environment}-asg" : "${var.project_name}-${var.environment}-asg-${color}"
+    color => local.legacy_names && color == "blue" ? "${var.project_name}-${var.environment}-asg" : "${var.project_name}-${var.environment}-asg-${color}"
   }
 }
 
@@ -36,6 +36,8 @@ resource "aws_autoscaling_group" "api" {
   # replacement, meaning a real capacity-to-zero window). "green" has no
   # such constraint (nothing exists yet) and uses the clean convention.
   # Asymmetric on purpose -- mirrored in deploy.yml's own name computation.
+  # The "prd" environment has no legacy resources, so both colors are clean
+  # (local.legacy_names in iam.tf, applied in local.asg_names above).
   name                = local.asg_names[each.key]
   vpc_zone_identifier = aws_subnet.public[*].id
   target_group_arns   = [aws_lb_target_group.api[each.key].arn]
@@ -117,7 +119,7 @@ resource "aws_autoscaling_policy" "request_count_tracking" {
 
   # Same "blue keeps its legacy name" reasoning as the ASG above --
   # scaling-policy name is also immutable.
-  name                   = each.key == "blue" ? "${var.project_name}-${var.environment}-request-tracking" : "${var.project_name}-${var.environment}-request-tracking-${each.key}"
+  name                   = local.legacy_names && each.key == "blue" ? "${var.project_name}-${var.environment}-request-tracking" : "${var.project_name}-${var.environment}-request-tracking-${each.key}"
   autoscaling_group_name = aws_autoscaling_group.api[each.key].name
   policy_type            = "TargetTrackingScaling"
 
@@ -125,11 +127,13 @@ resource "aws_autoscaling_policy" "request_count_tracking" {
 
   target_tracking_configuration {
     predefined_metric_specification {
-      predefined_metric_type = "ALBRequestCountPerTarget"
-      resource_label         = "${aws_lb.main.arn_suffix}/${aws_lb_target_group.api[each.key].arn_suffix}"
+      # CPU-based since the load tests (one t3.medium carries ~190 users);
+      # a CPU policy takes no resource_label. The resource keeps its old
+      # "request_count_tracking" address so Terraform doesn't replace the policy.
+      predefined_metric_type = "ASGAverageCPUUtilization"
     }
 
-    target_value = 1000
+    target_value = var.asg_cpu_target_percent
   }
 }
 
@@ -153,8 +157,10 @@ resource "aws_autoscaling_policy" "request_count_tracking" {
 # switch to aws_autoscaling_group.api[each.key].name. On a fresh environment the ASG must exist first: if the first
 # apply says the group is not found, apply again.
 #
-# A CPU rule is deliberately not added: EC2 CPU is reported every 5 minutes (detailed monitoring is off), which would
-# make it slower than the rule it would sit beside. Revisit after a realistic-mix load run (docs/OPS_RUNBOOK.md).
+# A separate CPU rule is deliberately not added: with detailed monitoring off, EC2 CPU is reported every 5 minutes,
+# which would make it slower than the rule it would sit beside. (prd turns detailed monitoring on, see
+# var.detailed_monitoring, so its CPU target-tracking policy sees 1-minute data.) Revisit after a realistic-mix load
+# run (docs/OPS_RUNBOOK.md).
 resource "aws_autoscaling_policy" "request_burst_step_out" {
   for_each = local.colors
 

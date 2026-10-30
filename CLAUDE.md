@@ -392,6 +392,10 @@ cd api && npx tsc --noEmit
 
 ## CI/CD, Deploy, Staging & Pending Ops
 
+Environments (`prod`, new `prd`, old `staging`), the guarded Terraform commands and the cutover plan:
+`docs/INFRA_ENVIRONMENTS.md` and `docs/PRD_CUTOVER_CHECKLIST.md`. Never apply to prod state from
+`infra/terraform`; use `pnpm infra:prd:*` for prd.
+
 Moved to `.claude/skills/deploy-ops/SKILL.md` (loads on demand when touching
 `.github/workflows/*`, `infra/terraform/*`, or deploy/staging/CI work) — covers
 the four CI/CD workflow files, blue/green deploy mechanics, the staging

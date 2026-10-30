@@ -119,8 +119,12 @@ loki.write "grafana_cloud" {
 // can't be told apart in a query or dashboard (see docs/superpowers/specs/
 // 2026-08-08-observability-stack-design.md). color likewise matches the logs
 // pipeline's color label -- lets dashboards split metrics by blue/green.
+// env likewise matches the logs pipeline's env label, so two environments that share one
+// Grafana stack (prod and prd) can be told apart in a query or an alert. Alerts should
+// select an environment explicitly (env="prd", or env!="prd" for prod's series, which
+// only gain the label once prod's Alloy config is next applied).
 prometheus.scrape "api" {
-  targets       = [{"__address__" = "api:4000", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
+  targets       = [{"__address__" = "api:4000", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR"), "env" = sys.env("ALLOY_ENV")}]
   metrics_path  = "/metrics"
   sample_limit  = 20000
   forward_to    = [prometheus.relabel.api.receiver, metrics_s3.api.receiver]
@@ -149,7 +153,7 @@ prometheus.relabel "api" {
 }
 
 prometheus.scrape "node" {
-  targets      = [{"__address__" = "node_exporter:9100", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
+  targets      = [{"__address__" = "node_exporter:9100", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR"), "env" = sys.env("ALLOY_ENV")}]
   sample_limit = 20000
   forward_to   = [prometheus.relabel.node.receiver, metrics_s3.node.receiver]
 }
@@ -176,7 +180,7 @@ prometheus.relabel "node" {
 // ONLY: one host exposes ~3,400 pg series (per-table ~2,800), repeated by every
 // host against the same database, which is what blew the cap.
 prometheus.scrape "postgres" {
-  targets      = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
+  targets      = [{"__address__" = "postgres_exporter:9187", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR"), "env" = sys.env("ALLOY_ENV")}]
   sample_limit = 20000
   forward_to   = [metrics_s3.postgres.receiver]
 }
@@ -229,7 +233,7 @@ metrics_s3 "alloy"    { prefix = "metrics/alloy" }
 // Per-container CPU/memory -- node_exporter above is host-wide only, this is
 // what lets the dashboard tell api's usage apart from alloy's/postgres_exporter's.
 prometheus.scrape "cadvisor" {
-  targets      = [{"__address__" = "cadvisor:8080", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
+  targets      = [{"__address__" = "cadvisor:8080", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR"), "env" = sys.env("ALLOY_ENV")}]
   sample_limit = 30000
   forward_to   = [prometheus.relabel.cadvisor.receiver, metrics_s3.cadvisor.receiver]
 }
@@ -262,7 +266,7 @@ prometheus.relabel "cadvisor" {
 // Alloy self-metrics for infra/terraform/observability/alerts-alloy.tf.
 // Allowlist only: unfiltered this is ~220 series/host.
 prometheus.scrape "alloy" {
-  targets      = [{"__address__" = "127.0.0.1:12345", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR")}]
+  targets      = [{"__address__" = "127.0.0.1:12345", "host" = sys.env("ALLOY_HOSTNAME"), "color" = sys.env("ALLOY_COLOR"), "env" = sys.env("ALLOY_ENV")}]
   sample_limit = 5000
   forward_to   = [prometheus.relabel.alloy.receiver, metrics_s3.alloy.receiver]
 }

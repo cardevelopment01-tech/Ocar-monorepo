@@ -5,6 +5,10 @@ architecture rationale (why ASG/ALB, why no NAT gateway, why local state
 originally, etc.) see `docs/TERRAFORM_INFRA_BRIEF.md`. For standing up
 staging, see `docs/superpowers/specs/2026-08-14-staging-runbook.md`.
 
+There is more than one environment (`prod`, the new `prd`, old `staging`). Which
+commands to run for which one, and the safety guard around them, is in
+`docs/INFRA_ENVIRONMENTS.md` — read that first. Commands below are for `prod`.
+
 Prereqs for anything here: `aws` CLI configured with prod credentials (or
 rely on the GitHub Actions OIDC role — see "Who can do what" below),
 Terraform 1.15.8, repo checked out, working directory `infra/terraform`.
@@ -231,8 +235,13 @@ you're editing the formula, not a per-color value) or `instance_type` in
 ```bash
 pnpm infra:prod:init   # only needed once per terminal session / after switching envs
 pnpm infra:prod:plan   # review the diff
-pnpm infra:prod:apply  # applies infra/terraform/prod.tfplan
+# Applying is deliberately NOT a pnpm script any more: `pnpm infra:prod:apply` runs
+# infra/scripts/tf-guard.mjs, which refuses prod. Applying to the live stack needs an explicit decision and
+# approval; if you have both, run it by hand from infra/terraform after `pnpm infra:prod:check`:
+#   terraform apply prod.tfplan
 ```
+The new production environment (`prd`) has its own guarded commands
+(`pnpm infra:prd:init|check|plan|apply`, see `docs/PRD_CUTOVER_CHECKLIST.md`).
 Opening a PR that touches `infra/**` also gets you the same plan for free as
 a PR comment (`.github/workflows/terraform-plan.yml`) before you apply
 locally.
@@ -288,7 +297,7 @@ connection for its Postgres exporter. A deployment runs the old and the new colo
 
 ## Make any other infra change
 
-Same three commands as above (`init` → `plan` → `apply`) for anything in
+Same flow as above (`init` → `plan` → a deliberate, approved manual `apply`) for anything in
 `infra/terraform/*.tf` — security groups, ALB listener rules, IAM, etc.
 Always read the plan output before applying; nothing here auto-applies on
 merge (only `terraform-plan.yml`'s PR-comment plan runs in CI — actual

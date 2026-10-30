@@ -6,7 +6,7 @@
 # of truth for what's actually deployed.
 
 locals {
-  rides_payments_error_rate_expr = "sum(rate(http_request_duration_seconds_count{route=~\"/api/v1/rides.*|/api/v1/payments.*\", status_code=~\"5..\"}[5m])) / sum(rate(http_request_duration_seconds_count{route=~\"/api/v1/rides.*|/api/v1/payments.*\"}[5m]))"
+  rides_payments_error_rate_expr = "sum(rate(http_request_duration_seconds_count{__ENV__, route=~\"/api/v1/rides.*|/api/v1/payments.*\", status_code=~\"5..\"}[5m])) / sum(rate(http_request_duration_seconds_count{__ENV__, route=~\"/api/v1/rides.*|/api/v1/payments.*\"}[5m]))"
 }
 
 resource "grafana_folder" "alerts" {
@@ -33,7 +33,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = local.rides_payments_error_rate_expr
+        expr    = replace(local.rides_payments_error_rate_expr, "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -76,7 +76,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = local.rides_payments_error_rate_expr
+        expr    = replace(local.rides_payments_error_rate_expr, "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -119,7 +119,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "pg_pool_connections{state=\"waiting\"}"
+        expr    = replace("pg_pool_connections{__ENV__, state=\"waiting\"}", "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -172,7 +172,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId     = "A"
         queryType = "instant"
-        expr      = "sum(count_over_time({container=\"ocar_api\"} |= \"admin digest sent\" [26h])) or vector(0)"
+        expr      = replace("sum(count_over_time({container=\"ocar_api\", __ENV__} |= \"admin digest sent\" [26h])) or vector(0)", "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -215,7 +215,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{route=\"/api/v1/geo/tracks/flush\"}[5m])) by (le))"
+        expr    = replace("histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{__ENV__, route=\"/api/v1/geo/tracks/flush\"}[5m])) by (le))", "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -258,7 +258,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "100 - ((node_filesystem_avail_bytes{mountpoint=\"/\"} * 100) / node_filesystem_size_bytes{mountpoint=\"/\"})"
+        expr    = replace("100 - ((node_filesystem_avail_bytes{__ENV__, mountpoint=\"/\"} * 100) / node_filesystem_size_bytes{__ENV__, mountpoint=\"/\"})", "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -307,7 +307,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes"
+        expr    = replace("node_memory_SwapTotal_bytes{__ENV__} - node_memory_SwapFree_bytes{__ENV__}", "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -352,7 +352,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "rate(node_disk_io_time_seconds_total[5m])"
+        expr    = replace("rate(node_disk_io_time_seconds_total{__ENV__}[5m])", "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -397,7 +397,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m]) + rate(node_network_receive_drop_total[5m]) + rate(node_network_transmit_drop_total[5m])"
+        expr    = replace("rate(node_network_receive_errs_total{__ENV__}[5m]) + rate(node_network_transmit_errs_total{__ENV__}[5m]) + rate(node_network_receive_drop_total{__ENV__}[5m]) + rate(node_network_transmit_drop_total{__ENV__}[5m])", "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -440,7 +440,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "100 - ((node_filesystem_files_free{mountpoint=\"/\"} * 100) / node_filesystem_files{mountpoint=\"/\"})"
+        expr    = replace("100 - ((node_filesystem_files_free{__ENV__, mountpoint=\"/\"} * 100) / node_filesystem_files{__ENV__, mountpoint=\"/\"})", "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -486,7 +486,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "node_filesystem_readonly{mountpoint=\"/\"} and (time() - node_boot_time_seconds) > 300"
+        expr    = replace("node_filesystem_readonly{__ENV__, mountpoint=\"/\"} and (time() - node_boot_time_seconds{__ENV__}) > 300", "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -529,7 +529,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "max(process_open_fds / process_max_fds)"
+        expr    = replace("max(process_open_fds{__ENV__} / process_max_fds{__ENV__})", "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -578,7 +578,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "sum(increase(pg_query_errors_total{code=~\"28P01|28000\"}[1m]))"
+        expr    = replace("sum(increase(pg_query_errors_total{__ENV__, code=~\"28P01|28000\"}[1m]))", "__ENV__", local.alert_env.prod)
       })
     }
 
@@ -626,7 +626,7 @@ resource "grafana_rule_group" "static_thresholds" {
       model = jsonencode({
         refId   = "A"
         instant = true
-        expr    = "bullmq_queue_job_counts{queue=\"scheduler\", state=\"failed\"}"
+        expr    = replace("bullmq_queue_job_counts{__ENV__, queue=\"scheduler\", state=\"failed\"}", "__ENV__", local.alert_env.prod)
       })
     }
 
