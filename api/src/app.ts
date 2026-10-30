@@ -5,6 +5,7 @@ import pinoHttp from 'pino-http'
 import { logger } from '@/lib/logger'
 import { register } from '@/observability/metrics'
 import { httpMetricsMiddleware } from '@/observability/http-metrics'
+import { serializeReq, serializeRes, requestLogLevel, actorProps } from '@/observability/http-log'
 import { config } from '@/config'
 import { testConnection } from '@/db/client'
 import { testConnection as testRedis } from '@/db/redis'
@@ -62,21 +63,10 @@ export function createApp(): Application {
     autoLogging: {
       ignore: (req) => req.url === '/health' || req.url === '/metrics' || req.method === 'OPTIONS',
     },
-    customLogLevel: (req, res, err) => {
-      if (res.statusCode >= 500 || err) return 'error'
-      if (res.statusCode >= 400) return 'warn'
-      // High-frequency polling (unread-count badges, admin SOS-count every
-      // 30s from apps/admin's layout.tsx) is real traffic, not noise to
-      // drop — but zero-value at 'info' on success. Demote so it's silent
-      // at the prod default and reappears if LOG_LEVEL=debug is set to
-      // chase it. Path-exact match on the SOS list route only — leaves
-      // .../sos/:id/acknowledge and .../resolve (real admin actions, not
-      // polling) at 'info'.
-      const path = req.url?.split('?')[0]
-      if (path?.includes('/unread-count')) return 'debug'
-      if (path === '/api/v1/admin/safety/sos' && req.method === 'GET') return 'debug'
-      return 'info'
-    },
+    // Level policy (tested in observability/http-log.ts): 5xx error, real 4xx warn, scanner/expected 404 and polling quiet.
+    customLogLevel: requestLogLevel,
+    // Who made the request (actor_role / actor_id): set by authenticate() later in the pipeline, read when the response ends.
+    customProps: actorProps,
     // pino-http's default req/res serializers dump every header (helmet's
     // static CSP/HSTS block, repeated on every line) — pure log-volume waste
     // once shipped off-box. Worse: req.url includes the query string, and
@@ -84,17 +74,10 @@ export function createApp(): Application {
     // there (`req.query['token']`) — logging it verbatim would ship that
     // token to Grafana Cloud. ip/userAgent are kept deliberately (useful for
     // OTP-brute-force/fraud investigation), bounded by Loki's 14-day
-    // retention — not a byproduct of the header dump.
-    serializers: {
-      req: (req) => ({
-        id: req.id,
-        method: req.method,
-        url: req.url?.split('?')[0],
-        ip: req.ip,
-        userAgent: req.headers['user-agent'],
-      }),
-      res: (res) => ({ statusCode: res.statusCode }),
-    },
+    // retention — not a byproduct of the header dump. The serializers live in
+    // observability/http-log.ts (tested there): pino-http gives them a copy of
+    // the request, so the client address is req.raw.ip, not req.ip.
+    serializers: { req: serializeReq, res: serializeRes },
   }))
 
   // Request-duration metric, labelled with the full mounted route pattern (see observability/http-metrics.ts).
