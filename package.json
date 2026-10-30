@@ -28,7 +28,10 @@
     "env:edit": "node infra/scripts/api-env.mjs edit",
     "env:push": "node infra/scripts/api-env.mjs push",
     "env:diff": "node infra/scripts/api-env.mjs diff",
-    "env:history": "node infra/scripts/api-env.mjs history"
+    "env:history": "node infra/scripts/api-env.mjs history",
+    "infra:stg:status": "node infra/scripts/stg-power.mjs status",
+    "infra:stg:pause": "node infra/scripts/stg-power.mjs pause",
+    "infra:stg:resume": "node infra/scripts/stg-power.mjs resume --wait"
   },
   "devDependencies": {
     "turbo": "latest",

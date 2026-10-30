@@ -196,6 +196,69 @@ output "github_actions_deploy_role_arn" {
   value       = aws_iam_role.github_actions_deploy.arn
 }
 
+# Pause / resume of stg (.github/workflows/stg-power.yml, infra/scripts/stg-power.mjs). stg only, and as small as the job
+# is: change the two ASGs' size, stop/start the one database, read the active colour and the load balancer's target health.
+# It cannot deploy, read secrets or touch any other environment.
+resource "aws_iam_role" "github_actions_power" {
+  count = var.environment == "stg" ? 1 : 0
+  name  = "${var.project_name}-${var.environment}-gha-power"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = data.aws_iam_openid_connect_provider.github_actions.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = { "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com" }
+        StringLike   = { "token.actions.githubusercontent.com:sub" = "repo:cardevelopment01-tech/Ocar-monorepo:environment:${local.gha_environment_name}" }
+      }
+    }]
+  })
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-gha-power"
+  }
+}
+
+resource "aws_iam_role_policy" "github_actions_power" {
+  count = var.environment == "stg" ? 1 : 0
+  name  = "${var.project_name}-${var.environment}-gha-power-policy"
+  role  = aws_iam_role.github_actions_power[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # Describe calls have no resource-level scoping.
+        Effect   = "Allow"
+        Action   = ["autoscaling:DescribeAutoScalingGroups", "rds:DescribeDBInstances", "elbv2:DescribeTargetGroups", "elbv2:DescribeTargetHealth"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "autoscaling:UpdateAutoScalingGroup"
+        Resource = [for a in aws_autoscaling_group.api : a.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["rds:StopDBInstance", "rds:StartDBInstance"]
+        Resource = aws_db_instance.main.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/active-color"
+      },
+    ]
+  })
+}
+
+output "github_actions_power_role_arn" {
+  description = "IAM role ARN for the stg pause/resume workflow (empty outside stg)"
+  value       = one(aws_iam_role.github_actions_power[*].arn)
+}
+
 # Separate, broader-but-still-read-only role for `terraform plan` on PRs --
 # plan needs to read the current state of everything this config manages
 # just to compute a diff, which is a fundamentally different (and larger)
