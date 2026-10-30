@@ -233,15 +233,11 @@ both colors' `for_each`-generated resources share the same expressions,
 you're editing the formula, not a per-color value) or `instance_type` in
 `variables.tf`, then:
 ```bash
-pnpm infra:prod:init   # only needed once per terminal session / after switching envs
-pnpm infra:prod:plan   # review the diff
-# Applying is deliberately NOT a pnpm script any more: `pnpm infra:prod:apply` runs
-# infra/scripts/tf-guard.mjs, which refuses prod. Applying to the live stack needs an explicit decision and
-# approval; if you have both, run it by hand from infra/terraform after `pnpm infra:prod:check`:
-#   terraform apply prod.tfplan
+pnpm infra:prd:init   # only needed once per terminal session / after switching envs
+pnpm infra:prd:plan   # review the diff
+pnpm infra:prd:apply  # re-checks the plan file, then asks you to type `apply prd`
 ```
-The new production environment (`prd`) has its own guarded commands
-(`pnpm infra:prd:init|check|plan|apply`, see `docs/PRD_CUTOVER_CHECKLIST.md`).
+(Staging has the same commands as `infra:stg:*`; see `docs/STG_ENVIRONMENT.md`. The old `prod` stack no longer exists.)
 Opening a PR that touches `infra/**` also gets you the same plan for free as
 a PR comment (`.github/workflows/terraform-plan.yml`) before you apply
 locally.
@@ -619,30 +615,16 @@ terraform plan   # no -var/-var-file needed, ever
 terraform apply
 ```
 
-## Stand up / tear down staging (load-test environment)
+## Stand up / tear down staging
 
-Full manual-step runbook already written:
-`docs/superpowers/specs/2026-08-14-staging-runbook.md`. Short version:
-`.github/workflows/staging-infra.yml` (`workflow_dispatch`, choose `apply`
-or `destroy`), or locally: `pnpm infra:staging:init/plan/apply/destroy`.
-**Always destroy after a load test** — staging isn't meant to run
-continuously and costs the same per-instance rate as prod.
-
-`terraform apply` only boots the ASGs against whatever image tag is already
-sitting in `/ocar/staging/{blue,green}/image-tag` — it does not deploy code.
-To get a real app version onto staging, run the `Deploy` workflow manually
-(`workflow_dispatch`, `environment: staging`) — it runs the same blue/green
-cutover (build, migrate, scale idle color, smoke-test, flip, bake) as prod.
-One-time SSM bootstrap is required before the first-ever staging deploy —
-see the runbook's "Bootstrap the blue/green SSM parameters" section.
+Staging is `stg`. Bring-up, changes (instance, database) and teardown are in `docs/STG_ENVIRONMENT.md`:
+`pnpm infra:stg:init|check|plan|apply`, and `pnpm infra:stg:destroy` to remove it. A push to `develop` deploys to it.
 
 ## Who can do what (current gaps — see CLAUDE.md "Pending Ops Actions")
 
 - Deploys to `main` currently run with **no human approval gate** — the
   `production` GitHub Environment referenced in `deploy.yml` doesn't exist
   yet, so it's inert. Needs repo admin to create it.
-- Same gap on the `staging` environment for `staging-infra.yml` — a
-  `destroy` dispatch has no confirmation step today.
 - No branch protection on `main` — a direct push bypasses PR review
   entirely (CI still has to pass before *deploy*, but not before *merge*).
 
