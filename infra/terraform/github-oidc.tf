@@ -320,9 +320,14 @@ resource "aws_iam_role_policy" "github_actions_plan_read" {
         # list failed CI one action at a time (s3:GetAccelerateConfiguration).
         # The resource is the bucket ARN without /*, so s3:Get* cannot read
         # any object; same pattern as the state bucket statement above.
-        Effect   = "Allow"
-        Action   = ["s3:Get*", "s3:List*"]
-        Resource = "arn:aws:s3:::${var.project_name}-${var.environment}-logs-archive"
+        Effect = "Allow"
+        Action = ["s3:Get*", "s3:List*"]
+        # Also the documents bucket (s3-documents.tf, prd only): without this the CI plan fails with AccessDenied on
+        # s3:GetBucketVersioning and friends as soon as that bucket is in state.
+        Resource = concat(
+          ["arn:aws:s3:::${var.project_name}-${var.environment}-logs-archive"],
+          [for b in local.documents_buckets : "arn:aws:s3:::${b}"],
+        )
       }
     ]
   })
