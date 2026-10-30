@@ -81,20 +81,24 @@
         "name": "env",
         "label": "Environment",
         "type": "custom",
-        "query": "prd : prd,stg : stg",
+        "query": "prod : prod,staging : staging,prd : prd",
         "current": {
-          "text": "prd",
-          "value": "prd"
+          "text": "prod",
+          "value": "prod"
         },
         "options": [
           {
-            "text": "prd",
-            "value": "prd",
+            "text": "prod",
+            "value": "prod",
             "selected": true
           },
           {
-            "text": "stg",
-            "value": "stg"
+            "text": "staging",
+            "value": "staging"
+          },
+          {
+            "text": "prd",
+            "value": "prd"
           }
         ]
       },
