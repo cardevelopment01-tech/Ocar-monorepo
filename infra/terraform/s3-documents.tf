@@ -153,3 +153,30 @@ import {
   to       = aws_s3_bucket_ownership_controls.documents[each.key]
   id       = each.key
 }
+
+# The api reaches the bucket with the instance role's short-lived credentials (no static S3_ACCESS_KEY/S3_SECRET_KEY in
+# /ocar/prd/api-env; see api/src/lib/aws-credentials.ts). Same four actions the app uses (uploadFile, presigned PUT,
+# promotePendingUpload copy+delete, presigned GET) on this one bucket, nothing else. SES is not granted: the old static
+# key had no SES permission either.
+resource "aws_iam_role_policy" "documents_access" {
+  for_each = local.documents_buckets
+
+  name = "${var.project_name}-${var.environment}-documents-access"
+  role = aws_iam_role.ec2.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "${aws_s3_bucket.documents[each.key].arn}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.documents[each.key].arn
+      },
+    ]
+  })
+}
