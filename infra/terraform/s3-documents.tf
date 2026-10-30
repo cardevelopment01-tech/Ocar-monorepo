@@ -5,7 +5,7 @@
 # S3_BUCKET_NAME is set, so old links keep working) and adopted here with import blocks so an apply never recreates or
 # empties it. prevent_destroy makes `terraform destroy` fail on it instead of deleting 3,000+ identity documents.
 #
-# TODO(decide): browser CORS rule, and whether uploads/pending/ should expire (neither is set yet).
+# TODO(decide): whether uploads/pending/ should expire, and whether CORS should list the real portal origins instead of "*".
 locals {
   documents_buckets = var.environment == "prd" ? toset(["${var.project_name}-${var.environment}"]) : toset([])
 }
@@ -67,6 +67,23 @@ resource "aws_s3_bucket_ownership_controls" "documents" {
 
   rule {
     object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+# The driver web portal PUTs documents straight to S3 with a presigned URL (apps/driver/src/lib/s3-upload.ts), so the
+# browser needs CORS. Mirrors ocar-bucket's live rule (GET/PUT/HEAD from any origin; access is still gated by the
+# 5-minute signature on every request). Tighten AllowedOrigins to the portal hostnames once they are final.
+resource "aws_s3_bucket_cors_configuration" "documents" {
+  for_each = local.documents_buckets
+
+  bucket = aws_s3_bucket.documents[each.key].id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "HEAD"]
+    allowed_origins = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
   }
 }
 
