@@ -30,7 +30,7 @@ domain_name = "api.ocarindia.com"
 
 # --- network --------------------------------------------------------------------------------------------------------
 # A different range from the current VPC (10.0.0.0/16) so the two can be peered for the data migration if needed.
-vpc_cidr            = "10.1.0.0/16"
+vpc_cidr = "10.1.0.0/16"
 # Two AZs. A third (1c) was added on 2026-10-29 because RDS refused a Multi-AZ db.t4g.medium (gp3) restore with only
 # 1a+1b ("1 more must be created in other Availability Zones: ap-south-1c"); it was removed the same day, and Multi-AZ
 # was then switched on again with these two zones (primary 1b, standby 1a). If a future restore or rebuild hits the same
@@ -64,7 +64,7 @@ db_max_allocated_storage = 500
 # Restore from the 16 Oct pre-seed snapshot (before the 1M-ride test data; confirmed by the owner 2026-10-29); the db
 # name `ocar` and the users come with it. It misses everything prod has written since -- before cutover, refresh it
 # (fresh snapshot + rebuild, or logical replication); the variable is ignored after creation.
-db_snapshot_identifier   = "ocar-prod-db-keep-pre-seed-20261016"
+db_snapshot_identifier = "ocar-prod-db-keep-pre-seed-20261016"
 
 # --- cache ----------------------------------------------------------------------------------------------------------
 # Live today: one cache.t4g.micro Valkey node, no replica. TODO(decide): replica or a larger node for real production.
