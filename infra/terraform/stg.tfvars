@@ -35,7 +35,7 @@ instance_type = "t3.small"
 active_color  = "blue"
 # detailed_monitoring stays at its default (off): staging does not need 1-minute scaling metrics (~$2.10/server/month).
 # Scale on average CPU only (20%); there is no request-based scaling rule in any environment.
-asg_cpu_target_percent     = 20
+asg_cpu_target_percent = 20
 
 # --- database -------------------------------------------------------------------------------------------------------
 # Single-AZ (the variable's false default) and an empty database: the first deploy runs the migrations. Add a
