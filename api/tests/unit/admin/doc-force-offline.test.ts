@@ -70,4 +70,28 @@ describe('syncDriverStatusAfterDocChange — force offline on revocation', () =>
     }
     expect(update![1]).toEqual([DRIVER_ID, ADMIN_ID])
   })
+
+  // Regression: re-approval set the driver active but left the primary vehicle 'pending', and go-online
+  // requires an 'active' vehicle -> "That vehicle is not available on your account" for approved drivers.
+  it('activates the pending primary vehicle when it reinstates a docs_rejected driver', async () => {
+    vi.mocked(hasApprovedRequiredDocs).mockResolvedValue(true)
+    fakeClient.query.mockImplementation((sql: string) =>
+      Promise.resolve({ rows: String(sql).includes('SELECT status FROM drivers') ? [{ status: 'docs_rejected' }] : [] }))
+
+    await syncDriverStatusAfterDocChange(DRIVER_ID, ADMIN_ID)
+
+    const vehicle = fakeClient.query.mock.calls.find(c => String(c[0]).includes('UPDATE driver_vehicles'))
+    expect(vehicle).toBeTruthy()
+    expect(String(vehicle![0])).toContain("is_primary = true AND status = 'pending'")
+    expect(vehicle![1]).toEqual([DRIVER_ID])
+  })
+
+  it('does not touch vehicles when the driver stays active or becomes ineligible', async () => {
+    vi.mocked(hasApprovedRequiredDocs).mockResolvedValue(true)
+    await syncDriverStatusAfterDocChange(DRIVER_ID, ADMIN_ID) // beforeEach: status 'active', still eligible
+    vi.mocked(hasApprovedRequiredDocs).mockResolvedValue(false)
+    await syncDriverStatusAfterDocChange(DRIVER_ID, ADMIN_ID)
+
+    expect(fakeClient.query.mock.calls.some(c => String(c[0]).includes('UPDATE driver_vehicles'))).toBe(false)
+  })
 })
