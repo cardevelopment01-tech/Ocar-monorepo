@@ -11,7 +11,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_PAYU_ENV": "test"
+        "EXPO_PUBLIC_PAYU_ENV": "test",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "preview": {
@@ -20,16 +21,20 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_PAYU_ENV": "test"
-      }
+        "EXPO_PUBLIC_PAYU_ENV": "test",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      },
+      "channel": "preview"
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_PAYU_ENV": "prod"
-      }
+        "EXPO_PUBLIC_PAYU_ENV": "prod",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      },
+      "channel": "production"
     }
   },
   "submit": {

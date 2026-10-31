@@ -12,7 +12,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Button, Input, OtpBoxInput, colors, spacing, typography, mapOtpErrorCode, TERMS_URL, PRIVACY_URL, fonts } from '@ocar/mobile-shared'
+import { Button, Input, OtpBoxInput, colors, spacing, typography, mapOtpErrorCode, TERMS_URL, PRIVACY_URL, fonts, track } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { setupPushNotifications } from '@/services/notifications'
 import { useAuthStore, type UserProfile } from '@/store/useAuthStore'
@@ -156,6 +156,7 @@ export default function PhoneScreen() {
       })
       const { tokens, principal, isNew } = res.data
       setAuth(tokens.accessToken, tokens.refreshToken, principal)
+      track('login_success')
       void setupPushNotifications()
       setVerified(true)
       // Matches web's login/page.tsx: a new account, or an existing one that

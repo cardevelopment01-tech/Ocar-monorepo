@@ -5,7 +5,7 @@ import Animated, { Easing, FadeIn, SlideInLeft, SlideInRight, SlideOutLeft, Slid
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Button, Input, OtpBoxInput, colors, spacing, typography, mapOtpErrorCode, TERMS_URL, PRIVACY_URL, fonts, Text } from '@ocar/mobile-shared'
+import { Button, Input, OtpBoxInput, colors, spacing, typography, mapOtpErrorCode, TERMS_URL, PRIVACY_URL, fonts, Text, track } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { setupPushNotifications } from '@/services/notifications'
 import { useAuthStore, type DriverProfile } from '@/store/useAuthStore'
@@ -151,6 +151,7 @@ export default function PhoneScreen() {
       })
       const { tokens, principal } = res.data
       setAuth(tokens.accessToken, tokens.refreshToken, principal)
+      track('login_success')
       void setupPushNotifications()
       setVerified(true)
       // Hold on the verified checkmark for a beat before swapping screens --
