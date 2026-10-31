@@ -436,6 +436,18 @@ export async function getDriverById(
   };
 }
 
+// Making a driver 'active' is the admin's sign-off on their vehicle too: go-online requires the vehicle to be
+// 'active' (DEF-24) and nothing else moves a new vehicle off 'pending'. EVERY path that sets a driver active must
+// call this (updateDriverStatus, and syncDriverStatusAfterDocChange's docs_rejected -> active re-approval, which
+// used to skip it and left re-approved drivers unable to go online). Never touches blacklisted/inactive vehicles.
+async function activatePendingPrimaryVehicle(client: PoolClient, driverId: bigint): Promise<void> {
+  await client.query(
+    `UPDATE driver_vehicles SET status = 'active', updated_at = now()
+     WHERE driver_id = $1 AND is_primary = true AND status = 'pending'`,
+    [driverId],
+  );
+}
+
 export async function updateDriverStatus(
   driverId: bigint,
   adminId: bigint,
@@ -468,13 +480,7 @@ export async function updateDriverStatus(
          WHERE id = $2`,
         [toStatus, driverId, onboardingStep ?? null, adminId],
       );
-      // Approving the driver is the admin's sign-off on their vehicle too: go-online requires status = 'active'
-      // (DEF-24) and nothing else moves a new vehicle off 'pending'. Never touches blacklisted/inactive ones.
-      await client.query(
-        `UPDATE driver_vehicles SET status = 'active', updated_at = now()
-         WHERE driver_id = $1 AND is_primary = true AND status = 'pending'`,
-        [driverId],
-      );
+      await activatePendingPrimaryVehicle(client, driverId);
     } else {
       await client.query(
         `UPDATE drivers
@@ -817,6 +823,7 @@ export async function syncDriverStatusAfterDocChange(
         `UPDATE drivers SET status = 'active', approved_by = $2, approved_at = now(), updated_at = now() WHERE id = $1`,
         [driverId, adminId],
       );
+      await activatePendingPrimaryVehicle(client, driverId);
       await client.query(
         `INSERT INTO driver_status_history (driver_id, from_status, to_status, reason, changed_by)
          VALUES ($1, 'docs_rejected', 'active', 'All documents re-approved', $2)`,
