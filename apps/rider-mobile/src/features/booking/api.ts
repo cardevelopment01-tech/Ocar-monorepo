@@ -3,6 +3,7 @@ import {
   camelizeKeys,
   decodePolyline,
   getApiErrorMessage,
+  track,
   type BookingResult,
   type FareEstimate,
   type GeoAutocompleteResult,
@@ -234,5 +235,6 @@ export type CreateBookingInput = {
 
 export async function createBooking(input: CreateBookingInput): Promise<BookingResult> {
   const res = await api.post('/api/v1/rides', input)
+  track('ride_booked')
   return camelizeKeys<BookingResult>(res.data)
 }

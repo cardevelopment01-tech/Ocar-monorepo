@@ -1,4 +1,4 @@
-import { camelizeKeys } from '@ocar/mobile-shared'
+import { camelizeKeys, track } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { sharedGet } from '@/services/api/sharedGet'
 import type { City, DocumentGateStatus, DriverSession, VehicleInfo, WalletInfo } from './types'
@@ -71,11 +71,13 @@ export async function goOnline(input: {
   }
   if (input.destinationCityId !== undefined) body['destinationCityId'] = input.destinationCityId
   const res = await api.post('/api/v1/rides/sessions/online', body)
+  track('go_online')
   return camelizeKeys<DriverSession>(res.data)
 }
 
 export async function goOffline(): Promise<void> {
   await api.post('/api/v1/rides/sessions/offline', {})
+  track('go_offline')
 }
 
 export async function fetchCities(): Promise<City[]> {

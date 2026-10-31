@@ -66,6 +66,18 @@ export type ApiClientConfig = {
   /** Driver logged in on another device (401 AUTH_SESSION_REPLACED). Falls back to onAuthFailure. */
   onSessionReplaced?: () => void
   isAuthEndpoint?: (url: string | undefined) => boolean
+  /** Called once per finished request (success or failure) so the app can report slow and failing calls. Never throws into the request. */
+  onRequestDone?: (info: ApiCallInfo) => void
+}
+
+export type ApiCallInfo = {
+  method: string
+  url: string
+  /** null = no response (offline, timeout, DNS). */
+  status: number | null
+  /** Server error code (e.g. DRIVER_DOCS_REJECTED) when the body has one. */
+  code?: string
+  ms: number
 }
 
 function defaultIsAuthEndpoint(url?: string): boolean {
@@ -85,6 +97,24 @@ export function createApiClient(config: ApiClientConfig): AxiosInstance {
   const onSessionReplaced = config.onSessionReplaced ?? onAuthFailure
   const isAuthEndpoint = config.isAuthEndpoint ?? defaultIsAuthEndpoint
   const { refreshAccessToken } = config.refresher
+  const startedAt = new WeakMap<object, number>()
+
+  function done(cfg: InternalAxiosRequestConfig | undefined, status: number | null, code?: string) {
+    if (!config.onRequestDone || !cfg) return
+    const t0 = startedAt.get(cfg)
+    try {
+      const info: ApiCallInfo = {
+        method: (cfg.method ?? 'get').toUpperCase(),
+        url: cfg.url ?? '',
+        status,
+        ms: t0 === undefined ? 0 : Date.now() - t0,
+      }
+      if (code) info.code = code
+      config.onRequestDone(info)
+    } catch {
+      /* reporting must never break a request */
+    }
+  }
 
   const api = axios.create({
     baseURL,
@@ -102,6 +132,7 @@ export function createApiClient(config: ApiClientConfig): AxiosInstance {
 
   api.interceptors.request.use(
     async (requestConfig) => {
+      startedAt.set(requestConfig, Date.now())
       let token = getAccessToken()
       if (token && !isAuthEndpoint(requestConfig.url) && tokenExpiresSoon(token)) {
         try {
@@ -120,9 +151,13 @@ export function createApiClient(config: ApiClientConfig): AxiosInstance {
   )
 
   api.interceptors.response.use(
-    (response) => response,
+    (response) => {
+      done(response.config, response.status)
+      return response
+    },
     async (error) => {
       const code = axios.isAxiosError(error) ? (error.response?.data as ApiError | undefined)?.code : undefined
+      done(error.config as InternalAxiosRequestConfig | undefined, axios.isAxiosError(error) ? (error.response?.status ?? null) : null, code)
       const isTokenError = code === 'AUTH_UNAUTHORIZED' || code === 'AUTH_TOKEN_INVALID' || code === 'AUTH_TOKEN_EXPIRED'
       const original = error.config as RetriableRequest | undefined
 

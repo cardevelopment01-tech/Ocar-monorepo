@@ -1,4 +1,4 @@
-import { camelizeKeys, decodePolyline } from '@ocar/mobile-shared'
+import { camelizeKeys, decodePolyline, track } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import type { RideDetailExtra } from './types'
 
@@ -62,10 +62,12 @@ export async function fetchRouteLeg(
 
 export async function cancelRide(rideId: string, reasonCode?: string, reason?: string): Promise<void> {
   await api.post(`/api/v1/rides/${rideId}/cancel`, { reasonCode, reason })
+  track('ride_cancelled', { reason: reasonCode ?? null })
 }
 
 export async function triggerMaskedCall(rideId: string): Promise<void> {
   await api.post(`/api/v1/rides/${rideId}/call`)
+  track('call_started', { by: 'rider' })
 }
 
 export type StopInput = { address: string; lat: number; lng: number }

@@ -1,4 +1,4 @@
-import { createApiClient } from '@ocar/mobile-shared'
+import { createApiClient, reportApiCall } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { handleSessionReplaced } from '@/services/sessionReplaced'
 import { tokenRefresher } from '@/services/tokenRefresher'
@@ -11,6 +11,7 @@ export const api = createApiClient({
   getAccessToken: () => useAuthStore.getState().token,
   refresher: tokenRefresher,
   onAuthFailure: () => useAuthStore.getState().clearAuth(),
+  onRequestDone: reportApiCall,
   onSessionReplaced: handleSessionReplaced,
 })
 
