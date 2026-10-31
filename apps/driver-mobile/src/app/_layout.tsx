@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Stack } from 'expo-router'
+import { Stack, usePathname } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { KeyboardProvider } from 'react-native-keyboard-controller'
 import * as SplashScreen from 'expo-splash-screen'
-import { SplashOverlay, useAppFonts } from '@ocar/mobile-shared'
+import {
+  SplashOverlay,
+  identifyUser,
+  initTelemetry,
+  resetUser,
+  trackScreen,
+  useAppFonts,
+  wrapRoot,
+} from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useRideRequestListener } from '@/features/ride-requests/useRideRequestListener'
 import { RideRequestOverlay } from '@/features/ride-requests/RideRequestOverlay'
@@ -22,7 +30,15 @@ import logoMarkImage from '../../assets/brand/logo-mark.png'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
 
-export default function RootLayout() {
+// Crash, error and usage reporting. Each part is off when its EXPO_PUBLIC_* key is blank and in dev builds.
+initTelemetry({
+  app: 'driver',
+  sentryDsn: process.env['EXPO_PUBLIC_SENTRY_DSN'],
+  posthogKey: process.env['EXPO_PUBLIC_POSTHOG_KEY'],
+  posthogHost: process.env['EXPO_PUBLIC_POSTHOG_HOST'],
+})
+
+function RootLayout() {
   const hasHydrated = useAuthStore((s) => s.hasHydrated)
   const fontsLoaded = useAppFonts()
   const [showSplashOverlay, setShowSplashOverlay] = useState(true)
@@ -36,6 +52,17 @@ export default function RootLayout() {
   usePushNotificationRouting()
   usePushRegistration()
   useStandingSync()
+
+  // Reports are keyed by role and id only (never phone or name), and follow login/logout.
+  const accountId = useAuthStore((s) => s.driver?.id)
+  useEffect(() => {
+    if (accountId) identifyUser('driver', accountId)
+    else resetUser()
+  }, [accountId])
+  const pathname = usePathname()
+  useEffect(() => {
+    trackScreen(pathname)
+  }, [pathname])
 
   useEffect(() => {
     if (hasHydrated && fontsLoaded) SplashScreen.hideAsync().catch(() => {})
@@ -71,3 +98,5 @@ export default function RootLayout() {
     </SafeAreaProvider>
   )
 }
+
+export default wrapRoot(RootLayout)
