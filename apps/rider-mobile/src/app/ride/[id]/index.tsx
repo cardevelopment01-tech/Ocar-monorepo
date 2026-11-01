@@ -3,7 +3,7 @@ import { Alert, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Button, ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, colors, radii, spacing, typography, fonts, getApiErrorMessage, getFreshFix, getLastKnownFix } from '@ocar/mobile-shared'
+import { Button, ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, colors, radii, spacing, typography, fonts, getApiErrorMessage, getFreshFix, getLastKnownFix, track } from '@ocar/mobile-shared'
 import { api, serverNow } from '@/services/api'
 import { triggerSos } from '@/features/safety/api'
 import { useLocationStore } from '@/store/useLocationStore'
@@ -125,6 +125,7 @@ export default function RideTrackingScreen() {
     setCancelling(true)
     try {
       await api.post(`/api/v1/rides/${rideId}/cancel`, { reasonCode: 'rider_cancelled_searching' })
+      track('ride_cancelled', { reason: 'rider_cancelled_searching' })
       router.replace('/(tabs)/home')
     } catch {
       setCancelling(false)

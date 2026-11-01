@@ -1,4 +1,4 @@
-import { camelizeKeys, decodePolyline, type RideDetail } from '@ocar/mobile-shared'
+import { camelizeKeys, decodePolyline, track, type RideDetail } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import type { SpeedLimitCity } from './speedAlert'
 
@@ -57,6 +57,7 @@ export async function arrivedAtDrop(rideId: string): Promise<void> {
 // works unchanged for the driver side too.
 export async function triggerMaskedCall(rideId: string): Promise<void> {
   await api.post(`/api/v1/rides/${rideId}/call`)
+  track('call_started', { by: 'driver' })
 }
 
 export async function submitStartOtp(rideId: string, otp: string): Promise<void> {
