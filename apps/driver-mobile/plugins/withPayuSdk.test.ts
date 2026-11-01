@@ -4,7 +4,7 @@ import { createRequire } from 'node:module'
 // The plugin is plain CommonJS (Expo loads it with require); load it the same way.
 const { applyPayuGradle, applyPayuManifest } = createRequire(import.meta.url)('./withPayuSdk.js') as {
   applyPayuGradle: (contents: string, rnVersion: string) => string
-  applyPayuManifest: (m: { $: Record<string, string>; application: Array<{ $: Record<string, string> }> }) => unknown
+  applyPayuManifest: (m: { $: Record<string, string>; application: Array<{ $: Record<string, string>; service?: unknown[] }>; 'uses-permission'?: unknown[] | undefined }) => unknown
 }
 
 const ROOT_GRADLE = `buildscript { }\nallprojects { repositories { google() } }\napply plugin: "expo-root-project"\n`
@@ -30,7 +30,8 @@ describe('withPayuSdk gradle', () => {
 describe('withPayuSdk manifest', () => {
   const mk = (replace?: string) => ({
     $: {} as Record<string, string>,
-    application: [{ $: replace ? { 'tools:replace': replace } : {} }],
+    application: [{ $: replace ? { 'tools:replace': replace } : {} } as { $: Record<string, string>; service?: unknown[] }],
+    'uses-permission': undefined as unknown[] | undefined,
   })
 
   it('overrides the application theme the PayU UI library declares', () => {
@@ -49,5 +50,12 @@ describe('withPayuSdk manifest', () => {
     applyPayuManifest(m)
     applyPayuManifest(m)
     expect(m.application[0]!.$['tools:replace']).toBe('android:theme')
+  })
+  it("removes PayU's dataSync foreground service and its permission, once", () => {
+    const m = mk()
+    applyPayuManifest(m)
+    applyPayuManifest(m)
+    expect(m.application[0]!.service).toEqual([{ $: { 'android:name': 'com.payu.otpassist.CheckTxnStatusForegroundService', 'tools:node': 'remove' } }])
+    expect(m['uses-permission']).toEqual([{ $: { 'android:name': 'android.permission.FOREGROUND_SERVICE_DATA_SYNC', 'tools:node': 'remove' } }])
   })
 })
