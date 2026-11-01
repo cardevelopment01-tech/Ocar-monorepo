@@ -21,6 +21,7 @@ interface FlatDoc {
   status: string
   rejectionNote: string | null
   claimedValidUntil: string | null
+  verifiedValidUntil: string | null
   updatedAt: string | null
   id?: string
 }
@@ -34,6 +35,9 @@ export interface DocReviewModalProps {
   onDriverDocReject: (docId: string, reason: string, seenUpdatedAt: string) => Promise<void>
   onVehicleDocApprove: (docId: string, verifiedValidUntil: string, seenUpdatedAt: string) => Promise<void>
   onVehicleDocReject: (docId: string, reason: string, seenUpdatedAt: string) => Promise<void>
+  /** Correct the verified expiry of an already-approved document without rejecting it. */
+  onDriverDocEditExpiry: (docId: string, verifiedValidUntil: string, seenUpdatedAt: string) => Promise<void>
+  onVehicleDocEditExpiry: (docId: string, verifiedValidUntil: string, seenUpdatedAt: string) => Promise<void>
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -81,10 +85,10 @@ export function buildDocs(d: DriverDetail): FlatDoc[] {
   const list: FlatDoc[] = []
   const addedD = new Set<string>()
   const addedV = new Set<string>()
-  for (const x of d.documents)         { list.push({ kind: 'driver',  docType: x.doc_type, fileUrl: x.file_url, status: x.status, rejectionNote: x.rejection_note, claimedValidUntil: x.claimed_valid_until, updatedAt: x.updated_at, id: x.id }); addedD.add(x.doc_type) }
-  for (const x of d.vehicle_documents) { list.push({ kind: 'vehicle', docType: x.doc_type, fileUrl: x.file_url, status: x.status, rejectionNote: x.rejection_note, claimedValidUntil: x.claimed_valid_until, updatedAt: x.updated_at, id: x.id }); addedV.add(x.doc_type) }
-  for (const k of REQUIRED_DRIVER)  if (!addedD.has(k)) list.push({ kind: 'driver',  docType: k, fileUrl: '', status: 'missing', rejectionNote: null, claimedValidUntil: null, updatedAt: null })
-  for (const k of REQUIRED_VEHICLE) if (!addedV.has(k)) list.push({ kind: 'vehicle', docType: k, fileUrl: '', status: 'missing', rejectionNote: null, claimedValidUntil: null, updatedAt: null })
+  for (const x of d.documents)         { list.push({ kind: 'driver',  docType: x.doc_type, fileUrl: x.file_url, status: x.status, rejectionNote: x.rejection_note, claimedValidUntil: x.claimed_valid_until, verifiedValidUntil: x.verified_valid_until, updatedAt: x.updated_at, id: x.id }); addedD.add(x.doc_type) }
+  for (const x of d.vehicle_documents) { list.push({ kind: 'vehicle', docType: x.doc_type, fileUrl: x.file_url, status: x.status, rejectionNote: x.rejection_note, claimedValidUntil: x.claimed_valid_until, verifiedValidUntil: x.verified_valid_until, updatedAt: x.updated_at, id: x.id }); addedV.add(x.doc_type) }
+  for (const k of REQUIRED_DRIVER)  if (!addedD.has(k)) list.push({ kind: 'driver',  docType: k, fileUrl: '', status: 'missing', rejectionNote: null, claimedValidUntil: null, verifiedValidUntil: null, updatedAt: null })
+  for (const k of REQUIRED_VEHICLE) if (!addedV.has(k)) list.push({ kind: 'vehicle', docType: k, fileUrl: '', status: 'missing', rejectionNote: null, claimedValidUntil: null, verifiedValidUntil: null, updatedAt: null })
   return list.sort((a, b) => docRank(a.docType) - docRank(b.docType))
 }
 
@@ -270,25 +274,35 @@ function minExpiryIso() {
 // "today" (the easiest date in the picker). The backend ignores any date for them.
 const NO_EXPIRY_DOC_TYPES = new Set(['profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license_back', 'vehicle_rc_front', 'vehicle_rc_back'])
 
-function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onCancel }: {
+function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onCancel, mode = 'approve', currentValidUntil = null }: {
   docType: string; claimedValidUntil: string | null; loading: boolean; error: string | null
   onSubmit: (verifiedValidUntil: string) => void; onCancel: () => void
+  /** 'edit' corrects the date on an already-approved document (the doc stays approved). */
+  mode?: 'approve' | 'edit'; currentValidUntil?: string | null
 }) {
   const noExpiry = NO_EXPIRY_DOC_TYPES.has(docType)
+  const editing = mode === 'edit'
+  const currentDate = currentValidUntil ? currentValidUntil.slice(0, 10) : null
 
   // Postgres DATE columns round-trip through JSON as a full ISO datetime
   // (e.g. "2027-06-15T00:00:00.000Z"); <input type="date"> requires exactly
   // YYYY-MM-DD or it silently renders empty instead of the prefilled value.
   const claimedDate = claimedValidUntil ? claimedValidUntil.slice(0, 10) : null
   const claimedIsFuture = !!claimedDate && claimedDate >= minExpiryIso()
-  const [value, setValue] = useState(claimedIsFuture ? claimedDate! : '')
+  // Editing starts from the stored date when it is still usable, else from the driver's claim.
+  const currentIsFuture = !!currentDate && currentDate >= minExpiryIso()
+  const [value, setValue] = useState(editing && currentIsFuture ? currentDate! : claimedIsFuture ? claimedDate! : '')
   const valid = noExpiry || value >= minExpiryIso()
 
   return (
     <div className="space-y-3">
-      <p className="text-sm font-semibold text-text-primary">Approve Document</p>
+      <p className="text-sm font-semibold text-text-primary">{editing ? 'Edit expiry date' : 'Approve Document'}</p>
       {noExpiry ? (
-        <p className="text-xs text-text-muted">This document type doesn&apos;t expire.</p>
+        <p className="text-xs text-text-muted">
+          {editing
+            ? 'This document type doesn’t expire. Saving removes the expiry date stored on it.'
+            : 'This document type doesn’t expire.'}
+        </p>
       ) : (
         <div>
           <label htmlFor="verified-valid-until" className="block text-xs font-medium text-text-muted mb-1">
@@ -310,7 +324,7 @@ function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onC
             )}
           />
           <p className="text-xs text-text-muted mt-1.5">
-            Driver claims: {claimedDate ? claimedDate : 'not provided'}
+            {editing && <>Currently: {currentDate ?? 'not set'} · </>}Driver claims: {claimedDate ? claimedDate : 'not provided'}
           </p>
         </div>
       )}
@@ -321,7 +335,7 @@ function ApproveForm({ docType, claimedValidUntil, loading, error, onSubmit, onC
           disabled={!valid || loading}
           className="px-4 py-2 text-sm font-semibold rounded-xl transition-colors disabled:opacity-45 bg-success text-white hover:bg-emerald-600"
         >
-          {loading ? 'Approving…' : 'Approve'}
+          {loading ? (editing ? 'Saving…' : 'Approving…') : (editing ? 'Save expiry' : 'Approve')}
         </button>
         <button
           onClick={onCancel}
@@ -344,6 +358,7 @@ export default function DocReviewModal({
   detail, initialDocIndex = 0, onClose, onDriverAction,
   onDriverDocApprove, onDriverDocReject,
   onVehicleDocApprove, onVehicleDocReject,
+  onDriverDocEditExpiry, onVehicleDocEditExpiry,
 }: DocReviewModalProps) {
   const allDocs = buildDocs(detail)
 
@@ -357,6 +372,7 @@ export default function DocReviewModal({
   const [driverActionError, setDriverActionError] = useState<string | null>(null)
   const [rejectDoc, setRejectDoc]         = useState(false)
   const [approveDoc, setApproveDoc]       = useState(false)
+  const [editExpiry, setEditExpiry]       = useState(false)
   const [approveError, setApproveError]   = useState<string | null>(null)
   const [driverMode, setDriverMode]       = useState<'suspend' | null>(null)
   const [mounted, setMounted]             = useState(false)
@@ -428,6 +444,7 @@ export default function DocReviewModal({
   useEffect(() => {
     setRejectDoc(false)
     setApproveDoc(false)
+    setEditExpiry(false)
     setApproveError(null)
     setZoomLevel('fit')
     setRotation(0)
@@ -503,6 +520,10 @@ export default function DocReviewModal({
   const isPdf      = doc?.fileUrl && /\.pdf(\?|$)/i.test(doc.fileUrl)
   const canApprove = !!doc?.id && doc.status !== 'approved' && !isMissing
   const canReject  = !!doc?.id && doc.status !== 'rejected' && !isMissing
+  // An approved doc with a wrong date is fixed in place (no reject round trip). No-expiry types only qualify
+  // when a stale date is stored on them, so there is nothing to edit on a clean Aadhaar.
+  const canEditExpiry = !!doc?.id && doc.status === 'approved' && !isMissing
+    && (!NO_EXPIRY_DOC_TYPES.has(doc.docType) || !!doc.verifiedValidUntil)
 
   const approvedCount = allDocs.filter(d => d.status === 'approved').length
   const totalUploaded = allDocs.filter(d => d.fileUrl && d.status !== 'missing').length
@@ -537,6 +558,20 @@ export default function DocReviewModal({
     } catch (err) {
       setApproveError(apiErrorText(err) ?? 'Could not approve. Please try again.')
       setApproveDoc(true) // surface the error with a retry
+    } finally { approvingRef.current = false; setDocLoading(false) }
+  }
+  async function doEditExpiry(verifiedValidUntil: string) {
+    if (!doc?.id || approvingRef.current) return
+    approvingRef.current = true
+    setDocLoading(true)
+    setApproveError(null)
+    try {
+      const seenUpdatedAt = doc.updatedAt ?? ''
+      if (doc.kind === 'driver') await onDriverDocEditExpiry(doc.id, verifiedValidUntil, seenUpdatedAt)
+      else                       await onVehicleDocEditExpiry(doc.id, verifiedValidUntil, seenUpdatedAt)
+      setEditExpiry(false) // stay on this document; the parent reload refreshes its date and version
+    } catch (err) {
+      setApproveError(apiErrorText(err) ?? 'Could not update the expiry. Please try again.')
     } finally { approvingRef.current = false; setDocLoading(false) }
   }
   async function doDocReject(reason: string) {
@@ -574,20 +609,20 @@ export default function DocReviewModal({
       if (tag === 'TEXTAREA' || (tag === 'INPUT' && e.key !== 'Escape')) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === 'Escape') {
-        if (rejectDoc || approveDoc || driverMode) { setRejectDoc(false); setApproveDoc(false); setDriverMode(null) }
+        if (rejectDoc || approveDoc || editExpiry || driverMode) { setRejectDoc(false); setApproveDoc(false); setEditExpiry(false); setDriverMode(null) }
         else onClose()
       }
       if (e.key === 'ArrowLeft'  && idx > 0)                  setIdx(i => i - 1)
       if (e.key === 'ArrowRight' && idx < allDocs.length - 1) setIdx(i => i + 1)
       const k = e.key.toLowerCase()
-      if (!rejectDoc && !approveDoc && !driverMode) {
+      if (!rejectDoc && !approveDoc && !editExpiry && !driverMode) {
         if (k === 'a' && canApprove) { e.preventDefault(); startApproveRef.current() }
         if (k === 'r' && canReject)  { e.preventDefault(); setRejectDoc(true) }
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [idx, allDocs.length, onClose, rejectDoc, approveDoc, driverMode, canApprove, canReject])
+  }, [idx, allDocs.length, onClose, rejectDoc, approveDoc, editExpiry, driverMode, canApprove, canReject])
 
   if (!mounted || !doc) return null
 
@@ -942,6 +977,22 @@ export default function DocReviewModal({
                   </motion.div>
                 )}
 
+                {/* Edit expiry of an approved doc */}
+                {!driverMode && !rejectDoc && !approveDoc && editExpiry && (
+                  <motion.div key="doc-edit-expiry-form" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.15 }}>
+                    <ApproveForm
+                      mode="edit"
+                      docType={doc.docType}
+                      claimedValidUntil={doc.claimedValidUntil}
+                      currentValidUntil={doc.verifiedValidUntil}
+                      loading={docLoading}
+                      error={approveError}
+                      onSubmit={verifiedValidUntil => void doEditExpiry(verifiedValidUntil)}
+                      onCancel={() => { setEditExpiry(false); setApproveError(null) }}
+                    />
+                  </motion.div>
+                )}
+
                 {/* Per-doc approve form */}
                 {!driverMode && !rejectDoc && approveDoc && (
                   <motion.div key="doc-approve-form" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.15 }}>
@@ -957,7 +1008,7 @@ export default function DocReviewModal({
                 )}
 
                 {/* Normal state */}
-                {!driverMode && !rejectDoc && !approveDoc && (
+                {!driverMode && !rejectDoc && !approveDoc && !editExpiry && (
                   <motion.div key="normal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="flex flex-wrap items-center gap-x-3 gap-y-2 h-full">
 
                     {/* Doc info */}
@@ -975,11 +1026,25 @@ export default function DocReviewModal({
                       {doc.kind === 'driver' && (
                         <p className="text-xs text-text-muted mt-0.5 capitalize">{doc.docType.replace(/_/g, ' ')}</p>
                       )}
+                      {doc.status === 'approved' && !NO_EXPIRY_DOC_TYPES.has(doc.docType) && (
+                        <p className="text-xs text-text-muted mt-0.5">
+                          Expires {doc.verifiedValidUntil ? doc.verifiedValidUntil.slice(0, 10) : 'never (no date set)'}
+                        </p>
+                      )}
                     </div>
 
                     {/* Per-doc actions */}
-                    {(canApprove || canReject) && (
+                    {(canApprove || canReject || canEditExpiry) && (
                       <div className="flex items-center gap-2 flex-shrink-0">
+                        {canEditExpiry && (
+                          <button
+                            onClick={() => { setApproveError(null); setEditExpiry(true) }}
+                            disabled={docLoading}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-text-secondary border border-border rounded-xl hover:bg-surface-2 active:scale-[0.97] transition-[background-color,transform] duration-150 disabled:opacity-50"
+                          >
+                            Edit expiry
+                          </button>
+                        )}
                         {canApprove && (
                           <button
                             onClick={startApprove}

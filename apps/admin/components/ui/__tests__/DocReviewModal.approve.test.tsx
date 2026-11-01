@@ -38,6 +38,7 @@ function setup(order: string[], initialDocIndex = 0) {
     detail, onClose: vi.fn(), onDriverAction: vi.fn().mockResolvedValue(undefined),
     onDriverDocApprove: vi.fn().mockResolvedValue(undefined), onDriverDocReject: vi.fn().mockResolvedValue(undefined),
     onVehicleDocApprove: vi.fn().mockResolvedValue(undefined), onVehicleDocReject: vi.fn().mockResolvedValue(undefined),
+    onDriverDocEditExpiry: vi.fn().mockResolvedValue(undefined), onVehicleDocEditExpiry: vi.fn().mockResolvedValue(undefined),
   }
   render(<DocReviewModal {...props} initialDocIndex={initialDocIndex} />)
   return props
