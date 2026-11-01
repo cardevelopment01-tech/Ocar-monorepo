@@ -104,6 +104,12 @@ export function captureError(err: unknown, context?: Record<string, string | num
   safe(() => void recordError(getCrashlytics(), error))
 }
 
+/** Hidden self-check (long-press the version text): one harmless handled error to Sentry and Crashlytics. */
+export function sendTestError(app: 'driver' | 'rider'): void {
+  captureError(new Error(`Ocar ${app} monitoring test error (not a real crash)`))
+  safe(() => void Sentry.flush())
+}
+
 /** Wrap the root component: React render errors become Sentry events with a component stack. */
 export const wrapRoot = Sentry.wrap
 
