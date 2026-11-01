@@ -9,7 +9,7 @@ import { card, geo, sectionLabel } from '@/theme/homeTokens'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn, useAnimatedStyle } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, fonts, useKeyboardOffset, mapSaveError } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, sendTestError, fonts, useKeyboardOffset, mapSaveError } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { EMAIL_ERROR, isPlausibleEmail } from '@/utils/email'
@@ -206,7 +206,7 @@ export default function ProfileScreen() {
           <Pressable onPress={confirmDeleteAccount} style={styles.deleteBtn} accessibilityRole="button">
             <Text style={styles.deleteText}>Delete account</Text>
           </Pressable>
-          <Text style={styles.version}>Ocar v{APP_VERSION}</Text>
+          <Text style={styles.version} onLongPress={() => { sendTestError('rider'); Alert.alert('Monitoring test', 'Test error sent.') }}>Ocar v{APP_VERSION}</Text>
         </Animated.View>
       </ScrollView>
 

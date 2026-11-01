@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeInDown, FadeIn, useAnimatedStyle } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, fonts, useKeyboardOffset, mapSaveError, useNavClearance, card, sectionLabel, Text } from '@ocar/mobile-shared'
+import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, sendTestError, fonts, useKeyboardOffset, mapSaveError, useNavClearance, card, sectionLabel, Text } from '@ocar/mobile-shared'
 import Constants from 'expo-constants'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -331,7 +331,7 @@ export default function ProfileScreen() {
           <Pressable onPress={confirmDeleteAccount} style={styles.deleteBtn} accessibilityRole="button">
             <Text style={styles.deleteText}>Delete account</Text>
           </Pressable>
-          <Text style={styles.version}>Ocar Driver v{APP_VERSION}</Text>
+          <Text style={styles.version} onLongPress={() => { sendTestError('driver'); Alert.alert('Monitoring test', 'Test error sent.') }}>Ocar Driver v{APP_VERSION}</Text>
         </Animated.View>
       </ScrollView>
 
