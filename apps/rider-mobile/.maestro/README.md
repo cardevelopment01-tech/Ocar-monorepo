@@ -1,7 +1,7 @@
 # Rider app Maestro flows (location states)
 
 Install Maestro (https://maestro.mobile.dev), start an Android emulator or device with a **debug or preview
-build of `com.ocar.rider`**, sign in once by hand (login is an OTP, so flows cannot do it), then:
+build of `com.ocarindia.rider`**, sign in once by hand (login is an OTP, so flows cannot do it), then:
 
     maestro test apps/rider-mobile/.maestro
 

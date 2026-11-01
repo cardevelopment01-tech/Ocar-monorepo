@@ -63,3 +63,6 @@ load-tests/tokens.json
 # Python bytecode (CI helper scripts)
 __pycache__/
 *.pyc
+
+# Firebase client config for the Play apps (root copy; per-app copies are ignored by apps/*/.gitignore)
+/google-services.json

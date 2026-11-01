@@ -1,5 +1,5 @@
 # With location off the booking screen uses the same wording as the home pill.
-appId: com.ocar.rider
+appId: com.ocarindia.rider
 ---
 - launchApp:
     stopApp: true
