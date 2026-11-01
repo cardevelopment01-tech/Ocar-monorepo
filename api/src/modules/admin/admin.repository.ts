@@ -158,11 +158,18 @@ function buildDriverWhere(
     params.push(f.status);
   }
   if (f.search) {
+    // Plates are stored as typed ("OD 02 AB 1234", "od02ab1234"), so match with spaces/dashes
+    // stripped on both sides, across all of the driver's vehicles (not just the primary one).
     conditions.push(
-      `(d.phone ILIKE $${p} OR d.full_name ILIKE $${p} OR d.code ILIKE $${p})`,
+      `(d.phone ILIKE $${p} OR d.full_name ILIKE $${p} OR d.code ILIKE $${p}
+        OR EXISTS (SELECT 1 FROM driver_vehicles sv WHERE sv.driver_id = d.id
+                   AND regexp_replace(sv.number_plate, '[^A-Za-z0-9]', '', 'g') ILIKE $${p + 1}))`,
     );
-    params.push(`%${f.search}%`);
-    p++;
+    params.push(
+      `%${f.search}%`,
+      `%${f.search.replace(/[^A-Za-z0-9]/g, "") || f.search}%`,
+    );
+    p += 2;
   }
   if (omit !== "city" && (f.cityIds?.length || f.includeNoCity)) {
     const parts: string[] = [];

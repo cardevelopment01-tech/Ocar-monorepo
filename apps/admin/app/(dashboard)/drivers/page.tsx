@@ -421,7 +421,7 @@ function DriversPageInner() {
           <FilterBar
             search={search}
             onSearch={setSearch}
-            searchPlaceholder="Search by name, phone, or code…"
+            searchPlaceholder="Search by name, phone, code, or vehicle number…"
             wrapSearch
             leading={<>
               <MultiSelectFilter
