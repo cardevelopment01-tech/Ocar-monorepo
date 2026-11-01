@@ -34,6 +34,16 @@ function applyPayuManifest(manifest) {
   const replace = new Set((app.$['tools:replace'] || '').split(',').filter(Boolean));
   replace.add('android:theme');
   app.$['tools:replace'] = [...replace].join(',');
+  // PayU's OTP-assist module ships a dataSync foreground service that only polls a payment's status. We
+  // confirm payments ourselves (confirm endpoint + server reconcile), and Play would need a dataSync
+  // declaration and demo video for it, so drop the service and the permission the library merges in.
+  const has = (list, name) => (list || []).some((n) => n.$['android:name'] === name);
+  const SERVICE = 'com.payu.otpassist.CheckTxnStatusForegroundService';
+  const PERM = 'android.permission.FOREGROUND_SERVICE_DATA_SYNC';
+  app.service = app.service || [];
+  if (!has(app.service, SERVICE)) app.service.push({ $: { 'android:name': SERVICE, 'tools:node': 'remove' } });
+  manifest['uses-permission'] = manifest['uses-permission'] || [];
+  if (!has(manifest['uses-permission'], PERM)) manifest['uses-permission'].push({ $: { 'android:name': PERM, 'tools:node': 'remove' } });
   return manifest;
 }
 
