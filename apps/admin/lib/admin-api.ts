@@ -166,6 +166,13 @@ export const adminDriverApi = {
     })
   },
 
+  editDriverDocExpiry: async (docId: string, verifiedValidUntil: string, seenUpdatedAt: string): Promise<void> => {
+    await api.patch(`/api/v1/admin/drivers/documents/${docId}/expiry`, {
+      verified_valid_until: verifiedValidUntil,
+      seen_updated_at: seenUpdatedAt,
+    })
+  },
+
   rejectDriverDoc: async (docId: string, rejectionNote: string, seenUpdatedAt: string): Promise<void> => {
     await api.patch(`/api/v1/admin/drivers/documents/${docId}/reject`, { rejection_note: rejectionNote, seen_updated_at: seenUpdatedAt })
   },
@@ -219,6 +226,13 @@ export const adminDriverApi = {
 
   approveVehicleDoc: async (docId: string, verifiedValidUntil: string, seenUpdatedAt: string): Promise<void> => {
     await api.patch(`/api/v1/admin/vehicles/documents/${docId}/approve`, {
+      verified_valid_until: verifiedValidUntil,
+      seen_updated_at: seenUpdatedAt,
+    })
+  },
+
+  editVehicleDocExpiry: async (docId: string, verifiedValidUntil: string, seenUpdatedAt: string): Promise<void> => {
+    await api.patch(`/api/v1/admin/vehicles/documents/${docId}/expiry`, {
       verified_valid_until: verifiedValidUntil,
       seen_updated_at: seenUpdatedAt,
     })

@@ -534,6 +534,26 @@ function docIdParam(req: Request): bigint {
   return BigInt(raw);
 }
 
+function editDocExpiry(kind: "driver" | "vehicle") {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      await service.updateDocExpiry(
+        kind,
+        docIdParam(req),
+        req.admin!.id,
+        String(req.body.verified_valid_until ?? ""),
+        String(req.body.seen_updated_at ?? ""),
+        req.ip ?? null,
+      );
+      res.json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+export const editDriverDocExpiry = editDocExpiry("driver");
+export const editVehicleDocExpiry = editDocExpiry("vehicle");
+
 export async function approveDriverDoc(
   req: Request,
   res: Response,

@@ -431,6 +431,37 @@ export async function approveDriverDoc(
   await afterDocChange(BigInt(approved.driver_id), adminId)
 }
 
+// Fix a wrong verified expiry on an already-approved document without rejecting it (see
+// repo.updateDriverDocExpiry). Same date rules as approval: required and in the future for
+// expiring types; cleared for the no-expiry types (which is how a stale date on e.g. an Aadhaar is removed).
+export async function updateDocExpiry(
+  kind: 'driver' | 'vehicle',
+  docId: bigint,
+  adminId: bigint,
+  verifiedValidUntil: string,
+  seenUpdatedAt: string,
+  ipAddress: string | null
+) {
+  const docType = await repo.getDocType(kind, docId)
+  if (!docType) throw createHttpError(AppErrors.NOT_FOUND)
+  const expiry = validateVerifiedExpiry(docType, verifiedValidUntil)
+  if (!seenUpdatedAt) {
+    throw httpError(400, 'Missing document version. Refresh and try again.', 'VALIDATION_ERROR')
+  }
+  const updated = kind === 'driver'
+    ? await repo.updateDriverDocExpiry(docId, adminId, expiry, seenUpdatedAt)
+    : await repo.updateVehicleDocExpiry(docId, adminId, expiry, seenUpdatedAt)
+  if (!updated) {
+    throw httpError(409, 'This document was modified since you last viewed it, or is not approved. Refresh and try again.', 'DOC_CHANGED')
+  }
+  await recordAuditLog({
+    adminId, action: `${kind === 'driver' ? 'driver_documents' : 'vehicle_documents'}.edit_expiry`,
+    targetTable: kind === 'driver' ? 'driver_documents' : 'driver_vehicle_documents', targetId: docId,
+    beforeState: { verified_valid_until: updated.old_expiry }, afterState: { verified_valid_until: expiry }, ipAddress,
+  })
+  await afterDocChange(BigInt(updated.driver_id), adminId)
+}
+
 export async function rejectDriverDoc(docId: bigint, adminId: bigint, note: string, seenUpdatedAt: string, ipAddress: string | null) {
   if (!note || note.length < 10) throw createHttpError(AppErrors.VALIDATION_ERROR)
   if (!seenUpdatedAt) {

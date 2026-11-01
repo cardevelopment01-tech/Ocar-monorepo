@@ -415,6 +415,8 @@ export default function DriverDetailPage() {
   async function handleDriverDocReject(docId: string, reason: string, seenUpdatedAt: string) { await reviewDoc(() => adminDriverApi.rejectDriverDoc(docId, reason, seenUpdatedAt)) }
   async function handleVehicleDocApprove(docId: string, verifiedValidUntil: string, seenUpdatedAt: string) { await reviewDoc(() => adminDriverApi.approveVehicleDoc(docId, verifiedValidUntil, seenUpdatedAt)) }
   async function handleVehicleDocReject(docId: string, reason: string, seenUpdatedAt: string) { await reviewDoc(() => adminDriverApi.rejectVehicleDoc(docId, reason, seenUpdatedAt)) }
+  async function handleDriverDocEditExpiry(docId: string, verifiedValidUntil: string, seenUpdatedAt: string) { await reviewDoc(() => adminDriverApi.editDriverDocExpiry(docId, verifiedValidUntil, seenUpdatedAt)) }
+  async function handleVehicleDocEditExpiry(docId: string, verifiedValidUntil: string, seenUpdatedAt: string) { await reviewDoc(() => adminDriverApi.editVehicleDocExpiry(docId, verifiedValidUntil, seenUpdatedAt)) }
 
   function openReview(initDocIdx = 0) { setReviewInitIdx(initDocIdx); setReviewOpen(true) }
 
@@ -1319,6 +1321,8 @@ export default function DriverDetailPage() {
           onDriverDocReject={handleDriverDocReject}
           onVehicleDocApprove={handleVehicleDocApprove}
           onVehicleDocReject={handleVehicleDocReject}
+          onDriverDocEditExpiry={handleDriverDocEditExpiry}
+          onVehicleDocEditExpiry={handleVehicleDocEditExpiry}
         />
       )}
     </div>

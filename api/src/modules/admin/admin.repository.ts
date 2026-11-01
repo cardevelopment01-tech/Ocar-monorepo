@@ -1489,6 +1489,56 @@ export async function approveDriverDoc(
   return row ? { driver_id: String(row.driver_id) } : null;
 }
 
+// Corrects the verified expiry of an ALREADY-APPROVED document in place (no reject/re-approve round trip,
+// so no driver notification and no docs_rejected flip). Approved rows only; same ms-precision version guard as
+// approve. The CTE locks the row and hands back the previous date for the audit log.
+export async function updateDriverDocExpiry(
+  docId: bigint,
+  adminId: bigint,
+  verifiedValidUntil: string | null,
+  seenUpdatedAt: string,
+): Promise<{ driver_id: string; old_expiry: string | null } | null> {
+  const res = await pool.query(
+    `WITH old AS (
+       SELECT id, verified_valid_until::text AS old_expiry FROM driver_documents
+       WHERE id = $3 AND status = 'approved'
+         AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $4::timestamptz)
+       FOR UPDATE
+     )
+     UPDATE driver_documents d
+     SET verified_valid_until = $1::date, reviewed_by = $2, reviewed_at = now(), updated_at = now()
+     FROM old WHERE d.id = old.id
+     RETURNING d.driver_id, old.old_expiry`,
+    [verifiedValidUntil, adminId, docId, seenUpdatedAt],
+  );
+  const row = res.rows[0];
+  return row ? { driver_id: String(row.driver_id), old_expiry: (row.old_expiry as string | null) ?? null } : null;
+}
+
+export async function updateVehicleDocExpiry(
+  docId: bigint,
+  adminId: bigint,
+  verifiedValidUntil: string | null,
+  seenUpdatedAt: string,
+): Promise<{ driver_id: string; old_expiry: string | null } | null> {
+  const res = await pool.query(
+    `WITH old AS (
+       SELECT id, verified_valid_until::text AS old_expiry FROM driver_vehicle_documents
+       WHERE id = $3 AND status = 'approved'
+         AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $4::timestamptz)
+       FOR UPDATE
+     )
+     UPDATE driver_vehicle_documents dvd
+     SET verified_valid_until = $1::date, reviewed_by = $2, reviewed_at = now(), updated_at = now()
+     FROM old, driver_vehicles dv
+     WHERE dvd.id = old.id AND dv.id = dvd.vehicle_id
+     RETURNING dv.driver_id, old.old_expiry`,
+    [verifiedValidUntil, adminId, docId, seenUpdatedAt],
+  );
+  const row = res.rows[0];
+  return row ? { driver_id: String(row.driver_id), old_expiry: (row.old_expiry as string | null) ?? null } : null;
+}
+
 export async function rejectDriverDoc(
   docId: bigint,
   adminId: bigint,

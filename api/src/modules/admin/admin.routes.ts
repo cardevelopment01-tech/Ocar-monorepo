@@ -54,12 +54,14 @@ router.patch('/vehicles/fleet/:vehicleId/unblacklist',           requireAdmin('s
 // ─── Driver documents ─────────────────────────────────────────────────────────
 router.patch('/drivers/documents/:docId/approve', requireAdmin('super_admin', 'ops_admin'), controller.approveDriverDoc)
 router.patch('/drivers/documents/:docId/reject',  requireAdmin('super_admin', 'ops_admin'), controller.rejectDriverDoc)
+router.patch('/drivers/documents/:docId/expiry',  requireAdmin('super_admin', 'ops_admin'), controller.editDriverDocExpiry)
 
 // ─── Vehicle documents (static segments BEFORE :docId) ───────────────────────
 router.get('/vehicles/documents/pending',       requireAdmin('super_admin', 'ops_admin'), controller.getPendingVehicleDocs)
 router.get('/vehicles/documents/expiring',      requireAdmin('super_admin', 'ops_admin'), controller.getExpiringDocs)
 router.patch('/vehicles/documents/:docId/approve', requireAdmin('super_admin', 'ops_admin'), controller.approveVehicleDoc)
 router.patch('/vehicles/documents/:docId/reject',  requireAdmin('super_admin', 'ops_admin'), controller.rejectVehicleDoc)
+router.patch('/vehicles/documents/:docId/expiry',  requireAdmin('super_admin', 'ops_admin'), controller.editVehicleDocExpiry)
 
 // ─── Pricing ──────────────────────────────────────────────────────────────────
 router.get('/pricing/rate-cards',              requireAdmin('super_admin', 'ops_admin'), controller.getAdminRateCards)
