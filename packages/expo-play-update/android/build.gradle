@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.ocar.playupdate'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.playupdate"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  // Google Play In-App Updates (successor to the deprecated play-core). Ships its own consumer R8 rules.
+  implementation "com.google.android.play:app-update:2.1.0"
+}

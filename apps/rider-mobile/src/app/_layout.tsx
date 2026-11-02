@@ -7,6 +7,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller'
 import * as SplashScreen from 'expo-splash-screen'
 import {
   SplashOverlay,
+  UpdateGate,
   identifyUser,
   initTelemetry,
   resetUser,
@@ -19,6 +20,7 @@ import { useLocationStore } from '@/store/useLocationStore'
 import { useSocketLifecycle } from '@/services/socket/useSocketLifecycle'
 import { usePushNotificationRouting } from '@/features/notifications/usePushNotificationRouting'
 import { usePushRegistration } from '@/features/notifications/usePushSetup'
+import { API_URL } from '@/services/api'
 import logoMarkImage from '../../assets/brand/logo-mark.png'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
@@ -47,6 +49,10 @@ function RootLayout() {
   }, [])
   const locationReady = locationHydrated || locationCapHit
 
+  // Never interrupt a trip or the booking flow (fare, payment, waiting for a driver) with an update prompt.
+  const pathname = usePathname()
+  const updateBusy = pathname.startsWith('/ride/') || pathname.startsWith('/booking/')
+
   usePushNotificationRouting()
   usePushRegistration()
   useSocketLifecycle()
@@ -57,7 +63,6 @@ function RootLayout() {
     if (accountId) identifyUser('rider', accountId)
     else resetUser()
   }, [accountId])
-  const pathname = usePathname()
   useEffect(() => {
     trackScreen(pathname)
   }, [pathname])
@@ -91,6 +96,7 @@ function RootLayout() {
         <KeyboardProvider>
           <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false, freezeOnBlur: true }} />
+          <UpdateGate app="rider" baseURL={API_URL} isBusy={updateBusy} logoSource={logoMarkImage} supportMailto="mailto:grievance@ocarindia.com?subject=Ocar%20rider%20support" />
           {showSplashOverlay ? (
             <SplashOverlay
               logoSource={logoMarkImage}

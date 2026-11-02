@@ -37,6 +37,7 @@ graphify-out/
 
 # Load-test signed JWTs (staging-only, but still live credentials)
 load-tests/k6/tokens.json
+load-tests/k6/admin-token.txt
 
 # Terraform local state, plugin cache, and plan files -- state can contain
 # secrets, plan files are throwaway. .terraform.lock.hcl IS committed
@@ -66,3 +67,6 @@ __pycache__/
 
 # Firebase client config for the Play apps (root copy; per-app copies are ignored by apps/*/.gitignore)
 /google-services.json
+
+# Client exports contain driver names and phone numbers: never commit
+client-exports/

@@ -2,7 +2,8 @@ import { RequestHandler } from 'express'
 import { AppErrors } from '@/constants/errors'
 import type { DriverStatus, AdminRole } from '@/constants/enums'
 
-export function requireUser(): RequestHandler {
+/** `allowSuspended`: read-only routes (e.g. wallet balance) stay open to suspended users; deleted ones never reach here. */
+export function requireUser(opts: { allowSuspended?: boolean } = {}): RequestHandler {
   return (req, res, next) => {
     if (!req.user) {
       res.status(401).json({
@@ -11,7 +12,7 @@ export function requireUser(): RequestHandler {
       })
       return
     }
-    if (req.user.status === 'suspended' || req.user.status === 'deleted') {
+    if ((req.user.status === 'suspended' && !opts.allowSuspended) || req.user.status === 'deleted') {
       res.status(403).json({
         error: AppErrors.AUTH_FORBIDDEN.message,
         code: AppErrors.AUTH_FORBIDDEN.code,
