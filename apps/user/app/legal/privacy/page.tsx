@@ -286,25 +286,7 @@ const SECTIONS: LegalSection[] = [
     ),
   },
   {
-    heading: '14. Grievance officer and contact',
-    body: (
-      <>
-        <p>Questions, complaints and privacy requests can be sent to our Grievance Officer:</p>
-        <p>
-          <strong>Grievance Officer</strong>, {COMPANY.legalName}
-          <br />
-          {formatAddress()}
-          <br />
-          Email: <a href={`mailto:${COMPANY.supportEmail}?subject=Privacy%20grievance`}>{COMPANY.supportEmail}</a>
-          <br />
-          Phone: {COMPANY.supportPhone} ({COMPANY.supportHours})
-        </p>
-        <p>We acknowledge every complaint within 48 hours and aim to resolve it within 15 days.</p>
-      </>
-    ),
-  },
-  {
-    heading: '15. Changes to this policy',
+    heading: '14. Changes to this policy',
     body: (
       <>
         <p>
@@ -317,7 +299,7 @@ const SECTIONS: LegalSection[] = [
             <li>Added the crash-reporting, analytics and diagnostics tools in section 5.</li>
             <li>Added tables for the data we collect, the purposes, who receives it and retention periods.</li>
             <li>Added phone permissions, transfers outside India, safety and emergencies, and children.</li>
-            <li>Updated your rights and the grievance route to match the DPDP Act.</li>
+            <li>Updated your rights and how to complain to match the DPDP Act.</li>
           </ul>
         </Callout>
       </>
