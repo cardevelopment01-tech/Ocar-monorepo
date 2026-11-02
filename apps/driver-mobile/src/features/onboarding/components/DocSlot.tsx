@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, View } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
+import * as DocumentPicker from 'expo-document-picker'
 import { getInfoAsync } from 'expo-file-system/legacy'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { SelfieCapture } from '@/components/camera/SelfieCapture'
 import { PHOTO_CHANGE_WARNING, shouldWarnBeforePhotoChange } from '../photoChange'
+import { docFileError, isPdfUrl } from '../docFile'
 import type { PickedFile } from '../api'
 
 export type DocSlotState = 'idle' | 'uploading' | 'done' | 'error'
@@ -26,6 +28,18 @@ export type DocSlotProps = {
 // shrinks dimensions); the 1600px downscale happens at upload time in
 // services/uploadImage.ts, mirroring web's compressDocImage().
 const PICK_QUALITY = 0.7
+
+async function pickFile(): Promise<PickedFile | null> {
+  const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true })
+  if (result.canceled || !result.assets[0]) return null
+  const asset = result.assets[0]
+  const info = await getInfoAsync(asset.uri)
+  return {
+    uri: asset.uri,
+    mimeType: asset.mimeType ?? (asset.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+    fileSize: info.exists ? (info.size ?? 0) : (asset.size ?? 0),
+  }
+}
 
 async function pickFrom(source: 'camera' | 'library'): Promise<PickedFile | null> {
   const perm = source === 'camera'
@@ -65,18 +79,22 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
       ])
       return
     }
-    Alert.alert(label, 'Choose a photo source', [
+    Alert.alert(label, 'Choose a source', [
       { text: 'Take Photo', onPress: () => void handlePick('camera') },
       { text: 'Choose from Gallery', onPress: () => void handlePick('library') },
+      { text: 'Choose PDF / File', onPress: () => void handlePick('file') },
       { text: 'Cancel', style: 'cancel' },
     ])
   }
 
-  async function handlePick(source: 'camera' | 'library') {
+  async function handlePick(source: 'camera' | 'library' | 'file') {
     setBusy(true)
     try {
-      const file = await pickFrom(source)
-      if (file) onPick(file)
+      const file = source === 'file' ? await pickFile() : await pickFrom(source)
+      if (!file) return
+      const problem = docFileError(file)
+      if (problem) Alert.alert('Cannot use this file', problem)
+      else onPick(file)
     } finally {
       setBusy(false)
     }
@@ -99,7 +117,11 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
       disabled={uploading}
       style={({ pressed }) => [styles.slot, rejected ? styles.slotRejected : null, pressed && !uploading ? styles.pressedScale : null]}
     >
-      {thumbnailUrl ? (
+      {thumbnailUrl && isPdfUrl(thumbnailUrl) ? (
+        <View style={[styles.thumb, styles.thumbEmpty]}>
+          <Feather name="file-text" size={20} color={colors.primary} />
+        </View>
+      ) : thumbnailUrl ? (
         <Image source={{ uri: thumbnailUrl }} style={styles.thumb} resizeMethod="resize" />
       ) : (
         <View style={[styles.thumb, styles.thumbEmpty]}>
