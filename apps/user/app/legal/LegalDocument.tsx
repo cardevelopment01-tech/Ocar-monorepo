@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, Check, ChevronDown, Clock, Mail, MapPin, Phone }
 
 import { COMPANY, LEGAL_LAST_UPDATED } from '@/lib/company'
 import { LegalToc } from './LegalToc'
+import { PolicySwitcher } from './PolicySwitcher'
 import { PrintButton } from './PrintButton'
 import { POLICIES } from './policies'
 
@@ -94,29 +95,7 @@ export function LegalDocument({
 
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-10 sm:px-6 md:py-14 lg:grid-cols-[232px_minmax(0,1fr)] lg:gap-16">
         <aside className="min-w-0 print:hidden lg:-ml-3 lg:sticky lg:top-24 lg:max-h-[calc(100dvh-7rem)] lg:self-start lg:overflow-y-auto lg:pr-2">
-          <nav aria-label="Policies">
-            <p className="text-[13px] font-semibold text-text-primary lg:px-3">Policies</p>
-            <ul className="-mr-4 mt-2 flex gap-1 overflow-x-auto pb-1 pr-8 [mask-image:linear-gradient(to_right,black_calc(100%-3rem),transparent)] sm:-mr-6 lg:mr-0 lg:flex-col lg:overflow-visible lg:pb-0 lg:pr-0 lg:[mask-image:none]">
-              {POLICIES.map((p) => {
-                const active = p.href === currentHref
-                return (
-                  <li key={p.href} className="flex-shrink-0">
-                    <Link
-                      href={p.href}
-                      aria-current={active ? 'page' : undefined}
-                      className={`flex min-h-11 items-center whitespace-nowrap rounded-lg px-3 text-[14px] transition-colors duration-150 lg:min-h-0 lg:whitespace-normal lg:py-2 ${
-                        active
-                          ? 'bg-primary-subtle font-semibold text-primary-dark'
-                          : 'text-text-secondary hover:bg-surface-2 hover:text-text-primary'
-                      }`}
-                    >
-                      {p.label}
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
-          </nav>
+          <PolicySwitcher currentHref={currentHref} />
 
           <div className="mt-8 hidden lg:block">
             <LegalToc items={toc} />

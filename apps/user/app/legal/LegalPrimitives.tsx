@@ -47,17 +47,18 @@ export function DataTable({
   widths?: string[]
 }) {
   return (
-    <div className="-mx-1 overflow-x-auto rounded-2xl border border-border px-1 sm:mx-0 sm:px-0">
-      <table className="w-full min-w-[34rem] border-collapse text-left text-[14.5px] leading-[1.6]">
+    // Below sm each row becomes a small stacked block (label above value) instead of a sideways-scrolling table.
+    <div className="rounded-2xl border border-border sm:overflow-x-auto">
+      <table className="w-full border-collapse text-left text-[14.5px] leading-[1.6] max-sm:block sm:min-w-[34rem]">
         <caption className="sr-only">{caption}</caption>
         {widths ? (
-          <colgroup>
+          <colgroup className="max-sm:hidden">
             {widths.map((w, i) => (
               <col key={i} style={{ width: w }} />
             ))}
           </colgroup>
         ) : null}
-        <thead>
+        <thead className="max-sm:sr-only">
           <tr className="bg-surface-2 text-[13px] text-text-primary">
             {head.map((h) => (
               <th key={h} scope="col" className="px-4 py-3 font-semibold">
@@ -66,16 +67,20 @@ export function DataTable({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-border">
+        <tbody className="divide-y divide-border max-sm:block">
           {rows.map((row, i) => (
-            <tr key={i} className="align-top">
+            <tr key={i} className="align-top max-sm:block max-sm:p-4">
               {row.map((cell, j) =>
                 j === 0 ? (
-                  <th key={j} scope="row" className={`px-4 py-3.5 font-semibold text-text-primary ${widths ? '' : 'w-[28%]'}`}>
+                  <th key={j} scope="row" className={`px-4 py-3.5 font-semibold text-text-primary max-sm:block max-sm:p-0 ${widths ? '' : 'w-[28%]'}`}>
                     {cell}
                   </th>
                 ) : (
-                  <td key={j} className="px-4 py-3.5 text-text-secondary">
+                  <td
+                    key={j}
+                    data-label={head[j]}
+                    className="px-4 py-3.5 text-text-secondary max-sm:mt-2.5 max-sm:block max-sm:p-0 max-sm:before:mb-0.5 max-sm:before:block max-sm:before:text-[12.5px] max-sm:before:font-semibold max-sm:before:text-text-primary max-sm:before:content-[attr(data-label)]"
+                  >
                     {cell}
                   </td>
                 ),
