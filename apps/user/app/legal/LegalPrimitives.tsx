@@ -18,7 +18,7 @@ export function Callout({
       className={
         tone === 'warning'
           ? 'flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5'
-          : 'flex gap-3 rounded-2xl border border-primary-light bg-primary-subtle p-4 sm:p-5'
+          : 'flex gap-3 rounded-2xl border border-border bg-surface-2 p-4 sm:p-5'
       }
     >
       <Icon
@@ -38,15 +38,25 @@ export function DataTable({
   caption,
   head,
   rows,
+  widths,
 }: {
   caption: string
   head: string[]
   rows: React.ReactNode[][]
+  /** Column widths, e.g. ['24%', '56%', '20%']. Defaults to a 28% first column. */
+  widths?: string[]
 }) {
   return (
     <div className="-mx-1 overflow-x-auto rounded-2xl border border-border px-1 sm:mx-0 sm:px-0">
       <table className="w-full min-w-[34rem] border-collapse text-left text-[14.5px] leading-[1.6]">
         <caption className="sr-only">{caption}</caption>
+        {widths ? (
+          <colgroup>
+            {widths.map((w, i) => (
+              <col key={i} style={{ width: w }} />
+            ))}
+          </colgroup>
+        ) : null}
         <thead>
           <tr className="bg-surface-2 text-[13px] text-text-primary">
             {head.map((h) => (
@@ -61,7 +71,7 @@ export function DataTable({
             <tr key={i} className="align-top">
               {row.map((cell, j) =>
                 j === 0 ? (
-                  <th key={j} scope="row" className="w-[28%] px-4 py-3.5 font-semibold text-text-primary">
+                  <th key={j} scope="row" className={`px-4 py-3.5 font-semibold text-text-primary ${widths ? '' : 'w-[28%]'}`}>
                     {cell}
                   </th>
                 ) : (

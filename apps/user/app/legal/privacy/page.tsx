@@ -48,6 +48,7 @@ const SECTIONS: LegalSection[] = [
         <DataTable
           caption="Personal data we collect"
           head={['Type of data', 'What it includes', 'Who it applies to']}
+          widths={['22%', '50%', '28%']}
           rows={[
             [
               'Account details',
@@ -127,6 +128,7 @@ const SECTIONS: LegalSection[] = [
         <DataTable
           caption="Phone permissions requested by the Ocar apps"
           head={['Permission', 'Why', 'App']}
+          widths={['26%', '54%', '20%']}
           rows={[
             ['Location (precise and approximate)', 'To find nearby cabs, set pickup points, track the trip and calculate the fare.', 'Rider and driver'],
             ['Location in the background', 'So a driver who is online keeps receiving ride requests and trips are tracked when the screen is off. A notification is always shown while this is active.', 'Driver only'],
@@ -164,6 +166,7 @@ const SECTIONS: LegalSection[] = [
         <DataTable
           caption="Who personal data is shared with"
           head={['Who', 'What they receive', 'Why']}
+          widths={['24%', '40%', '36%']}
           rows={[
             ['The other person on your trip', 'Rider: name, photo, rating, vehicle and number plate, live location. Driver: pickup and drop-off, and the rider’s name and rating. Phone numbers are masked.', 'So the trip can happen safely.'],
             ['Payment partners', 'Amount, order reference and the details needed to complete a payment or a driver payout. Card, UPI and bank details go straight to them.', 'PayU collects payments and Razorpay makes driver payouts; both are RBI-authorised.'],

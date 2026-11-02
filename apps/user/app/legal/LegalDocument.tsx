@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Clock, Mail, MapPin, Phone } from 'lucide-react'
 
-import { COMPANY, LEGAL_LAST_UPDATED, formatAddress } from '@/lib/company'
+import { COMPANY, LEGAL_LAST_UPDATED } from '@/lib/company'
 import { LegalToc } from './LegalToc'
 import { PrintButton } from './PrintButton'
 import { POLICIES } from './policies'
@@ -93,10 +93,10 @@ export function LegalDocument({
       </header>
 
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-10 sm:px-6 md:py-14 lg:grid-cols-[232px_minmax(0,1fr)] lg:gap-16">
-        <aside className="min-w-0 print:hidden lg:sticky lg:top-24 lg:max-h-[calc(100dvh-7rem)] lg:self-start lg:overflow-y-auto lg:pr-2">
+        <aside className="min-w-0 print:hidden lg:-ml-3 lg:sticky lg:top-24 lg:max-h-[calc(100dvh-7rem)] lg:self-start lg:overflow-y-auto lg:pr-2">
           <nav aria-label="Policies">
-            <p className="px-3 text-[13px] font-semibold text-text-primary">Policies</p>
-            <ul className="mt-2 flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+            <p className="text-[13px] font-semibold text-text-primary lg:px-3">Policies</p>
+            <ul className="-mr-4 mt-2 flex gap-1 overflow-x-auto pb-1 pr-8 [mask-image:linear-gradient(to_right,black_calc(100%-3rem),transparent)] sm:-mr-6 lg:mr-0 lg:flex-col lg:overflow-visible lg:pb-0 lg:pr-0 lg:[mask-image:none]">
               {POLICIES.map((p) => {
                 const active = p.href === currentHref
                 return (
@@ -141,7 +141,7 @@ export function LegalDocument({
           </details>
 
           {summary && summary.length > 0 ? (
-            <section aria-labelledby="in-short" className="mb-12 rounded-2xl border border-border bg-surface-2 p-5 sm:p-7">
+            <section aria-labelledby="in-short" className="mb-12 max-w-[68ch] rounded-2xl border border-border bg-surface-2 p-5 sm:p-7">
               <h2 id="in-short" className="font-display text-[19px] font-semibold tracking-tight text-text-primary">
                 In short
               </h2>
@@ -167,7 +167,7 @@ export function LegalDocument({
                 <section key={id} id={id} className="scroll-mt-24 print:break-inside-avoid-page">
                   <h2 className="font-display text-[24px] font-semibold leading-snug tracking-[-0.01em] text-text-primary">
                     <a href={`#${id}`} className="rounded outline-offset-4 hover:text-primary-dark">
-                      {num ? <span className="mr-2 font-medium tabular-nums text-text-muted">{num}.</span> : null}
+                      {num ? <span className="mr-2 font-sans font-medium tabular-nums text-text-muted">{num}.</span> : null}
                       {text}
                     </a>
                   </h2>
@@ -177,7 +177,7 @@ export function LegalDocument({
             })}
           </div>
 
-          <section aria-labelledby="questions" className="mt-16 rounded-2xl border border-border p-6 sm:p-8 print:break-inside-avoid">
+          <section aria-labelledby="questions" className="mt-16 max-w-[68ch] rounded-2xl border border-border p-6 sm:p-8 print:break-inside-avoid">
             <h2 id="questions" className="font-display text-[20px] font-semibold tracking-tight text-text-primary">
               Questions about this page?
             </h2>
@@ -199,12 +199,16 @@ export function LegalDocument({
                 {COMPANY.supportHours}
               </ContactRow>
               <ContactRow icon={MapPin} label="Registered office">
-                {COMPANY.legalName}, {formatAddress()}
+                <span className="block">{COMPANY.legalName}</span>
+                <span className="block">{COMPANY.address.line1},</span>
+                <span className="block">
+                  {COMPANY.address.city}, {COMPANY.address.state} {COMPANY.address.pincode}, {COMPANY.address.country}
+                </span>
               </ContactRow>
             </dl>
           </section>
 
-          <nav aria-label="Other policies" className="mt-10 grid gap-3 sm:grid-cols-2 print:hidden">
+          <nav aria-label="Other policies" className="mt-10 grid max-w-[68ch] gap-3 sm:grid-cols-2 print:hidden">
             {prev ? (
               <Link href={prev.href} className="group flex items-center gap-3 rounded-2xl border border-border p-4 transition-colors hover:bg-surface-2">
                 <ArrowLeft aria-hidden className="h-4 w-4 flex-shrink-0 text-text-muted transition-transform duration-150 group-hover:-translate-x-0.5" />
