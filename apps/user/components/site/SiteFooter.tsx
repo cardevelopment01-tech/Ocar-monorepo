@@ -22,7 +22,7 @@ const headCls = 'text-[12px] font-bold uppercase tracking-wide text-slate-400'
 
 export default function SiteFooter() {
   return (
-    <footer className="relative overflow-hidden bg-gradient-hero text-slate-300">
+    <footer className="print:hidden relative overflow-hidden bg-gradient-hero text-slate-300">
       <div aria-hidden className="pointer-events-none absolute -left-20 top-0 h-72 w-72 rounded-full bg-primary/20 blur-[100px]" />
       <div aria-hidden className="pointer-events-none absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-accent/15 blur-[100px]" />
 

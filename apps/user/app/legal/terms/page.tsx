@@ -34,7 +34,7 @@ const SECTIONS: LegalSection[] = [
       <p>
         Ocar is a technology platform that connects riders who need a trip with independent, verified drivers
         operating in Bhubaneswar, Cuttack, and Puri. Ocar is an intermediary under the Motor Vehicle Aggregator
-        Guidelines, 2020 - drivers are independent and responsible for the actual provision of transportation.
+        Guidelines, 2025 - drivers are independent and responsible for the actual provision of transportation.
         Ocar is not itself a taxi or transport operator.
       </p>
     ),

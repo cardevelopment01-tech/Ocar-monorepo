@@ -29,7 +29,7 @@ export default function SiteHeader() {
 
   return (
     <header
-      className={`sticky top-0 z-40 border-b backdrop-blur transition-[background-color,box-shadow,border-color] duration-300 ${
+      className={`print:hidden sticky top-0 z-40 border-b backdrop-blur transition-[background-color,box-shadow,border-color] duration-300 ${
         scrolled ? 'border-border bg-surface/90 shadow-float' : 'border-transparent bg-background/70'
       }`}
     >
