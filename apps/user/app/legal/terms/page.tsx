@@ -173,7 +173,6 @@ export default function TermsPage() {
       intro="The rules for using Ocar to book intercity cab rides in Bhubaneswar, Cuttack and Puri, for riders and drivers."
       currentHref="/legal/terms"
       sections={SECTIONS}
-      updated="3 November 2026"
     />
   )
 }

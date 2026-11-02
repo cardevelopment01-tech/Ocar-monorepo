@@ -41,7 +41,7 @@ export function LegalDocument({
   currentHref,
   sections,
   summary,
-  updated = LEGAL_LAST_UPDATED,
+  updated,
   version,
 }: {
   title: string
@@ -50,6 +50,7 @@ export function LegalDocument({
   sections: LegalSection[]
   /** Plain-language key points shown above the full text. */
   summary?: string[]
+  /** Overrides the date in policies.ts. */
   updated?: string
   version?: string
 }) {
@@ -57,6 +58,7 @@ export function LegalDocument({
   const index = POLICIES.findIndex((p) => p.href === currentHref)
   const prev = index > 0 ? POLICIES[index - 1] : undefined
   const next = index >= 0 && index < POLICIES.length - 1 ? POLICIES[index + 1] : undefined
+  const lastUpdated = updated ?? POLICIES[index]?.updated ?? LEGAL_LAST_UPDATED
 
   return (
     <div className="bg-surface print:bg-white">
@@ -76,7 +78,7 @@ export function LegalDocument({
           <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] tabular-nums text-text-secondary">
               <span>
-                Last updated <time className="font-semibold text-text-primary">{updated}</time>
+                Last updated <time className="font-semibold text-text-primary">{lastUpdated}</time>
               </span>
               {version ? (
                 <>
@@ -102,7 +104,7 @@ export function LegalDocument({
                     <Link
                       href={p.href}
                       aria-current={active ? 'page' : undefined}
-                      className={`block whitespace-nowrap rounded-lg px-3 py-2 text-[14px] transition-colors duration-150 lg:whitespace-normal ${
+                      className={`flex min-h-11 items-center whitespace-nowrap rounded-lg px-3 text-[14px] transition-colors duration-150 lg:min-h-0 lg:whitespace-normal lg:py-2 ${
                         active
                           ? 'bg-primary-subtle font-semibold text-primary-dark'
                           : 'text-text-secondary hover:bg-surface-2 hover:text-text-primary'
@@ -130,7 +132,7 @@ export function LegalDocument({
             <ul className="space-y-0.5 border-t border-border p-2">
               {toc.map((t) => (
                 <li key={t.id}>
-                  <a href={`#${t.id}`} className="block rounded-lg px-3 py-2 text-[14px] text-text-secondary hover:bg-surface-2">
+                  <a href={`#${t.id}`} className="flex min-h-11 items-center rounded-lg px-3 text-[14px] text-text-secondary hover:bg-surface-2">
                     {t.label}
                   </a>
                 </li>

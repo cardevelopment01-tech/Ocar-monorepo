@@ -10,8 +10,6 @@ export const metadata = {
     'What personal data Ocar collects, why, who we share it with, how long we keep it, and your rights under the Digital Personal Data Protection Act, 2023.',
 }
 
-const UPDATED = '3 November 2026'
-
 const SUMMARY = [
   'We collect what we need to run rides safely: your mobile number, your location while you use the app, and your trip and payment records. Drivers also give us identity and vehicle documents and selfies.',
   'We do not sell your personal data, and we do not use your rides or location for advertising.',
@@ -167,7 +165,7 @@ const SECTIONS: LegalSection[] = [
           caption="Who personal data is shared with"
           head={['Who', 'What they receive', 'Why']}
           rows={[
-            ['The other person on your trip', 'Rider: name, photo, rating, vehicle and number plate, live location. Driver: pickup and drop-off, first name and rating of the rider. Phone numbers are masked.', 'So the trip can happen safely.'],
+            ['The other person on your trip', 'Rider: name, photo, rating, vehicle and number plate, live location. Driver: pickup and drop-off, and the rider’s name and rating. Phone numbers are masked.', 'So the trip can happen safely.'],
             ['Payment partners', 'Amount, order reference and the details needed to complete a payment or a driver payout. Card, UPI and bank details go straight to them.', 'PayU collects payments and Razorpay makes driver payouts; both are RBI-authorised.'],
             ['Cloud and messaging providers', 'Data needed to host the service, send one-time passwords by SMS, connect masked calls and deliver push notifications.', 'Amazon Web Services (India data centres), our SMS and voice provider, and Google (Firebase).'],
             ['Maps provider', 'Locations and search text.', 'Google Maps Platform, to show maps, find places and addresses and plan routes.'],
@@ -335,7 +333,6 @@ export default function PrivacyPolicyPage() {
       currentHref="/legal/privacy"
       sections={SECTIONS}
       summary={SUMMARY}
-      updated={UPDATED}
       version="2.0"
     />
   )

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 
-import { COMPANY, LEGAL_LAST_UPDATED, formatAddress } from '@/lib/company'
+import { COMPANY, formatAddress } from '@/lib/company'
 import { POLICIES } from './policies'
 
 export const metadata = {
@@ -34,6 +34,7 @@ export default function LegalIndexPage() {
                 <span className="min-w-0">
                   <span className="block font-display text-[19px] font-semibold tracking-tight text-text-primary">{p.label}</span>
                   <span className="mt-1 block max-w-[62ch] text-[15px] leading-relaxed text-text-secondary">{p.description}</span>
+                  <span className="mt-2 block text-[13px] tabular-nums text-text-muted">Updated {p.updated}</span>
                 </span>
                 <ArrowRight aria-hidden className="h-5 w-5 flex-shrink-0 text-text-muted transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-primary-dark" />
               </Link>
@@ -58,7 +59,6 @@ export default function LegalIndexPage() {
               <br />
               {COMPANY.supportPhone} · {COMPANY.supportHours}
             </p>
-            <p className="mt-3 text-[13.5px] text-text-muted">Policies last reviewed {LEGAL_LAST_UPDATED}.</p>
           </div>
         </section>
       </div>

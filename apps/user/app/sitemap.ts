@@ -6,10 +6,12 @@ const PATHS = [
   '/pricing',
   '/about',
   '/contact',
+  '/legal',
   '/legal/terms',
   '/legal/privacy',
   '/legal/refund-cancellation',
   '/legal/shipping',
+  '/legal/delete-account',
 ]
 
 export default function sitemap(): MetadataRoute.Sitemap {
