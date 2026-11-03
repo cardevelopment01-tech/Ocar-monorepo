@@ -138,6 +138,11 @@ export async function deductCommission(
   if (!payment) return null
 
   const commission = parseFloat(payment.commission_amount)
+  // Exactly zero = a commission-free ride (e.g. a 0% launch period): nothing is owed, so no wallet debit, no Rs 0
+  // ledger line and no low-balance signal. No wallet row is needed either (top-up and cash collection create it,
+  // readers treat a missing wallet as 0). NaN or a negative amount is NOT skipped: it falls through and fails
+  // loudly (DB CHECK) instead of settling silently.
+  if (commission === 0) return null
   const minBalance = await getMinWalletBalance()
 
   const client = sharedClient ?? await pool.connect()
