@@ -36,19 +36,23 @@ function currentFyQuarter(now: Date): { fy: string; quarter: number } {
 // Called once per online/wallet-channel ride, right after commission
 // deduction. Cash rides never call this — the driver already holds the
 // cash, only commission recovery (existing deductCommission) applies.
+//
+// Two separate ledgers: the platform collected the WHOLE fare, so it owes the driver the whole fare (less TDS).
+// The commission is recovered from the driver's compliance wallet by deductCommission, exactly as for cash rides.
+// Crediting fare-minus-commission here as well would take the commission twice. The line keeps the historic
+// 'ride_fare_net' entry type and idempotency key so no migration is needed; the amount is the gross fare.
 export async function accrueDriverEarning(
   rideId: bigint,
   driverId: bigint,
   sharedClient?: PoolClient
 ): Promise<void> {
   const payRes = await pool.query(
-    `SELECT driver_earning, amount FROM payments WHERE ride_id = $1`,
+    `SELECT amount FROM payments WHERE ride_id = $1`,
     [rideId]
   )
   const payment = payRes.rows[0]
   if (!payment) return
 
-  const netEarning = parseFloat(payment.driver_earning)
   const grossFare = parseFloat(payment.amount)
   const holdHours = parseInt(await getConfigValue('payout_hold_hours', '24'))
 
@@ -79,7 +83,7 @@ export async function accrueDriverEarning(
          driver_id, ride_id, entry_type, amount, status, available_at, idempotency_key, note
        ) VALUES ($1,$2,'ride_fare_net',$3,'pending', now() + ($4 || ' hours')::interval, $5, $6)
        ON CONFLICT (idempotency_key) DO NOTHING`,
-      [driverId, rideId, netEarning, holdHours, `ride_fare_net:ride:${rideId}`, `Ride fare net for ride #${rideId}`]
+      [driverId, rideId, grossFare, holdHours, `ride_fare_net:ride:${rideId}`, `Ride fare for ride #${rideId} (commission is debited from the wallet)`]
     )
 
     if (tdsAmount > 0) {
