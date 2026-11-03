@@ -53,6 +53,18 @@ describe('accrueDriverEarning', () => {
     expect(inserts[1]?.[1]).toContain(-4)
   })
 
+  it('credits the GROSS fare, not fare minus commission: commission is recovered from the wallet, not twice', async () => {
+    scriptAccrue({ driverEarning: '340.00', grossFare: '400.00', panVerified: true })
+    await accrueDriverEarning(BigInt(1), BigInt(42))
+
+    const fareInsert = client.query.mock.calls
+      .find(c => (c[0] as string).includes('INSERT INTO driver_earnings') && (c[0] as string).includes("'ride_fare_net'"))
+    expect(fareInsert?.[1]).toContain(400)
+    expect(fareInsert?.[1]).not.toContain(340)
+    const paymentsSelect = poolQuery.mock.calls.find(c => (c[0] as string).includes('FROM payments'))
+    expect(paymentsSelect?.[0] as string).not.toContain('driver_earning')
+  })
+
   it('PAN not verified: uses the 20% rate', async () => {
     scriptAccrue({ driverEarning: '340.00', grossFare: '400.00', panVerified: false })
     await accrueDriverEarning(BigInt(1), BigInt(42))
