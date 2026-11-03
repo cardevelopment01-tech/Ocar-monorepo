@@ -146,7 +146,7 @@ describe('app.ts wiring', () => {
   it('uses the tested serializers and level policy', () => {
     expect(app).toContain('serializers: { req: serializeReq, res: serializeRes }')
     expect(app).toContain('customLogLevel: requestLogLevel')
-    expect(app).toContain('customProps: actorProps')
+    expect(app).toMatch(/customProps:[\s\S]*?\.\.\.actorProps\(req\)/) // actor fields, plus the app-version fields
     expect(app).not.toMatch(/ip:\s*req\.ip/)
   })
 })

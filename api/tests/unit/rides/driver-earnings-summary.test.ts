@@ -15,13 +15,18 @@ function mockQueries(points: unknown[], onlineHours = '2.5', rating: string | nu
   }) as never)
 }
 
+// The 7-day chart window is relative to now (IST), so the bucket dates must be too: fixed dates age out of it.
+const istDay = (daysAgo: number) => new Date(Date.now() + 5.5 * 3600_000 - daysAgo * 86_400_000).toISOString().slice(0, 10)
+const YESTERDAY = istDay(1)
+const DAY_BEFORE = istDay(2)
+
 describe('getDriverEarningsSummary (single pass)', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('reads the headline numbers from the grand-total row and the chart from the bucket rows', async () => {
     mockQueries([
-      { bucket: '2026-10-27', is_total: 0, earnings: '300.50', trips: '3', fare: '400.00' },
-      { bucket: '2026-10-28', is_total: 0, earnings: '100.00', trips: '1', fare: '140.00' },
+      { bucket: DAY_BEFORE, is_total: 0, earnings: '300.50', trips: '3', fare: '400.00' },
+      { bucket: YESTERDAY, is_total: 0, earnings: '100.00', trips: '1', fare: '140.00' },
       { bucket: null, is_total: 1, earnings: '400.50', trips: '4', fare: '540.00' },
     ])
     const s = await getDriverEarningsSummary(BigInt(7), 'week')
