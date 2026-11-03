@@ -195,4 +195,9 @@ export const AppErrors = {
     message: 'Ocar is under maintenance right now. Please try again shortly',
     httpStatus: 503,
   },
+  UPGRADE_REQUIRED: {
+    code: 'UPGRADE_REQUIRED',
+    message: 'Please update Ocar to continue',
+    httpStatus: 426,
+  },
 } as const satisfies Record<string, AppError>

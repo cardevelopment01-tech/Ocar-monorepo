@@ -4,8 +4,8 @@ import { requireAdmin } from '@/middleware/role.middleware'
 import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { recordAuditLog } from '@/lib/audit-log'
-import { listConfig, getConfigById, validateConfigValue, updateConfigValue } from '@/lib/system-config'
-import { validateConfigBounds } from '@/lib/system-config-bounds'
+import { listConfig, getConfigById, getConfigValue, validateConfigValue, updateConfigValue } from '@/lib/system-config'
+import { validateConfigBounds, versionPairCheck } from '@/lib/system-config-bounds'
 
 const router: IRouter = Router()
 
@@ -30,6 +30,11 @@ router.patch('/:id', async (req, res, next) => {
 
     const validationError = validateConfigValue(before.valueType, value) ?? validateConfigBounds(before.key, value)
     if (validationError) throw httpError(422, validationError, AppErrors.VALIDATION_ERROR.code)
+    const pair = versionPairCheck(before.key)
+    if (pair) {
+      const pairError = pair.check(value, await getConfigValue(pair.siblingKey, '0.0.0'))
+      if (pairError) throw httpError(422, pairError, AppErrors.VALIDATION_ERROR.code)
+    }
 
     const expected = req.body?.expectedUpdatedAt
     if (expected !== undefined && (typeof expected !== 'string' || Number.isNaN(Date.parse(expected)))) {

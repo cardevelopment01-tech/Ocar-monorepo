@@ -68,6 +68,10 @@ export type ApiClientConfig = {
   isAuthEndpoint?: (url: string | undefined) => boolean
   /** Called once per finished request (success or failure) so the app can report slow and failing calls. Never throws into the request. */
   onRequestDone?: (info: ApiCallInfo) => void
+  /** Sent on every request as X-App-Name / -Platform / -Version / -Build so the API can gate old builds. */
+  appInfo?: { app: string; platform: string; version: string; build: string }
+  /** The API answered 426 UPGRADE_REQUIRED: this build is below the server's minimum version. */
+  onUpgradeRequired?: () => void
 }
 
 export type ApiCallInfo = {
@@ -133,6 +137,13 @@ export function createApiClient(config: ApiClientConfig): AxiosInstance {
   api.interceptors.request.use(
     async (requestConfig) => {
       startedAt.set(requestConfig, Date.now())
+      const info = config.appInfo
+      if (info && info.version) {
+        requestConfig.headers['X-App-Name'] = info.app
+        requestConfig.headers['X-App-Platform'] = info.platform
+        requestConfig.headers['X-App-Version'] = info.version
+        requestConfig.headers['X-App-Build'] = info.build
+      }
       let token = getAccessToken()
       if (token && !isAuthEndpoint(requestConfig.url) && tokenExpiresSoon(token)) {
         try {
@@ -160,6 +171,11 @@ export function createApiClient(config: ApiClientConfig): AxiosInstance {
       done(error.config as InternalAxiosRequestConfig | undefined, axios.isAxiosError(error) ? (error.response?.status ?? null) : null, code)
       const isTokenError = code === 'AUTH_UNAUTHORIZED' || code === 'AUTH_TOKEN_INVALID' || code === 'AUTH_TOKEN_EXPIRED'
       const original = error.config as RetriableRequest | undefined
+
+      if (code === 'UPGRADE_REQUIRED') {
+        config.onUpgradeRequired?.()
+        return Promise.reject(error)
+      }
 
       if (code === 'AUTH_SESSION_REPLACED') {
         onSessionReplaced()

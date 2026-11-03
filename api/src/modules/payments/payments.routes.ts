@@ -31,7 +31,7 @@ router.get('/wallet/driver', authenticate(), requireDriver(), async (req, res, n
 })
 
 // User: get own wallet
-router.get('/wallet/user', authenticate(), requireUser(), async (req, res, next) => {
+router.get('/wallet/user', authenticate(), requireUser({ allowSuspended: true }), async (req, res, next) => {
   try {
     const wallet = await service.getUserWallet(req.user!.id)
     res.json(wallet ?? { balance: '0.00', recent_ledger: [] })

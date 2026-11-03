@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
+import { useKeepAwake } from 'expo-keep-awake'
 import {
   NavigationProvider,
   NavigationView,
@@ -39,6 +40,7 @@ export type GoogleGuidedMapProps = {
 // Inner component so useNavigation() has a NavigationProvider ancestor -- the provider
 // itself can't also be the thing calling the hook.
 function GuidedMapInner({ rideId, destination, stops = [], meterWait = false, onClose, onStopResolved }: GoogleGuidedMapProps) {
+  useKeepAwake() // screen stays on for as long as guidance is mounted
   const { navigationController, setOnArrival, removeAllListeners } = useNavigation()
   const [status, setStatus] = useState<'initializing' | 'ready' | 'failed'>('initializing')
   const resolvingStop = useRef(false)

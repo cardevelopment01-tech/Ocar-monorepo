@@ -4,7 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, colors, fonts, maybeRequestReview, radii, spacing, typography } from '@ocar/mobile-shared'
+import { fetchProfile } from '@/features/profile/api'
 import { DriverAvatar, driverViewFromRide } from '@/features/ride-tracking/components/DriverIdentity'
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
 import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
@@ -56,6 +57,15 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
       .catch(() => {})
     return () => { live = false }
   }, [hasMap, ride.originLat, ride.originLng, ride.destLat, ride.destLng])
+
+  // The best moment to ask for a store rating: the rider just rated a completed trip. The helper decides whether
+  // they are eligible (rides, days, cooldown) and the OS decides whether the card really shows.
+  const handleRated = () => {
+    onRefresh()
+    if (completed) {
+      void maybeRequestReview({ role: 'rider', delayMs: 1500, getLifetimeRides: async () => (await fetchProfile()).total_rides })
+    }
+  }
 
   const goHome = () => router.replace('/(tabs)/home')
   // Opened straight after the ride there is nothing to go back to; from My Trips there is.
@@ -237,7 +247,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
                 {driverView.plate ? <Text style={styles.plate} numberOfLines={1}>{driverView.plate}</Text> : null}
               </View>
             </View>
-            <RatingSection rideId={ride.id} driverName={driverView.name} existing={ride.userRatingGiven} onRated={onRefresh} />
+            <RatingSection rideId={ride.id} driverName={driverView.name} existing={ride.userRatingGiven} onRated={handleRated} />
           </View>
         ) : null}
 

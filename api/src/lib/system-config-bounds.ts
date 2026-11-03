@@ -36,6 +36,36 @@ const ALLOWED_VALUES: Record<string, readonly string[]> = {
   cash_collection_enabled: ['true', 'false'],
   // Anything but exactly 'true' reads as off, so a typo here would silently disable payments.
   mobile_payments_enabled: ['true', 'false'],
+  app_update_enabled: ['true', 'false'],
+}
+
+// Version rows (app_update_<app>_<platform>_min|recommended): the policy compares major.minor.patch,
+// so '1.2', 'v1.2.3' or '1.2.3-beta' would silently compare as "no limit".
+const VERSION_KEY_RE = /^app_update_(rider|driver)_(android|ios)_(min|recommended)$/
+const VERSION_VALUE_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}$/
+
+/**
+ * min must never exceed recommended (a typo like 9.9.9 would hard-block every build). Returns the sibling key to
+ * read plus a checker, or null when `key` is not a version row. Raise `recommended` before `min`.
+ */
+export function versionPairCheck(key: string): { siblingKey: string; check: (value: string, sibling: string) => string | null } | null {
+  const m = /^(app_update_(?:rider|driver)_(?:android|ios))_(min|recommended)$/.exec(key)
+  if (!m) return null
+  const isMin = m[2] === 'min'
+  const cmp = (a: string, b: string) => {
+    const pa = a.split('.').map(Number), pb = b.split('.').map(Number)
+    for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i]! - pb[i]!
+    return 0
+  }
+  return {
+    siblingKey: `${m[1]}_${isMin ? 'recommended' : 'min'}`,
+    check: (value, sibling) => {
+      if (!VERSION_VALUE_RE.test(sibling)) return null
+      if (isMin && cmp(value, sibling) > 0) return `minimum (${value}) can't be above recommended (${sibling}); raise recommended first`
+      if (!isMin && cmp(value, sibling) < 0) return `recommended (${value}) can't be below minimum (${sibling}); lower minimum first`
+      return null
+    },
+  }
 }
 
 export function getConfigBounds(key: string): ConfigBounds | null {
@@ -45,6 +75,7 @@ export function getConfigBounds(key: string): ConfigBounds | null {
 export function validateConfigBounds(key: string, value: string): string | null {
   const allowed = ALLOWED_VALUES[key]
   if (allowed && !allowed.includes(value)) return `value must be one of: ${allowed.join(', ')}`
+  if (VERSION_KEY_RE.test(key) && !VERSION_VALUE_RE.test(value)) return 'value must look like 1.2.3'
 
   const bounds = BOUNDS[key]
   if (!bounds) return null

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
-import { getApiErrorMessage } from '@ocar/mobile-shared'
+import { getApiErrorMessage, maybeRequestReview } from '@ocar/mobile-shared'
+import { fetchDriverStats } from '@/features/profile/api'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { disconnectSocket } from '@/services/socket'
 import { stopBackgroundTracking } from '@/services/location/backgroundTask'
@@ -92,6 +93,8 @@ export function useGoOnlineFlow(): GoOnlineFlowState {
       disconnectSocket()
       setOffline()
     }
+    // Natural pause: the shift is over. Only reached when the server accepted going offline.
+    void maybeRequestReview({ role: 'driver', delayMs: 1500, getLifetimeRides: async () => (await fetchDriverStats()).stats.total_rides })
   }, [setOffline])
 
   return {

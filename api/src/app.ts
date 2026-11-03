@@ -20,6 +20,9 @@ import adminRouter from '@/modules/admin/admin.routes'
 import geoRouter from '@/modules/geo/geo.routes'
 import pricingRouter from '@/modules/pricing/pricing.routes'
 import ridesRouter from '@/modules/rides/rides.routes'
+import appVersionRouter from '@/modules/app-version/app-version.routes'
+import type { IncomingMessage } from 'http'
+import { identityFromHeaders } from '@/modules/app-version/app-version.policy'
 import rideChatRouter from '@/modules/ride-chat/ride-chat.routes'
 import paymentsRouter from '@/modules/payments/payments.routes'
 import safetyRouter     from '@/modules/safety/safety.routes'
@@ -66,7 +69,12 @@ export function createApp(): Application {
     // Level policy (tested in observability/http-log.ts): 5xx error, real 4xx warn, scanner/expected 404 and polling quiet.
     customLogLevel: requestLogLevel,
     // Who made the request (actor_role / actor_id): set by authenticate() later in the pipeline, read when the response ends.
-    customProps: actorProps,
+    customProps: (req) => {
+      // Which app build made the request, so Loki can answer "what share of drivers are on >= 1.3.0" before
+      // anyone raises a minimum version. Validated, so a hostile header can't inject log content.
+      const id = identityFromHeaders((req as IncomingMessage).headers)
+      return { ...actorProps(req), ...(id ? { app_name: id.app, app_platform: id.platform, app_version: id.version } : {}) }
+    },
     // pino-http's default req/res serializers dump every header (helmet's
     // static CSP/HSTS block, repeated on every line) — pure log-volume waste
     // once shipped off-box. Worse: req.url includes the query string, and
@@ -161,6 +169,7 @@ export function createApp(): Application {
   apiRouter.use('/admin/invites', adminInvitesRouter)
   apiRouter.use('/admin/totp', adminTotpRouter)
   apiRouter.use('/admin', adminRouter)
+  apiRouter.use('/app', appVersionRouter)
   apiRouter.use('/geo', geoRouter)
   apiRouter.use('/pricing', pricingRouter)
   apiRouter.use('/rides', ridesRouter)

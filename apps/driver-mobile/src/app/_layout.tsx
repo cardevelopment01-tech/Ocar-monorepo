@@ -7,6 +7,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller'
 import * as SplashScreen from 'expo-splash-screen'
 import {
   SplashOverlay,
+  UpdateGate,
   identifyUser,
   initTelemetry,
   resetUser,
@@ -15,6 +16,8 @@ import {
   wrapRoot,
 } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useDriverSessionStore } from '@/store/useDriverSessionStore'
+import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useRideRequestListener } from '@/features/ride-requests/useRideRequestListener'
 import { RideRequestOverlay } from '@/features/ride-requests/RideRequestOverlay'
 import { useSessionSyncListener } from '@/features/go-online/useSessionSyncListener'
@@ -26,6 +29,7 @@ import { useStandingSync } from '@/features/account/useStandingSync'
 // unconditionally at app startup, since Android can invoke the task in a headless
 // JS instance after the app process was killed (see backgroundTask.ts).
 import '@/services/location/backgroundTask'
+import { API_URL } from '@/services/api'
 import logoMarkImage from '../../assets/brand/logo-mark.png'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
@@ -42,6 +46,10 @@ function RootLayout() {
   const hasHydrated = useAuthStore((s) => s.hasHydrated)
   const fontsLoaded = useAppFonts()
   const [showSplashOverlay, setShowSplashOverlay] = useState(true)
+
+  // Never interrupt a driver with a session (online or paused), a ride, or an incoming request.
+  const hasPendingRequest = useRideRequestStore((s) => s.pending != null)
+  const updateBusy = useDriverSessionStore((s) => s.isOnline || s.sessionId != null || s.activeRide != null) || hasPendingRequest
 
   // Root-level ride-request listener, per the plan's binding architecture
   // decision -- mounted once, same place the socket connect lifecycle lives,
@@ -87,6 +95,7 @@ function RootLayout() {
           <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false, freezeOnBlur: true }} />
           <RideRequestOverlay />
+          <UpdateGate app="driver" baseURL={API_URL} isBusy={updateBusy} logoSource={logoMarkImage} supportMailto="mailto:grievance@ocarindia.com?subject=Ocar%20driver%20support" />
           {showSplashOverlay ? (
             <SplashOverlay
               logoSource={logoMarkImage}
