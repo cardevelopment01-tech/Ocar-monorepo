@@ -615,6 +615,7 @@ export default function DocReviewModal({
       if (e.key === 'ArrowLeft'  && idx > 0)                  setIdx(i => i - 1)
       if (e.key === 'ArrowRight' && idx < allDocs.length - 1) setIdx(i => i + 1)
       const k = e.key.toLowerCase()
+      if (e.repeat) return // a held key must never approve/reject a stream of documents
       if (!rejectDoc && !approveDoc && !editExpiry && !driverMode) {
         if (k === 'a' && canApprove) { e.preventDefault(); startApproveRef.current() }
         if (k === 'r' && canReject)  { e.preventDefault(); setRejectDoc(true) }
