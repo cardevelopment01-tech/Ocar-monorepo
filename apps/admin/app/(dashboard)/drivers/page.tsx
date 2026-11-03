@@ -44,7 +44,7 @@ interface PendingAction { type: ActionType; driverId: string; driverName: string
 const LIMIT = 20
 
 const csv = (v: string | null) => (v ? v.split(',').filter(Boolean) : [])
-const EMPTY_SUMMARY: DriverListSummary = { total: 0, active: 0, pending_approval: 0, suspended: 0 }
+const EMPTY_SUMMARY: DriverListSummary = { total: 0, active: 0, pending_approval: 0, suspended: 0, docs_to_review: 0 }
 const EMPTY_FACETS: DriverListFacets = { cities: {}, categories: {} }
 
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
@@ -245,13 +245,13 @@ function DriversPageInner() {
     () => categories.map(c => ({ value: c.id, label: c.display_name, count: facets.categories[c.id] ?? 0 })),
     [categories, facets])
   const inQueue = statusFilter === 'pending_approval'
-  const tabOwnsStatus = inQueue || statusFilter === 'suspended' // those statuses are tabs, not dropdown options
+  const tabOwnsStatus = inQueue || statusFilter === 'suspended' || statusFilter === 'docs_review' // those are tabs, not dropdown options
   const hasFilters = cityIds.length > 0 || vehicleIds.length > 0 || !!statusFilter || !!urlSearch
   const clearFilters = () => { setSearch(''); setParams({ city: null, vehicle: null, status: null, q: null }) }
   const emptyMessage = inQueue && !urlSearch && !cityIds.length && !vehicleIds.length ? 'All caught up. No drivers are waiting for approval.' : !hasFilters ? 'No drivers yet' : 'No drivers' +
     (cityIds.length ? ` in ${cityIds.map(cityName).join(', ')}` : '') +
     (vehicleIds.length ? ` with ${vehicleIds.map(categoryName).join(', ')} vehicles` : '') +
-    (statusFilter ? ` with status ${statusFilter.replace(/_/g, ' ')}` : '') +
+    (statusFilter === 'docs_review' ? ' with documents waiting for review' : statusFilter ? ` with status ${statusFilter.replace(/_/g, ' ')}` : '') +
     (urlSearch ? ` matching "${urlSearch}"` : '')
   const cardsLoading = listLoading && !hasLoaded
 
@@ -286,7 +286,17 @@ function DriversPageInner() {
         <span className="inline-flex items-center gap-1.5 text-text-secondary"><MapPin size={12} className="text-text-muted" aria-hidden />{d.city.name}</span>
       ) : <span className="text-text-muted italic">Not assigned</span>,
     },
-    { key: 'status', header: 'Status', render: (d: DriverListItem) => <StatusPill status={d.status} /> },
+    {
+      key: 'status', header: 'Status',
+      render: (d: DriverListItem) => (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <StatusPill status={d.status} />
+          {(d.docs_pending ?? 0) > 0 && (
+            <span className="text-[11px] font-semibold text-warning">{d.docs_pending} to review</span>
+          )}
+        </span>
+      ),
+    },
     {
       key: 'docs', header: 'Docs',
       render: (d: DriverListItem) => (
@@ -407,13 +417,14 @@ function DriversPageInner() {
       {/* Main table */}
       <div className="admin-card">
         <StatusTabs
-          value={statusFilter === 'pending_approval' || statusFilter === 'suspended' ? statusFilter : statusFilter ? '_other' : ''}
+          value={statusFilter === 'pending_approval' || statusFilter === 'docs_review' || statusFilter === 'suspended' ? statusFilter : statusFilter ? '_other' : ''}
           onChange={v => { if (v !== '_other') setParams({ status: v || null }) }}
           tabs={[
             { value: '', label: 'All drivers' },
             { value: 'pending_approval', label: 'Pending approval', count: summary.pending_approval, alert: true },
+            { value: 'docs_review', label: 'Docs to review', count: summary.docs_to_review ?? 0, alert: true },
             { value: 'suspended', label: 'Suspended', count: summary.suspended },
-            ...(statusFilter && statusFilter !== 'pending_approval' && statusFilter !== 'suspended'
+            ...(statusFilter && statusFilter !== 'pending_approval' && statusFilter !== 'suspended' && statusFilter !== 'docs_review'
               ? [{ value: '_other', label: statusFilter.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase()) }] : []),
           ]}
         />

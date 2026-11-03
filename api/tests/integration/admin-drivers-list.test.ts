@@ -128,13 +128,13 @@ describe('GET /api/v1/admin/drivers', () => {
 
   it('summary is scoped to the filters', async () => {
     const res = await list(`&city=${cityA}`)
-    expect(res.body.summary).toEqual({ total: 3, active: 2, pending_approval: 1, suspended: 0 })
+    expect(res.body.summary).toEqual({ total: 3, active: 2, pending_approval: 1, suspended: 0, docs_to_review: 0 })
   })
 
   it('summary ignores the status filter while the list and total respect it', async () => {
     const res = await list('&status=suspended')
     expect(res.body.pagination.total).toBe(1)
-    expect(res.body.summary).toEqual({ total: 5, active: 3, pending_approval: 1, suspended: 1 })
+    expect(res.body.summary).toEqual({ total: 5, active: 3, pending_approval: 1, suspended: 1, docs_to_review: 0 })
   })
 
   it('facets ignore their own dimension but respect the other', async () => {

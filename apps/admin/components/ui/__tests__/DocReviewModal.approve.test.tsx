@@ -52,6 +52,12 @@ describe('DocReviewModal one-key approve', () => {
     expect(screen.queryByText('Verified expiry date')).not.toBeInTheDocument()
   })
 
+  it('a held A (auto-repeat keydown) never approves: only a fresh press does', async () => {
+    const p = setup(['profile_photo'])
+    await act(async () => { fireEvent.keyDown(window, { key: 'a', repeat: true }) })
+    expect(p.onDriverDocApprove).not.toHaveBeenCalled()
+  })
+
   it('a double A in the same frame approves once (state lags a frame, the ref lock does not)', async () => {
     const p = setup(['profile_photo'])
     await act(async () => {
