@@ -11,7 +11,8 @@ import {
 import { invalidate, cachedRead } from "@/lib/cache/reference-cache";
 import { RATE_CARD_CACHE_TTL_SECONDS } from "@/constants/limits";
 import { logger } from "@/lib/logger";
-import { hasApprovedRequiredDocs, REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, sqlList } from "@/modules/drivers/drivers.repository";
+import { hasApprovedRequiredDocs } from "@/modules/drivers/drivers.repository";
+import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, sqlList } from "@/modules/drivers/required-docs";
 import { invalidateSurgeCache } from "@/modules/pricing/pricing.repository";
 import { deleteFile } from "@/lib/storage";
 import type { PoolClient, QueryResult, QueryResultRow } from "pg";

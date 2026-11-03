@@ -6,6 +6,7 @@ import type {
   DriverDocument,
   DriverVehicleDocument,
 } from './drivers.types'
+import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, sqlList } from './required-docs'
 
 // ── Drivers ───────────────────────────────────────────────────────────────────
 
@@ -337,10 +338,6 @@ export async function findVehicleDocuments(vehicleId: string): Promise<DriverVeh
   )
 }
 
-export const REQUIRED_IDENTITY_DOCS = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
-export const REQUIRED_VEHICLE_DOCS  = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
-// Hardcoded constants only (never user input) — safe to inline into SQL.
-export const sqlList = (types: string[]) => types.map((t) => `'${t}'`).join(', ')
 
 // Shared SQL fragment: does this driver have any required-doc issue — a rejected
 // row, an approved row whose expiry has passed, or a REQUIRED doc awaiting
