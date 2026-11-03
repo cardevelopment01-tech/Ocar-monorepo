@@ -221,4 +221,17 @@ describe('Drivers page filters', () => {
     render(<DriversPage />)
     expect(await screen.findByText(/All caught up/)).toBeInTheDocument()
   })
+
+  it('surfaces active drivers whose newly required doc (RC back) awaits review: a Docs to review tab, and a per-row count', async () => {
+    api.list.mockImplementation(async () => resp([driver('1', 'Rc Back Rao', { docs_pending: 1 })], {
+      summary: { total: 9, active: 9, pending_approval: 0, suspended: 0, docs_to_review: 4 },
+    }))
+    const user = userEvent.setup()
+    render(<DriversPage />)
+    expect(await screen.findByText('1 to review')).toBeInTheDocument()
+    const tab = screen.getByRole('tab', { name: /Docs to review/ })
+    expect(within(tab).getByText('4')).toBeInTheDocument()
+    await user.click(tab)
+    expect(nav.replace).toHaveBeenLastCalledWith('/drivers?status=docs_review')
+  })
 })

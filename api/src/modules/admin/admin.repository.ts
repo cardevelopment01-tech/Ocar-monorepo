@@ -11,7 +11,7 @@ import {
 import { invalidate, cachedRead } from "@/lib/cache/reference-cache";
 import { RATE_CARD_CACHE_TTL_SECONDS } from "@/constants/limits";
 import { logger } from "@/lib/logger";
-import { hasApprovedRequiredDocs } from "@/modules/drivers/drivers.repository";
+import { hasApprovedRequiredDocs, REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, sqlList } from "@/modules/drivers/drivers.repository";
 import { invalidateSurgeCache } from "@/modules/pricing/pricing.repository";
 import { deleteFile } from "@/lib/storage";
 import type { PoolClient, QueryResult, QueryResultRow } from "pg";
@@ -135,7 +135,21 @@ export interface DriverListFilters {
   cityIds?: number[];
   includeNoCity?: boolean;
   categoryIds?: number[];
+  /** Active/suspended drivers with a required document waiting for review (e.g. a newly required RC back). */
+  docsToReview?: boolean;
 }
+
+// A required document (identity, or any vehicle of the driver) waiting for an admin. Drivers who were approved
+// before a document became required (RC back) stay `active`, so they never enter the pending_approval queue;
+// this is what surfaces them. Constants only, safe to inline.
+const PENDING_REQUIRED_DOCS_SQL = `(
+  EXISTS (SELECT 1 FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'pending'
+          AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)}))
+  OR EXISTS (SELECT 1 FROM driver_vehicle_documents dvd JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+             WHERE dv.driver_id = d.id AND dvd.status = 'pending'
+             AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)}))
+)`;
+const DOCS_TO_REVIEW_SQL = `(d.status IN ('active', 'suspended') AND ${PENDING_REQUIRED_DOCS_SQL})`;
 
 // A driver's current vehicle = the primary, non-blacklisted one (same predicate as
 // driver_vehicles_one_primary_idx), so a driver never appears twice.
@@ -157,6 +171,7 @@ function buildDriverWhere(
     conditions.push(`d.status = $${p++}`);
     params.push(f.status);
   }
+  if (omit !== "status" && f.docsToReview) conditions.push(DOCS_TO_REVIEW_SQL);
   if (f.search) {
     // Plates are stored as typed ("OD 02 AB 1234", "od02ab1234"), so match with spaces/dashes
     // stripped on both sides, across all of the driver's vehicles (not just the primary one).
@@ -218,7 +233,13 @@ export async function listDrivers(
          v.number_plate, v.vehicle_name,
          vc.display_name AS vehicle_category,
          (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id) AS docs_submitted,
-         (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'approved') AS docs_approved
+         (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'approved') AS docs_approved,
+         CASE WHEN d.status IN ('active', 'suspended') THEN
+           (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'pending'
+              AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)}))
+           + (SELECT COUNT(*) FROM driver_vehicle_documents dvd JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+              WHERE dv.driver_id = d.id AND dvd.status = 'pending' AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)}))
+         ELSE 0 END AS docs_pending
        ${DRIVER_LIST_FROM}
        ${main.where}
        ORDER BY ${filters.status === "pending_approval" ? "queued_at ASC, d.id ASC" : "d.created_at DESC"}
@@ -230,7 +251,8 @@ export async function listDrivers(
       `SELECT COUNT(*) AS total,
               COUNT(*) FILTER (WHERE d.status = 'active') AS active,
               COUNT(*) FILTER (WHERE d.status = 'pending_approval') AS pending_approval,
-              COUNT(*) FILTER (WHERE d.status = 'suspended') AS suspended
+              COUNT(*) FILTER (WHERE d.status = 'suspended') AS suspended,
+              COUNT(*) FILTER (WHERE ${DOCS_TO_REVIEW_SQL}) AS docs_to_review
        ${DRIVER_LIST_FROM} ${cards.where}`,
       cards.params,
     ),
@@ -250,6 +272,7 @@ export async function listDrivers(
     active: parseInt(s.active as string, 10),
     pending_approval: parseInt(s.pending_approval as string, 10),
     suspended: parseInt(s.suspended as string, 10),
+    docs_to_review: parseInt(s.docs_to_review as string, 10),
   };
 
   const facets: AdminDriverListFacets = { cities: {}, categories: {} };
@@ -281,6 +304,7 @@ export async function listDrivers(
       : null,
     docs_submitted: parseInt(r.docs_submitted as string, 10),
     docs_approved: parseInt(r.docs_approved as string, 10),
+    docs_pending: parseInt(r.docs_pending as string, 10),
   }));
 
   return { rows, total: parseInt(totalRes.rows[0].total as string, 10), summary, facets };

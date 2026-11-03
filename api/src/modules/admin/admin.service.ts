@@ -90,7 +90,9 @@ export async function listDrivers(query: {
   const vehicle = parseIdList(query.vehicle, false)
 
   const repoQuery: Parameters<typeof repo.listDrivers>[0] = { limit, offset }
-  if (query.status !== undefined) repoQuery.status = query.status
+  // 'docs_review' is a tab, not a driver status: active/suspended drivers with a required doc waiting for review.
+  if (query.status === 'docs_review') repoQuery.docsToReview = true
+  else if (query.status !== undefined) repoQuery.status = query.status
   if (query.search !== undefined) repoQuery.search = query.search
   if (city.ids.length) repoQuery.cityIds = city.ids
   if (city.none) repoQuery.includeNoCity = true

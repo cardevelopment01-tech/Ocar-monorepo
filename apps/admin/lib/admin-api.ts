@@ -21,6 +21,8 @@ export interface DriverListItem {
   } | null
   docs_submitted: number
   docs_approved: number
+  /** Required documents waiting for review on an active/suspended driver (0 otherwise). */
+  docs_pending?: number
 }
 
 export interface DriverListSummary {
@@ -28,6 +30,8 @@ export interface DriverListSummary {
   active: number
   pending_approval: number
   suspended: number
+  /** Active/suspended drivers with a required document waiting for review. */
+  docs_to_review?: number
 }
 
 // city keys: city id or "none" (no city assigned); categories keys: vehicle category id
