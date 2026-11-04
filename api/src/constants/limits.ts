@@ -152,3 +152,6 @@ export const ROUND_TRIP_OVERTIME_GRACE_MIN = 5
 export const ROUND_TRIP_OVERTIME_REVIEW_MIN = 60
 // Longest booking priced per hour; above this the per-day package applies (unchanged).
 export const ROUND_TRIP_HOURLY_MAX_HOURS = 24
+
+// Offers: how long the active-offer list and a looked-up code are cached (admin writes invalidate them).
+export const OFFERS_CACHE_TTL_SECONDS = 30
