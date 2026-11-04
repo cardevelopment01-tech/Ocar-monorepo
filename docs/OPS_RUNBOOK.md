@@ -576,6 +576,42 @@ manually (duplicate / unknown / wrong amount), or, if it clearly belongs to a
 pending payment, attribute it by hand and record what you did. The API never
 guesses an owner.
 
+## Offers and coupons
+
+Design: `docs/superpowers/plans/2026-11-03-offers-and-coupons.md`. Money model: the rider pays the post-offer amount, the
+driver is paid that same amount (not the gross fare), and no commission is taken while `commission_percent` is 0. Offers
+only apply while `commission_percent` is 0 and never in package-billing cities, so restoring commission by hand stops new
+offers on its own. The commission holiday itself is switched on and off manually.
+
+**Switches** (`system_config`, Admin > Config; all default `'false'`):
+
+| Key | Effect |
+|---|---|
+| `offers_enabled` | Master switch. Off: preview answers `enabled:false`, the apps hide every coupon row, booking ignores offers. |
+| `offers_cash_discounts_enabled` | Lets cash rides get a discount. Saving it `true` is refused (422 `CASH_DISCOUNT_GUARD`) until the guard conditions hold; read the message. |
+| `offers_cashback_enabled` | Cashback benefits. Leave off until riders can spend wallet credit. |
+| `offers_max_discount_percent` | Hard cap on any discount as a percent of the fare (default 15). |
+
+**Go-live order:** staging soak -> prod `offers_enabled=true` with cash discounts still off -> raise the driver app minimum
+version (`app_update_driver_android_min`) once the driver release that understands discounted fares is out -> only then
+`offers_cash_discounts_enabled=true`. Cashback last.
+
+**Kill switch:** set `offers_enabled` to `'false'`. In-flight reservations are released by the sweep (below); rides already
+booked keep their discount.
+
+**Metrics** (Grafana, `offers_*`):
+- `offers_redemptions_total{status}` - reserved / consumed / released / reversed.
+- `offers_preview_rejections_total{reason}` and `offers_reserve_refused_total{reason}` - spikes in `BUDGET_EXHAUSTED` or
+  `DISABLED` mean an offer ran out or was ended while riders still see it.
+- `offers_budget_remaining{offer}` - burn rate per offer.
+
+**Stuck reservations:** the `sweep_offer_reservations` job releases reservations whose ride never settled; `sweep_offer_expiry`
+ends offers past their end date. If an offer's budget looks too low, check for `reserved` rows older than the sweep window in
+`offer_redemptions` before raising the budget.
+
+**Changing an offer mid-flight:** edit through Admin > Offers (creates a new version; riders with the old price get a 409
+`PRICE_CHANGED` and see the new price, nothing is re-booked automatically).
+
 ## Updating an observability secret (Grafana Cloud alerting/SLO/synthetics)
 
 `infra/terraform/observability/` (alert rules, SLOs, synthetic monitoring —
