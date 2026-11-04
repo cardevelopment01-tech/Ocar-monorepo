@@ -5,6 +5,7 @@ import { findActiveOffers, getUserUsage, listGrantedOfferIds } from './offers.re
 import { parseOrThrow } from './admin-offers.service'
 import { previewOffers, type PreviewInput } from './offers.service'
 import { describeOffer } from './engine'
+import { findNearestCity } from '@/modules/geo/geo.service'
 import { offersPreviewRejectionsTotal } from '@/observability/offers-metrics'
 
 const previewSchema = z.object({
@@ -19,6 +20,12 @@ const previewSchema = z.object({
   city_id: z.number().int().positive().optional(),
   originCityId: z.number().int().positive().nullable().optional(),
   destinationCityId: z.number().int().positive().nullable().optional(),
+  // The pickup and drop. When given, the cities are derived from them exactly as the booking does, so the preview and the
+  // booking can never disagree about a city or route rule.
+  originLat: z.number().min(-90).max(90).optional(),
+  originLng: z.number().min(-180).max(180).optional(),
+  destinationLat: z.number().min(-90).max(90).optional(),
+  destinationLng: z.number().min(-180).max(180).optional(),
   code: z.string().trim().max(40).optional(),
   autoOffer: z.string().regex(/^(none|\d{1,18})$/).optional(),
   paymentChannel: z.enum(['cash', 'online', 'wallet']),
@@ -29,7 +36,15 @@ export const preview: RequestHandler = async (req, res, next) => {
   try {
     const body = parseOrThrow(previewSchema, req.body)
     // exactOptionalPropertyTypes: drop undefined keys instead of passing them through.
-    const input = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)) as unknown as PreviewInput
+    const { originLat, originLng, destinationLat, destinationLng, ...rest } = body
+    const input = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) as unknown as PreviewInput
+    if (originLat !== undefined && originLng !== undefined) {
+      const city = await findNearestCity(originLat, originLng)
+      if (city) { input.city_id = city.id; input.originCityId = city.id }
+    }
+    if (destinationLat !== undefined && destinationLng !== undefined) {
+      input.destinationCityId = (await findNearestCity(destinationLat, destinationLng))?.id ?? null
+    }
     const result = await previewOffers(req.user!.id, input)
     // Only a wrong typed code counts toward the guess limit (see offersCodeGuessLimiters).
     res.locals['codeGuessFailed'] = result.rejected.some((r) => r.reason === 'UNKNOWN_CODE' || r.reason === 'NOT_ASSIGNED')

@@ -38,6 +38,8 @@ export type Rejection = { offerId?: string; code?: string; reason: ReasonCode; m
 export type Ineligible = { offerId: string; name: string; summary: string; message: string }
 
 export type PreviewResult = {
+  /** false while offers are off: clients hide every offer control and book exactly as before. */
+  enabled: boolean
   fareTotal: number
   discount: number
   cashback: number
@@ -99,7 +101,7 @@ export type Evaluation = { chosen: AppliedOffer | null; result: PreviewResult; e
 export async function evaluateOffers(userId: bigint, input: PreviewInput, estimate: FareEstimateResponse): Promise<Evaluation> {
   const fare = components(estimate.breakdown)
   const fareTotal = roundPaise(sumComponents(fare))
-  const empty: PreviewResult = { fareTotal, discount: 0, cashback: 0, payable: fareTotal, applied: null, alternatives: [], rejected: [], ineligible: [] }
+  const empty: PreviewResult = { enabled: false, fareTotal, discount: 0, cashback: 0, payable: fareTotal, applied: null, alternatives: [], rejected: [], ineligible: [] }
 
   if ((await getConfigValue('offers_enabled', 'false')) !== 'true') return { chosen: null, result: empty, enabled: false }
 
@@ -138,7 +140,7 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
       candidates.push(o)
     }
   }
-  if (candidates.length === 0) return { chosen: null, result: { ...empty, rejected }, enabled: true }
+  if (candidates.length === 0) return { chosen: null, result: { ...empty, enabled: true, rejected }, enabled: true }
 
   // Independent lookups run together; the ride count is only needed when a first-ride rule is present.
   const needsRideCount = candidates.some((c) => c.rules.some((r) => r.kind === 'new_user' || r.kind === 'first_n_rides'))
@@ -205,6 +207,7 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
     chosen,
     enabled: true,
     result: {
+      enabled: true,
       fareTotal, discount: chosen?.discount ?? 0, cashback: chosen?.cashback ?? 0,
       payable: roundPaise(Math.max(fareTotal - (chosen?.discount ?? 0), 0)),
       applied: chosen, alternatives: eligible.slice(1), rejected, ineligible,

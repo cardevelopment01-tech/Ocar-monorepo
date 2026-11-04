@@ -13,7 +13,8 @@ vi.mock('@/middleware/rateLimit.middleware', () => ({
   offersPreviewLimiter: (_q: unknown, _r: unknown, n: () => void) => n(),
   offersCodeGuessLimiters: [(_q: unknown, _r: unknown, n: () => void) => n()],
 }))
-const m = vi.hoisted(() => ({ preview: vi.fn(), active: vi.fn(), usage: vi.fn(), granted: vi.fn(), cfg: vi.fn() }))
+const m = vi.hoisted(() => ({ preview: vi.fn(), active: vi.fn(), usage: vi.fn(), granted: vi.fn(), cfg: vi.fn(), city: vi.fn() }))
+vi.mock('@/modules/geo/geo.service', () => ({ findNearestCity: m.city }))
 vi.mock('@/lib/system-config', () => ({ getConfigValue: m.cfg }))
 vi.mock('@/modules/offers/offers.service', () => ({ previewOffers: m.preview }))
 vi.mock('@/modules/offers/offers.repository', () => ({ findActiveOffers: m.active, getUserUsage: m.usage, listGrantedOfferIds: m.granted }))
@@ -39,6 +40,7 @@ beforeEach(() => {
   m.usage.mockResolvedValue(new Map())
   m.granted.mockResolvedValue([])
   m.cfg.mockResolvedValue('true')
+  m.city.mockResolvedValue(null)
 })
 
 describe('POST /offers/preview', () => {
@@ -47,6 +49,19 @@ describe('POST /offers/preview', () => {
     expect(res.status).toBe(200)
     expect(res.body.payable).toBe(409)
     expect(m.preview).toHaveBeenCalledWith(7n, expect.objectContaining({ category_id: 1, paymentChannel: 'online' }))
+  })
+
+  it('derives the cities from the pickup and drop the way the booking does, ignoring any client city id', async () => {
+    m.city.mockImplementation(async (lat: number) => (lat < 20.4 ? { id: 1 } : { id: 2 }))
+    await request(app).post('/offers/preview').send({ ...valid, city_id: 99, originCityId: 98, originLat: 20.29, originLng: 85.82, destinationLat: 20.5, destinationLng: 86.4 })
+    expect(m.preview).toHaveBeenCalledWith(7n, expect.objectContaining({ city_id: 1, originCityId: 1, destinationCityId: 2 }))
+    expect(m.preview.mock.calls[0]![1]).not.toHaveProperty('originLat')
+  })
+
+  it('passes the automatic-offer choice through and rejects a malformed one', async () => {
+    await request(app).post('/offers/preview').send({ ...valid, autoOffer: 'none' })
+    expect(m.preview).toHaveBeenLastCalledWith(7n, expect.objectContaining({ autoOffer: 'none' }))
+    expect((await request(app).post('/offers/preview').send({ ...valid, autoOffer: 'best' })).status).toBe(422)
   })
 
   it('answers 422 naming the bad field, never a 500', async () => {
