@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -15,9 +16,11 @@ export type NotificationSettingsProps = {
   onBack: () => void
   /** Optional categories the user can switch off. Omit until the preferences have loaded. */
   switches?: { label: string; description: string; value: boolean; onChange: (value: boolean) => void; icon?: string; tone?: NotificationTone }[]
+  /** App-specific extras shown under the switches (e.g. a test button). */
+  footer?: ReactNode
 }
 
-export function NotificationSettings({ topics, permission, onEnablePush, onBack, switches }: NotificationSettingsProps) {
+export function NotificationSettings({ topics, permission, onEnablePush, onBack, switches, footer }: NotificationSettingsProps) {
   const insets = useSafeAreaInsets()
   const granted = permission.state === 'granted'
 
@@ -79,6 +82,8 @@ export function NotificationSettings({ topics, permission, onEnablePush, onBack,
             </View>
           </>
         ) : null}
+
+        {footer}
 
         <Pressable onPress={() => { void Linking.openSettings() }} style={({ pressed }) => [styles.system, pressed ? styles.pressed : null]} accessibilityRole="button">
           <View style={styles.flex}>

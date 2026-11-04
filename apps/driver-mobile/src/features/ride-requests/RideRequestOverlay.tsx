@@ -86,7 +86,7 @@ export function RideRequestOverlay() {
   const isUrgent = !!pending && seconds <= WARNING_THRESHOLD_SECONDS && !resolved
 
   // Repeating alert while the request is live and unanswered.
-  useRideAlertSound(!!pending && !resolved)
+  useRideAlertSound(!!pending && !resolved, pending)
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach(clearTimeout)

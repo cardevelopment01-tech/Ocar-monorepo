@@ -45,13 +45,26 @@ export async function setupPushNotifications(opts: { prompt?: boolean } = {}): P
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 400, 200, 400],
       },
+      // The loud one: a 22 s ring on the alarm volume (independent of the notification/ringer volume). The server sends
+      // here only to devices registered with rideAlertV3; older builds keep using _v2. Android locks a channel's sound and
+      // usage after creation, so any later change needs a _v4.
+      {
+        channelId: 'ride_requests_v3',
+        name: 'Ride requests (loud)',
+        description: 'Rings loudly when a new ride request arrives',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 600, 250, 600, 250, 600],
+        sound: 'ride_request_long.wav',
+        audioUsage: Notifications.AndroidAudioUsage.ALARM,
+      },
     ],
+    deviceCapabilities: { rideAlertV3: true },
   })
   useAuthStore.getState().setPushPermissionGranted(granted)
   if (granted) {
     // FCM rotates tokens (reinstall, data clear, long idle); without this the server keeps the dead one.
     stopTokenRefresh?.()
-    stopTokenRefresh = onTokenRefresh(getMessaging(getApp()), (token) => { registerDeviceToken(api, token).catch(() => {}) })
+    stopTokenRefresh = onTokenRefresh(getMessaging(getApp()), (token) => { registerDeviceToken(api, token, { rideAlertV3: true }).catch(() => {}) })
   }
 }
 

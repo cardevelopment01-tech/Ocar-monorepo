@@ -1,7 +1,11 @@
 import { useEffect } from 'react'
 import { Vibration } from 'react-native'
 import { setAudioModeAsync, useAudioPlayer, type AudioPlayer } from 'expo-audio'
+import * as Speech from 'expo-speech'
 import rideAlertSoundAsset from '../../../assets/sounds/ride-request.wav'
+import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
+import { buildAnnouncement } from './buildAnnouncement'
+import type { RideRequestPayload } from './types'
 
 function safePause(player: AudioPlayer) {
   try {
@@ -19,6 +23,10 @@ const RIDE_ALERT_SOUND = rideAlertSoundAsset
 // Uber-style pattern: buzz, pause, buzz, repeat -- not a single blip.
 const VIBRATION_PATTERN = [0, 400, 200, 400]
 
+// Ring once (long enough to get the driver's attention), then read the request aloud, then ring again until the request
+// is answered. The ring is paused while speaking so the two never fight over the speaker.
+const RING_BEFORE_SPEECH_MS = 1600
+
 let audioModeSet = false
 
 // Must run once before the first play() -- without it, iOS silences the alert
@@ -34,23 +42,45 @@ function ensureAudioMode() {
   setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers', shouldPlayInBackground: false }).catch(() => {})
 }
 
-/** Plays a repeating alert tone + vibration while `active` is true. Stops immediately when it flips to false. */
-export function useRideAlertSound(active: boolean): void {
+/** The language tag handed to the system voice. Falls back to the phone's default voice when the language is not installed. */
+export const SPEECH_LOCALE = { en: 'en-IN', hi: 'hi-IN' } as const
+
+/** Plays a repeating alert tone + vibration while `active` is true, and reads `request` aloud once after the first ring
+ *  (when the driver has voice on). Stops immediately when `active` flips to false. */
+export function useRideAlertSound(active: boolean, request?: RideRequestPayload | null): void {
   const player = useAudioPlayer(RIDE_ALERT_SOUND)
+  const voiceEnabled = useAlertPrefsStore((s) => s.voiceEnabled)
+  const language = useAlertPrefsStore((s) => s.language)
+  const rideId = request?.rideId
 
   useEffect(() => {
     ensureAudioMode()
     player.loop = true
+    player.volume = 1 // the player's own gain at full; the phone's volume is the driver's
   }, [player])
 
   useEffect(() => {
-    if (active) {
-      player.seekTo(0).catch(() => {})
-      player.play()
-      Vibration.vibrate(VIBRATION_PATTERN, true)
-    } else {
+    if (!active) {
       safePause(player)
       Vibration.cancel()
+      return
+    }
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const ring = () => {
+      if (cancelled) return
+      player.seekTo(0).catch(() => {})
+      player.play()
+    }
+    ring()
+    Vibration.vibrate(VIBRATION_PATTERN, true)
+    if (voiceEnabled && request) {
+      const text = buildAnnouncement(request, language)
+      timer = setTimeout(() => {
+        if (cancelled) return
+        safePause(player)
+        Speech.speak(text, { language: SPEECH_LOCALE[language], rate: 0.95, onDone: ring, onStopped: ring, onError: ring })
+      }, RING_BEFORE_SPEECH_MS)
     }
     // Cleanup covers unmount mid-ring (e.g. fast navigation away) so the alarm
     // and vibration never outlive the overlay that triggered them. By the
@@ -59,8 +89,13 @@ export function useRideAlertSound(active: boolean): void {
     // released") -- pause() on an already-released player is a no-op we want,
     // not a crash, so it's swallowed rather than left to throw.
     return () => {
+      cancelled = true
+      clearTimeout(timer)
+      Promise.resolve(Speech.stop()).catch(() => {})
       safePause(player)
       Vibration.cancel()
     }
-  }, [active, player])
+    // `request` is intentionally keyed by rideId: a new request re-announces, a re-render of the same one does not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, rideId, voiceEnabled, language, player])
 }

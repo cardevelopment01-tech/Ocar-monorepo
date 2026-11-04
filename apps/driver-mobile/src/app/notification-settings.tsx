@@ -1,7 +1,10 @@
+import { Pressable, Text } from 'react-native'
 import { useRouter } from 'expo-router'
 import { NotificationSettings, useNotificationPreferences } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { usePushEnableAction } from '@/features/notifications/usePushSetup'
+import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
+import { playTestAlert } from '@/features/ride-requests/testAlert'
 
 // Mirrors the Android channels created in services/notifications/index.ts.
 const TOPICS = [
@@ -16,10 +19,27 @@ export default function NotificationSettingsScreen() {
   const router = useRouter()
   const push = usePushEnableAction()
   const { prefs, set } = useNotificationPreferences(api)
+  const voiceEnabled = useAlertPrefsStore((s) => s.voiceEnabled)
+  const language = useAlertPrefsStore((s) => s.language)
+  const setVoiceEnabled = useAlertPrefsStore((s) => s.setVoiceEnabled)
+  const setLanguage = useAlertPrefsStore((s) => s.setLanguage)
+  // Always shown (they are on this phone, not on the server), ahead of the server-side category switches.
+  const voiceSwitches = [
+    { label: 'Read out new requests', description: 'Speaks the ride type, pickup, drop, distance and fare after the first ring.', icon: 'volume-2', tone: 'ride' as const, value: voiceEnabled, onChange: setVoiceEnabled },
+    { label: 'Announce in Hindi', description: 'Off = English.', icon: 'globe', tone: 'ride' as const, value: language === 'hi', onChange: (v: boolean) => setLanguage(v ? 'hi' : 'en') },
+  ]
   return (
     <NotificationSettings
       topics={TOPICS}
-      {...(prefs ? { switches: [{ label: 'Announcements', description: 'Notices from Ocar', icon: 'volume-2', tone: 'promo' as const, value: prefs.announcements, onChange: (v: boolean) => set('announcements', v) }] } : {})}
+      switches={[
+        ...voiceSwitches,
+        ...(prefs ? [{ label: 'Announcements', description: 'Notices from Ocar', icon: 'volume-2', tone: 'promo' as const, value: prefs.announcements, onChange: (v: boolean) => set('announcements', v) }] : []),
+      ]}
+      footer={
+        <Pressable onPress={() => { void playTestAlert() }} accessibilityRole="button" accessibilityLabel="Test the ride request ring and voice" style={{ minHeight: 48, borderRadius: 14, backgroundColor: '#0A9FB0', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Test ring and voice</Text>
+        </Pressable>
+      }
       permission={{ state: push.state, canAskAgain: push.canAskAgain }}
       onEnablePush={() => { void push.enable() }}
       onBack={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/home'))}
