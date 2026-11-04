@@ -1,5 +1,5 @@
 import { useIsFocused } from 'expo-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
 import { AppState } from 'react-native'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
@@ -44,6 +44,9 @@ type LocationState = {
   init: () => void
   /** Make sure the foreground watcher is running and re-arm the "still looking" timer. Cheap and idempotent. */
   refresh: () => void
+  /** A screen that needs a current location is on show: keep the watcher running until every holder has released. */
+  acquire: () => void
+  release: () => void
   /** Wipe the saved location (sign-out / forced logout). */
   clearSaved: () => void
 }
@@ -80,17 +83,29 @@ export const useLocationStore = create<LocationState>()(
     (set, get) => {
       // One foreground watcher feeds one value (see mobile-shared locationEngine). Everything stateful about fixes, the
       // address and the "still looking" cap lives there so it can be tested without React Native.
+      let askedSettings = false
+      let consumers = 0 // screens that currently need a live location (home, booking, map picker, ride's pickup editor)
+      let appActive = true
+      let wasBackground = false
+      let launchHold = false // the first minute after launch tracks regardless, so the first fix is not waiting on a screen
+
       const engine = createLocationEngine({
         get: () => get(),
         set: (patch) => set(patch),
         deps: {
           watch: (onFix, onError) =>
             Location.watchPositionAsync(
-              { accuracy: Location.Accuracy.Balanced, timeInterval: WATCH_INTERVAL_MS, distanceInterval: 0 },
+              { accuracy: Location.Accuracy.Balanced, timeInterval: WATCH_INTERVAL_MS, distanceInterval: 0, mayShowUserSettingsDialog: false },
               (l) => onFix(toFix(l, 'gps')),
               onError // the engine restarts the watcher
             ),
-          currentFix: () => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).then((l) => toFix(l, 'gps')),
+          // The system "turn on location" dialog may appear once per launch (on the first direct request); automatic
+          // retries must never re-prompt a rider who said no.
+          currentFix: () => {
+            const mayShow = !askedSettings
+            askedSettings = true
+            return Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: mayShow }).then((l) => toFix(l, 'gps'))
+          },
           lastKnown: getLastKnownFix,
           geocode: (lat, lng) => fetchReverseGeocode(lat, lng).then((d) => d.address),
           now: Date.now,
@@ -121,9 +136,12 @@ export const useLocationStore = create<LocationState>()(
         }
       }
 
-      // Foreground return: a full re-start (resets the "still looking" timer and the telemetry baseline).
+      // Foreground return: re-read the permission (the rider may have just switched on Precise in Settings) and re-start.
       const startFresh = async () => {
-        if (get().permission !== 'granted' && !(await syncPermission(false))) return
+        if (!(await syncPermission(false))) {
+          engine.deactivate()
+          return
+        }
         await engine.activate()
       }
 
@@ -161,19 +179,42 @@ export const useLocationStore = create<LocationState>()(
             // Watch only while the app is on screen: it keeps the pickup current and costs battery in the background.
             // iOS 'inactive' (permission dialog, notification shade, app switcher) is not a background: keep watching.
             AppState.addEventListener('change', (st) => {
-              if (st === 'active') void startFresh()
-              else if (st === 'background') engine.deactivate()
+              if (st === 'background') {
+                appActive = false
+                wasBackground = true
+                engine.deactivate()
+              } else if (st === 'active' && wasBackground) {
+                // Only a real return from the background restarts: 'inactive' -> 'active' (system dialog, shade) does not.
+                wasBackground = false
+                appActive = true
+                if (consumers > 0 || launchHold) void startFresh()
+              }
             })
+            launchHold = true
+            setTimeout(() => {
+              launchHold = false
+              if (consumers === 0) engine.deactivate()
+            }, 60_000)
             if (await syncPermission(true)) await engine.activate()
           })()
         },
 
         refresh: start,
 
+        acquire: () => {
+          consumers++
+          if (appActive) start()
+        },
+
+        release: () => {
+          consumers = Math.max(0, consumers - 1)
+          if (consumers === 0 && !launchHold) engine.deactivate()
+        },
+
         clearSaved: () => {
           engine.deactivate()
           engine.reset()
-          set({ lat: null, lng: null, address: '', fixedAt: null, source: null, timedOut: false })
+          set({ lat: null, lng: null, address: '', fixedAt: null, source: null, accuracy: null, timedOut: false })
           void useLocationStore.persist.clearStorage()
         },
       }
@@ -208,36 +249,54 @@ function whenHydrated(): Promise<void> {
   })
 }
 
-/** One value for the home pill, ring dot, pulse, blue dot and the booking label (see freshnessOf). It re-reads the store
- *  instead of selecting fix fields, so the 5-second timestamp refreshes do not re-render the screen: only a change of
- *  freshness does. */
+/** Keep the location watcher running while the calling screen is on show (and `enabled`). Nothing else starts it for long:
+ *  the ride-tracking screen, for instance, does not hold it, so a trip does not poll GPS or the geocoder for hours. */
+export function useLocationTracking(enabled = true): void {
+  const focused = useIsFocused()
+  useEffect(() => {
+    if (!enabled || !focused) return
+    const { acquire, release } = useLocationStore.getState()
+    acquire()
+    return release
+  }, [enabled, focused])
+}
+
+/** One value for the home pill, ring dot, pulse, blue dot and the booking label (see freshnessOf). Computed on every
+ *  render from the store (so a render after a long pause never shows a stale "live"), and re-rendered only when the
+ *  value flips: the 5-second timestamp refreshes do not re-render the screen. */
 export function useFreshness(): Freshness {
   const compute = (): Freshness => {
     const { permission, lat, lng, fixedAt, source, timedOut } = useLocationStore.getState()
     const fix: Fix | null = lat === null || lng === null || fixedAt === null ? null : { lat, lng, fixedAt, source: source ?? 'cache' }
     return freshnessOf({ permission, fix, timedOut, now: Date.now() })
   }
-  const [freshness, setFreshness] = useState<Freshness>(compute)
-  // Home stays mounted under booking/ride screens; its ticker has no reason to run there.
+  const value = compute()
+  const shown = useRef(value)
+  shown.current = value
+  const [, rerender] = useReducer((n: number) => n + 1, 0)
   const focused = useIsFocused()
   useEffect(() => {
-    const recompute = () => setFreshness(compute())
-    recompute()
     if (!focused) return
-    useLocationStore.getState().refresh() // coming back to a screen (e.g. after a ride) re-checks the watcher at once
-    const unsub = useLocationStore.subscribe(recompute)
-    const id = setInterval(recompute, 5_000) // the age buckets flip with time, not only with state
+    const check = () => { if (compute() !== shown.current) rerender() }
+    check()
+    const unsub = useLocationStore.subscribe(check)
+    const id = setInterval(check, 5_000) // the age buckets flip with time, not only with state
     return () => {
       unsub()
       clearInterval(id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- compute only reads the store
   }, [focused])
-  return freshness
+  return value
 }
 
 /** True when the location we are getting is approximate (approximate-only permission, or a fix too rough for a pickup).
  *  A boolean selector, so it re-renders only when it flips. */
 export function useApproximateLocation(): boolean {
   return useLocationStore((s) => s.permission === 'granted' && isApproximate(s.permissionLevel, s.accuracy))
+}
+
+/** Approximate-only permission (Android): the one case where the rider can fix it in Settings, so the only one we say so for. */
+export function useNeedsPreciseToggle(): boolean {
+  return useLocationStore((s) => s.permission === 'granted' && s.permissionLevel === 'coarse')
 }

@@ -21,8 +21,7 @@ import { useRideHistory } from '@/features/ride-history/hooks/useRideHistory'
 import { fetchReverseGeocode } from '@/features/booking/api'
 import { useBookingDraftStore } from '@/features/booking/store'
 import { ScheduleSheet } from '@/features/booking/components/ScheduleSheet'
-import { useFreshness, useLocationStore } from '@/store/useLocationStore'
-import { PreciseLocationNotice } from '@/features/home/PreciseLocationNotice'
+import { useFreshness, useLocationStore, useLocationTracking } from '@/store/useLocationStore'
 import type { RideType } from '@/features/booking/api'
 import { ease, geo, h } from '@/theme/homeTokens'
 import { MapHero } from '@/features/home/MapHero'
@@ -86,8 +85,12 @@ export default function HomeScreen() {
   const lng = useLocationStore((s) => s.lng)
   const locationEnabled = useLocationStore((s) => s.permission === 'granted')
   const freshness = useFreshness()
+  useLocationTracking()
   const setRideType = useBookingDraftStore((s) => s.setRideType)
-  const pickup = useBookingDraftStore((s) => s.pickup)
+  // An auto-filled pickup is only the draft's copy of the live location: the home map follows the live fix, not that copy.
+  const draftPickup = useBookingDraftStore((s) => s.pickup)
+  const pickupAuto = useBookingDraftStore((s) => s.pickupAuto)
+  const pickup = pickupAuto ? null : draftPickup
   const setPickup = useBookingDraftStore((s) => s.setPickup)
   const setScheduledFor = useBookingDraftStore((s) => s.setScheduledFor)
   const [scheduleOpen, setScheduleOpen] = useState(false)
@@ -328,8 +331,6 @@ export default function HomeScreen() {
                 <View style={styles.handle} />
               </View>
             </GestureDetector>
-
-            <PreciseLocationNotice />
 
             <Animated.View style={[styles.searchSlot, flowBar]}>
               <SearchBar onPress={toBookingAuto} onLater={toBookingLater} />

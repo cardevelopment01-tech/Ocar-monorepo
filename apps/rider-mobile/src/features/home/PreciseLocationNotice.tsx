@@ -1,14 +1,14 @@
 import { Linking, Pressable, StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
-import { useApproximateLocation } from '@/store/useLocationStore'
+import { useNeedsPreciseToggle } from '@/store/useLocationStore'
 import { Text } from './Text'
 
-/** Shown only while the location is approximate (approximate-only permission, or a very rough fix): an exact pickup needs
- *  "Precise location" switched on, which only the rider can do in Settings. */
+/** Shown only when the rider granted approximate-only location: an exact pickup needs "Precise location" switched on, which
+ *  only they can do in Settings. (A merely rough fix is not this: nothing in Settings would change it.) */
 export function PreciseLocationNotice() {
-  const approximate = useApproximateLocation()
-  if (!approximate) return null
+  const needsToggle = useNeedsPreciseToggle()
+  if (!needsToggle) return null
   return (
     <Pressable
       onPress={() => { void Linking.openSettings() }}

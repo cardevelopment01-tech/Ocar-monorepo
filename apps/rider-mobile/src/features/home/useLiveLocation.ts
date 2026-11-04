@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import * as Location from 'expo-location'
-import { useFreshness, useLocationStore } from '@/store/useLocationStore'
+import { useFreshness, useLocationStore, useLocationTracking } from '@/store/useLocationStore'
 
 export type LatLng = { lat: number; lng: number }
 
@@ -9,6 +9,7 @@ export type LatLng = { lat: number; lng: number }
  *  saved or minute-old fix would draw a real-looking blue dot at a stale spot. Only the compass is subscribed here. */
 export function useLiveLocation(enabled: boolean, opts: { heading?: boolean } = {}) {
   const wantHeading = opts.heading ?? true
+  useLocationTracking(enabled) // the watcher runs only while a screen that shows the dot is on show
   const lat = useLocationStore((s) => s.lat)
   const lng = useLocationStore((s) => s.lng)
   const live = useFreshness() === 'live'

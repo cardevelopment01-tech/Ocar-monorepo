@@ -178,11 +178,12 @@ describe('a quiet or dead watcher', () => {
     const e = build()
     await e.activate()
     watchers[0]!.emit(fix(0, 'gps', T0))
+    const atStart = currentFixCalls // the launch itself asks once: there was no fix yet
     currentFixResult = fix(0, 'gps', T0 + 31_000)
     await advance(15_000)
-    expect(currentFixCalls).toBe(0)
+    expect(currentFixCalls).toBe(atStart)
     await advance(16_000)
-    expect(currentFixCalls).toBeGreaterThan(0)
+    expect(currentFixCalls).toBeGreaterThan(atStart)
     expect(slice.fixedAt).toBe(T0 + 31_000)
   })
 
@@ -266,5 +267,61 @@ describe('accuracy', () => {
     clock += 5_000
     watchers[0]!.emit(fix(40, 'gps', clock))
     expect(slice.accuracy).toBeNull()
+  })
+})
+
+describe('review fixes', () => {
+  it('a saved address is checked against the saved spot: a 1 km walk in small steps clears it', async () => {
+    slice = { ...empty(), lat: 20.29, lng: 85.82, address: 'Home Street', fixedAt: T0 - 5_000, source: 'cache', ready: true }
+    const e = build()
+    await e.activate()
+    let t = T0
+    for (let m = 7; m <= 1000; m += 7) { t += 1_000; clock = t; watchers[0]!.emit(fix(m, 'gps', t)) }
+    expect(slice.address).not.toBe('Home Street')
+    expect(geocodeCalls.length).toBeGreaterThan(0)
+  })
+
+  it('shows "still looking" even while the watcher keeps dying, and gives up restarting it after five tries', async () => {
+    const e = build()
+    await e.activate()
+    for (let i = 0; i < 8; i++) {
+      watchers[watchers.length - 1]!.fail()
+      await advance(60_000)
+    }
+    expect(slice.timedOut).toBe(true)
+    expect(watchers.length).toBeLessThanOrEqual(6) // the first plus five restarts
+  })
+
+  it('a provider timestamp slightly ahead of the clock still counts as now, and later fixes still win', async () => {
+    const e = build()
+    await e.activate()
+    watchers[0]!.emit(fix(0, 'gps', T0 + 400))
+    expect(slice.fixedAt).toBe(T0)
+    clock += 5_000
+    watchers[0]!.emit(fix(60, 'gps', clock + 400))
+    expect(slice.fixedAt).toBe(clock)
+  })
+
+  it('has one outstanding direct request at a time', async () => {
+    let settle!: (f: Fix) => void
+    const calls: number[] = []
+    const e = createLocationEngine({
+      get: () => slice,
+      set: (p) => { slice = { ...slice, ...p } },
+      deps: {
+        watch: async () => ({ remove() {} }),
+        lastKnown: async () => null,
+        currentFix: () => { calls.push(1); return new Promise<Fix>((r) => { settle = r }) },
+        geocode: () => new Promise<string>(() => {}),
+        now: () => clock,
+        track: () => {},
+      },
+    })
+    await e.activate()
+    await advance(60_000)
+    await e.ensure()
+    expect(calls).toHaveLength(1)
+    settle(fix(0, 'gps', clock))
+    await flush()
   })
 })

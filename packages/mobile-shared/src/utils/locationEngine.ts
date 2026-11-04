@@ -46,6 +46,7 @@ const GEOCODE_RETRY_MS = 15_000
 const QUIET_CHECK_MS = 15_000 // how often a running watcher is checked for having gone quiet
 const QUIET_AFTER_MS = 30_000 // no new fix for this long: ask for one directly (iOS reports nothing while stationary)
 const WATCH_RESTART_MS = 3_000
+const WATCH_MAX_RESTARTS = 5 // then rely on one-shot readings: a platform that keeps refusing the watcher must not be hammered
 const ACCURACY_FLOOR_M = 200 // a fix worse than this AND 3x worse than a current one is ignored
 
 export function createLocationEngine(io: {
@@ -61,6 +62,8 @@ export function createLocationEngine(io: {
   let capTimer: ReturnType<typeof setTimeout> | undefined
   let quietTimer: ReturnType<typeof setInterval> | undefined
   let restartTimer: ReturnType<typeof setTimeout> | undefined
+  let restarts = 0
+  let kicking = false
   let wanted = false // the caller wants tracking on (survives a watcher dying)
   let epoch = 0 // bumped by reset(): answers started before it must not repopulate a wiped store
 
@@ -103,9 +106,14 @@ export function createLocationEngine(io: {
   }
 
   /** Newer fix wins. Never throws; safe to call with anything the OS hands back. */
-  function receive(incoming: Fix | null) {
+  function receive(raw: Fix | null) {
     const now = deps.now()
+    // A provider timestamp ahead of our clock (a few hundred ms of skew is enough) would count as "from the future", be
+    // ranked last and never become live. A fix cannot be newer than now.
+    const incoming = raw && raw.fixedAt > now ? { ...raw, fixedAt: now } : raw
     const prev = current()
+    // A saved address belongs to where the saved fix was; remember that spot once, so a slow drift away from it is caught.
+    if (anchor === null && prev && get().address) anchor = { lat: prev.lat, lng: prev.lng }
     // A rough fix (network / approximate permission) must not replace a precise live one just because it is newer.
     if (
       incoming && prev && isFresh(prev, now) && incoming.accuracy !== undefined && prev.accuracy !== undefined &&
@@ -139,9 +147,8 @@ export function createLocationEngine(io: {
 
     // The address stays while the rider is within reuse range of where it was looked up (not of the previous fix, or a
     // slow walk would drift away from its address without ever tripping the check).
-    const ref = anchor ?? (get().address && prev ? { lat: prev.lat, lng: prev.lng } : null)
-    const moved = movedBeyondGeocodeReuse(ref, best)
-    if (moved && ref && get().address) patch.address = ''
+    const moved = movedBeyondGeocodeReuse(anchor, best)
+    if (moved && anchor && get().address) patch.address = ''
     patch.accuracy = best.accuracy ?? null
     set(patch)
 
@@ -151,7 +158,7 @@ export function createLocationEngine(io: {
   function armCap() {
     clearTimeout(capTimer)
     capTimer = setTimeout(() => {
-      if (active && !isFresh(current(), deps.now())) {
+      if (wanted && !isFresh(current(), deps.now())) {
         set({ timedOut: true, ready: true })
         deps.track('location_timeout', { had_saved: current() !== null })
       }
@@ -165,16 +172,22 @@ export function createLocationEngine(io: {
     sub = undefined
   }
 
+  function scheduleRestart() {
+    clearTimeout(restartTimer)
+    if (!wanted || restarts >= WATCH_MAX_RESTARTS) return
+    const delay = WATCH_RESTART_MS * 2 ** restarts++ // 3 s, 6 s, 12 s, 24 s, 48 s
+    restartTimer = setTimeout(() => { if (wanted) void startWatcher() }, delay)
+  }
+
   async function startWatcher() {
     if (active) return
     active = true
     const mine = ++token
-    const live = (f: Fix) => { if (mine === token && active) receive(f) }
+    const live = (f: Fix) => { if (mine === token && active) { restarts = 0; receive(f) } }
     const died = () => {
       if (mine !== token) return
       stopWatcher() // the native subscription stopped (location switched off, provider dropped): bring it back
-      clearTimeout(restartTimer)
-      restartTimer = setTimeout(() => { if (wanted) void startWatcher() }, WATCH_RESTART_MS)
+      scheduleRestart()
     }
     try {
       const s = await deps.watch(live, died)
@@ -184,16 +197,17 @@ export function createLocationEngine(io: {
       if (mine !== token) return
       stopWatcher()
       set({ ready: true, timedOut: !isFresh(current(), deps.now()) })
-      clearTimeout(restartTimer)
-      restartTimer = setTimeout(() => { if (wanted) void startWatcher() }, WATCH_RESTART_MS * 5)
+      scheduleRestart()
     }
   }
 
   function kickIfQuiet() {
     const cur = current()
     if (!wanted || (cur && ageMs(cur.fixedAt, deps.now()) < QUIET_AFTER_MS)) return
+    if (kicking) return // one outstanding request at a time: it has no timeout of its own
+    kicking = true
     const ep = epoch
-    deps.currentFix().then((f) => { if (ep === epoch && wanted) receive(f) }, () => {})
+    deps.currentFix().then((f) => { if (ep === epoch && wanted) receive(f) }, () => {}).finally(() => { kicking = false })
   }
 
   function fetchLastKnown() {
@@ -214,7 +228,9 @@ export function createLocationEngine(io: {
     armCap()
     clearInterval(quietTimer)
     quietTimer = setInterval(kickIfQuiet, QUIET_CHECK_MS)
+    restarts = 0
     fetchLastKnown()
+    kickIfQuiet() // no fresh fix yet: ask directly as well, the watcher can take a while on a cold start
     await startWatcher()
   }
 
