@@ -66,7 +66,9 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
       return
     }
     let cancelled = false
+    let spoke = false
     let timer: ReturnType<typeof setTimeout> | undefined
+    let watchdog: ReturnType<typeof setTimeout> | undefined
     const ring = () => {
       if (cancelled) return
       player.seekTo(0).catch(() => {})
@@ -79,7 +81,11 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
       timer = setTimeout(() => {
         if (cancelled) return
         safePause(player)
-        Speech.speak(text, { language: SPEECH_LOCALE[language], rate: 0.95, onDone: ring, onStopped: ring, onError: ring })
+        spoke = true
+        const resume = () => { clearTimeout(watchdog); ring() }
+        // No TTS engine, a missing language or lost audio focus can mean no callback ever fires: the ring must come back anyway.
+        watchdog = setTimeout(resume, Math.min(9_000, 2_500 + text.length * 70))
+        Speech.speak(text, { language: SPEECH_LOCALE[language], rate: 0.95, onDone: resume, onStopped: resume, onError: resume })
       }, RING_BEFORE_SPEECH_MS)
     }
     // Cleanup covers unmount mid-ring (e.g. fast navigation away) so the alarm
@@ -91,7 +97,8 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
     return () => {
       cancelled = true
       clearTimeout(timer)
-      Promise.resolve(Speech.stop()).catch(() => {})
+      clearTimeout(watchdog)
+      if (spoke) Promise.resolve(Speech.stop()).catch(() => {}) // only what this hook started: other speech in the app is left alone
       safePause(player)
       Vibration.cancel()
     }

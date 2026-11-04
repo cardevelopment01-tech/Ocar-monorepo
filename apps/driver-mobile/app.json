@@ -41,6 +41,7 @@
                              "config":  {
                                             "googleMapsApiKey":  "AIzaSyAAVGxzN9sRx8fOBOQxwITVIk8lPC6sGtM"
                                         },
+                             "entitlements":  { "com.apple.developer.usernotifications.time-sensitive": true },
                              "infoPlist":  {
                                                "UIBackgroundModes":  [
                                                                          "location",

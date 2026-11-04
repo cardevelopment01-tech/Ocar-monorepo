@@ -13,6 +13,9 @@ export interface NotificationChannelConfig {
   sound?: string
   // Which Android volume the sound plays on. ALARM is independent of the notification/ringer volume and is normally louder.
   audioUsage?: Notifications.AndroidAudioUsage
+  // Show the full text on the lock screen even when the phone hides sensitive content. Opt-in: only for alerts the driver
+  // must read at a glance (ride requests), never for channels that can carry OTPs or personal details.
+  lockscreenPublic?: boolean
 }
 
 export interface DeviceCapabilities {
@@ -57,7 +60,7 @@ export async function registerPushNotifications(
       ...(channel.audioUsage !== undefined
         ? { audioAttributes: { usage: channel.audioUsage, contentType: Notifications.AndroidAudioContentType.SONIFICATION } }
         : {}),
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      ...(channel.lockscreenPublic ? { lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC } : {}),
     })
   }
 

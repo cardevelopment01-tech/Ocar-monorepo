@@ -56,6 +56,7 @@ export async function setupPushNotifications(opts: { prompt?: boolean } = {}): P
         vibrationPattern: [0, 600, 250, 600, 250, 600],
         sound: 'ride_request_long.wav',
         audioUsage: Notifications.AndroidAudioUsage.ALARM,
+        lockscreenPublic: true,
       },
     ],
     deviceCapabilities: { rideAlertV3: true },

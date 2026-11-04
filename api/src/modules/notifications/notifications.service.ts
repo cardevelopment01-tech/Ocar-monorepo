@@ -76,14 +76,25 @@ export async function sendRideRequestPushOnce(
     const base = { tag: `ride-${rideId}`, ttlSeconds: Math.min(windowSeconds, 30) }
     // Builds that have the loud channel get the long alarm-stream ring and the full details; older builds keep the
     // channel they have (naming a channel the app lacks would land the push in Android's quiet fallback).
-    const { v3, legacy } = await repo.getDriverTokensByRideAlert(BigInt(driverId))
-    await pushToTokens(legacy, {
-      ...base,
-      title: 'New ride request',
-      body: `${pickup} → ${drop}`,
-      data: { type: 'ride_request', rideId },
-      channelId: 'ride_requests_v2',
-    })
+    let tokens: { v3: string[]; legacy: string[] }
+    try {
+      tokens = await repo.getDriverTokensByRideAlert(BigInt(driverId))
+    } catch (err) {
+      // Nothing was sent: free the one-shot guard so ack-check's later fallback can still push this driver.
+      await redis.del(ridePushSentKey(rideId, driverId)).catch(() => {})
+      throw err
+    }
+    const { v3, legacy } = tokens
+    // Both groups at once: the request has a 20 s window, so the loud push must not wait behind the legacy one.
+    const sends: Promise<unknown>[] = [
+      pushToTokens(legacy, {
+        ...base,
+        title: 'New ride request',
+        body: `${pickup} → ${drop}`,
+        data: { type: 'ride_request', rideId },
+        channelId: 'ride_requests_v2',
+      }),
+    ]
     if (v3.length > 0) {
       const text = details ? rideRequestPushText(pickup, drop, details) : { title: 'New ride request', body: `${pickup} → ${drop}` }
       const data: Record<string, string> = { type: 'ride_request', rideId, pickup, drop }
@@ -96,15 +107,16 @@ export async function sendRideRequestPushOnce(
         if (details.tripKm !== undefined) data['tripKm'] = String(details.tripKm)
         if (details.tripMin !== undefined) data['tripMin'] = String(details.tripMin)
       }
-      await pushToTokens(v3, {
+      sends.push(pushToTokens(v3, {
         ...base,
         ...text,
         data,
         channelId: 'ride_requests_v3',
         sound: { android: 'ride_request_long', ios: 'ride_request_long.wav' },
         timeSensitive: true,
-      })
+      }))
     }
+    await Promise.all(sends)
   } catch (err) {
     log.error({ err }, 'sendRideRequestPushOnce failed')
   }

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const { store, redisMock } = vi.hoisted(() => {
   const store = new Map<string, string>()
   const redisMock = {
+    del: vi.fn(async (key: string) => { store.delete(key); return 1 }),
     set: vi.fn(async (key: string, value: string, ...args: unknown[]) => {
       if (args.includes('NX') && store.has(key)) return null
       store.set(key, value)
@@ -122,5 +123,18 @@ describe('rideRequestPushText', () => {
   it('metres under a kilometre, return cab and rental labels, no fare when unknown', () => {
     expect(rideRequestPushText('A', 'B', { ...details, distanceToPickup: 480, isReturnCab: true, estimatedFare: 0 })).toEqual({ title: 'New ride request', body: 'Return cab · 480 m away\nA → B' })
     expect(rideRequestPushText('A', 'B', { ...details, rideType: 'rental' }).body.startsWith('Rental')).toBe(true)
+  })
+})
+
+describe('sendRideRequestPushOnce — token lookup failure', () => {
+  it('frees the one-shot guard so the fallback push can still reach the driver', async () => {
+    vi.clearAllMocks()
+    store.clear()
+    vi.mocked(getDriverTokensByRideAlert).mockRejectedValueOnce(new Error('db down'))
+    await sendRideRequestPushOnce('301', '55', 'A', 'B', 20, details)
+    expect(store.size).toBe(0)
+    vi.mocked(getDriverTokensByRideAlert).mockResolvedValue({ v3: [], legacy: ['d'] })
+    await sendRideRequestPushOnce('301', '55', 'A', 'B', 20, details)
+    expect(getDriverTokensByRideAlert).toHaveBeenCalledTimes(2)
   })
 })
