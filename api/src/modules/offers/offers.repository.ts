@@ -225,3 +225,13 @@ async function undo(client: PoolClient, rideId: bigint, from: 'reserved' | 'cons
   )
   return true
 }
+
+/** How many times a rider has used each offer, in one query (not one per offer). */
+export async function getUserUsage(userId: bigint, offerIds: bigint[]): Promise<Map<bigint, number>> {
+  if (offerIds.length === 0) return new Map()
+  const res = await pool.query<{ offer_id: string; count: number }>(
+    `SELECT offer_id, count FROM offer_user_usage WHERE user_id = $1 AND offer_id = ANY($2::bigint[])`,
+    [userId, offerIds.map(String)]
+  )
+  return new Map(res.rows.map((r) => [BigInt(r.offer_id), r.count]))
+}
