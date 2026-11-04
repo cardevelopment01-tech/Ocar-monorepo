@@ -54,7 +54,7 @@ describe('cash discount guard on the config route', () => {
   })
 
   it('refuses lowering the driver minimum while cash discounts are on', async () => {
-    m.cfg = { offers_cash_discounts_enabled: 'true', app_update_driver_android_min: V, app_update_enabled: 'true' }
+    m.cfg = { offers_cash_discounts_enabled: 'true', app_update_driver_android_min: V, app_update_driver_android_recommended: '9.0.0', app_update_enabled: 'true' }
     m.byId.mockResolvedValue(row('app_update_driver_android_min', V))
     const res = await request(app).patch('/cfg/3').send({ value: '1.0.0' })
     expect(res.status).toBe(422)
