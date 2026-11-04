@@ -63,6 +63,7 @@ export default function BookingPickersScreen() {
   const approximate = useApproximateLocation()
   useLocationTracking()
   const setPickup = useBookingDraftStore((s) => s.setPickup)
+  const clearPickup = useBookingDraftStore((s) => s.clearPickup)
   const setDrop = useBookingDraftStore((s) => s.setDrop)
   const setRoute = useBookingDraftStore((s) => s.setRoute)
   const rideType = useBookingDraftStore((s) => s.rideType)
@@ -97,6 +98,12 @@ export default function BookingPickersScreen() {
   // last touched": after committing a place, editing ends (null), rather than
   // leaving that row stuck rendering an now-empty input over its real value.
   const [editingField, setEditingField] = useState<ActiveField | null>('drop')
+
+  // An auto-filled pickup left in the draft from earlier is only as good as the fix it came from: once the location is no
+  // longer live (the rider moved on, or GPS dropped) it is cleared, so a stale spot can never be quoted or dispatched.
+  useEffect(() => {
+    if (focused && pickup && pickupAuto && freshness !== 'live') clearPickup()
+  }, [focused, pickup, pickupAuto, freshness, clearPickup])
 
   // The auto-filled pickup also follows the live fix (the rider walked, or the first fix was rough) until they choose a
   // place themselves (and not while they are editing it: a new pickup object closes the editor); one they chose is never moved.

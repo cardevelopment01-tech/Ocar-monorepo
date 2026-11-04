@@ -55,11 +55,21 @@ type LocationState = {
 // PERSIST_DELAY_MS (latest value wins) instead of on every fix. Removing the key drops any write still waiting.
 const PERSIST_DELAY_MS = 5000
 let pendingWrite: string | null = null
+let pendingName = ''
 let writeTimer: ReturnType<typeof setTimeout> | undefined
+/** Write what is waiting now (the app is going to the background, where the timer may never fire). */
+function flushPendingWrite() {
+  clearTimeout(writeTimer)
+  writeTimer = undefined
+  const v = pendingWrite
+  pendingWrite = null
+  if (v !== null) void AsyncStorage.setItem(pendingName, v).catch(() => {})
+}
 const throttledStorage = {
   getItem: (name: string) => AsyncStorage.getItem(name),
   setItem: (name: string, value: string) => {
     pendingWrite = value
+    pendingName = name
     if (!writeTimer) {
       writeTimer = setTimeout(() => {
         writeTimer = undefined
@@ -84,6 +94,7 @@ export const useLocationStore = create<LocationState>()(
       // One foreground watcher feeds one value (see mobile-shared locationEngine). Everything stateful about fixes, the
       // address and the "still looking" cap lives there so it can be tested without React Native.
       let askedSettings = false
+      let releaseTimer: ReturnType<typeof setTimeout> | undefined
       let consumers = 0 // screens that currently need a live location (home, booking, map picker, ride's pickup editor)
       let appActive = true
       let wasBackground = false
@@ -148,6 +159,8 @@ export const useLocationStore = create<LocationState>()(
       // Screen focus: just make sure it is running.
       const start = () => {
         void (async () => {
+          // A live fix must not be overwritten by the saved one arriving late from storage.
+          await whenHydrated()
           if (get().permission !== 'granted' && !(await syncPermission(false))) return
           await engine.ensure()
         })()
@@ -182,6 +195,7 @@ export const useLocationStore = create<LocationState>()(
               if (st === 'background') {
                 appActive = false
                 wasBackground = true
+                flushPendingWrite()
                 engine.deactivate()
               } else if (st === 'active' && wasBackground) {
                 // Only a real return from the background restarts: 'inactive' -> 'active' (system dialog, shade) does not.
@@ -202,13 +216,20 @@ export const useLocationStore = create<LocationState>()(
         refresh: start,
 
         acquire: () => {
+          clearTimeout(releaseTimer)
           consumers++
           if (appActive) start()
         },
 
         release: () => {
           consumers = Math.max(0, consumers - 1)
-          if (consumers === 0 && !launchHold) engine.deactivate()
+          // Moving between screens releases one a moment before the next acquires: do not tear the watcher down in between.
+          if (consumers === 0 && !launchHold) {
+            clearTimeout(releaseTimer)
+            releaseTimer = setTimeout(() => {
+              if (consumers === 0 && !launchHold) engine.deactivate()
+            }, 2_000)
+          }
         },
 
         clearSaved: () => {

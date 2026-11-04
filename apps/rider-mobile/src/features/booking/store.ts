@@ -35,6 +35,7 @@ interface BookingDraftState {
   riderName: string
   riderPhone: string
   setPickup: (place: BookingPlace, auto?: boolean) => void
+  clearPickup: () => void
   setDrop: (place: BookingPlace) => void
   setRoute: (distanceKm: number, durationMin: number, originCityId: number | null, routePoints: [number, number][]) => void
   setSelectedCategoryId: (id: number) => void
@@ -71,6 +72,7 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
   riderName: '',
   riderPhone: '',
   setPickup: (place, auto = false) => set({ pickup: place, pickupAuto: auto }),
+  clearPickup: () => set({ pickup: null, pickupAuto: false }),
   setDrop: (place) => set({ drop: place }),
   setRoute: (distanceKm, durationMin, originCityId, routePoints) => set({ distanceKm, durationMin, originCityId, routePoints }),
   setSelectedCategoryId: (id) => set({ selectedCategoryId: id }),
