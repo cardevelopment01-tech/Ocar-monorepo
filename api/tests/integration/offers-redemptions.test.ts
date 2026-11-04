@@ -161,13 +161,16 @@ describe('lifecycle transitions', () => {
     expect(await inTx((c) => consumeRedemption(c, ride))).toBeNull()
   })
 
-  it('(e) reverse after consume restores budget and usage', async () => {
+  it('(e) reverse after consume restores budget and the global slot but NOT the rider\'s own use (no refund-and-reuse loop)', async () => {
     const { offerId, versionId } = await newOffer()
     const ride = await newRide()
     await reserve(offerId, versionId, ride, { perUserLimit: 3 })
     await inTx((c) => consumeRedemption(c, ride))
     expect(await inTx((c) => reverseRedemption(c, ride, 'refund'))).toBe(true)
-    expect(await counters(offerId)).toEqual({ spent: 0, n: 0, used: 0 })
+    expect(await counters(offerId)).toEqual({ spent: 0, n: 0, used: 1 })
+    // the rider already used a once-per-user offer: a second reservation is refused
+    const again = await newRide()
+    expect(await reserve(offerId, versionId, again, { perUserLimit: 1 })).toEqual({ ok: false, reason: 'USER_LIMIT' })
   })
 
   it('(i) the state machine refuses consume-after-release and release-after-consume (no double counting)', async () => {

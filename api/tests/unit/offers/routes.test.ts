@@ -77,6 +77,16 @@ describe('GET /offers', () => {
     expect(m.granted).toHaveBeenCalledTimes(1)
   })
 
+  it('re-checks the offer window, since the cached list can be 30 s stale', async () => {
+    m.active.mockResolvedValue([
+      record(1n, 'auto'),
+      record(2n, 'auto', { endsAt: new Date(Date.now() - 1000) }),
+      record(3n, 'auto', { startsAt: new Date(Date.now() + 60_000) }),
+    ])
+    const res = await request(app).get('/offers')
+    expect(res.body.offers.map((o: { id: string }) => o.id)).toEqual(['1'])
+  })
+
   it('carries a one-line summary from the server', async () => {
     m.active.mockResolvedValue([record(1n, 'auto')])
     const res = await request(app).get('/offers')

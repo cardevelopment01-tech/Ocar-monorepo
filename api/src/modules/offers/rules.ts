@@ -165,7 +165,7 @@ registerRule({
     weekdays: z.array(z.number().int().min(0).max(6)).min(1).optional(),
     hours: z.object({ from: z.number().int().min(0).max(23), to: z.number().int().min(1).max(24) }).refine((h) => h.to > h.from).optional(),
     evaluateAt: z.enum(['booking', 'ride']).default('booking'),
-  }),
+  }).refine((c) => !c.startDate || !c.endDate || c.startDate <= c.endDate, { message: 'startDate must not be after endDate', path: ['endDate'] }),
   evaluate: (c, ctx) => {
     const at = c.evaluateAt === 'ride' && ctx.ride.scheduledFor ? ctx.ride.scheduledFor : ctx.now
     const p = istParts(at)

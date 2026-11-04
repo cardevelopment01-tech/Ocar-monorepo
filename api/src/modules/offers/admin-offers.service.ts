@@ -43,8 +43,20 @@ export const createOfferSchema = z.object({
   startsAt: isoOrNull,
   endsAt: isoOrNull,
   ...versionFields,
-})
+}).refine((o) => !o.startsAt || !o.endsAt || Date.parse(o.endsAt) > Date.parse(o.startsAt), { message: 'must be after startsAt', path: ['endsAt'] })
 export const versionSchema = z.object(versionFields)
+
+/** A first-ride rule only sees COMPLETED rides, so a rider could book several before the first completes. The per-user limit is
+ *  atomic, so a first-ride offer defaults to it: 1 for new_user, n for first_n_rides (an admin may set it lower, never unset). */
+export function withFirstRideLimit<T extends { rules: { kind: string; n?: unknown }[]; perUserLimit: number | null }>(v: T): T {
+  let cap: number | null = null
+  for (const r of v.rules) {
+    if (r.kind === 'new_user') cap = Math.min(cap ?? 1, 1)
+    if (r.kind === 'first_n_rides' && typeof r.n === 'number') cap = Math.min(cap ?? r.n, r.n)
+  }
+  if (cap == null) return v
+  return { ...v, perUserLimit: v.perUserLimit == null ? cap : Math.min(v.perUserLimit, cap) }
+}
 export const patchOfferSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   status: z.enum(['draft', 'active', 'paused', 'ended']).optional(),
@@ -57,7 +69,7 @@ export const patchOfferSchema = z.object({
 const TRANSITIONS: Record<string, string[]> = { draft: ['active', 'ended'], active: ['paused', 'ended'], paused: ['active', 'ended'], ended: [] }
 
 /** Cashback is off until riders can spend wallet credit; a discount may not exceed the driver-safe cap (D23). */
-async function assertBenefitAllowed(benefit: Benefit): Promise<void> {
+async function assertBenefitAllowed(benefit: Benefit, rules: { kind: string; amount?: unknown }[] = []): Promise<void> {
   if (benefit.type === 'cashback_percent' || benefit.type === 'cashback_flat') {
     if ((await getConfigValue('offers_cashback_enabled', 'false')) !== 'true') {
       throw httpError(422, 'Cashback offers are not enabled yet', 'CASHBACK_DISABLED')
@@ -67,6 +79,16 @@ async function assertBenefitAllowed(benefit: Benefit): Promise<void> {
   if (benefit.type === 'percent_off') {
     const cap = parseFloat(await getConfigValue('offers_max_discount_percent', '15'))
     if (benefit.percent > cap) throw httpError(422, `Discount cannot be more than ${cap}% of the fare`, 'DISCOUNT_TOO_HIGH')
+  }
+  if (benefit.type === 'flat_off') {
+    // A flat amount is a different share of every fare, so it needs a minimum fare that keeps it under the cap; otherwise the
+    // engine would clamp it silently and the offer text would promise more than riders get.
+    const cap = parseFloat(await getConfigValue('offers_max_discount_percent', '15'))
+    const minFare = rules.find((r) => r.kind === 'min_fare')?.amount
+    const needed = Math.ceil((benefit.amount * 100) / (Number.isFinite(cap) && cap > 0 ? cap : 15))
+    if (typeof minFare !== 'number' || minFare < needed) {
+      throw httpError(422, `₹${benefit.amount} off needs a minimum fare of at least ₹${needed} to stay within ${cap}% of the fare`, 'DISCOUNT_TOO_HIGH')
+    }
   }
 }
 
@@ -114,10 +136,10 @@ async function tx<T>(fn: (c: import('pg').PoolClient) => Promise<T>): Promise<T>
 }
 
 export async function createOffer(adminId: bigint, body: unknown, ip: string | null) {
-  const b = parseOrThrow(createOfferSchema, body)
+  const b = withFirstRideLimit(parseOrThrow(createOfferSchema, body))
   if (b.kind === 'code' && !b.code) throw httpError(422, 'code: a code offer needs a code', VALIDATION)
   if (b.kind === 'auto' && b.code) throw httpError(422, 'code: an automatic offer has no code', VALIDATION)
-  await assertBenefitAllowed(b.benefit)
+  await assertBenefitAllowed(b.benefit, b.rules)
   const code = b.code ? repo.normalizeCode(b.code) : null
   let created: { offerId: bigint; versionId: bigint }
   try {
@@ -136,8 +158,8 @@ export async function createOffer(adminId: bigint, body: unknown, ip: string | n
 }
 
 export async function createVersion(adminId: bigint, offerId: bigint, body: unknown, ip: string | null) {
-  const b = parseOrThrow(versionSchema, body)
-  await assertBenefitAllowed(b.benefit)
+  const b = withFirstRideLimit(parseOrThrow(versionSchema, body))
+  await assertBenefitAllowed(b.benefit, b.rules)
   const out = await tx(async (c) => {
     const cur = await repo.lockOfferForUpdate(c, offerId)
     if (!cur) return null
@@ -164,6 +186,12 @@ export async function patchOffer(adminId: bigint, offerId: bigint, body: unknown
     if (!cur) return null
     if (p.status !== undefined && p.status !== cur.status && !(TRANSITIONS[cur.status] ?? []).includes(p.status)) {
       throw httpError(422, `An offer that is ${cur.status} cannot become ${p.status}`, 'INVALID_TRANSITION')
+    }
+    if (p.budgetTotal != null && p.budgetTotal < parseFloat(cur.budget_spent)) {
+      throw httpError(422, 'The budget cannot be below what has already been spent', 'BUDGET_BELOW_SPENT')
+    }
+    if (p.endsAt && cur.starts_at && Date.parse(p.endsAt) <= cur.starts_at.getTime()) {
+      throw httpError(422, 'endsAt: must be after the start', VALIDATION)
     }
     if (p.budgetTotal !== undefined && cur.status === 'active' && cur.budget_total != null &&
         (p.budgetTotal === null ? false : p.budgetTotal < parseFloat(cur.budget_total))) {

@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type RequestHandler } from 'express'
 import { authenticate } from '@/middleware/auth.middleware'
 import { requireAdmin } from '@/middleware/role.middleware'
+import { httpError } from '@/lib/errors'
 import * as service from './admin-offers.service'
 
 const router: IRouter = Router()
@@ -12,7 +13,12 @@ const read = requireAdmin('super_admin', 'ops_admin', 'finance_admin')
 const wrap = (fn: (req: Request) => Promise<unknown>, status = 200): RequestHandler => async (req, res, next) => {
   try { res.status(status).json(await fn(req)) } catch (err) { next(err) }
 }
-const id = (req: Request) => BigInt(req.params['id']!)
+// A non-numeric id is a 404, not a BigInt SyntaxError turning into a 500.
+const id = (req: Request) => {
+  const raw = req.params['id'] ?? ''
+  if (!/^\d{1,18}$/.test(raw)) throw httpError(404, 'Not found', 'NOT_FOUND')
+  return BigInt(raw)
+}
 const page = (req: Request) => ({
   limit: Math.min(Math.max(parseInt(String(req.query['limit'] ?? '50'), 10) || 50, 1), 200),
   offset: Math.max(parseInt(String(req.query['offset'] ?? '0'), 10) || 0, 0),

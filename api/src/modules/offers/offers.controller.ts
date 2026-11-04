@@ -43,7 +43,11 @@ export const list: RequestHandler = async (req, res, next) => {
     const userId = req.user!.id
     const [active, granted] = await Promise.all([findActiveOffers(), listGrantedOfferIds(userId)])
     const grantedSet = new Set(granted.map(String))
-    const visible = active.filter((o) => o.kind === 'auto' || (o.kind === 'assigned' && grantedSet.has(o.id.toString())))
+    // The cached list can be up to 30 s old, so judge the window again here.
+    const now = Date.now()
+    const visible = active
+      .filter((o) => (o.startsAt?.getTime() ?? 0) <= now && (o.endsAt?.getTime() ?? Infinity) > now)
+      .filter((o) => o.kind === 'auto' || (o.kind === 'assigned' && grantedSet.has(o.id.toString())))
     const usage = await getUserUsage(userId, visible.map((o) => o.id)) // one query for all offers
     const offers = visible
       .filter((o) => o.perUserLimit == null || (usage.get(o.id) ?? 0) < o.perUserLimit)

@@ -102,9 +102,10 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
     getConfigValue('offers_max_discount_percent', '15'),
   ])
   const commissionActive = parseFloat(commissionPct) > 0
-  const maxPct = parseFloat(maxPctRaw)
+  // An unparseable cap must not turn every discount into NaN: fall back to the default.
+  const parsedPct = parseFloat(maxPctRaw)
+  const maxPct = Number.isFinite(parsedPct) && parsedPct >= 0 ? parsedPct : 15
   const cityId = input.city_id ?? input.originCityId ?? null
-  const packageCity = cityId != null && (await getCityBillingMode(BigInt(cityId))) === 'package'
 
   const code = input.code?.trim()
   const rejected: Rejection[] = []
@@ -122,10 +123,17 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
   for (const o of await findActiveOffers()) if (o.kind === 'auto' && o.id !== typedOffer?.id) candidates.push(o)
   if (candidates.length === 0) return { chosen: null, result: { ...empty, rejected } }
 
-  const usage = await getUserUsage(userId, candidates.map((c) => c.id))
+  // Independent lookups run together; the ride count is only needed when a first-ride rule is present.
+  const needsRideCount = candidates.some((c) => c.rules.some((r) => r.kind === 'new_user' || r.kind === 'first_n_rides'))
+  const [usage, rideCount, billingMode] = await Promise.all([
+    getUserUsage(userId, candidates.map((c) => c.id)),
+    needsRideCount ? completedRides(userId) : Promise.resolve(0),
+    cityId != null ? getCityBillingMode(BigInt(cityId)) : Promise.resolve('commission' as const),
+  ])
+  const packageCity = billingMode === 'package'
   const ctx: EvalContext = {
     now: new Date(),
-    user: { id: userId, completedRides: await completedRides(userId), createdAt: new Date(0) },
+    user: { id: userId, completedRides: rideCount, createdAt: new Date(0) },
     ride: {
       rideType: input.ride_type, categoryId: input.category_id, cityId: input.city_id ?? null,
       originCityId: input.originCityId ?? null, destinationCityId: input.destinationCityId ?? null,
@@ -158,7 +166,8 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
     if (o.perUserLimit != null && (usage.get(o.id) ?? 0) >= o.perUserLimit) { reject(o, 'USER_LIMIT'); continue }
     if (o.globalLimit != null && o.redemptionCount >= o.globalLimit) { reject(o, 'GLOBAL_LIMIT'); continue }
     const { discount, cashback } = computeBenefit(o.benefit, fare, maxPct)
-    if (discount + cashback <= 0) { reject(o, 'MIN_FARE'); continue }
+    // Nothing to give (eligible components are zero, or the cap is 0): not a minimum-fare problem, so say so plainly.
+    if (!Number.isFinite(discount + cashback) || discount + cashback <= 0) { reject(o, 'DISABLED'); continue }
     if (o.budgetTotal != null && o.budgetSpent + discount + cashback > o.budgetTotal) { reject(o, 'BUDGET'); continue }
     eligible.push(toApplied(o, discount, cashback))
   }

@@ -134,6 +134,24 @@ describe('evaluateOffers', () => {
     expect((await run()).result.discount).toBe(60) // 15% of the 400 eligible
   })
 
+  it('an unparseable cap falls back to 15, and an offer with nothing to give is not blamed on the minimum fare', async () => {
+    config['offers_max_discount_percent'] = 'abc'
+    vi.mocked(findActiveOffers).mockResolvedValue([offer({ benefit: { type: 'flat_off', amount: 300 } })])
+    expect((await run()).result.discount).toBe(60)
+    config['offers_max_discount_percent'] = '0'
+    vi.mocked(getOfferByCode).mockResolvedValue(offer({ code: 'ZERO', kind: 'code' }))
+    expect((await run({ code: 'ZERO' })).result.rejected[0]?.reason).toBe('DISABLED')
+  })
+
+  it('does not count rides unless a first-ride rule is present', async () => {
+    vi.mocked(findActiveOffers).mockResolvedValue([offer()])
+    await run()
+    expect(pool.query).not.toHaveBeenCalled()
+    vi.mocked(findActiveOffers).mockResolvedValue([offer({ rules: [{ kind: 'new_user' }] })])
+    await run()
+    expect(pool.query).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects when the per-user limit, global limit or budget is used up (preview-time check)', async () => {
     const o = offer({ code: 'L1', kind: 'code', perUserLimit: 1 })
     vi.mocked(getOfferByCode).mockResolvedValue(o)

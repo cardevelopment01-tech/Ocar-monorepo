@@ -202,6 +202,7 @@ export async function releaseRedemption(client: PoolClient, rideId: bigint, reas
 
 /** Consumed -> reversed (refund or dispute after the benefit was given). False if it was not consumed. */
 export async function reverseRedemption(client: PoolClient, rideId: bigint, reason: string): Promise<boolean> {
+  // The offer WAS used: budget and the global slot come back, the rider's own use does not (refund-and-reuse loop).
   return undo(client, rideId, 'consumed', 'reversed', reason)
 }
 
@@ -219,10 +220,12 @@ async function undo(client: PoolClient, rideId: bigint, from: 'reserved' | 'cons
     `UPDATE offers SET budget_spent = GREATEST(budget_spent - $2, 0), redemption_count = GREATEST(redemption_count - 1, 0) WHERE id = $1`,
     [r.offer_id, spend]
   )
-  await client.query(
-    `UPDATE offer_user_usage SET count = GREATEST(count - 1, 0) WHERE offer_id = $1 AND user_id = $2`,
-    [r.offer_id, r.user_id]
-  )
+  if (to === 'released') {
+    await client.query(
+      `UPDATE offer_user_usage SET count = GREATEST(count - 1, 0) WHERE offer_id = $1 AND user_id = $2`,
+      [r.offer_id, r.user_id]
+    )
+  }
   return true
 }
 
@@ -330,8 +333,8 @@ export async function getOfferAdmin(offerId: bigint): Promise<{ offer: AdminOffe
   return { offer: o.rows[0], versions: v.rows }
 }
 
-export async function lockOfferForUpdate(client: PoolClient, offerId: bigint): Promise<{ status: string; budget_total: string | null; code: string | null } | null> {
-  const r = await client.query(`SELECT status, budget_total, code::text AS code FROM offers WHERE id = $1 FOR UPDATE`, [offerId])
+export async function lockOfferForUpdate(client: PoolClient, offerId: bigint): Promise<{ status: string; budget_total: string | null; budget_spent: string; starts_at: Date | null; code: string | null } | null> {
+  const r = await client.query(`SELECT status, budget_total, budget_spent, starts_at, code::text AS code FROM offers WHERE id = $1 FOR UPDATE`, [offerId])
   return r.rows[0] ?? null
 }
 

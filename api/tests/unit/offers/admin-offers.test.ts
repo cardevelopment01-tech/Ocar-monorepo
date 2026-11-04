@@ -39,7 +39,7 @@ beforeEach(() => {
   cfg.values = {}
   repo.createOfferTx.mockResolvedValue({ offerId: 5n, versionId: 9n })
   repo.getOfferAdmin.mockResolvedValue({ offer: row, versions: [version] })
-  repo.lockOfferForUpdate.mockResolvedValue({ status: 'draft', budget_total: null, code: 'SAVE10' })
+  repo.lockOfferForUpdate.mockResolvedValue({ status: 'draft', budget_total: null, budget_spent: '0', starts_at: null, code: 'SAVE10' })
   repo.createVersionTx.mockResolvedValue({ versionId: 10n, version: 2 })
   repo.offerStats.mockResolvedValue([{ status: 'consumed', n: 2, discount: 80, cashback: 0 }])
   client.query.mockResolvedValue({ rows: [], rowCount: 0 })
@@ -101,6 +101,43 @@ describe('create and validation', () => {
   })
 })
 
+describe('review hardening', () => {
+  const flat = (amount: number, rules: object[] = []) => ({ ...body, benefit: { type: 'flat_off', amount }, rules })
+  it('a flat discount needs a minimum fare that keeps it within the cap, and says what is needed', async () => {
+    const none = await request(app).post('/admin/offers').send(flat(50))
+    expect(none.status).toBe(422)
+    expect(JSON.stringify(none.body)).toMatch(/DISCOUNT_TOO_HIGH/)
+    expect(JSON.stringify(none.body)).toMatch(/334/) // 50 / 15% = 333.4 -> 334
+    expect((await request(app).post('/admin/offers').send(flat(50, [{ kind: 'min_fare', amount: 300 }]))).status).toBe(422)
+    expect((await request(app).post('/admin/offers').send(flat(50, [{ kind: 'min_fare', amount: 334 }]))).status).toBe(201)
+  })
+  it('a first-ride offer defaults its per-user limit (new_user 1, first_n_rides n) so concurrent bookings cannot all claim it', async () => {
+    await request(app).post('/admin/offers').send({ ...body, rules: [{ kind: 'new_user' }] })
+    expect(repo.createOfferTx).toHaveBeenLastCalledWith(client, 3n, expect.objectContaining({ perUserLimit: 1 }))
+    await request(app).post('/admin/offers').send({ ...body, rules: [{ kind: 'first_n_rides', n: 3 }] })
+    expect(repo.createOfferTx).toHaveBeenLastCalledWith(client, 3n, expect.objectContaining({ perUserLimit: 3 }))
+    await request(app).post('/admin/offers').send({ ...body, rules: [{ kind: 'first_n_rides', n: 3 }], perUserLimit: 2 })
+    expect(repo.createOfferTx).toHaveBeenLastCalledWith(client, 3n, expect.objectContaining({ perUserLimit: 2 }))
+    await request(app).post('/admin/offers').send({ ...body, rules: [{ kind: 'new_user' }], perUserLimit: 5 })
+    expect(repo.createOfferTx).toHaveBeenLastCalledWith(client, 3n, expect.objectContaining({ perUserLimit: 1 }))
+  })
+  it('a non-numeric id is a 404, never a 500', async () => {
+    expect((await request(app).get('/admin/offers/abc')).status).toBe(404)
+    expect((await request(app).get('/admin/offers/12.5/stats')).status).toBe(404)
+  })
+  it('endsAt must be after startsAt, and a schedule rule cannot start after it ends', async () => {
+    const res = await request(app).post('/admin/offers').send({ ...body, startsAt: '2026-12-02T00:00:00Z', endsAt: '2026-12-01T00:00:00Z' })
+    expect(res.status).toBe(422)
+    const sched = await request(app).post('/admin/offers').send({ ...body, rules: [{ kind: 'schedule', startDate: '2026-12-10', endDate: '2026-12-01' }] })
+    expect(sched.status).toBe(422)
+  })
+  it('a budget below what is already spent is refused, even on a paused offer', async () => {
+    repo.lockOfferForUpdate.mockResolvedValue({ status: 'paused', budget_total: '500', budget_spent: '300', starts_at: null, code: null })
+    expect((await request(app).patch('/admin/offers/5').send({ budgetTotal: 200 })).status).toBe(422)
+    expect((await request(app).patch('/admin/offers/5').send({ budgetTotal: 300 })).status).toBe(200)
+  })
+})
+
 describe('versions and status', () => {
   it('POST /:id/versions creates version N+1 and never patches the existing version', async () => {
     const res = await request(app).post('/admin/offers/5/versions').send({ benefit: { type: 'percent_off', percent: 12 } })
@@ -110,16 +147,16 @@ describe('versions and status', () => {
     expect(recordAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: 'offer.version', afterState: { version: 2 } }))
   })
   it('a status change is audited as offer.status; a paused offer can resume but an ended one cannot', async () => {
-    repo.lockOfferForUpdate.mockResolvedValue({ status: 'paused', budget_total: null, code: 'SAVE10' })
+    repo.lockOfferForUpdate.mockResolvedValue({ status: 'paused', budget_total: null, budget_spent: '0', starts_at: null, code: 'SAVE10' })
     expect((await request(app).patch('/admin/offers/5').send({ status: 'active' })).status).toBe(200)
     expect(recordAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: 'offer.status' }))
-    repo.lockOfferForUpdate.mockResolvedValue({ status: 'ended', budget_total: null, code: 'SAVE10' })
+    repo.lockOfferForUpdate.mockResolvedValue({ status: 'ended', budget_total: null, budget_spent: '0', starts_at: null, code: 'SAVE10' })
     const res = await request(app).patch('/admin/offers/5').send({ status: 'active' })
     expect(res.status).toBe(422)
     expect(JSON.stringify(res.body)).toMatch(/INVALID_TRANSITION/)
   })
   it('the budget of a live offer can only go up', async () => {
-    repo.lockOfferForUpdate.mockResolvedValue({ status: 'active', budget_total: '500', code: null })
+    repo.lockOfferForUpdate.mockResolvedValue({ status: 'active', budget_total: '500', budget_spent: '0', starts_at: null, code: null })
     expect((await request(app).patch('/admin/offers/5').send({ budgetTotal: 400 })).status).toBe(422)
     expect((await request(app).patch('/admin/offers/5').send({ budgetTotal: 600 })).status).toBe(200)
   })
