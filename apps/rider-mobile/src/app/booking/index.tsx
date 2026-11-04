@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import { useFocusEffect, useRouter } from 'expo-router'
+import { useFocusEffect, useIsFocused, useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts, pillTextFor, getApiErrorMessage, haversineMetres } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, pillTextFor, getApiErrorMessage, haversineMetres, ageMs, track } from '@ocar/mobile-shared'
 
 // Same threshold as the API (MIN_TRIP_DISTANCE_METRES): closer than this is the same place, not a trip.
 const SAME_PLACE_METRES = 100
@@ -14,7 +14,8 @@ import { fetchClassifyTrip, fetchNearestCityId, fetchPlaceDetail, fetchRoute, fe
 import { useAutocomplete } from '@/features/booking/hooks/useAutocomplete'
 import { useBookingDraftStore, type BookingPlace } from '@/features/booking/store'
 import type { RideType } from '@/features/booking/api'
-import { useFreshness, useLocationStore } from '@/store/useLocationStore'
+import { useApproximateLocation, useFreshness, useLocationStore, useLocationTracking } from '@/store/useLocationStore'
+import { PreciseLocationNotice } from '@/features/home/PreciseLocationNotice'
 import { useRecentSearchesStore } from '@/store/useRecentSearchesStore'
 import { RedirectToast } from '@/features/booking/components/RedirectToast'
 import { sectionLabel } from '@/theme/homeTokens'
@@ -57,7 +58,12 @@ export default function BookingPickersScreen() {
   const insets = useSafeAreaInsets()
   const pickup = useBookingDraftStore((s) => s.pickup)
   const drop = useBookingDraftStore((s) => s.drop)
+  const pickupAuto = useBookingDraftStore((s) => s.pickupAuto)
+  const focused = useIsFocused()
+  const approximate = useApproximateLocation()
+  useLocationTracking()
   const setPickup = useBookingDraftStore((s) => s.setPickup)
+  const clearPickup = useBookingDraftStore((s) => s.clearPickup)
   const setDrop = useBookingDraftStore((s) => s.setDrop)
   const setRoute = useBookingDraftStore((s) => s.setRoute)
   const rideType = useBookingDraftStore((s) => s.rideType)
@@ -86,16 +92,29 @@ export default function BookingPickersScreen() {
   // Pickup defaults to the current location, but only from a fresh fix (GPS this launch, or under 2 minutes
   // old). The saved location seeds the home map only: it must never become a booking pickup, since a stale
   // spot would be quoted and dispatched. Tapping FROM still lets the rider override it, same as web.
-  useEffect(() => {
-    if (pickup || freshness !== 'live' || locLat === null) return
-    setPickup({ address: locAddress || 'Current Location', lat: locLat, lng: locLng! })
-  }, [pickup, freshness, locLat, locLng, locAddress, setPickup])
 
   // Which field is actively showing a TextInput right now -- null means both
   // rows show their confirmed/placeholder text. Distinct from "which field was
   // last touched": after committing a place, editing ends (null), rather than
   // leaving that row stuck rendering an now-empty input over its real value.
   const [editingField, setEditingField] = useState<ActiveField | null>('drop')
+
+  // An auto-filled pickup left in the draft from earlier is only as good as the fix it came from: once the location is no
+  // longer live (the rider moved on, or GPS dropped) it is cleared, so a stale spot can never be quoted or dispatched.
+  useEffect(() => {
+    if (focused && pickup && pickupAuto && freshness !== 'live') clearPickup()
+  }, [focused, pickup, pickupAuto, freshness, clearPickup])
+
+  // The auto-filled pickup also follows the live fix (the rider walked, or the first fix was rough) until they choose a
+  // place themselves (and not while they are editing it: a new pickup object closes the editor); one they chose is never moved.
+  useEffect(() => {
+    // An approximate location (1-2 km off) must not become the pickup: the rider sets it on the map instead.
+    if (freshness !== 'live' || locLat === null || locLng === null || !focused || approximate || editingField === 'pickup') return
+    if (pickup && (!pickupAuto || drop)) return // a chosen pickup never moves; and once a destination is set the quote is being built
+    if (pickup && haversineMetres([pickup.lat, pickup.lng], [locLat, locLng]) < 30 && (pickup.address === (locAddress || 'Current Location') || !locAddress)) return
+    if (!pickup) track('location_pickup_autofill', { age_s: Math.round(ageMs(useLocationStore.getState().fixedAt ?? 0, Date.now()) / 1000), source: useLocationStore.getState().source ?? 'none' })
+    setPickup({ address: locAddress || 'Current Location', lat: locLat, lng: locLng }, true)
+  }, [pickup, pickupAuto, drop, focused, approximate, editingField, freshness, locLat, locLng, locAddress, setPickup])
   const [query, setQuery] = useState('')
   const [continuing, setContinuing] = useState(false)
   const [continueError, setContinueError] = useState<string | null>(null)
@@ -281,7 +300,7 @@ export default function BookingPickersScreen() {
   }, [pickup, drop])
 
   // Same wording as the home pill (pillTextFor), so both screens flip together at the 8 s fix cap.
-  const pickupLabel = pickup ? pickup.address || 'Set pickup location' : pillTextFor(freshness, '').text
+  const pickupLabel = pickup ? pickup.address || 'Set pickup location' : approximate ? 'Set pickup location' : pillTextFor(freshness, '').text
   const canContinue = !!pickup && !!drop
 
   return (
@@ -309,6 +328,8 @@ export default function BookingPickersScreen() {
           <Text style={styles.riderPillText} numberOfLines={1}>{bookingForOther ? riderName : 'For me'}</Text>
         </Pressable>
       </View>
+
+      <PreciseLocationNotice />
 
       <View style={styles.headerBody}>
         {/* Fixed-height route card -- fields only ever show their own text or an

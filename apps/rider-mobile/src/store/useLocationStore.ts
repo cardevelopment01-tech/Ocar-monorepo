@@ -1,23 +1,22 @@
 import { useIsFocused } from 'expo-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
 import { AppState } from 'react-native'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Location from 'expo-location'
 import {
-  FIX_TIMEOUT_MS,
-  FRESH_MS,
-  ageMs,
+  WATCH_INTERVAL_MS,
+  createLocationEngine,
   freshnessOf,
-  getFreshFix,
+  isApproximate,
   getLastKnownFix,
-  isFresh,
-  movedBeyondGeocodeReuse,
   partializeLocation,
-  pickBest,
+  toFix,
+  track,
   type Fix,
   type FixSource,
+  type PermissionLevel,
   type Freshness,
   type PermissionState,
 } from '@ocar/mobile-shared'
@@ -32,6 +31,9 @@ type LocationState = {
   // in-memory only. Never persist these: `initialized: true` on disk would make init() a no-op forever.
   source: FixSource | null
   permission: PermissionState
+  /** Android: did the rider grant precise (fine) or approximate (coarse) location. In memory only. */
+  permissionLevel: PermissionLevel
+  accuracy: number | null
   timedOut: boolean
   hydrated: boolean
   /** First usable state reached: a saved/real fix exists, permission was denied, or the first attempt finished. */
@@ -40,50 +42,87 @@ type LocationState = {
   initialized: boolean
   /** Fire-and-forget, idempotent -- call once at app startup (root layout). */
   init: () => void
-  /** Re-check permission and re-run the fix race; skipped while the last fix is under FRESH_MS old. */
+  /** Make sure the foreground watcher is running and re-arm the "still looking" timer. Cheap and idempotent. */
   refresh: () => void
+  /** A screen that needs a current location is on show: keep the watcher running until every holder has released. */
+  acquire: () => void
+  release: () => void
   /** Wipe the saved location (sign-out / forced logout). */
   clearSaved: () => void
+}
+
+// The saved fix only seeds the next launch, and the watcher updates the store every few seconds: write at most once per
+// PERSIST_DELAY_MS (latest value wins) instead of on every fix. Removing the key drops any write still waiting.
+const PERSIST_DELAY_MS = 5000
+let pendingWrite: string | null = null
+let pendingName = ''
+let writeTimer: ReturnType<typeof setTimeout> | undefined
+/** Write what is waiting now (the app is going to the background, where the timer may never fire). */
+function flushPendingWrite() {
+  clearTimeout(writeTimer)
+  writeTimer = undefined
+  const v = pendingWrite
+  pendingWrite = null
+  if (v !== null) void AsyncStorage.setItem(pendingName, v).catch(() => {})
+}
+const throttledStorage = {
+  getItem: (name: string) => AsyncStorage.getItem(name),
+  setItem: (name: string, value: string) => {
+    pendingWrite = value
+    pendingName = name
+    if (!writeTimer) {
+      writeTimer = setTimeout(() => {
+        writeTimer = undefined
+        const v = pendingWrite
+        pendingWrite = null
+        if (v !== null) void AsyncStorage.setItem(name, v).catch(() => {})
+      }, PERSIST_DELAY_MS)
+    }
+    return Promise.resolve()
+  },
+  removeItem: (name: string) => {
+    pendingWrite = null
+    clearTimeout(writeTimer)
+    writeTimer = undefined
+    return AsyncStorage.removeItem(name)
+  },
 }
 
 export const useLocationStore = create<LocationState>()(
   persist(
     (set, get) => {
-      let geocodeSeq = 0
-      let capTimer: ReturnType<typeof setTimeout> | undefined
+      // One foreground watcher feeds one value (see mobile-shared locationEngine). Everything stateful about fixes, the
+      // address and the "still looking" cap lives there so it can be tested without React Native.
+      let askedSettings = false
+      let releaseTimer: ReturnType<typeof setTimeout> | undefined
+      let consumers = 0 // screens that currently need a live location (home, booking, map picker, ride's pickup editor)
+      let appActive = true
+      let wasBackground = false
+      let launchHold = false // the first minute after launch tracks regardless, so the first fix is not waiting on a screen
 
-      const currentFix = (): Fix | null => {
-        const { lat, lng, fixedAt, source } = get()
-        return lat === null || lng === null || fixedAt === null ? null : { lat, lng, fixedAt, source: source ?? 'cache' }
-      }
-
-      // Newer fix wins (pickBest). The street address is reused inside 150 m and cleared beyond it, so a saved
-      // street is never shown for a new place; only a real GPS fix triggers a reverse-geocode.
-      const apply = (incoming: Fix | null) => {
-        const prev = currentFix()
-        const best = pickBest(prev, incoming, Date.now())
-        if (!best || best === prev) return
-        const moved = movedBeyondGeocodeReuse(prev, best)
-        set({
-          lat: best.lat,
-          lng: best.lng,
-          fixedAt: best.fixedAt,
-          source: best.source,
-          ready: true,
-          ...(moved ? { address: '' } : {}),
-          ...(isFresh(best, Date.now()) ? { timedOut: false } : {}),
-        })
-        if (best.source === 'gps' && (moved || !get().address)) {
-          const seq = ++geocodeSeq
-          fetchReverseGeocode(best.lat, best.lng)
-            .then((d) => {
-              if (seq === geocodeSeq) set({ address: d.address })
-            })
-            .catch(() => {
-              // Coordinates alone are usable; the pill falls back to "Current location".
-            })
-        }
-      }
+      const engine = createLocationEngine({
+        get: () => get(),
+        set: (patch) => set(patch),
+        deps: {
+          watch: (onFix, onError) =>
+            Location.watchPositionAsync(
+              { accuracy: Location.Accuracy.Balanced, timeInterval: WATCH_INTERVAL_MS, distanceInterval: 0, mayShowUserSettingsDialog: false },
+              (l) => onFix(toFix(l, 'gps')),
+              onError // the engine restarts the watcher
+            ),
+          // The system "turn on location" dialog may appear once per launch (on the first direct request); automatic
+          // retries must never re-prompt a rider who said no.
+          currentFix: () => {
+            const mayShow = !askedSettings
+            askedSettings = true
+            return Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: mayShow }).then((l) => toFix(l, 'gps'))
+          },
+          lastKnown: getLastKnownFix,
+          geocode: (lat, lng) => fetchReverseGeocode(lat, lng).then((d) => d.address),
+          now: Date.now,
+          track,
+        },
+      })
 
       const syncPermission = async (prompt: boolean): Promise<boolean> => {
         try {
@@ -92,6 +131,12 @@ export const useLocationStore = create<LocationState>()(
             : await Location.getForegroundPermissionsAsync()
           if (res.status === 'granted') {
             set({ permission: 'granted', permissionDenied: false })
+            // Approximate-only permission gives fixes 1-2 km off: record it so we can tell that apart from a code bug.
+            const level = res.android?.accuracy
+            if (level) {
+              track('location_permission', { level })
+              set({ permissionLevel: level === 'coarse' ? 'coarse' : 'fine' })
+            }
             return true
           }
           set({ permission: prompt || res.status === 'denied' ? 'denied' : 'unknown', permissionDenied: prompt || res.status === 'denied', ready: true })
@@ -102,22 +147,22 @@ export const useLocationStore = create<LocationState>()(
         }
       }
 
-      // `force` is true only for the launch call; a foreground return skips the work while the fix is still young.
-      const run = (force: boolean) => {
+      // Foreground return: re-read the permission (the rider may have just switched on Precise in Settings) and re-start.
+      const startFresh = async () => {
+        if (!(await syncPermission(false))) {
+          engine.deactivate()
+          return
+        }
+        await engine.activate()
+      }
+
+      // Screen focus: just make sure it is running.
+      const start = () => {
         void (async () => {
+          // A live fix must not be overwritten by the saved one arriving late from storage.
+          await whenHydrated()
           if (get().permission !== 'granted' && !(await syncPermission(false))) return
-          const cur = currentFix()
-          if (!force && cur && ageMs(cur.fixedAt, Date.now()) < FRESH_MS) return
-          set({ timedOut: false })
-          clearTimeout(capTimer)
-          capTimer = setTimeout(() => {
-            if (!isFresh(currentFix(), Date.now())) set({ timedOut: true })
-          }, FIX_TIMEOUT_MS)
-          void getLastKnownFix().then(apply)
-          getFreshFix()
-            .then(apply)
-            .catch(() => set({ ready: true, timedOut: !isFresh(currentFix(), Date.now()) }))
-            .finally(() => clearTimeout(capTimer))
+          await engine.ensure()
         })()
       }
 
@@ -128,6 +173,8 @@ export const useLocationStore = create<LocationState>()(
         fixedAt: null,
         source: null,
         permission: 'unknown',
+        permissionLevel: 'unknown',
+        accuracy: null,
         timedOut: false,
         hydrated: false,
         ready: false,
@@ -141,18 +188,54 @@ export const useLocationStore = create<LocationState>()(
             // Wait for the persisted fix first: rehydration overwrites in-memory fields, so a fix that
             // arrived before it would be replaced by the older saved one.
             await whenHydrated()
-            if (await syncPermission(true)) run(true)
-            AppState.addEventListener('change', (s) => {
-              if (s === 'active') run(false)
+            // Registered before the first (possibly slow) activation so a quick background/foreground is never missed.
+            // Watch only while the app is on screen: it keeps the pickup current and costs battery in the background.
+            // iOS 'inactive' (permission dialog, notification shade, app switcher) is not a background: keep watching.
+            AppState.addEventListener('change', (st) => {
+              if (st === 'background') {
+                appActive = false
+                wasBackground = true
+                flushPendingWrite()
+                engine.deactivate()
+              } else if (st === 'active' && wasBackground) {
+                // Only a real return from the background restarts: 'inactive' -> 'active' (system dialog, shade) does not.
+                wasBackground = false
+                appActive = true
+                if (consumers > 0 || launchHold) void startFresh()
+              }
             })
+            launchHold = true
+            setTimeout(() => {
+              launchHold = false
+              if (consumers === 0) engine.deactivate()
+            }, 60_000)
+            if (await syncPermission(true)) await engine.activate()
           })()
         },
 
-        refresh: () => run(false),
+        refresh: start,
+
+        acquire: () => {
+          clearTimeout(releaseTimer)
+          consumers++
+          if (appActive) start()
+        },
+
+        release: () => {
+          consumers = Math.max(0, consumers - 1)
+          // Moving between screens releases one a moment before the next acquires: do not tear the watcher down in between.
+          if (consumers === 0 && !launchHold) {
+            clearTimeout(releaseTimer)
+            releaseTimer = setTimeout(() => {
+              if (consumers === 0 && !launchHold) engine.deactivate()
+            }, 2_000)
+          }
+        },
 
         clearSaved: () => {
-          geocodeSeq++
-          set({ lat: null, lng: null, address: '', fixedAt: null, source: null, timedOut: false })
+          engine.deactivate()
+          engine.reset()
+          set({ lat: null, lng: null, address: '', fixedAt: null, source: null, accuracy: null, timedOut: false })
           void useLocationStore.persist.clearStorage()
         },
       }
@@ -160,7 +243,7 @@ export const useLocationStore = create<LocationState>()(
     {
       name: 'ocar_rider_location',
       version: 1,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => throttledStorage),
       partialize: partializeLocation,
       onRehydrateStorage: () => (state, error) => {
         // Fail soft on a storage error: keep going with an empty cache (the splash cap covers slow reads too).
@@ -187,28 +270,54 @@ function whenHydrated(): Promise<void> {
   })
 }
 
-/** One value for the home pill, ring dot, pulse, blue dot and the booking label (see freshnessOf). */
-export function useFreshness(): Freshness {
-  const permission = useLocationStore((s) => s.permission)
-  const lat = useLocationStore((s) => s.lat)
-  const lng = useLocationStore((s) => s.lng)
-  const fixedAt = useLocationStore((s) => s.fixedAt)
-  const source = useLocationStore((s) => s.source)
-  const timedOut = useLocationStore((s) => s.timedOut)
+/** Keep the location watcher running while the calling screen is on show (and `enabled`). Nothing else starts it for long:
+ *  the ride-tracking screen, for instance, does not hold it, so a trip does not poll GPS or the geocoder for hours. */
+export function useLocationTracking(enabled = true): void {
+  const focused = useIsFocused()
+  useEffect(() => {
+    if (!enabled || !focused) return
+    const { acquire, release } = useLocationStore.getState()
+    acquire()
+    return release
+  }, [enabled, focused])
+}
 
+/** One value for the home pill, ring dot, pulse, blue dot and the booking label (see freshnessOf). Computed on every
+ *  render from the store (so a render after a long pause never shows a stale "live"), and re-rendered only when the
+ *  value flips: the 5-second timestamp refreshes do not re-render the screen. */
+export function useFreshness(): Freshness {
   const compute = (): Freshness => {
+    const { permission, lat, lng, fixedAt, source, timedOut } = useLocationStore.getState()
     const fix: Fix | null = lat === null || lng === null || fixedAt === null ? null : { lat, lng, fixedAt, source: source ?? 'cache' }
     return freshnessOf({ permission, fix, timedOut, now: Date.now() })
   }
-  const [freshness, setFreshness] = useState<Freshness>(compute)
-  // Home stays mounted under booking/ride screens; its ticker has no reason to run there.
+  const value = compute()
+  const shown = useRef(value)
+  shown.current = value
+  const [, rerender] = useReducer((n: number) => n + 1, 0)
   const focused = useIsFocused()
   useEffect(() => {
-    setFreshness(compute())
     if (!focused) return
-    const id = setInterval(() => setFreshness(compute()), 15_000) // age buckets flip with time, not only with state
-    return () => clearInterval(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- compute closes over exactly these values
-  }, [permission, lat, lng, fixedAt, source, timedOut, focused])
-  return freshness
+    const check = () => { if (compute() !== shown.current) rerender() }
+    check()
+    const unsub = useLocationStore.subscribe(check)
+    const id = setInterval(check, 5_000) // the age buckets flip with time, not only with state
+    return () => {
+      unsub()
+      clearInterval(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- compute only reads the store
+  }, [focused])
+  return value
+}
+
+/** True when the location we are getting is approximate (approximate-only permission, or a fix too rough for a pickup).
+ *  A boolean selector, so it re-renders only when it flips. */
+export function useApproximateLocation(): boolean {
+  return useLocationStore((s) => s.permission === 'granted' && isApproximate(s.permissionLevel, s.accuracy))
+}
+
+/** Approximate-only permission (Android): the one case where the rider can fix it in Settings, so the only one we say so for. */
+export function useNeedsPreciseToggle(): boolean {
+  return useLocationStore((s) => s.permission === 'granted' && s.permissionLevel === 'coarse')
 }

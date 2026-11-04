@@ -10,7 +10,7 @@ import { Feather } from '@expo/vector-icons'
 import { Button, colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import { fetchReverseGeocode } from '@/features/booking/api'
 import { useBookingDraftStore } from '@/features/booking/store'
-import { useLocationStore } from '@/store/useLocationStore'
+import { useLocationStore, useLocationTracking } from '@/store/useLocationStore'
 import { useRecentSearchesStore } from '@/store/useRecentSearchesStore'
 import LocationPin from '@/features/map/components/LocationPin'
 
@@ -32,6 +32,7 @@ export default function MapPickerScreen() {
   const setPickup = useBookingDraftStore((s) => s.setPickup)
   const setDrop = useBookingDraftStore((s) => s.setDrop)
   const addRecent = useRecentSearchesStore((s) => s.addRecent)
+  useLocationTracking()
   const locLat = useLocationStore((s) => s.lat)
   const locLng = useLocationStore((s) => s.lng)
   const locAddress = useLocationStore((s) => s.address)
