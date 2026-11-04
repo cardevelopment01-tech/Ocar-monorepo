@@ -126,6 +126,15 @@ describe('expectedPayable (D10)', () => {
     expect(repo.createRide).not.toHaveBeenCalled()
   })
 
+  it('offers switched off after the rider saw a discount: 409 with the gross price, not a silent full-price booking', async () => {
+    offers.resolve.mockResolvedValue(evaluation(null, 454, false))
+    await expect(createBooking(7n, { ...REQUEST, expectedPayable: 363 })).rejects.toMatchObject({ httpStatus: 409, appCode: 'PRICE_CHANGED', details: { payable: 454 } })
+    expect(repo.createRide).not.toHaveBeenCalled()
+    // an app that saw the gross price books normally
+    await createBooking(7n, { ...REQUEST, expectedPayable: 454 })
+    expect(repo.createRide).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects a non-numeric expectedPayable', async () => {
     await expect(createBooking(7n, { ...REQUEST, expectedPayable: 'free' as never })).rejects.toMatchObject({ httpStatus: 422 })
   })
@@ -139,7 +148,7 @@ describe('expectedPayable (D10)', () => {
   it('losing the race for the last use of an automatic offer answers PRICE_CHANGED, for a typed code OFFER_NOT_APPLICABLE; both roll back', async () => {
     offers.resolve.mockResolvedValue(evaluation(OFFER))
     offers.reserve.mockResolvedValue({ ok: false, reason: 'BUDGET' })
-    await expect(createBooking(7n, { ...REQUEST, expectedPayable: 414 })).rejects.toMatchObject({ appCode: 'PRICE_CHANGED' })
+    await expect(createBooking(7n, { ...REQUEST, expectedPayable: 414 })).rejects.toMatchObject({ appCode: 'PRICE_CHANGED', details: { payable: 454, fareTotal: 454 } }) // never a Rs 0 price
     await expect(createBooking(7n, { ...REQUEST, couponCode: 'SAVE10' })).rejects.toMatchObject({ appCode: 'OFFER_NOT_APPLICABLE' })
     expect(sqls().filter((q) => q === 'ROLLBACK')).toHaveLength(2)
   })

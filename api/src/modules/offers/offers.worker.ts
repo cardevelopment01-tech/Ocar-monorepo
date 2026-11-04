@@ -5,9 +5,10 @@ import { invalidateOffers, releaseRedemption } from './offers.repository'
 const log = logger.child({ module: 'offers-worker' })
 
 /**
- * Gives back the budget, global slot and per-user use of reservations whose ride never got a driver or was cancelled:
- * the booking code, a failed enqueue or a crash can leave one behind. Only rides that ended without service are touched
- * (cancelled, no_drivers); a live, scheduled or completed ride keeps its reservation.
+ * Gives back the budget, global slot and per-user use of reservations whose ride ended without service (cancelled or
+ * no_drivers) but whose release was missed: a crash or a database blip between the status change and the release. A ride
+ * that is still requested is closed by the stale-request sweep, which lands here next run; a live, scheduled or completed
+ * ride keeps its reservation. A completed ride whose payment never succeeds is the payment-reconcile job's to resolve.
  */
 export async function releaseStaleReservations(olderThanMinutes = 30): Promise<number> {
   const stale = await pool.query<{ ride_id: string }>(

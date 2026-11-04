@@ -6,6 +6,7 @@ import { client as redis } from '@/db/redis'
 import { configKey } from '@/constants/redis-keys'
 import { invalidateOffers } from '@/modules/offers/offers.repository'
 import { finaliseDiscount } from '@/modules/offers/settlement'
+import { releaseRedemption } from '@/modules/offers/offers.repository'
 import { collectCash, settleRideCompletionPayment } from '@/modules/rides/rides.service'
 import { loginUser, loginDriver, seedActiveDriverWithVehicle, cleanupRideAndDriverData, DEFAULT_BOOKING } from '../helpers/fixtures/rides.fixture'
 
@@ -188,6 +189,26 @@ describe('finaliseDiscount (D15, D22)', () => {
     await pool.query(`UPDATE fare_snapshots SET total_final = 520 WHERE ride_id = $1`, [rideId])
     await finaliseDiscount(pool, BigInt(rideId))
     expect((await state(rideId, id)).discount).toBe(80) // never grows back
+  })
+
+  it('two overlapping finalise calls true the budget down once, not twice', async () => {
+    const { rideId, id } = await rideWithReservation(20, 454)
+    await pool.query(`UPDATE fare_snapshots SET total_final = 400 WHERE ride_id = $1`, [rideId])
+    await Promise.all([finaliseDiscount(pool, BigInt(rideId)), finaliseDiscount(pool, BigInt(rideId)), finaliseDiscount(pool, BigInt(rideId))])
+    expect(await state(rideId, id)).toEqual({ discount: 80, redemption: 80, spent: 80 })
+  })
+
+  it('releasing the reservation clears the ride discount so every reader shows the gross fare', async () => {
+    const { rideId, id } = await rideWithReservation(20, 454)
+    const c = await pool.connect()
+    try {
+      await c.query('BEGIN')
+      expect(await releaseRedemption(c, BigInt(rideId), 'test')).toBe(true)
+      await c.query('COMMIT')
+    } finally { c.release() }
+    const snap = await pool.query(`SELECT discount_amount::float8 AS d, ocar_payable(total_estimated, discount_amount)::float8 AS payable FROM fare_snapshots WHERE ride_id = $1`, [rideId])
+    expect(snap.rows[0]).toEqual({ d: 0, payable: 454 })
+    expect((await state(rideId, id)).spent).toBe(0)
   })
 
   it('a ride with no redemption is left alone', async () => {

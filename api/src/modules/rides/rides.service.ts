@@ -14,7 +14,8 @@ import { getTodayStatus } from '@/modules/drivers/driver-verification.repository
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import { resolveForBooking, type AppliedOffer, type PreviewInput } from '@/modules/offers/offers.service'
-import { finaliseDiscount, onRideCancelled, payableForRide, releaseForRide, settleOfferOnPayment } from '@/modules/offers/settlement'
+import { finaliseDiscount, onRideCancelled, payableForRide, payableOf, releaseForRide, settleOfferOnPayment } from '@/modules/offers/settlement'
+import { driverFare } from '@/modules/offers/driver-fare'
 import { normalizeCode, reserveRedemption } from '@/modules/offers/offers.repository'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
@@ -612,7 +613,7 @@ function priceChanged(fareTotal: number, offer: AppliedOffer | null, reason: str
 /** What the booking response tells the client about price. Absent offer: discount 0, payable = the gross fare. */
 function bookingPrice(total: number, offer: AppliedOffer | null) {
   const discount = offer?.discount ?? 0
-  return { discount, payable: Math.round(Math.max(total - discount, 0) * 100) / 100, appliedOffer: offer }
+  return { discount, payable: payableOf({ total, discount_amount: discount }), appliedOffer: offer }
 }
 
 /**
@@ -647,7 +648,12 @@ async function resolveBookingOffer(
     input.destinationCityId = (await findNearestCity(data.destinationLat, data.destinationLng))?.id ?? null
   }
   const evaluation = await resolveForBooking(userId, input, fareEstimate)
-  if (!evaluation.enabled) return null
+  if (!evaluation.enabled) {
+    // Offers went off after the rider saw a discounted price: they must be told, not billed the gross fare silently.
+    const gross = evaluation.result.fareTotal
+    if (expected !== undefined && Math.abs(gross - expected) > 0.01) throw priceChanged(gross, null, 'OFFER_UNAVAILABLE', gross)
+    return null
+  }
 
   const offer = evaluation.chosen
   if (code && (!offer || offer.code !== normalizeCode(code))) {
@@ -841,7 +847,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
         // Lost a race for the last of a budget or a per-user use between the preview and now.
         throw data.couponCode?.trim()
           ? offerNotApplicable("This offer isn't available right now", reserved.reason)
-          : priceChanged(fareEstimate.breakdown.total, null, 'OFFER_UNAVAILABLE', 0)
+          : priceChanged(fareEstimate.breakdown.total, null, 'OFFER_UNAVAILABLE', fareEstimate.breakdown.total)
       }
     }
     await client.query('COMMIT')
@@ -2327,7 +2333,7 @@ export async function adminAssignDriver(
     pickupLat: workingRide.origin_lat,
     pickupLng: workingRide.origin_lng,
     distanceToPickup: Math.round(candidate.distance_metres ?? 0),
-    estimatedFare: (workingRide.cash_due ?? workingRide.total_estimated) != null ? parseFloat((workingRide.cash_due ?? workingRide.total_estimated)!) : 0,
+    estimatedFare: driverFare(workingRide),
     rideType: workingRide.ride_type,
     isReturnCab: workingRide.is_return_cab,
     expiresAt: expiresAt.toISOString(),

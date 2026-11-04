@@ -64,18 +64,23 @@ export async function finaliseDiscount(q: Queryable, rideId: bigint): Promise<nu
   const next = roundPaise(Math.min(derived, reserved))
 
   if (Math.abs(next - current) < 0.005) return current
-  await q.query(`UPDATE fare_snapshots SET discount_amount = $2 WHERE ride_id = $1`, [rideId, next])
   if (next < reserved) {
+    // ONE statement: lock the redemption, shrink it and true the budget down by what it actually held. Two overlapping
+    // calls (a double-tapped collect, the stranded sweep racing the end-of-ride settle) cannot both subtract the same
+    // delta: the second waits on the lock, re-reads the shrunk row and matches nothing.
     await q.query(
-      `UPDATE offers SET budget_spent = GREATEST(budget_spent - ($2::numeric - $3::numeric), 0)
-        WHERE id = (SELECT offer_id FROM offer_redemptions WHERE ride_id = $1 AND status IN ('reserved', 'consumed'))`,
-      [rideId, reserved, next]
-    )
-    await q.query(
-      `UPDATE offer_redemptions SET discount_amount = $2 WHERE ride_id = $1 AND status IN ('reserved', 'consumed')`,
+      `WITH cur AS (
+         SELECT id, offer_id, discount_amount AS old FROM offer_redemptions
+          WHERE ride_id = $1 AND status IN ('reserved', 'consumed') AND discount_amount > $2::numeric FOR UPDATE
+       ), shrunk AS (
+         UPDATE offer_redemptions r SET discount_amount = $2::numeric FROM cur WHERE r.id = cur.id RETURNING cur.offer_id, cur.old
+       )
+       UPDATE offers o SET budget_spent = GREATEST(o.budget_spent - (shrunk.old - $2::numeric), 0)
+         FROM shrunk WHERE o.id = shrunk.offer_id`,
       [rideId, next]
     )
   }
+  await q.query(`UPDATE fare_snapshots SET discount_amount = $2 WHERE ride_id = $1`, [rideId, next])
   return next
 }
 
@@ -98,7 +103,7 @@ export async function payableForRide(q: Queryable, rideId: bigint): Promise<numb
  * there is nothing to credit yet; the driver is never touched: the discount is already out of the fare they keep.
  */
 export async function settleOfferOnPayment(q: Queryable, rideId: bigint): Promise<void> {
-  await consumeRedemption(q as PoolClient, rideId)
+  await consumeRedemption(q, rideId)
 }
 
 /**

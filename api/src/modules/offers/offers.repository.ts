@@ -225,6 +225,9 @@ async function undo(client: Pick<PoolClient, 'query'>, rideId: bigint, from: 're
       `UPDATE offer_user_usage SET count = GREATEST(count - 1, 0) WHERE offer_id = $1 AND user_id = $2`,
       [r.offer_id, r.user_id]
     )
+    // The offer went back, so the ride is no longer discounted: every ocar_payable() reader shows the gross fare and a
+    // ride an admin later revives is billed in full instead of at a discount nobody holds.
+    await client.query(`UPDATE fare_snapshots SET discount_amount = 0 WHERE ride_id = $1`, [rideId])
   }
   return true
 }
