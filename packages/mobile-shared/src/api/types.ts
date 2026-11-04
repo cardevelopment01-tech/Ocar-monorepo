@@ -110,6 +110,10 @@ export type RideDetail = {
   assignedCategoryName: string | null
   totalEstimated: string | null
   totalFinal: string | null
+  // What the driver collects in cash (the payable once offers exist) and the rider-offer discount already
+  // taken off it. Absent from an older server: clients fall back to totalFinal/totalEstimated and no discount.
+  cashDue?: string | null
+  discountAmount?: string | null
   baseFare: string | null
   distanceFare: string | null
   timeFare: string | null

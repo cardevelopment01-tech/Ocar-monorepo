@@ -3,6 +3,7 @@ import { Feather } from '@expo/vector-icons'
 import Animated, { Easing, FadeIn, ReduceMotion, ZoomIn } from 'react-native-reanimated'
 import { Button, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import type { RideDetailSettled } from '../useActiveRide'
+import { cashDueOf } from '../cashDue'
 
 export type TripCompletionCardProps = {
   ride: RideDetailSettled
@@ -24,7 +25,7 @@ function fmt(n: number) {
 // The check lands with one short scale-in (a trip finishing is the rare success moment
 // that earns it); everything else is already there.
 export function TripCompletionCard({ ride, collectedCash, driverRating, onBackToOnline }: TripCompletionCardProps) {
-  const fare = parseFloat(ride.totalFinal ?? ride.totalEstimated ?? '0')
+  const fare = cashDueOf(ride)
   const isCash = (ride.paymentChannel ?? 'cash') === 'cash'
   const realCommission = ride.commissionAmount != null ? parseFloat(ride.commissionAmount) : null
   const realEarning = ride.driverEarning != null ? parseFloat(ride.driverEarning) : null

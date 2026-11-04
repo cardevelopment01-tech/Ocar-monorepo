@@ -7,6 +7,8 @@ import { SlideToConfirm } from './SlideToConfirm'
 
 export type CashCollectionCardProps = {
   expectedFare: number
+  /** Rupees a rider offer took off this ride; the card explains the lower amount when above 0. */
+  offerDiscount?: number
   riderName?: string | null
   loading: boolean
   error: string | null
@@ -24,6 +26,7 @@ const DEVIATION_CONFIRM_THRESHOLD = 0.2
 // previous version here was a guessed two-button layout with no slider.
 export function CashCollectionCard({
   expectedFare,
+  offerDiscount = 0,
   riderName,
   loading,
   error,
@@ -56,6 +59,10 @@ export function CashCollectionCard({
         </View>
         <Text style={styles.heroLabel}>Collect cash from {riderName ?? 'the rider'}</Text>
         <Text style={styles.heroFare} accessibilityLabel={`${formatCurrency(expectedFare)} to collect`}>{formatCurrency(expectedFare)}</Text>
+        {offerDiscount > 0 ? (
+          // Body size, not a caption: this is the line a driver reads out when the rider asks why it is less.
+          <Text style={styles.offerNote}>Rider offer applied: {formatCurrency(offerDiscount)} off</Text>
+        ) : null}
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -143,6 +150,7 @@ const styles = StyleSheet.create({
   rupee: { fontSize: 34, lineHeight: 40, fontFamily: fonts.bold, color: colors.inkInverse },
   heroLabel: { ...typography.body, lineHeight: 22, color: colors.ink600, fontFamily: fonts.semibold },
   heroFare: { fontSize: 48, fontFamily: fonts.bold, color: colors.ink900, lineHeight: 56 },
+  offerNote: { ...typography.body, color: colors.ink600, fontFamily: fonts.semibold, textAlign: 'center' },
   error: { ...typography.label, color: colors.error, textAlign: 'center' },
   // A real 48px target, not a caption floating under the slider.
   altBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, minHeight: 48, borderRadius: radii.lg },
