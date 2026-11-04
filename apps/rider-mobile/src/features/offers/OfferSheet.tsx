@@ -18,7 +18,8 @@ type Props = {
   codeMessage: string | null
   checking: boolean
   onApplyCode: (code: string) => void
-  onChoose: (offerId: string) => void
+  /** Pick another offer. Never called for the one already applied. */
+  onChoose: (offer: AppliedOffer) => void
   onRemove: () => void
 }
 
@@ -68,7 +69,7 @@ export function OfferSheet({ visible, onClose, applied, alternatives, ineligible
         <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
           {eligible.length > 0 ? <Text style={styles.section}>Available for this ride</Text> : null}
           {eligible.map((o, i) => (
-            <Pressable key={o.offerId} style={[styles.offer, i === 0 && applied ? styles.offerOn : null]} onPress={() => { onChoose(o.offerId); onClose() }}
+            <Pressable key={o.offerId} style={[styles.offer, i === 0 && applied ? styles.offerOn : null]} onPress={() => { if (o.offerId !== applied?.offerId) onChoose(o); onClose() }}
               accessibilityRole="button" accessibilityState={{ selected: i === 0 && applied != null }} accessibilityLabel={`${o.name}. ${o.summary}. You save ${formatRupees(o.discount)}`}>
               <View style={styles.offerText}>
                 <Text style={styles.offerName}>{o.code ?? o.name}</Text>

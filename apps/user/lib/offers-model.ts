@@ -64,6 +64,11 @@ export function couponLineState(args: {
   if (status === 'loading') return { kind: 'loading' }
   if (status === 'error') return { kind: 'error', fullPrice: fullPrice ?? preview?.fareTotal ?? 0 }
   if (!preview || !preview.enabled) return { kind: 'off' }
+  // A typed code that did not apply must say so, even when an automatic offer applied in its place.
+  if (typedCode !== '' && preview.applied?.code?.toUpperCase() !== typedCode.toUpperCase()) {
+    const mine = preview.rejected.find((r) => r.code === undefined || r.code.toUpperCase() === typedCode.toUpperCase()) ?? preview.rejected[0]
+    if (mine) return { kind: 'rejected', message: mine.message, code: typedCode }
+  }
   if (preview.applied) return { kind: 'applied', offer: preview.applied, auto: preview.applied.kind === 'auto' && typedCode === '' }
   if (typedCode !== '') {
     const mine = preview.rejected.find((r) => r.code === undefined || r.code.toUpperCase() === typedCode.toUpperCase()) ?? preview.rejected[0]

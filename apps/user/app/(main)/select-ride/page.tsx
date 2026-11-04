@@ -308,9 +308,10 @@ function SelectRideContent() {
   const [priceNote, setPriceNote] = useState<string | null>(null)
   const offerKey = `${selected}|${rideType}|${effectiveDistanceKm}|${effectiveDurationMin}|${tripHours ?? ''}|${stops.length}|${isReturnCab}|${scheduledFor?.toISOString() ?? ''}|${typedCode}|${offerChoice.kind}`
   useEffect(() => {
-    if (loading || !estimates[selected]) return
+    if (loading || !estimates[selected]) { setOfferPreview(null); setOfferStatus('idle'); return }
     const ctl = new AbortController()
     setOfferStatus('loading')
+    setOfferPreview(null) // the old answer priced a different ride or code: Book must not quote it
     const t = setTimeout(() => {
       const req: Parameters<typeof previewOffer>[0] = {
         categoryId: selected, rideType, distanceKm: effectiveDistanceKm, durationMin: effectiveDurationMin,
@@ -328,7 +329,7 @@ function SelectRideContent() {
     }, 300)
     return () => { clearTimeout(t); ctl.abort() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offerKey, loading, estimates])
+  }, [offerKey, loading, !!estimates[selected]])
 
   const handleBook = async () => {
     setIsBooking(true)

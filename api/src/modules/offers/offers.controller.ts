@@ -38,13 +38,12 @@ export const preview: RequestHandler = async (req, res, next) => {
     // exactOptionalPropertyTypes: drop undefined keys instead of passing them through.
     const { originLat, originLng, destinationLat, destinationLng, ...rest } = body
     const input = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) as unknown as PreviewInput
-    if (originLat !== undefined && originLng !== undefined) {
-      const city = await findNearestCity(originLat, originLng)
-      if (city) { input.city_id = city.id; input.originCityId = city.id }
-    }
-    if (destinationLat !== undefined && destinationLng !== undefined) {
-      input.destinationCityId = (await findNearestCity(destinationLat, destinationLng))?.id ?? null
-    }
+    const [origin, dest] = await Promise.all([
+      originLat !== undefined && originLng !== undefined ? findNearestCity(originLat, originLng) : null,
+      destinationLat !== undefined && destinationLng !== undefined ? findNearestCity(destinationLat, destinationLng) : undefined,
+    ])
+    if (origin) { input.city_id = origin.id; input.originCityId = origin.id }
+    if (dest !== undefined) input.destinationCityId = dest?.id ?? null
     const result = await previewOffers(req.user!.id, input)
     // Only a wrong typed code counts toward the guess limit (see offersCodeGuessLimiters).
     res.locals['codeGuessFailed'] = result.rejected.some((r) => r.reason === 'UNKNOWN_CODE' || r.reason === 'NOT_ASSIGNED')

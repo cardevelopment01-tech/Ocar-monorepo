@@ -28,6 +28,10 @@ describe('couponLineState', () => {
     expect(couponLineState({ status: 'ready', preview: preview(), typedCode: 'SAVE50', fullPrice: 454 })).toMatchObject({ kind: 'applied', auto: false })
     expect(couponLineState({ status: 'ready', preview: preview({ applied: offer({ kind: 'auto', code: null }) }), typedCode: '', fullPrice: 454 })).toMatchObject({ kind: 'applied', auto: true })
   })
+  it('a rejected typed code is explained even when an automatic offer applied instead', () => {
+    const p = preview({ applied: offer({ kind: 'auto', code: null }), rejected: [{ code: 'WRONG1', reason: 'UNKNOWN_CODE', message: "That code isn't valid" }] })
+    expect(couponLineState({ status: 'ready', preview: p, typedCode: 'WRONG1', fullPrice: 454 })).toMatchObject({ kind: 'rejected', message: "That code isn't valid" })
+  })
   it('a rejected typed code shows the server message and keeps the code; no code and no offer is idle', () => {
     const p = preview({ applied: null, discount: 0, payable: 454, rejected: [{ code: 'NOPE', reason: 'UNKNOWN_CODE', message: "That code isn't valid" }] })
     expect(couponLineState({ status: 'ready', preview: p, typedCode: 'NOPE', fullPrice: 454 })).toEqual({ kind: 'rejected', message: "That code isn't valid", code: 'NOPE' })

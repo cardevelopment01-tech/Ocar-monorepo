@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { previewOffer, type PreviewRequest } from './api'
-import { LOADING_BOOK_LOCK_MS, type OfferChoice, type OfferPreview, type PreviewStatus } from './offerModel'
+import { LOADING_BOOK_LOCK_MS, type AppliedOffer, type OfferChoice, type OfferPreview, type PreviewStatus } from './offerModel'
 import { autoOfferParam } from './offerModel'
 
 const DEBOUNCE_MS = 350
@@ -17,7 +17,7 @@ export type OfferPreviewState = {
   removeCode: () => void
   /** Declines the automatic offer. */
   removeAuto: () => void
-  chooseOffer: (offerId: string) => void
+  chooseOffer: (offer: AppliedOffer) => void
   retry: () => void
 }
 
@@ -45,6 +45,8 @@ export function useOfferPreview(request: Omit<PreviewRequest, 'code' | 'autoOffe
     const mine = ++generation.current
     const controller = new AbortController()
     setStatus('loading')
+    // Drop the old answer at once: it priced a different ride/code, and Book must never quote it or send its expectedPayable.
+    setPreview(null)
     setBookLocked(true)
     const unlock = setTimeout(() => { if (mine === generation.current) setBookLocked(false) }, LOADING_BOOK_LOCK_MS)
     const timer = setTimeout(async () => {
@@ -59,6 +61,7 @@ export function useOfferPreview(request: Omit<PreviewRequest, 'code' | 'autoOffe
         setStatus('ready')
       } catch {
         if (mine !== generation.current) return
+        setPreview(null)
         setStatus('error')
       } finally {
         if (mine === generation.current) setBookLocked(false)
@@ -71,7 +74,11 @@ export function useOfferPreview(request: Omit<PreviewRequest, 'code' | 'autoOffe
   const applyCode = useCallback((code: string) => { setTypedCode(code.trim().toUpperCase().replace(/\s+/g, '')); setChoice({ kind: 'best' }) }, [])
   const removeCode = useCallback(() => { setTypedCode('') }, [])
   const removeAuto = useCallback(() => { setTypedCode(''); setChoice({ kind: 'none' }) }, [])
-  const chooseOffer = useCallback((offerId: string) => { setTypedCode(''); setChoice({ kind: 'offer', offerId }) }, [])
+  // The server honours an autoOffer id only for automatic offers; a code offer is chosen by applying its code.
+  const chooseOffer = useCallback((o: AppliedOffer) => {
+    if (o.kind === 'auto') { setTypedCode(''); setChoice({ kind: 'offer', offerId: o.offerId }) }
+    else if (o.code) { setTypedCode(o.code.toUpperCase()); setChoice({ kind: 'best' }) }
+  }, [])
   const retry = useCallback(() => setNonce((n) => n + 1), [])
 
   return { status, preview, typedCode, choice, bookLocked, applyCode, removeCode, removeAuto, chooseOffer, retry }
