@@ -58,6 +58,39 @@ export function rideRequestPushText(pickup: string, drop: string, d: RideRequest
 ${pickup} → ${drop}` }
 }
 
+export type RideRequestGoneReason = 'accepted' | 'cancelled' | 'assigned'
+
+const GONE_TEXT: Record<RideRequestGoneReason, string> = {
+  accepted: 'Another driver accepted this ride.',
+  cancelled: 'The rider cancelled this ride.',
+  assigned: 'This ride was assigned to another driver.',
+}
+
+// Tells the drivers who were PUSHED a ride request (a backgrounded or locked phone has no live socket, so the socket's
+// ride:request_expired never reaches it) that the request is over. The push reuses the request's tag, so Android swaps
+// the ringing notification for this silent one and stops its sound at once; the 22 s alarm must never keep ringing for a
+// ride that is already taken. Only drivers we actually pushed are contacted, and only builds that created the silent
+// channel (an older build would drop this into Android's default, audible channel).
+export async function sendRideRequestGonePush(rideId: string, driverIds: string[], reason: RideRequestGoneReason): Promise<void> {
+  await Promise.all(driverIds.map(async (driverId) => {
+    try {
+      if (!(await redis.exists(ridePushSentKey(rideId, driverId)))) return // never pushed: nothing is ringing
+      const { v3 } = await repo.getDriverTokensByRideAlert(BigInt(driverId))
+      await pushToTokens(v3, {
+        title: 'Ride request ended',
+        body: GONE_TEXT[reason],
+        tag: `ride-${rideId}`,
+        ttlSeconds: 60,
+        data: { type: 'ride_request_gone', rideId, reason },
+        channelId: 'ride_gone_v1',
+        silent: true,
+      })
+    } catch (err) {
+      log.error({ err, rideId, driverId }, 'sendRideRequestGonePush failed')
+    }
+  }))
+}
+
 export async function sendRideRequestPushOnce(
   rideId: string,
   driverId: string,

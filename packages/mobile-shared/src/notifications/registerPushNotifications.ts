@@ -16,6 +16,8 @@ export interface NotificationChannelConfig {
   // Show the full text on the lock screen even when the phone hides sensitive content. Opt-in: only for alerts the driver
   // must read at a glance (ride requests), never for channels that can carry OTPs or personal details.
   lockscreenPublic?: boolean
+  // No sound and no vibration (a channel that only replaces or updates another alert).
+  silent?: boolean
 }
 
 export interface DeviceCapabilities {
@@ -54,9 +56,9 @@ export async function registerPushNotifications(
       name: channel.name,
       ...(channel.description !== undefined ? { description: channel.description } : {}),
       importance: channel.importance ?? Notifications.AndroidImportance.DEFAULT,
-      sound: channel.sound ?? 'default',
-      enableVibrate: true,
-      vibrationPattern: channel.vibrationPattern ?? [0, 250, 250, 250],
+      sound: channel.silent ? null : (channel.sound ?? 'default'),
+      enableVibrate: !channel.silent,
+      ...(channel.silent ? {} : { vibrationPattern: channel.vibrationPattern ?? [0, 250, 250, 250] }),
       ...(channel.audioUsage !== undefined
         ? { audioAttributes: { usage: channel.audioUsage, contentType: Notifications.AndroidAudioContentType.SONIFICATION } }
         : {}),

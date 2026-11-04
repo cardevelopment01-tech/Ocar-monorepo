@@ -4,6 +4,7 @@ const { store, redisMock } = vi.hoisted(() => {
   const store = new Map<string, string>()
   const redisMock = {
     del: vi.fn(async (key: string) => { store.delete(key); return 1 }),
+    exists: vi.fn(async (key: string) => (store.has(key) ? 1 : 0)),
     set: vi.fn(async (key: string, value: string, ...args: unknown[]) => {
       if (args.includes('NX') && store.has(key)) return null
       store.set(key, value)
@@ -43,7 +44,7 @@ vi.mock('@/modules/notifications/notifications.repository', () => ({
 vi.mock('@/websocket/socket.server', () => ({ socketEvents: { sendNotification: vi.fn() } }))
 
 import { getDriverTokensByRideAlert } from '@/modules/notifications/notifications.repository'
-import { sendRideRequestPushOnce, rideRequestPushText } from '@/modules/notifications/notifications.service'
+import { sendRideRequestPushOnce, sendRideRequestGonePush, rideRequestPushText } from '@/modules/notifications/notifications.service'
 import * as pushProvider from '@/modules/notifications/providers/push.provider'
 
 describe('sendRideRequestPushOnce — one-shot per ride+driver', () => {
@@ -136,5 +137,31 @@ describe('sendRideRequestPushOnce — token lookup failure', () => {
     vi.mocked(getDriverTokensByRideAlert).mockResolvedValue({ v3: [], legacy: ['d'] })
     await sendRideRequestPushOnce('301', '55', 'A', 'B', 20, details)
     expect(getDriverTokensByRideAlert).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('sendRideRequestGonePush — silence the ring on drivers who were pushed', () => {
+  beforeEach(() => { vi.clearAllMocks(); store.clear() })
+
+  it('replaces the ringing notification (same tag) with a silent one, only for loud-channel devices of drivers we pushed', async () => {
+    const sendSpy = vi.spyOn(pushProvider, 'sendPush').mockResolvedValue({ invalidTokens: [], successCount: 1, failureCount: 0, transientFailure: false })
+    vi.mocked(getDriverTokensByRideAlert).mockResolvedValue({ v3: ['new-device'], legacy: ['old-device'] })
+    await sendRideRequestPushOnce('401', '55', 'A', 'B', 20, details) // marks driver 55 as pushed
+    sendSpy.mockClear()
+
+    await sendRideRequestGonePush('401', ['55', '99'], 'accepted') // 99 was never pushed
+
+    expect(sendSpy).toHaveBeenCalledTimes(1)
+    const [tokens, msg] = sendSpy.mock.calls[0]!
+    expect(tokens).toEqual(['new-device']) // an older build has no silent channel: leave it alone
+    expect(msg).toMatchObject({ tag: 'ride-401', silent: true, channelId: 'ride_gone_v1', data: { type: 'ride_request_gone', rideId: '401', reason: 'accepted' } })
+    expect(msg.sound).toBeUndefined()
+    sendSpy.mockRestore()
+  })
+
+  it('a failure for one driver never throws or blocks the others', async () => {
+    store.set('ride-push-sent:x', '1')
+    vi.mocked(getDriverTokensByRideAlert).mockRejectedValue(new Error('db'))
+    await expect(sendRideRequestGonePush('402', ['1', '2'], 'cancelled')).resolves.toBeUndefined()
   })
 })

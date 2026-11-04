@@ -58,6 +58,8 @@ export async function setupPushNotifications(opts: { prompt?: boolean } = {}): P
         audioUsage: Notifications.AndroidAudioUsage.ALARM,
         lockscreenPublic: true,
       },
+      // Replaces a ringing ride-request notification (same tag) when the request is over, so its sound stops at once.
+      { channelId: 'ride_gone_v1', name: 'Ride request ended', description: 'Quietly clears a ride request that is no longer available', importance: Notifications.AndroidImportance.LOW, silent: true },
     ],
     deviceCapabilities: { rideAlertV3: true },
   })

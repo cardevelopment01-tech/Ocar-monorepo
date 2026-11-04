@@ -25,6 +25,10 @@ export interface PushMessage {
   sound?: { android: string; ios: string }
   // iOS: 'time-sensitive' breaks through Focus (it still respects the silent switch; no Apple approval needed).
   timeSensitive?: boolean
+  // A replacement that must make no sound or vibration (e.g. "this ride request is over"): posting it under the same `tag`
+  // swaps the ringing notification for a quiet one, and Android stops the sound of a notification that is updated into a
+  // silent one.
+  silent?: boolean
 }
 
 export interface SendPushResult {
@@ -84,8 +88,8 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
     // setup being correct. Set on every push, not just tagged ones.
     const androidNotification: NonNullable<NonNullable<MulticastMessage['android']>['notification']> = {
       channelId: msg.channelId ?? 'default_v2',
-      sound: msg.sound?.android ?? 'default',
-      defaultVibrateTimings: true,
+      defaultVibrateTimings: !msg.silent,
+      ...(msg.silent ? {} : { sound: msg.sound?.android ?? 'default' }),
     }
     const android: NonNullable<MulticastMessage['android']> = { priority: 'high', notification: androidNotification }
     // ttl/collapseKey/tag were previously only written to the webpush block, so on Android a
@@ -106,7 +110,12 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
       android,
       apns: {
         headers: apnsHeaders,
-        payload: { aps: { sound: msg.sound?.ios ?? 'default', ...(msg.timeSensitive ? { 'interruption-level': 'time-sensitive' } : {}) } },
+        payload: {
+          aps: {
+            ...(msg.silent ? {} : { sound: msg.sound?.ios ?? 'default' }),
+            ...(msg.timeSensitive ? { 'interruption-level': 'time-sensitive' } : {}),
+          },
+        },
       },
     }
     if (msg.data) message.data = msg.data

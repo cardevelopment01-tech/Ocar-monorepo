@@ -27,6 +27,7 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
     // navigation here would fight the overlay for the screen.
     case 'ride_request':
     case 'ride_manual_request':
+    case 'ride_request_gone':
       return null
 
     // Already-accepted rides -- no offer UI to show, go straight to the ride.
@@ -84,6 +85,6 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
 // are the one deliberate exception -- the live overlay owns them (see resolvePushRoute).
 export function resolveTapRoute(data: Record<string, string> | undefined): string | null {
   const type = data?.['type']
-  if (type === 'ride_request' || type === 'ride_manual_request') return null
+  if (type === 'ride_request' || type === 'ride_manual_request' || type === 'ride_request_gone') return null
   return resolvePushRoute(data) ?? (type ? '/notifications' : null)
 }

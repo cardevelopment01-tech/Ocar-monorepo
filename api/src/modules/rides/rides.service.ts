@@ -41,7 +41,7 @@ import {
   getDriverWallet,
   getMinWalletBalance,
 } from '@/modules/payments/payments.service'
-import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowWalletBalance, notifyRideEvent } from '@/modules/notifications/notifications.service'
+import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowWalletBalance, notifyRideEvent, sendRideRequestGonePush, type RideRequestGoneReason } from '@/modules/notifications/notifications.service'
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
@@ -882,6 +882,17 @@ export async function declineRide(driverId: bigint, rideId: bigint): Promise<voi
   await repo.declineAssignment(rideId, driverId)
 }
 
+/** A ride request is over for these drivers: end it on their open apps (socket) and silence the push on their locked phones. */
+function expireRideRequests(driverIds: Iterable<string>, rideId: bigint, reason: RideRequestGoneReason): void {
+  const ids = [...driverIds]
+  for (const id of ids) socketEvents.sendRequestExpired(id, rideId.toString())
+  if (ids.length > 0) {
+    void sendRideRequestGonePush(rideId.toString(), ids, reason).catch((err: unknown) => {
+      log.error({ err, rideId }, 'ride-request gone push failed')
+    })
+  }
+}
+
 export async function acceptRide(driverId: bigint, rideId: bigint) {
   // Same driver-city resolution as goOnline above — no GPS fallback. A driver
   // reaching this point already passed the goOnline city gate, so this should
@@ -905,9 +916,7 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
     throw Object.assign(new Error('Ride no longer available'), { httpStatus: 409 })
   }
 
-  for (const id of cancelledDriverIds) {
-    socketEvents.sendRequestExpired(id, rideId.toString())
-  }
+  expireRideRequests(cancelledDriverIds, rideId, 'accepted')
 
   const ride = await repo.getRideById(rideId)
 
@@ -1803,9 +1812,7 @@ export async function cancelRide(
   // window times out on its own.
   if (stage === 'before_dispatch' || stage === 'before_acceptance') {
     const notifiedDriverIds = await repo.cancelAllAssignments(rideId)
-    for (const driverId of notifiedDriverIds) {
-      socketEvents.sendRequestExpired(driverId, rideId.toString())
-    }
+    expireRideRequests(notifiedDriverIds, rideId, 'cancelled')
   }
 
   // Per-user daily cancellation counter — the §07 fixed-window pattern (INCR + EXPIRE
@@ -2198,7 +2205,7 @@ export async function adminAssignDriver(
   }
 
   const cancelledDriverIds = await repo.cancelAllAssignments(rideId)
-  for (const id of cancelledDriverIds) socketEvents.sendRequestExpired(id, rideId.toString())
+  expireRideRequests(cancelledDriverIds, rideId, 'assigned')
 
   const sessionId = BigInt(candidate.session_id!)
   const billingMode = await repo.getCityBillingMode(workingRide.origin_city_id!)
@@ -2210,7 +2217,7 @@ export async function adminAssignDriver(
     if (cancelledOnAccept === false) {
       throw Object.assign(new Error('Ride was accepted by another driver — please refresh'), { httpStatus: 409 })
     }
-    for (const id of cancelledOnAccept) socketEvents.sendRequestExpired(id, rideId.toString())
+    expireRideRequests(cancelledOnAccept, rideId, 'assigned')
 
     const graceMs = FORCE_ASSIGN_GRACE_MINUTES * 60_000
     const job = await queues[QUEUE_NAMES.DISPATCH].add(
