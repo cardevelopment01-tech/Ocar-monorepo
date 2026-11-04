@@ -31,6 +31,14 @@ vi.mock('@/observability/metrics', () => ({
   cacheMissesTotal: { inc: vi.fn() },
 }))
 
+// The payment path reaches offers code, which registers its own counters on the (mocked-away) registry.
+vi.mock('@/observability/offers-metrics', () => ({
+  offersRedemptionsTotal: { inc: vi.fn() },
+  offersReserveRefusedTotal: { inc: vi.fn() },
+  offersPreviewRejectionsTotal: { inc: vi.fn() },
+  offersBudgetRemaining: { set: vi.fn(), reset: vi.fn() },
+}))
+
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import * as payu from '@/lib/payu'
