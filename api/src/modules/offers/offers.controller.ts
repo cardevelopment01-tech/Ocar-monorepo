@@ -1,0 +1,53 @@
+import type { RequestHandler } from 'express'
+import { z } from 'zod'
+import { findActiveOffers, getUserUsage, listGrantedOfferIds } from './offers.repository'
+import { parseOrThrow } from './admin-offers.service'
+import { previewOffers, type PreviewInput } from './offers.service'
+import { describeOffer } from './engine'
+
+const previewSchema = z.object({
+  category_id: z.number().int().positive(),
+  ride_type: z.enum(['one_way', 'round_trip', 'rental']),
+  is_return_cab: z.boolean().optional(),
+  distance_km: z.number().nonnegative(),
+  duration_min: z.number().nonnegative(),
+  stop_count: z.number().int().nonnegative().optional(),
+  trip_hours: z.number().nonnegative().optional(),
+  rental_package_id: z.number().int().positive().optional(),
+  city_id: z.number().int().positive().optional(),
+  originCityId: z.number().int().positive().nullable().optional(),
+  destinationCityId: z.number().int().positive().nullable().optional(),
+  code: z.string().trim().max(40).optional(),
+  paymentChannel: z.enum(['cash', 'online', 'wallet']),
+  scheduledFor: z.string().datetime({ offset: true }).optional(),
+})
+
+export const preview: RequestHandler = async (req, res, next) => {
+  try {
+    const body = parseOrThrow(previewSchema, req.body)
+    // exactOptionalPropertyTypes: drop undefined keys instead of passing them through.
+    const input = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)) as unknown as PreviewInput
+    const result = await previewOffers(req.user!.id, input)
+    // Only a wrong typed code counts toward the guess limit (see offersCodeGuessLimiters).
+    res.locals['codeGuessFailed'] = result.rejected.some((r) => r.reason === 'UNKNOWN_CODE' || r.reason === 'NOT_ASSIGNED')
+    res.json(result)
+  } catch (err) { next(err) }
+}
+
+/** Offers worth showing a rider: active automatic offers and anything granted to them. Code offers never appear here. */
+export const list: RequestHandler = async (req, res, next) => {
+  try {
+    const userId = req.user!.id
+    const [active, granted] = await Promise.all([findActiveOffers(), listGrantedOfferIds(userId)])
+    const grantedSet = new Set(granted.map(String))
+    const visible = active.filter((o) => o.kind === 'auto' || (o.kind === 'assigned' && grantedSet.has(o.id.toString())))
+    const usage = await getUserUsage(userId, visible.map((o) => o.id)) // one query for all offers
+    const offers = visible
+      .filter((o) => o.perUserLimit == null || (usage.get(o.id) ?? 0) < o.perUserLimit)
+      .map((o) => ({
+        id: o.id.toString(), name: o.name, kind: o.kind, summary: describeOffer({ rules: o.rules, benefit: o.benefit, per_user_limit: o.perUserLimit }),
+        endsAt: o.endsAt?.toISOString() ?? null, display: o.display,
+      }))
+    res.json({ offers })
+  } catch (err) { next(err) }
+}

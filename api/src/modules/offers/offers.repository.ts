@@ -235,3 +235,146 @@ export async function getUserUsage(userId: bigint, offerIds: bigint[]): Promise<
   )
   return new Map(res.rows.map((r) => [BigInt(r.offer_id), r.count]))
 }
+
+// ── Admin reads and writes ───────────────────────────────────────────────────
+
+export type NewVersion = {
+  rules: Rule[]
+  benefit: Benefit
+  perUserLimit: number | null
+  stacking: 'exclusive' | 'stackable'
+  display: Record<string, unknown>
+}
+
+export type NewOffer = NewVersion & {
+  name: string
+  kind: OfferKind
+  code: string | null
+  status: 'draft' | 'active'
+  budgetTotal: number | null
+  globalLimit: number | null
+  startsAt: string | null
+  endsAt: string | null
+}
+
+async function insertVersion(client: PoolClient, offerId: bigint, adminId: bigint, v: NewVersion): Promise<{ id: bigint; version: number }> {
+  const res = await client.query<{ id: string; version: number }>(
+    `INSERT INTO offer_versions (offer_id, version, rules, benefit, per_user_limit, stacking, display, created_by)
+     VALUES ($1, COALESCE((SELECT MAX(version) FROM offer_versions WHERE offer_id = $1), 0) + 1, $2::jsonb, $3::jsonb, $4, $5, $6::jsonb, $7)
+     RETURNING id, version`,
+    [offerId, JSON.stringify(v.rules), JSON.stringify(v.benefit), v.perUserLimit, v.stacking, JSON.stringify(v.display), adminId]
+  )
+  const row = res.rows[0]!
+  await client.query(`UPDATE offers SET current_version_id = $2 WHERE id = $1`, [offerId, row.id])
+  return { id: BigInt(row.id), version: row.version }
+}
+
+export async function createOfferTx(client: PoolClient, adminId: bigint, o: NewOffer): Promise<{ offerId: bigint; versionId: bigint }> {
+  const res = await client.query<{ id: string }>(
+    `INSERT INTO offers (name, kind, code, status, budget_total, global_limit, starts_at, ends_at, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    [o.name, o.kind, o.code, o.status, o.budgetTotal, o.globalLimit, o.startsAt, o.endsAt, adminId]
+  )
+  const offerId = BigInt(res.rows[0]!.id)
+  const v = await insertVersion(client, offerId, adminId, o)
+  return { offerId, versionId: v.id }
+}
+
+/** Locks the offer row so two admins saving at once get version N+1 and N+2, never two N+1. */
+export async function createVersionTx(client: PoolClient, adminId: bigint, offerId: bigint, v: NewVersion): Promise<{ versionId: bigint; version: number } | null> {
+  const lock = await client.query(`SELECT 1 FROM offers WHERE id = $1 FOR UPDATE`, [offerId])
+  if (lock.rowCount === 0) return null
+  const created = await insertVersion(client, offerId, adminId, v)
+  return { versionId: created.id, version: created.version }
+}
+
+export type OfferPatch = {
+  name?: string
+  status?: 'draft' | 'active' | 'paused' | 'ended'
+  endsAt?: string | null
+  budgetTotal?: number | null
+  globalLimit?: number | null
+  display?: Record<string, unknown>
+}
+
+export type AdminOfferRow = {
+  id: string; code: string | null; name: string; kind: OfferKind; status: string; version: number | null
+  summary_rules: Rule[] | null; summary_benefit: Benefit | null; display: Record<string, unknown> | null
+  budget_total: string | null; budget_spent: string; global_limit: number | null; redemption_count: number
+  starts_at: Date | null; ends_at: Date | null; created_at: Date; updated_at: Date
+}
+
+const ADMIN_SELECT = `
+  SELECT o.id, o.code::text AS code, o.name, o.kind, o.status, v.version, v.rules AS summary_rules, v.benefit AS summary_benefit,
+         v.display, o.budget_total, o.budget_spent, o.global_limit, o.redemption_count, o.starts_at, o.ends_at, o.created_at, o.updated_at
+    FROM offers o LEFT JOIN offer_versions v ON v.id = o.current_version_id`
+
+export async function listOffersAdmin(f: { status?: string; search?: string; limit: number; offset: number }): Promise<AdminOfferRow[]> {
+  const res = await pool.query<AdminOfferRow>(
+    `${ADMIN_SELECT}
+      WHERE ($1::text IS NULL OR o.status = $1)
+        AND ($2::text IS NULL OR o.name ILIKE '%' || $2 || '%' OR o.code::text ILIKE '%' || $2 || '%')
+      ORDER BY o.id DESC LIMIT $3 OFFSET $4`,
+    [f.status ?? null, f.search ?? null, f.limit, f.offset]
+  )
+  return res.rows
+}
+
+export async function getOfferAdmin(offerId: bigint): Promise<{ offer: AdminOfferRow; versions: { id: string; version: number; rules: Rule[]; benefit: Benefit; per_user_limit: number | null; stacking: string; display: Record<string, unknown>; created_at: Date }[] } | null> {
+  const o = await pool.query<AdminOfferRow>(`${ADMIN_SELECT} WHERE o.id = $1`, [offerId])
+  if (!o.rows[0]) return null
+  const v = await pool.query(
+    `SELECT id, version, rules, benefit, per_user_limit, stacking, display, created_at FROM offer_versions WHERE offer_id = $1 ORDER BY version DESC`,
+    [offerId]
+  )
+  return { offer: o.rows[0], versions: v.rows }
+}
+
+export async function lockOfferForUpdate(client: PoolClient, offerId: bigint): Promise<{ status: string; budget_total: string | null; code: string | null } | null> {
+  const r = await client.query(`SELECT status, budget_total, code::text AS code FROM offers WHERE id = $1 FOR UPDATE`, [offerId])
+  return r.rows[0] ?? null
+}
+
+export async function patchOfferTx(client: PoolClient, offerId: bigint, p: OfferPatch): Promise<void> {
+  // Hardcoded column names only; values are bound.
+  const sets: string[] = []
+  const vals: unknown[] = [offerId]
+  const add = (col: string, v: unknown) => { vals.push(v); sets.push(`${col} = $${vals.length}`) }
+  if (p.name !== undefined) add('name', p.name)
+  if (p.status !== undefined) add('status', p.status)
+  if (p.endsAt !== undefined) add('ends_at', p.endsAt)
+  if (p.budgetTotal !== undefined) add('budget_total', p.budgetTotal)
+  if (p.globalLimit !== undefined) add('global_limit', p.globalLimit)
+  if (sets.length > 0) await client.query(`UPDATE offers SET ${sets.join(', ')} WHERE id = $1`, vals)
+  // Display copy is the one thing editable in place on a version (plan D7).
+  if (p.display !== undefined) {
+    await client.query(`UPDATE offer_versions SET display = $2::jsonb WHERE id = (SELECT current_version_id FROM offers WHERE id = $1)`, [offerId, JSON.stringify(p.display)])
+  }
+}
+
+export async function offerStats(offerId: bigint) {
+  const r = await pool.query(
+    `SELECT status, count(*)::int AS n, COALESCE(sum(discount_amount), 0)::float8 AS discount, COALESCE(sum(cashback_amount), 0)::float8 AS cashback
+       FROM offer_redemptions WHERE offer_id = $1 GROUP BY status`,
+    [offerId]
+  )
+  return r.rows as { status: string; n: number; discount: number; cashback: number }[]
+}
+
+export async function listRedemptions(offerId: bigint, limit: number, offset: number) {
+  const r = await pool.query(
+    `SELECT id, user_id, ride_id, status, discount_amount, cashback_amount, reserved_at, consumed_at, released_at, reason
+       FROM offer_redemptions WHERE offer_id = $1 ORDER BY id DESC LIMIT $2 OFFSET $3`,
+    [offerId, limit, offset]
+  )
+  return r.rows
+}
+
+/** Offers a rider can see: active auto offers plus any granted to them. Never a code offer (it appears once typed). */
+export async function listGrantedOfferIds(userId: bigint): Promise<bigint[]> {
+  const r = await pool.query<{ offer_id: string }>(
+    `SELECT offer_id FROM user_offers WHERE user_id = $1 AND status = 'available' AND (expires_at IS NULL OR expires_at > now())`,
+    [userId]
+  )
+  return r.rows.map((x) => BigInt(x.offer_id))
+}

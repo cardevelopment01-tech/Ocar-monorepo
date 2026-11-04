@@ -64,9 +64,9 @@ export type RuleCatalogEntry = { kind: string; label: string; fields: FieldSpec[
 export type BenefitCatalogEntry = { type: Benefit['type']; label: string; fields: FieldSpec[]; isCashback: boolean }
 
 export type Benefit =
-  | { type: 'percent_off'; percent: number; maxDiscount?: number; appliesTo?: FareComponentKey[] }
-  | { type: 'flat_off'; amount: number; appliesTo?: FareComponentKey[] }
-  | { type: 'cashback_percent'; percent: number; maxCashback?: number; expiresInDays: number; appliesTo?: FareComponentKey[] }
+  | { type: 'percent_off'; percent: number; maxDiscount?: number | undefined; appliesTo?: FareComponentKey[] | undefined }
+  | { type: 'flat_off'; amount: number; appliesTo?: FareComponentKey[] | undefined }
+  | { type: 'cashback_percent'; percent: number; maxCashback?: number | undefined; expiresInDays: number; appliesTo?: FareComponentKey[] | undefined }
   | { type: 'cashback_flat'; amount: number; expiresInDays: number }
 
 export type OfferVersionView = {
