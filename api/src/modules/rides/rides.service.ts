@@ -13,6 +13,8 @@ import * as repo from './rides.repository'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
+import { resolveForBooking, type AppliedOffer, type PreviewInput } from '@/modules/offers/offers.service'
+import { normalizeCode, reserveRedemption } from '@/modules/offers/offers.repository'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
 import { enqueueBreadcrumb } from '@/lib/gps-buffer'
@@ -593,6 +595,71 @@ export async function boundBookingDistance(data: BookingRequest, userId: bigint)
   }
 }
 
+// ── Offers at booking ─────────────────────────────────────────
+
+function offerNotApplicable(message: string, reason: string) {
+  return Object.assign(httpError(422, message, 'OFFER_NOT_APPLICABLE'), { details: { reason } })
+}
+
+/** 409: the price the rider saw is not the price now. Books nothing; the body carries the new price and why. */
+function priceChanged(fareTotal: number, offer: AppliedOffer | null, reason: string, payable: number) {
+  return Object.assign(httpError(409, 'The price has changed', 'PRICE_CHANGED'), {
+    details: { fareTotal, discount: offer?.discount ?? 0, payable, appliedOffer: offer, reason },
+  })
+}
+
+/** What the booking response tells the client about price. Absent offer: discount 0, payable = the gross fare. */
+function bookingPrice(total: number, offer: AppliedOffer | null) {
+  const discount = offer?.discount ?? 0
+  return { discount, payable: Math.round(Math.max(total - discount, 0) * 100) / 100, appliedOffer: offer }
+}
+
+/**
+ * The offer this booking gets, or null. Offers run only when the rider typed a code or sent the payable they saw
+ * (expectedPayable): an older app sends neither, so it never gets an automatic offer and the price it displayed is the
+ * price it pays. While offers are off a code is ignored and the booking is at the gross fare. A typed code that does not
+ * apply fails the booking (it never silently books at full price); a changed price answers 409 and books nothing.
+ */
+async function resolveBookingOffer(
+  userId: bigint,
+  data: BookingRequest,
+  fareReq: FareEstimateRequest,
+  originCityId: number | null,
+  fareEstimate: Awaited<ReturnType<typeof getFareEstimate>>,
+): Promise<AppliedOffer | null> {
+  const rawCode = data.couponCode
+  if (rawCode !== undefined && (typeof rawCode !== 'string' || rawCode.trim().length > 40)) {
+    throw httpError(422, 'Invalid coupon code', AppErrors.VALIDATION_ERROR.code)
+  }
+  const code = rawCode?.trim() ?? ''
+  const expected = data.expectedPayable
+  if (expected !== undefined && !(typeof expected === 'number' && Number.isFinite(expected) && expected >= 0)) {
+    throw httpError(422, 'Invalid expectedPayable', AppErrors.VALIDATION_ERROR.code)
+  }
+  if (!code && expected === undefined) return null
+
+  const input: PreviewInput = { ...fareReq, paymentChannel: data.paymentChannel ?? 'cash', originCityId, destinationCityId: null }
+  if (code) input.code = code
+  if (data.scheduledFor !== undefined) input.scheduledFor = data.scheduledFor
+  // The destination city is judged from the coordinates, not the client's id (the route rule must not be spoofable).
+  if (data.destinationLat !== undefined && data.destinationLng !== undefined) {
+    input.destinationCityId = (await findNearestCity(data.destinationLat, data.destinationLng))?.id ?? null
+  }
+  const evaluation = await resolveForBooking(userId, input, fareEstimate)
+  if (!evaluation.enabled) return null
+
+  const offer = evaluation.chosen
+  if (code && (!offer || offer.code !== normalizeCode(code))) {
+    const why = evaluation.result.rejected[0]
+    throw offerNotApplicable(why?.message ?? "This offer isn't available right now", why?.reason ?? 'DISABLED')
+  }
+  const { fareTotal, payable } = evaluation.result
+  if (expected !== undefined && Math.abs(payable - expected) > 0.01) {
+    throw priceChanged(fareTotal, offer, offer ? 'FARE_CHANGED' : 'OFFER_UNAVAILABLE', payable)
+  }
+  return offer
+}
+
 export async function createBooking(userId: bigint, data: BookingRequest) {
   // Only immediate bookings conflict with an existing active ride — a
   // scheduled-for-later booking (data.scheduledFor set) is fine to stack on
@@ -701,6 +768,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   if (data.rentalPackageId !== undefined) fareReq.rental_package_id = data.rentalPackageId
   if (originCity           !== null)      fareReq.city_id           = originCity.id
   const fareEstimate = await getFareEstimate(fareReq)
+  const offer = await resolveBookingOffer(userId, data, fareReq, originCity?.id ?? null, fareEstimate)
 
   const rideInput: Parameters<typeof repo.createRide>[0] = {
     userId,
@@ -727,66 +795,65 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     rideInput.scheduledFor = data.scheduledFor
     rideInput.status = 'scheduled'
   }
+  // One transaction: the ride, its stops, the fare snapshot and the offer reservation are all created or none are
+  // (before, a failed snapshot insert left a ride with no fare). Reservation goes last so the shared offer row is
+  // locked for the shortest time.
+  const chargePerStop = fareEstimate.charge_per_stop
+  const client = await pool.connect()
   let ride
   try {
-    ride = await repo.createRide(rideInput)
+    await client.query('BEGIN')
+    ride = await repo.createRide(rideInput, client)
+    if (data.stops && data.stops.length > 0) {
+      // Same rate card the fare above was quoted on, so each stop row and stop_fare agree.
+      await repo.insertRideStops(BigInt(ride.id), data.stops.map(stop => ({ ...stop, chargeApplied: chargePerStop })), client)
+    }
+    await repo.insertFareSnapshot(client, {
+      rideId: ride.id,
+      rateCardId: fareEstimate.rate_card_id,
+      rentalPackageId: data.rentalPackageId ?? null,
+      rideType: data.rideType,
+      isReturnCab: data.isReturnCab ?? false,
+      surgeEventId: fareEstimate.surge_event_id,
+      surgeMultiplier: fareEstimate.surge_multiplier,
+      estimatedKm: data.distanceKm,
+      estimatedMin: data.durationMin,
+      stopCount: fareStopCount,
+      tripHours: effectiveTripHours,
+      baseFare: fareEstimate.breakdown.base_fare,
+      distanceFare: fareEstimate.breakdown.distance_fare,
+      timeFare: fareEstimate.breakdown.time_fare,
+      stopFare: fareEstimate.breakdown.stop_fare,
+      hourSurcharge: fareEstimate.breakdown.hour_surcharge,
+      surgeFare: fareEstimate.breakdown.surge_fare,
+      total: fareEstimate.breakdown.total,
+      pricingVersion: fareEstimate.pricing_version,
+      waitingFare: fareEstimate.breakdown.waiting_fare ?? 0,
+      discountAmount: offer?.discount ?? 0,
+    })
+    if (offer) {
+      const reserved = await reserveRedemption(client, {
+        offerId: BigInt(offer.offerId), versionId: BigInt(offer.versionId), userId, rideId: BigInt(ride.id),
+        discount: offer.discount, cashback: offer.cashback, perUserLimit: offer.perUserLimit,
+      })
+      if (!reserved.ok) {
+        // Lost a race for the last of a budget or a per-user use between the preview and now.
+        throw data.couponCode?.trim()
+          ? offerNotApplicable("This offer isn't available right now", reserved.reason)
+          : priceChanged(fareEstimate.breakdown.total, null, 'OFFER_UNAVAILABLE', 0)
+      }
+    }
+    await client.query('COMMIT')
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined)
     // rides_one_live_per_user_idx: a concurrent double-tap that slipped past the check above.
     if ((err as { code?: string }).code === '23505') {
       throw httpError(409, 'You already have an active ride', 'RIDE_ALREADY_ACTIVE')
     }
     throw err
+  } finally {
+    client.release()
   }
-
-  if (data.stops && data.stops.length > 0) {
-    // Same rate card the fare above was quoted on, so each stop row and stop_fare agree.
-    const chargePerStop = fareEstimate.charge_per_stop
-    await repo.insertRideStops(
-      BigInt(ride.id),
-      data.stops.map(stop => ({ ...stop, chargeApplied: chargePerStop }))
-    )
-  }
-
-  await pool.query(
-    `INSERT INTO fare_snapshots (
-       ride_id, rate_card_id, rental_package_id,
-       ride_type, is_return_cab,
-       surge_event_id, surge_multiplier,
-       estimated_km, estimated_min, stop_count, trip_hours,
-       base_fare, distance_fare, time_fare,
-       stop_fare, hour_surcharge, surge_fare,
-       total_estimated, status,
-       pricing_version, waiting_fare,
-       rental_km_limit, rental_duration_minutes, rental_extra_per_km, rental_extra_per_min
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'estimate',$19,$20,
-       -- pin the package terms quoted now; admins edit packages in place (migration 099)
-       (SELECT km_limit         FROM rental_packages WHERE id = $3),
-       (SELECT duration_minutes FROM rental_packages WHERE id = $3),
-       (SELECT extra_per_km     FROM rental_packages WHERE id = $3),
-       (SELECT extra_per_min    FROM rental_packages WHERE id = $3))`,
-    [
-      ride.id,
-      fareEstimate.rate_card_id,
-      data.rentalPackageId ?? null,
-      data.rideType,
-      data.isReturnCab ?? false,
-      fareEstimate.surge_event_id,
-      fareEstimate.surge_multiplier,
-      data.distanceKm,
-      data.durationMin,
-      fareStopCount,
-      effectiveTripHours,
-      fareEstimate.breakdown.base_fare,
-      fareEstimate.breakdown.distance_fare,
-      fareEstimate.breakdown.time_fare,
-      fareEstimate.breakdown.stop_fare,
-      fareEstimate.breakdown.hour_surcharge,
-      fareEstimate.breakdown.surge_fare,
-      fareEstimate.breakdown.total,
-      fareEstimate.pricing_version,
-      fareEstimate.breakdown.waiting_fare ?? 0,
-    ]
-  )
 
   if (scheduledForDate) {
     await repo.logStatusHistory({
@@ -818,6 +885,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
       scheduledFor:    data.scheduledFor,
       estimatedFare:   fareEstimate.breakdown.total,
       surgeMultiplier: fareEstimate.surge_multiplier,
+      ...bookingPrice(fareEstimate.breakdown.total, offer),
     }
   }
 
@@ -868,6 +936,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     status:          'requested',
     estimatedFare:   fareEstimate.breakdown.total,
     surgeMultiplier: fareEstimate.surge_multiplier,
+    ...bookingPrice(fareEstimate.breakdown.total, offer),
   }
 }
 

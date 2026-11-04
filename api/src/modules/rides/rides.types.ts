@@ -164,6 +164,10 @@ export interface BookingRequest {
   returnAt?: string
   scheduledFor?: string
   paymentChannel?: 'cash' | 'online' | 'wallet'
+  /** A typed offer code. Ignored while offers are off; an invalid one fails the booking (OFFER_NOT_APPLICABLE). */
+  couponCode?: string
+  /** The payable the rider saw. A different server price answers 409 PRICE_CHANGED and books nothing. Auto offers need it. */
+  expectedPayable?: number
   /** Booking on behalf of someone else — omitted/undefined means "myself" */
   riderName?: string
   riderPhone?: string

@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg'
 import { pool } from '@/db/client'
 import { cachedRead } from '@/lib/cache/reference-cache'
 import { logger } from '@/lib/logger'
@@ -346,8 +347,8 @@ export async function createRide(data: {
   paymentChannel?: string
   riderName?: string
   riderPhone?: string
-}) {
-  const res = await pool.query(
+}, client?: PoolClient) {
+  const res = await (client ?? pool).query(
     `INSERT INTO rides (
        user_id, category_id, ride_type, is_return_cab,
        origin, destination,
@@ -383,6 +384,59 @@ export async function createRide(data: {
   return res.rows[0]
 }
 
+export type FareSnapshotInput = {
+  rideId: bigint | string
+  rateCardId: number
+  rentalPackageId: number | null
+  rideType: string
+  isReturnCab: boolean
+  surgeEventId: number | null
+  surgeMultiplier: number
+  estimatedKm: number
+  estimatedMin: number
+  stopCount: number
+  tripHours: number
+  baseFare: number
+  distanceFare: number
+  timeFare: number
+  stopFare: number
+  hourSurcharge: number
+  surgeFare: number
+  total: number
+  pricingVersion: number
+  waitingFare: number
+  /** Rupees a rider offer takes off the gross total; 0 when none. total_* stay gross. */
+  discountAmount: number
+}
+
+/** The estimate snapshot written at booking, on the booking transaction's client. */
+export async function insertFareSnapshot(client: PoolClient, p: FareSnapshotInput): Promise<void> {
+  await client.query(
+    `INSERT INTO fare_snapshots (
+       ride_id, rate_card_id, rental_package_id,
+       ride_type, is_return_cab,
+       surge_event_id, surge_multiplier,
+       estimated_km, estimated_min, stop_count, trip_hours,
+       base_fare, distance_fare, time_fare,
+       stop_fare, hour_surcharge, surge_fare,
+       total_estimated, status,
+       pricing_version, waiting_fare, discount_amount,
+       rental_km_limit, rental_duration_minutes, rental_extra_per_km, rental_extra_per_min
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'estimate',$19,$20,$21,
+       -- pin the package terms quoted now; admins edit packages in place (migration 099)
+       (SELECT km_limit         FROM rental_packages WHERE id = $3),
+       (SELECT duration_minutes FROM rental_packages WHERE id = $3),
+       (SELECT extra_per_km     FROM rental_packages WHERE id = $3),
+       (SELECT extra_per_min    FROM rental_packages WHERE id = $3))`,
+    [
+      p.rideId, p.rateCardId, p.rentalPackageId, p.rideType, p.isReturnCab, p.surgeEventId, p.surgeMultiplier,
+      p.estimatedKm, p.estimatedMin, p.stopCount, p.tripHours,
+      p.baseFare, p.distanceFare, p.timeFare, p.stopFare, p.hourSurcharge, p.surgeFare,
+      p.total, p.pricingVersion, p.waitingFare, p.discountAmount,
+    ]
+  )
+}
+
 // ── Ride stops (waypoints) ────────────────────────────────────
 
 // One INSERT per stop inside a transaction, not a single multi-row VALUES —
@@ -390,12 +444,14 @@ export async function createRide(data: {
 // at MAX_STOPS_PER_RIDE, so the extra round-trips are negligible.
 export async function insertRideStops(
   rideId: bigint,
-  stops: Array<StopInput & { chargeApplied: number }>
+  stops: Array<StopInput & { chargeApplied: number }>,
+  shared?: PoolClient
 ): Promise<RideStop[]> {
   if (stops.length === 0) return []
-  const client = await pool.connect()
+  // With a shared client the caller owns the transaction (booking is one transaction); otherwise open our own.
+  const client = shared ?? await pool.connect()
   try {
-    await client.query('BEGIN')
+    if (!shared) await client.query('BEGIN')
     const rows: RideStop[] = []
     for (let i = 0; i < stops.length; i++) {
       const stop = stops[i]!
@@ -413,13 +469,13 @@ export async function insertRideStops(
       )
       rows.push(res.rows[0]!)
     }
-    await client.query('COMMIT')
+    if (!shared) await client.query('COMMIT')
     return rows
   } catch (err) {
-    await client.query('ROLLBACK')
+    if (!shared) await client.query('ROLLBACK')
     throw err
   } finally {
-    client.release()
+    if (!shared) client.release()
   }
 }
 
