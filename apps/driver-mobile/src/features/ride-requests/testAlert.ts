@@ -3,8 +3,7 @@ import * as Speech from 'expo-speech'
 import rideAlertSoundAsset from '../../../assets/sounds/ride-request.wav'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
-import { buildAnnouncement } from './buildAnnouncement'
-import { SPEECH_LOCALE } from './useRideAlertSound'
+import { buildAnnouncement, SPEECH_LOCALE } from './buildAnnouncement'
 import type { RideRequestPayload } from './types'
 
 const SAMPLE: RideRequestPayload = {
@@ -14,6 +13,11 @@ const SAMPLE: RideRequestPayload = {
 }
 
 let running: { stop: () => void } | null = null
+
+/** Ends a running Settings test (a real ride request has arrived). */
+export function stopTestAlert(): void {
+  running?.stop()
+}
 
 /** Plays the ring for a moment and reads a sample request, so a driver can check the volume and the voice from Settings. */
 export async function playTestAlert(): Promise<void> {

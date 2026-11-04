@@ -8,6 +8,9 @@ const MAX_ADDRESS_CHARS = 50 // a spoken address longer than this eats the accep
 
 export type AnnouncementLang = 'en' | 'hi'
 
+/** The language tag handed to the system voice. Falls back to the phone's default voice when the language is not installed. */
+export const SPEECH_LOCALE = { en: 'en-IN', hi: 'hi-IN' } as const
+
 /** Locality-level part of an address: drops house/plot numbers, PIN codes, "Unnamed Road", country; at most two parts. */
 export function shortenAddress(address: string): string {
   const parts = address
@@ -80,5 +83,5 @@ export function buildAnnouncement(p: RideRequestPayload, lang: AnnouncementLang 
   }
   const pay = payment(p.paymentChannel, lang)
   if (pay) sentences.push(pay)
-  return sentences.join(' ').replace(/\.\./g, '.').replace(/\s+/g, ' ').trim()
+  return sentences.join(' ').replace(/\s+/g, ' ').trim()
 }

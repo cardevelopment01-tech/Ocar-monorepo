@@ -165,3 +165,22 @@ describe('sendRideRequestGonePush — silence the ring on drivers who were pushe
     await expect(sendRideRequestGonePush('402', ['1', '2'], 'cancelled')).resolves.toBeUndefined()
   })
 })
+
+describe('race between the ring and its cancellation', () => {
+  beforeEach(() => { vi.clearAllMocks(); store.clear() })
+
+  it('a request that ended before its push went out is never rung', async () => {
+    const sendSpy = vi.spyOn(pushProvider, 'sendPush').mockResolvedValue({ invalidTokens: [], successCount: 1, failureCount: 0, transientFailure: false })
+    vi.mocked(getDriverTokensByRideAlert).mockResolvedValue({ v3: ['new-device'], legacy: [] })
+    await sendRideRequestGonePush('501', ['55'], 'accepted') // runs first: nothing sent yet
+    expect(sendSpy).not.toHaveBeenCalled()
+    await sendRideRequestPushOnce('501', '55', 'A', 'B', 20, details)
+    expect(sendSpy).not.toHaveBeenCalled()
+    sendSpy.mockRestore()
+  })
+
+  it('distance text never says 0 m or 1000 m', () => {
+    expect(rideRequestPushText('A', 'B', { ...details, distanceToPickup: 2 }).body).toContain('10 m away')
+    expect(rideRequestPushText('A', 'B', { ...details, distanceToPickup: 998 }).body).toContain('1.0 km away')
+  })
+})

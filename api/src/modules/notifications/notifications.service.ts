@@ -6,7 +6,7 @@ import type { NotifOwnerType } from './notifications.repository'
 import { renderTemplate } from './templates.service'
 import { logger } from '@/lib/logger'
 import { client as redis } from '@/db/redis'
-import { ridePushSentKey, rideEventPushKey } from '@/constants/redis-keys'
+import { ridePushSentKey, rideGoneKey, rideEventPushKey } from '@/constants/redis-keys'
 
 const log = logger.child({ module: 'notifications-service' })
 
@@ -52,7 +52,8 @@ const RIDE_TYPE_LABEL: Record<string, string> = { one_way: 'One way', round_trip
 /** Title and body for a ride-request push: what a driver needs to decide at a glance, with no tap. */
 export function rideRequestPushText(pickup: string, drop: string, d: RideRequestPushDetails): { title: string; body: string } {
   const type = d.isReturnCab ? 'Return cab' : (RIDE_TYPE_LABEL[d.rideType] ?? 'Ride')
-  const away = d.distanceToPickup < 1000 ? `${Math.round(d.distanceToPickup / 10) * 10} m` : `${(d.distanceToPickup / 1000).toFixed(1)} km`
+  const rounded = Math.max(10, Math.round(d.distanceToPickup / 10) * 10) // same floor as the spoken text
+  const away = rounded < 1000 ? `${rounded} m` : `${(rounded / 1000).toFixed(1)} km`
   const fare = d.estimatedFare > 0 ? ` · ₹${Math.round(d.estimatedFare)}` : ''
   return { title: `New ride request${fare}`, body: `${type} · ${away} away
 ${pickup} → ${drop}` }
@@ -74,7 +75,10 @@ const GONE_TEXT: Record<RideRequestGoneReason, string> = {
 export async function sendRideRequestGonePush(rideId: string, driverIds: string[], reason: RideRequestGoneReason): Promise<void> {
   await Promise.all(driverIds.map(async (driverId) => {
     try {
-      if (!(await redis.exists(ridePushSentKey(rideId, driverId)))) return // never pushed: nothing is ringing
+      // Mark the request gone FIRST, then look for the ring push (which marks itself sent FIRST, then looks for this mark):
+      // whichever side runs second sees the other, so a ring can never go out after, or be missed by, its own cancellation.
+      await redis.set(rideGoneKey(rideId, driverId), '1', 'EX', 120)
+      if (!(await redis.exists(ridePushSentKey(rideId, driverId)))) return // never pushed (and now never will be)
       const { v3 } = await repo.getDriverTokensByRideAlert(BigInt(driverId))
       await pushToTokens(v3, {
         title: 'Ride request ended',
@@ -106,6 +110,7 @@ export async function sendRideRequestPushOnce(
   if (firstFire !== 'OK') return
 
   try {
+    if (await redis.exists(rideGoneKey(rideId, driverId))) return // the request ended before we got to send it
     const base = { tag: `ride-${rideId}`, ttlSeconds: Math.min(windowSeconds, 30) }
     // Builds that have the loud channel get the long alarm-stream ring and the full details; older builds keep the
     // channel they have (naming a channel the app lacks would land the push in Android's quiet fallback).

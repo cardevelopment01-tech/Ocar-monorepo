@@ -4,7 +4,8 @@ import { setAudioModeAsync, useAudioPlayer, type AudioPlayer } from 'expo-audio'
 import * as Speech from 'expo-speech'
 import rideAlertSoundAsset from '../../../assets/sounds/ride-request.wav'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
-import { buildAnnouncement } from './buildAnnouncement'
+import { buildAnnouncement, SPEECH_LOCALE } from './buildAnnouncement'
+import { stopTestAlert } from './testAlert'
 import type { RideRequestPayload } from './types'
 
 function safePause(player: AudioPlayer) {
@@ -42,9 +43,6 @@ function ensureAudioMode() {
   setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers', shouldPlayInBackground: false }).catch(() => {})
 }
 
-/** The language tag handed to the system voice. Falls back to the phone's default voice when the language is not installed. */
-export const SPEECH_LOCALE = { en: 'en-IN', hi: 'hi-IN' } as const
-
 /** Plays a repeating alert tone + vibration while `active` is true, and reads `request` aloud once after the first ring
  *  (when the driver has voice on). Stops immediately when `active` flips to false. */
 export function useRideAlertSound(active: boolean, request?: RideRequestPayload | null): void {
@@ -65,6 +63,7 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
       Vibration.cancel()
       return
     }
+    stopTestAlert() // a real request always wins over the Settings test
     let cancelled = false
     let spoke = false
     let timer: ReturnType<typeof setTimeout> | undefined
