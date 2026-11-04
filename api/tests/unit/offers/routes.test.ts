@@ -13,7 +13,8 @@ vi.mock('@/middleware/rateLimit.middleware', () => ({
   offersPreviewLimiter: (_q: unknown, _r: unknown, n: () => void) => n(),
   offersCodeGuessLimiters: [(_q: unknown, _r: unknown, n: () => void) => n()],
 }))
-const m = vi.hoisted(() => ({ preview: vi.fn(), active: vi.fn(), usage: vi.fn(), granted: vi.fn() }))
+const m = vi.hoisted(() => ({ preview: vi.fn(), active: vi.fn(), usage: vi.fn(), granted: vi.fn(), cfg: vi.fn() }))
+vi.mock('@/lib/system-config', () => ({ getConfigValue: m.cfg }))
 vi.mock('@/modules/offers/offers.service', () => ({ previewOffers: m.preview }))
 vi.mock('@/modules/offers/offers.repository', () => ({ findActiveOffers: m.active, getUserUsage: m.usage, listGrantedOfferIds: m.granted }))
 
@@ -37,6 +38,7 @@ beforeEach(() => {
   m.preview.mockResolvedValue({ fareTotal: 454, discount: 45, cashback: 0, payable: 409, applied: null, alternatives: [], rejected: [] })
   m.usage.mockResolvedValue(new Map())
   m.granted.mockResolvedValue([])
+  m.cfg.mockResolvedValue('true')
 })
 
 describe('POST /offers/preview', () => {
@@ -79,5 +81,14 @@ describe('GET /offers', () => {
     m.active.mockResolvedValue([record(1n, 'auto')])
     const res = await request(app).get('/offers')
     expect(res.body.offers[0].summary).toBe('10% off')
+  })
+})
+
+describe('GET /offers while offers are off', () => {
+  it('lists nothing and reads no offers', async () => {
+    m.cfg.mockResolvedValue('false')
+    const res = await request(app).get('/offers')
+    expect(res.body).toEqual({ offers: [] })
+    expect(m.active).not.toHaveBeenCalled()
   })
 })

@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express'
 import { z } from 'zod'
+import { getConfigValue } from '@/lib/system-config'
 import { findActiveOffers, getUserUsage, listGrantedOfferIds } from './offers.repository'
 import { parseOrThrow } from './admin-offers.service'
 import { previewOffers, type PreviewInput } from './offers.service'
@@ -37,6 +38,8 @@ export const preview: RequestHandler = async (req, res, next) => {
 /** Offers worth showing a rider: active automatic offers and anything granted to them. Code offers never appear here. */
 export const list: RequestHandler = async (req, res, next) => {
   try {
+    // The master switch: nothing is listed, previewed or applied while offers are off.
+    if ((await getConfigValue('offers_enabled', 'false')) !== 'true') { res.json({ offers: [] }); return }
     const userId = req.user!.id
     const [active, granted] = await Promise.all([findActiveOffers(), listGrantedOfferIds(userId)])
     const grantedSet = new Set(granted.map(String))
