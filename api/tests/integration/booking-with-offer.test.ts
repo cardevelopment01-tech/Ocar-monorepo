@@ -56,7 +56,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // usage rows reference the users the cleanup below deletes
-  await pool.query(`DELETE FROM offer_user_usage WHERE offer_id = ANY($1::bigint[])`, [offerIds.map(String)])
+  const phones = Object.values(PHONES)
+  await pool.query(`DELETE FROM offer_redemptions WHERE user_id IN (SELECT id FROM users WHERE phone = ANY($1))`, [phones])
+  await pool.query(`DELETE FROM offer_user_usage WHERE user_id IN (SELECT id FROM users WHERE phone = ANY($1))`, [phones])
   await cleanupRideAndDriverData(pool, Object.values(PHONES))
   await pool.query(`UPDATE offers SET current_version_id = NULL WHERE id = ANY($1::bigint[])`, [offerIds.map(String)])
   await pool.query(`DELETE FROM offer_versions WHERE offer_id = ANY($1::bigint[])`, [offerIds.map(String)])
