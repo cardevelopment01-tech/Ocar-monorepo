@@ -19,6 +19,11 @@ import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import PickupTimeChip from '@/components/ui/PickupTimeChip'
 import RedirectToast from '@/components/ui/RedirectToast'
 import { getApiErrorMessage } from '@ocar/shared'
+import { previewOffer } from '@/lib/offers-api'
+import {
+  bookAmount, bookingOfferFields, couponLineState, formatRupees, parseOfferNotApplicable, parsePriceChanged, priceChangedMessage,
+  type OfferChoice, type OfferPreview,
+} from '@/lib/offers-model'
 
 const SelectRideMapScene = dynamic(() => import('@/components/map/SelectRideMapScene'), { ssr: false })
 
@@ -293,6 +298,38 @@ function SelectRideContent() {
     return () => { cancelled = true }
   }, [fromRoundTripPage, rideType, selected, effectiveDistanceKm, effectiveDurationMin, originCityId, tripHours])
 
+  // Offers: one preview per selected fare. The server decides; the page only shows it.
+  const [typedCode, setTypedCode] = useState('')
+  const [codeDraft, setCodeDraft] = useState('')
+  const [codeOpen, setCodeOpen] = useState(false)
+  const [offerChoice, setOfferChoice] = useState<OfferChoice>({ kind: 'best' })
+  const [offerPreview, setOfferPreview] = useState<OfferPreview | null>(null)
+  const [offerStatus, setOfferStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [priceNote, setPriceNote] = useState<string | null>(null)
+  const offerKey = `${selected}|${rideType}|${effectiveDistanceKm}|${effectiveDurationMin}|${tripHours ?? ''}|${stops.length}|${isReturnCab}|${scheduledFor?.toISOString() ?? ''}|${typedCode}|${offerChoice.kind}`
+  useEffect(() => {
+    if (loading || !estimates[selected]) return
+    const ctl = new AbortController()
+    setOfferStatus('loading')
+    const t = setTimeout(() => {
+      const req: Parameters<typeof previewOffer>[0] = {
+        categoryId: selected, rideType, distanceKm: effectiveDistanceKm, durationMin: effectiveDurationMin,
+        originLat, originLng, stopCount: stops.length, isReturnCab,
+      }
+      if (destinationLat !== undefined) req.destinationLat = destinationLat
+      if (destinationLng !== undefined) req.destinationLng = destinationLng
+      if (tripHours !== undefined) req.tripHours = tripHours
+      if (scheduledFor) req.scheduledFor = scheduledFor.toISOString()
+      if (typedCode) req.code = typedCode
+      if (offerChoice.kind === 'none') req.autoOffer = 'none'
+      previewOffer(req, ctl.signal)
+        .then(p => { setOfferPreview(p); setOfferStatus('ready') })
+        .catch(() => { if (!ctl.signal.aborted) { setOfferPreview(null); setOfferStatus('error') } })
+    }, 300)
+    return () => { clearTimeout(t); ctl.abort() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offerKey, loading, estimates])
+
   const handleBook = async () => {
     setIsBooking(true)
     setBookError(null)
@@ -311,10 +348,25 @@ function SelectRideContent() {
       if (stops.length > 0) bookingParams.stops = stops
       if (riderName)  bookingParams.riderName  = riderName
       if (riderPhone) bookingParams.riderPhone = riderPhone
+      Object.assign(bookingParams, bookingOfferFields({ preview: offerPreview, typedCode, choice: offerChoice }))
+      setPriceNote(null)
       const result = await rideApi.createBooking(bookingParams)
       router.push(scheduledFor ? '/history?scheduled=1' : `/ride/${result.rideId}`)
     } catch (err) {
-      setBookError(getApiErrorMessage(err, 'Booking failed. Please try again.'))
+      // Never re-book on our own: show the new price and let the rider confirm it by tapping Book again.
+      const changed = parsePriceChanged(err)
+      const notApplicable = parseOfferNotApplicable(err)
+      if (changed) {
+        setPriceNote(priceChangedMessage(changed, offerPreview?.payable ?? null, typedCode || null))
+        setOfferPreview(p => (p ? { ...p, fareTotal: changed.fareTotal, discount: changed.discount, payable: changed.payable, applied: changed.appliedOffer } : p))
+      } else if (notApplicable) {
+        setBookError(notApplicable.message)
+        setTypedCode('')
+        setCodeDraft('')
+        setOfferStatus('idle')
+      } else {
+        setBookError(getApiErrorMessage(err, 'Booking failed. Please try again.'))
+      }
     } finally {
       setIsBooking(false)
     }
@@ -322,6 +374,8 @@ function SelectRideContent() {
 
   const activeEst       = isReturnCab ? returnCabEstimates[selected] : estimates[selected]
   const selectedFare    = activeEst?.breakdown.total
+  const payAmount       = bookAmount(selectedFare ?? null, offerPreview)
+  const coupon          = couponLineState({ status: offerStatus, preview: offerPreview, typedCode, fullPrice: selectedFare ?? null })
   const selectedCat     = categories.find(c => c.id === selected)!
   // Driver-availability gating is meaningless for a scheduled ride, dispatch
   // (and therefore driver search) doesn't happen until the buffer window later.
@@ -865,6 +919,39 @@ function SelectRideContent() {
             </button>
           </div>
           {paymentNote && <p className="text-slate-500 text-xs text-center mb-2">{paymentNote}</p>}
+          {coupon.kind !== 'off' && (
+            <div className="mb-2 px-1 text-sm" aria-live="polite">
+              {coupon.kind === 'applied' ? (
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold" style={{ color: '#047857' }}>
+                    {coupon.offer.code ?? coupon.offer.name} applied · saves {formatRupees(coupon.offer.discount)}
+                  </span>
+                  <button
+                    className="text-xs font-bold text-violet-600 min-h-[44px] px-2"
+                    onClick={() => { if (typedCode) { setTypedCode(''); setCodeDraft('') } else setOfferChoice({ kind: 'none' }) }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : coupon.kind === 'loading' ? (
+                <span className="text-slate-500">Checking offers…</span>
+              ) : coupon.kind === 'error' ? (
+                <span className="text-slate-500">Couldn&apos;t check the offer. You can still book at {formatRupees(coupon.fullPrice)}</span>
+              ) : codeOpen || coupon.kind === 'rejected' ? (
+                <form className="flex items-center gap-2" onSubmit={e => { e.preventDefault(); setTypedCode(codeDraft.trim().toUpperCase()) }}>
+                  <input
+                    value={codeDraft} onChange={e => setCodeDraft(e.target.value)} placeholder="Enter code" aria-label="Coupon code"
+                    className="flex-1 min-h-[44px] rounded-xl border border-slate-200 px-3 uppercase" autoCapitalize="characters"
+                  />
+                  <button type="submit" className="text-xs font-bold text-violet-600 min-h-[44px] px-2">Apply</button>
+                </form>
+              ) : (
+                <button className="text-xs font-bold text-violet-600 min-h-[44px]" onClick={() => setCodeOpen(true)}>Have a code?</button>
+              )}
+              {coupon.kind === 'rejected' && <p className="text-red-600 text-xs mt-1">{coupon.message}</p>}
+            </div>
+          )}
+          {priceNote && <p role="status" className="text-amber-700 text-sm text-center mb-2">{priceNote}</p>}
           {bookError && <p className="text-red-500 text-sm text-center mb-2">{bookError}</p>}
           <button
             onClick={handleBook}
@@ -884,8 +971,8 @@ function SelectRideContent() {
               : roundTripMissingHours
               ? 'Select duration first'
               : scheduledFor
-              ? `Schedule ${selectedCat?.display_name ?? ''} · ${selectedFare != null ? `₹${Math.round(selectedFare)}` : '—'}`
-              : `Book ${selectedCat?.display_name ?? ''} · ${selectedFare != null ? `₹${Math.round(selectedFare)}` : '—'}`
+              ? `Schedule ${selectedCat?.display_name ?? ''} · ${payAmount != null ? `₹${Math.round(payAmount)}` : '—'}`
+              : `Book ${selectedCat?.display_name ?? ''} · ${payAmount != null ? `₹${Math.round(payAmount)}` : '—'}`
             }
           </button>
         </div>
