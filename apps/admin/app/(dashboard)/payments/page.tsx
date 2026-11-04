@@ -6,6 +6,7 @@ import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import { adminPaymentApi, type AdminPaymentItem } from '@/lib/admin-api'
+import { grossOf, rupees } from '@/lib/payment-amounts'
 import { formatTotal, hasNextPage, CAPPED_TOTAL_HINT } from '@/lib/format-total'
 import { cn } from '@/lib/utils'
 
@@ -37,6 +38,7 @@ const CHANNEL_LABELS: Record<string, { label: string; cls: string }> = {
 }
 
 const LIMIT = 20
+
 
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<AdminPaymentItem[]>([])
@@ -108,8 +110,16 @@ export default function PaymentsPage() {
       },
     },
     {
-      key: 'amount', header: 'Amount',
-      render: (p: AdminPaymentItem) => <span className="font-bold text-text-primary">₹{parseFloat(p.amount).toLocaleString('en-IN')}</span>,
+      key: 'gross', header: 'Gross fare',
+      render: (p: AdminPaymentItem) => <span className="text-text-secondary">{rupees(grossOf(p))}</span>,
+    },
+    {
+      key: 'discount_amount', header: 'Discount',
+      render: (p: AdminPaymentItem) => <span className={parseFloat(p.discount_amount ?? '0') > 0 ? 'font-semibold text-success' : 'text-text-muted'}>{rupees(parseFloat(p.discount_amount ?? '0'))}</span>,
+    },
+    {
+      key: 'amount', header: 'Paid',
+      render: (p: AdminPaymentItem) => <span className="font-bold text-text-primary">{rupees(parseFloat(p.amount))}</span>,
     },
     {
       key: 'commission_amount', header: 'Commission',
@@ -156,7 +166,7 @@ export default function PaymentsPage() {
           />
         </div>
         {loading
-          ? <table className="w-full"><tbody><SkeletonRows cols={10} /></tbody></table>
+          ? <table className="w-full"><tbody><SkeletonRows cols={12} /></tbody></table>
           : (
             <DataTable
               columns={columns as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}

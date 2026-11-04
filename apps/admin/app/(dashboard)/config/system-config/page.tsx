@@ -47,6 +47,7 @@ export default function SystemConfigPage() {
   const [query, setQuery] = useState('')
   const [reviewOpen, setReviewOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [warnings, setWarnings] = useState<string[]>([])
   const [legacyOpen, setLegacyOpen] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -113,9 +114,10 @@ export default function SystemConfigPage() {
   }, [reduce])
 
   const handleConfirm = async () => {
-    const { saved } = await ed.save()
+    const { saved, warnings: warned } = await ed.save()
     setReviewOpen(false)
     if (saved > 0) setToast(`${saved} ${saved === 1 ? 'setting' : 'settings'} updated`)
+    setWarnings(warned)
   }
 
   const activeRail = activeId ?? railItems[0]?.id ?? null
@@ -123,6 +125,12 @@ export default function SystemConfigPage() {
   return (
     <div className="mx-auto max-w-[1120px] pb-6">
       <SuccessToast message={toast} onDismiss={() => setToast(null)} />
+      {warnings.length > 0 && (
+        <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-warning/30 bg-warning-light p-4 text-sm text-text-primary">
+          <ul className="space-y-1">{warnings.map(w => <li key={w}>{w}</li>)}</ul>
+          <button type="button" onClick={() => setWarnings([])} className="min-h-[44px] px-2 text-xs font-semibold text-primary hover:underline">Dismiss</button>
+        </div>
+      )}
 
       {/* Toolbar: search + one honest line about what saving does. Floats over the scroll (glass = floating chrome). */}
       <div className="sticky top-0 z-20 -mx-6 -mt-6 mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 bg-canvas/90 px-6 pb-4 pt-6 backdrop-blur-md">
