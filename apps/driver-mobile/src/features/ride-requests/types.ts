@@ -25,6 +25,8 @@ export type RideRequestPayload = {
   tripMin?: number
   // a rental's included distance (its package km limit)
   kmLimit?: number
+  // a rider offer lowered the fare: estimatedFare is already what the driver earns
+  riderOffer?: boolean
 }
 
 export type PendingRideRequest = RideRequestPayload & {

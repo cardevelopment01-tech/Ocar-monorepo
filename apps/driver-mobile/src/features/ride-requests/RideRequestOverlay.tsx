@@ -337,11 +337,11 @@ export function RideRequestOverlay() {
                   <GlassChip icon={isRental ? 'clock' : isReturn ? 'corner-up-left' : 'arrow-right'} label={typeLabel} />
                   {stopCount > 0 ? <GlassChip label={stopCount === 1 ? '1 stop' : `${stopCount} stops`} /> : null}
                 </View>
-                <View style={styles.fareRow} accessible accessibilityLabel={`Estimated fare ${Math.round(pending.estimatedFare)} rupees${payLabel ? `, ${payLabel}` : ''}`}>
+                <View style={styles.fareRow} accessible accessibilityLabel={`Estimated fare ${Math.round(pending.estimatedFare)} rupees${pending.riderOffer ? ', rider offer applied' : ''}${payLabel ? `, ${payLabel}` : ''}`}>
                   <Text style={styles.fare} maxFontSizeMultiplier={1.15}>₹{Math.round(pending.estimatedFare).toLocaleString('en-IN')}</Text>
                   {payLabel ? <Text style={styles.pay}>{payLabel}</Text> : null}
                 </View>
-                <Text style={styles.fareNote}>Estimated fare</Text>
+                <Text style={styles.fareNote}>{pending.riderOffer ? 'Estimated fare · Rider offer applied' : 'Estimated fare'}</Text>
               </Animated.View>
             </LinearGradient>
 
