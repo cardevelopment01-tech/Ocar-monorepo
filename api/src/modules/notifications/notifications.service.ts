@@ -36,12 +36,35 @@ export async function pushToTokens(tokens: string[], msg: PushMessage): Promise<
 // double-send. Shared by broadcast.processor.ts (immediate push for a
 // backgrounded match) and ack-check.processor.ts (fallback push for a driver
 // whose live socket emit never got acked).
+export interface RideRequestPushDetails {
+  rideType: string
+  isReturnCab?: boolean
+  estimatedFare: number
+  /** metres */
+  distanceToPickup: number
+  paymentChannel?: string
+  tripKm?: number
+  tripMin?: number
+}
+
+const RIDE_TYPE_LABEL: Record<string, string> = { one_way: 'One way', round_trip: 'Round trip', rental: 'Rental' }
+
+/** Title and body for a ride-request push: what a driver needs to decide at a glance, with no tap. */
+export function rideRequestPushText(pickup: string, drop: string, d: RideRequestPushDetails): { title: string; body: string } {
+  const type = d.isReturnCab ? 'Return cab' : (RIDE_TYPE_LABEL[d.rideType] ?? 'Ride')
+  const away = d.distanceToPickup < 1000 ? `${Math.round(d.distanceToPickup / 10) * 10} m` : `${(d.distanceToPickup / 1000).toFixed(1)} km`
+  const fare = d.estimatedFare > 0 ? ` · ₹${Math.round(d.estimatedFare)}` : ''
+  return { title: `New ride request${fare}`, body: `${type} · ${away} away
+${pickup} → ${drop}` }
+}
+
 export async function sendRideRequestPushOnce(
   rideId: string,
   driverId: string,
   pickup: string,
   drop: string,
-  windowSeconds: number
+  windowSeconds: number,
+  details?: RideRequestPushDetails
 ): Promise<void> {
   const firstFire = await redis.set(
     ridePushSentKey(rideId, driverId), '1',
@@ -50,15 +73,38 @@ export async function sendRideRequestPushOnce(
   if (firstFire !== 'OK') return
 
   try {
-    const tokens = await repo.getTokensForOwner('driver', BigInt(driverId))
-    await pushToTokens(tokens, {
+    const base = { tag: `ride-${rideId}`, ttlSeconds: Math.min(windowSeconds, 30) }
+    // Builds that have the loud channel get the long alarm-stream ring and the full details; older builds keep the
+    // channel they have (naming a channel the app lacks would land the push in Android's quiet fallback).
+    const { v3, legacy } = await repo.getDriverTokensByRideAlert(BigInt(driverId))
+    await pushToTokens(legacy, {
+      ...base,
       title: 'New ride request',
       body: `${pickup} → ${drop}`,
-      tag: `ride-${rideId}`,
-      ttlSeconds: Math.min(windowSeconds, 30),
       data: { type: 'ride_request', rideId },
       channelId: 'ride_requests_v2',
     })
+    if (v3.length > 0) {
+      const text = details ? rideRequestPushText(pickup, drop, details) : { title: 'New ride request', body: `${pickup} → ${drop}` }
+      const data: Record<string, string> = { type: 'ride_request', rideId, pickup, drop }
+      if (details) {
+        data['rideType'] = details.rideType
+        data['estimatedFare'] = String(Math.round(details.estimatedFare))
+        data['distanceToPickup'] = String(Math.round(details.distanceToPickup))
+        data['isReturnCab'] = details.isReturnCab ? 'true' : 'false'
+        if (details.paymentChannel) data['paymentChannel'] = details.paymentChannel
+        if (details.tripKm !== undefined) data['tripKm'] = String(details.tripKm)
+        if (details.tripMin !== undefined) data['tripMin'] = String(details.tripMin)
+      }
+      await pushToTokens(v3, {
+        ...base,
+        ...text,
+        data,
+        channelId: 'ride_requests_v3',
+        sound: { android: 'ride_request_long', ios: 'ride_request_long.wav' },
+        timeSensitive: true,
+      })
+    }
   } catch (err) {
     log.error({ err }, 'sendRideRequestPushOnce failed')
   }

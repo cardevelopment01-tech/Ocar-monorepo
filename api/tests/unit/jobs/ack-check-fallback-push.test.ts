@@ -53,7 +53,8 @@ describe('processAckCheck — fallback push delegation', () => {
     await processAckCheck(baseData)
 
     expect(sendRideRequestPushOnce).toHaveBeenCalledWith(
-      baseData.rideId, baseData.driverId, baseData.pickup, baseData.drop, expect.any(Number)
+      baseData.rideId, baseData.driverId, baseData.pickup, baseData.drop, expect.any(Number),
+      expect.objectContaining({ rideType: baseData.rideType, estimatedFare: baseData.estimatedFare })
     )
   })
 })

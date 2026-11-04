@@ -26,6 +26,7 @@ vi.mock('@/config', () => ({
 }))
 vi.mock('@/modules/notifications/notifications.repository', () => ({
   getTokensForOwner: vi.fn().mockResolvedValue(['device-token-1']),
+  getDriverTokensByRideAlert: vi.fn().mockResolvedValue({ v3: [], legacy: ['device-token-1'] }),
   deleteDeviceTokens: vi.fn(),
   createInAppNotification: vi.fn(),
   logNotification: vi.fn(),
@@ -40,37 +41,86 @@ vi.mock('@/modules/notifications/notifications.repository', () => ({
 }))
 vi.mock('@/websocket/socket.server', () => ({ socketEvents: { sendNotification: vi.fn() } }))
 
-import { getTokensForOwner } from '@/modules/notifications/notifications.repository'
-import { sendRideRequestPushOnce } from '@/modules/notifications/notifications.service'
+import { getDriverTokensByRideAlert } from '@/modules/notifications/notifications.repository'
+import { sendRideRequestPushOnce, rideRequestPushText } from '@/modules/notifications/notifications.service'
+import * as pushProvider from '@/modules/notifications/providers/push.provider'
 
 describe('sendRideRequestPushOnce — one-shot per ride+driver', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     store.clear()
-    vi.mocked(getTokensForOwner).mockResolvedValue(['device-token-1'])
+    vi.mocked(getDriverTokensByRideAlert).mockResolvedValue({ v3: [], legacy: ['device-token-1'] })
   })
 
   it('sends a tagged push the first time it is called for a ride+driver', async () => {
     await sendRideRequestPushOnce('101', '55', 'Bhubaneswar Station', 'Cuttack Bus Stand', 20)
 
-    expect(getTokensForOwner).toHaveBeenCalledWith('driver', 55n)
+    expect(getDriverTokensByRideAlert).toHaveBeenCalledWith(55n)
   })
 
   it('does not send again on a second call for the same ride+driver', async () => {
     await sendRideRequestPushOnce('101', '55', 'Bhubaneswar Station', 'Cuttack Bus Stand', 20)
-    vi.mocked(getTokensForOwner).mockClear()
+    vi.mocked(getDriverTokensByRideAlert).mockClear()
 
     await sendRideRequestPushOnce('101', '55', 'Bhubaneswar Station', 'Cuttack Bus Stand', 20)
 
-    expect(getTokensForOwner).not.toHaveBeenCalled()
+    expect(getDriverTokensByRideAlert).not.toHaveBeenCalled()
   })
 
   it('sends independently for a different driver on the same ride', async () => {
     await sendRideRequestPushOnce('101', '55', 'Bhubaneswar Station', 'Cuttack Bus Stand', 20)
-    vi.mocked(getTokensForOwner).mockClear()
+    vi.mocked(getDriverTokensByRideAlert).mockClear()
 
     await sendRideRequestPushOnce('101', '56', 'Bhubaneswar Station', 'Cuttack Bus Stand', 20)
 
-    expect(getTokensForOwner).toHaveBeenCalledWith('driver', 56n)
+    expect(getDriverTokensByRideAlert).toHaveBeenCalledWith(56n)
+  })
+})
+
+const details = { rideType: 'one_way', estimatedFare: 449.6, distanceToPickup: 1240, paymentChannel: 'cash', tripKm: 28 }
+
+describe('sendRideRequestPushOnce — loud channel per device', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    store.clear()
+  })
+
+  it('an older build keeps the v2 channel and the plain text; a new build gets v3, the long ring and the details', async () => {
+    const sendSpy = vi.spyOn(pushProvider, 'sendPush').mockResolvedValue({ invalidTokens: [], successCount: 1, failureCount: 0, transientFailure: false })
+    vi.mocked(getDriverTokensByRideAlert).mockResolvedValue({ v3: ['new-device'], legacy: ['old-device'] })
+
+    await sendRideRequestPushOnce('201', '55', 'Saheed Nagar', 'Cuttack', 20, details)
+
+    const calls = sendSpy.mock.calls
+    const legacy = calls.find(([tokens]) => tokens.includes('old-device'))!
+    const loud = calls.find(([tokens]) => tokens.includes('new-device'))!
+    expect(legacy[1]).toMatchObject({ channelId: 'ride_requests_v2', title: 'New ride request' })
+    expect(legacy[1].sound).toBeUndefined()
+    expect(loud[1]).toMatchObject({
+      channelId: 'ride_requests_v3',
+      timeSensitive: true,
+      sound: { android: 'ride_request_long', ios: 'ride_request_long.wav' },
+      title: 'New ride request · ₹450',
+      data: { type: 'ride_request', rideId: '201', rideType: 'one_way', estimatedFare: '450', distanceToPickup: '1240', tripKm: '28', paymentChannel: 'cash' },
+    })
+    sendSpy.mockRestore()
+  })
+
+  it('sends nothing to a group with no devices', async () => {
+    const sendSpy = vi.spyOn(pushProvider, 'sendPush').mockResolvedValue({ invalidTokens: [], successCount: 0, failureCount: 0, transientFailure: false })
+    vi.mocked(getDriverTokensByRideAlert).mockResolvedValue({ v3: [], legacy: ['old-device'] })
+    await sendRideRequestPushOnce('202', '55', 'A', 'B', 20, details)
+    expect(sendSpy).toHaveBeenCalledTimes(1)
+    sendSpy.mockRestore()
+  })
+})
+
+describe('rideRequestPushText', () => {
+  it('shows type, distance, fare and the route at a glance', () => {
+    expect(rideRequestPushText('Saheed Nagar', 'Cuttack', details)).toEqual({ title: 'New ride request · ₹450', body: 'One way · 1.2 km away\nSaheed Nagar → Cuttack' })
+  })
+  it('metres under a kilometre, return cab and rental labels, no fare when unknown', () => {
+    expect(rideRequestPushText('A', 'B', { ...details, distanceToPickup: 480, isReturnCab: true, estimatedFare: 0 })).toEqual({ title: 'New ride request', body: 'Return cab · 480 m away\nA → B' })
+    expect(rideRequestPushText('A', 'B', { ...details, rideType: 'rental' }).body.startsWith('Rental')).toBe(true)
   })
 })

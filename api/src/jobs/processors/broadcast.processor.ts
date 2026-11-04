@@ -5,7 +5,7 @@ import { rideAckKey } from '@/constants/redis-keys'
 import { client as redis } from '@/db/redis'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
 import { getMinWalletBalance } from '@/modules/payments/payments.service'
-import { sendRideRequestPushOnce, notifyRideEvent } from '@/modules/notifications/notifications.service'
+import { sendRideRequestPushOnce, notifyRideEvent, type RideRequestPushDetails } from '@/modules/notifications/notifications.service'
 import type { AckCheckJobData } from './ack-check.processor'
 import { logger } from '@/lib/logger'
 
@@ -220,7 +220,16 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     // ack-check's 4s-later fallback, push immediately. Guarded internally so
     // ack-check's own fallback (if it still fires) is a no-op for this driver.
     if (driver.isBackgrounded) {
-      void sendRideRequestPushOnce(data.rideId, driver.driver_id.toString(), pickup, drop, driver.windowSeconds)
+      const details: RideRequestPushDetails = {
+        rideType: data.rideType,
+        isReturnCab: data.isReturnCab,
+        estimatedFare: ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
+        distanceToPickup: Math.round(driver.distance_metres),
+      }
+      if (ride.payment_channel) details.paymentChannel = ride.payment_channel
+      if (ride.estimated_km != null) details.tripKm = Number(ride.estimated_km)
+      if (ride.estimated_min != null) details.tripMin = Math.round(Number(ride.estimated_min))
+      void sendRideRequestPushOnce(data.rideId, driver.driver_id.toString(), pickup, drop, driver.windowSeconds, details)
         .catch((err: unknown) => log.error({ err, rideId: data.rideId, driverId: driver.driver_id.toString() }, 'immediate background push failed'))
     }
   }
