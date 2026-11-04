@@ -25,6 +25,8 @@ describe('ride select exposes cash_due and discount_amount', () => {
 
 describe('CASH_DUE_MIN_DRIVER_VERSION', () => {
   it('is a valid semver and is not older than the build that first shipped cash_due', () => {
-    expect(compareVersions(CASH_DUE_MIN_DRIVER_VERSION, '1.2.0')).toBeGreaterThanOrEqual(0)
+    const cmp = compareVersions(CASH_DUE_MIN_DRIVER_VERSION, '1.2.0')
+    expect(cmp).not.toBeNull()
+    expect(cmp as number).toBeGreaterThanOrEqual(0)
   })
 })
