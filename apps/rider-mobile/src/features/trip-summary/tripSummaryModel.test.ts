@@ -131,3 +131,26 @@ describe('buildTimeline', () => {
     expect(buildTimeline({ ...base, bookedUntil: null })).toBeNull()
   })
 })
+
+describe('with a rider offer (driver-funded discount)', () => {
+  const gross = { ...base, totalFinal: '454.00', baseFare: '454.00', distanceFare: '0.00', timeFare: '0.00' }
+  it('lists the components that add up to the gross fare, takes the offer off, and the total is what the rider paid', () => {
+    const { rows, total, discount } = buildInvoiceRows({ ...gross, discountAmount: '90.80' })
+    expect(rows.map((r) => r.key)).toEqual(['base', 'offer'])
+    expect(rows.at(-1)).toEqual({ key: 'offer', label: 'Offer', amount: 90.8, negative: true })
+    expect(total).toBe(363.2)
+    expect(discount).toBe(90.8)
+  })
+  it('no discount, or an older server that sends none, changes nothing', () => {
+    expect(buildInvoiceRows(gross).total).toBe(454)
+    expect(buildInvoiceRows({ ...gross, discountAmount: '0.00' }).rows.some((r) => r.key === 'offer')).toBe(false)
+  })
+  it('a discount can never take the total below zero', () => {
+    expect(buildInvoiceRows({ ...gross, discountAmount: '9999' }).total).toBe(0)
+  })
+  it('cash due is the amount the server says to pay, falling back to the fare', () => {
+    const ride = { totalFinal: '454.00', totalEstimated: '454.00', paymentChannel: 'cash', cashCollectedAt: null }
+    expect(paymentState({ ...ride, cashDue: '363.20' })).toEqual({ kind: 'cash_due', text: 'Pay ₹363.20 cash to your driver' })
+    expect(paymentState(ride).kind === 'cash_due' && paymentState(ride).text).toBe('Pay ₹454 cash to your driver')
+  })
+})

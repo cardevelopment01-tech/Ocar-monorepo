@@ -23,13 +23,17 @@ export type CategoryCardProps = {
   // (apps/user/app/(main)/select-ride/page.tsx).
   variant?: 'standard' | 'returnCab'
   savingsText?: string
+  // Set on the selected card when an offer applies: the fare shown is then the payable, with this gross struck through
+  // above it and the saving as a line under the name (design review D3).
+  grossFare?: number | null
+  offerSavingText?: string | null
 }
 
 // Matches the real web app's select-ride row (apps/user/app/(main)/select-ride/page.tsx):
 // icon square that tints when active, name + seat count + live ETA, fare on the
 // right, a left accent border for the selected state instead of a border+checkmark combo.
 function CategoryCardBase({
-  category, fareTotal, loading, selected, onPress, eta, disabled = false, variant = 'standard', savingsText,
+  category, fareTotal, loading, selected, onPress, eta, disabled = false, variant = 'standard', savingsText, grossFare = null, offerSavingText = null,
 }: CategoryCardProps) {
   const noCars = disabled
   const active = selected && !noCars
@@ -45,7 +49,7 @@ function CategoryCardBase({
         pressed && !noCars ? styles.rowPressed : null,
       ]}
       accessibilityRole="button"
-      accessibilityLabel={`${category.displayName}${fareTotal != null ? `, fare rupees ${Math.round(fareTotal)}` : ''}`}
+      accessibilityLabel={`${category.displayName}${fareTotal != null ? (grossFare != null ? `, was ${Math.round(grossFare)} rupees, now ${Math.round(fareTotal)} rupees` : `, fare rupees ${Math.round(fareTotal)}`) : ''}${offerSavingText ? `. ${offerSavingText}` : ''}`}
       accessibilityState={{ selected: active, disabled: noCars }}
     >
       <View style={[styles.iconWrap, active ? styles.iconWrapSelected : null]}>
@@ -83,11 +87,17 @@ function CategoryCardBase({
             </>
           )}
         </View>
+        {offerSavingText ? <Text style={styles.offerSaving}>{offerSavingText}</Text> : null}
       </View>
 
       <View style={styles.fareBlock}>
         {loading ? (
           <Skeleton width={56} height={20} />
+        ) : fareTotal != null && grossFare != null ? (
+          <>
+            <Text style={styles.grossStruck} accessibilityElementsHidden importantForAccessibility="no">{`₹${Math.round(grossFare)}`}</Text>
+            <Text style={[styles.fare, styles.nameSelected]}>{`₹${Math.round(fareTotal)}`}</Text>
+          </>
         ) : fareTotal != null ? (
           <Text style={[styles.fare, active ? (isReturnCab ? { color: colors.success } : styles.nameSelected) : null]}>{`₹${Math.round(fareTotal)}`}</Text>
         ) : (
@@ -143,6 +153,8 @@ const styles = StyleSheet.create({
   fareBlock: { minWidth: 56, alignItems: 'flex-end' },
   fare: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, fontSize: 17 },
   fareUnavailable: { ...typography.body, color: colors.ink400 },
+  grossStruck: { ...typography.caption, color: colors.ink600, textDecorationLine: 'line-through' },
+  offerSaving: { ...typography.caption, fontFamily: fonts.semibold, color: colors.moneyInk },
 })
 
 export const CategoryCard = memo(CategoryCardBase)

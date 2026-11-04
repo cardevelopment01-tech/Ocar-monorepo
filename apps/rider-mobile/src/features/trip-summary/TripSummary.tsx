@@ -188,12 +188,12 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
                     <Text style={styles.receiptLabel}>{row.label}</Text>
                     {row.detail ? <Text style={styles.receiptDetail}>{row.detail}</Text> : null}
                   </View>
-                  <Text style={styles.receiptAmount} maxFontSizeMultiplier={1.3}>{formatMoney(row.amount)}</Text>
+                  <Text style={styles.receiptAmount} maxFontSizeMultiplier={1.3}>{row.negative ? `−${formatMoney(row.amount)}` : formatMoney(row.amount)}</Text>
                 </View>
               ))}
             </View>
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalLabel}>{invoice.discount > 0 ? 'You paid' : 'Total'}</Text>
               <Text style={styles.totalAmount} maxFontSizeMultiplier={1.3}>{formatMoney(invoice.total)}</Text>
             </View>
             {pay ? (
