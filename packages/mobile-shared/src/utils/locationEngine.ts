@@ -30,7 +30,9 @@ export type LocationSlice = {
 
 export type LocationDeps = {
   /** Starts the foreground watcher; resolves to something that stops it. */
-  watch: (onFix: (fix: Fix) => void) => Promise<{ remove: () => void }>
+  watch: (onFix: (fix: Fix) => void, onError: () => void) => Promise<{ remove: () => void }>
+  /** One fresh reading, no timeout (a late answer is still applied). Rejects on failure. Used to nudge a quiet watcher. */
+  currentFix: () => Promise<Fix>
   /** The OS's cached position (instant, maybe old). Resolves null when there is none. Never rejects. */
   lastKnown: () => Promise<Fix | null>
   geocode: (lat: number, lng: number) => Promise<string>
@@ -39,6 +41,10 @@ export type LocationDeps = {
 }
 
 const GEOCODE_RETRY_MS = 15_000
+const QUIET_CHECK_MS = 15_000 // how often a running watcher is checked for having gone quiet
+const QUIET_AFTER_MS = 30_000 // no new fix for this long: ask for one directly (iOS reports nothing while stationary)
+const WATCH_RESTART_MS = 3_000
+const ACCURACY_FLOOR_M = 200 // a fix worse than this AND 3x worse than a current one is ignored
 
 export function createLocationEngine(io: {
   get: () => LocationSlice
@@ -51,6 +57,10 @@ export function createLocationEngine(io: {
   let token = 0
   let sub: { remove: () => void } | undefined
   let capTimer: ReturnType<typeof setTimeout> | undefined
+  let quietTimer: ReturnType<typeof setInterval> | undefined
+  let restartTimer: ReturnType<typeof setTimeout> | undefined
+  let wanted = false // the caller wants tracking on (survives a watcher dying)
+  let epoch = 0 // bumped by reset(): answers started before it must not repopulate a wiped store
 
   let geocodeSeq = 0
   let geocoding = false
@@ -62,9 +72,14 @@ export function createLocationEngine(io: {
   let hadSavedAtActivation = false
   let savedAgeAtActivation: number | null = null
 
+  let currentAccuracy: number | undefined // of the fix now in the slice (not persisted: a saved fix has none)
+
   const current = (): Fix | null => {
     const { lat, lng, fixedAt, source } = get()
-    return lat === null || lng === null || fixedAt === null ? null : { lat, lng, fixedAt, source: source ?? 'cache' }
+    if (lat === null || lng === null || fixedAt === null) return null
+    const fix: Fix = { lat, lng, fixedAt, source: source ?? 'cache' }
+    if (currentAccuracy !== undefined) fix.accuracy = currentAccuracy
+    return fix
   }
 
   function startGeocode(fix: Fix) {
@@ -90,6 +105,11 @@ export function createLocationEngine(io: {
   function receive(incoming: Fix | null) {
     const now = deps.now()
     const prev = current()
+    // A rough fix (network / approximate permission) must not replace a precise live one just because it is newer.
+    if (
+      incoming && prev && isFresh(prev, now) && incoming.accuracy !== undefined && prev.accuracy !== undefined &&
+      incoming.accuracy > ACCURACY_FLOOR_M && incoming.accuracy > prev.accuracy * 3
+    ) return
     const best = pickBest(prev, incoming, now)
     if (!best || best === prev) return
 
@@ -121,6 +141,7 @@ export function createLocationEngine(io: {
     const ref = anchor ?? (get().address && prev ? { lat: prev.lat, lng: prev.lng } : null)
     const moved = movedBeyondGeocodeReuse(ref, best)
     if (moved && ref && get().address) patch.address = ''
+    currentAccuracy = best.accuracy
     set(patch)
 
     if (shouldGeocode(best, now) && now >= retryAt && (moved || (!get().address && !geocoding))) startGeocode(best)
@@ -136,8 +157,52 @@ export function createLocationEngine(io: {
     }, FIX_TIMEOUT_MS)
   }
 
-  /** Start (or re-arm) tracking. Idempotent: safe on launch, on foreground, on screen focus. */
+  function stopWatcher() {
+    active = false
+    token++
+    sub?.remove()
+    sub = undefined
+  }
+
+  async function startWatcher() {
+    if (active) return
+    active = true
+    const mine = ++token
+    const live = (f: Fix) => { if (mine === token && active) receive(f) }
+    const died = () => {
+      if (mine !== token) return
+      stopWatcher() // the native subscription stopped (location switched off, provider dropped): bring it back
+      clearTimeout(restartTimer)
+      restartTimer = setTimeout(() => { if (wanted) void startWatcher() }, WATCH_RESTART_MS)
+    }
+    try {
+      const s = await deps.watch(live, died)
+      if (mine !== token || !active) s.remove() // stopped (or restarted) while the watcher was starting
+      else sub = s
+    } catch {
+      if (mine !== token) return
+      stopWatcher()
+      set({ ready: true, timedOut: !isFresh(current(), deps.now()) })
+      clearTimeout(restartTimer)
+      restartTimer = setTimeout(() => { if (wanted) void startWatcher() }, WATCH_RESTART_MS * 5)
+    }
+  }
+
+  function kickIfQuiet() {
+    const cur = current()
+    if (!wanted || (cur && ageMs(cur.fixedAt, deps.now()) < QUIET_AFTER_MS)) return
+    const ep = epoch
+    deps.currentFix().then((f) => { if (ep === epoch && wanted) receive(f) }, () => {})
+  }
+
+  function fetchLastKnown() {
+    const ep = epoch
+    void deps.lastKnown().then((f) => { if (ep === epoch && wanted) receive(f) })
+  }
+
+  /** Begin tracking (launch, return to foreground). Resets the "still looking" state and the telemetry baseline. */
   async function activate() {
+    wanted = true
     const now = deps.now()
     const cur = current()
     activatedAt = now
@@ -146,36 +211,38 @@ export function createLocationEngine(io: {
     waitingForFreshFix = !isFresh(cur, now)
     set({ timedOut: false })
     armCap()
-    void deps.lastKnown().then(receive)
-    if (active) return
-    active = true
-    const mine = ++token
-    try {
-      const s = await deps.watch(receive)
-      if (mine !== token || !active) s.remove() // stopped (or restarted) while the watcher was starting
-      else sub = s
-    } catch {
-      if (mine !== token) return
-      active = false
-      set({ ready: true, timedOut: !isFresh(current(), deps.now()) })
+    clearInterval(quietTimer)
+    quietTimer = setInterval(kickIfQuiet, QUIET_CHECK_MS)
+    fetchLastKnown()
+    await startWatcher()
+  }
+
+  /** Cheap check on screen focus: start if not running, otherwise leave the timers and state alone. */
+  async function ensure() {
+    if (!wanted || !active) return activate()
+    if (!isFresh(current(), deps.now())) {
+      fetchLastKnown()
+      kickIfQuiet()
     }
   }
 
   function deactivate() {
-    active = false
-    token++
-    sub?.remove()
-    sub = undefined
+    wanted = false
+    stopWatcher()
     clearTimeout(capTimer)
+    clearTimeout(restartTimer)
+    clearInterval(quietTimer)
   }
 
   /** Forget everything about the saved place (sign-out). */
   function reset() {
+    epoch++
+    currentAccuracy = undefined
     geocodeSeq++
     geocoding = false
     anchor = null
     retryAt = 0
   }
 
-  return { receive, activate, deactivate, reset, isActive: () => active }
+  return { receive, activate, ensure, deactivate, reset, isActive: () => active }
 }

@@ -43,6 +43,33 @@ type LocationState = {
   clearSaved: () => void
 }
 
+// The saved fix only seeds the next launch, and the watcher updates the store every few seconds: write at most once per
+// PERSIST_DELAY_MS (latest value wins) instead of on every fix. Removing the key drops any write still waiting.
+const PERSIST_DELAY_MS = 5000
+let pendingWrite: string | null = null
+let writeTimer: ReturnType<typeof setTimeout> | undefined
+const throttledStorage = {
+  getItem: (name: string) => AsyncStorage.getItem(name),
+  setItem: (name: string, value: string) => {
+    pendingWrite = value
+    if (!writeTimer) {
+      writeTimer = setTimeout(() => {
+        writeTimer = undefined
+        const v = pendingWrite
+        pendingWrite = null
+        if (v !== null) void AsyncStorage.setItem(name, v).catch(() => {})
+      }, PERSIST_DELAY_MS)
+    }
+    return Promise.resolve()
+  },
+  removeItem: (name: string) => {
+    pendingWrite = null
+    clearTimeout(writeTimer)
+    writeTimer = undefined
+    return AsyncStorage.removeItem(name)
+  },
+}
+
 export const useLocationStore = create<LocationState>()(
   persist(
     (set, get) => {
@@ -52,14 +79,13 @@ export const useLocationStore = create<LocationState>()(
         get: () => get(),
         set: (patch) => set(patch),
         deps: {
-          watch: (onFix) =>
+          watch: (onFix, onError) =>
             Location.watchPositionAsync(
               { accuracy: Location.Accuracy.Balanced, timeInterval: WATCH_INTERVAL_MS, distanceInterval: 0 },
               (l) => onFix(toFix(l, 'gps')),
-              () => {
-                // A watcher error (location switched off mid-session) just means no new fixes; the age check shows it.
-              }
+              onError // the engine restarts the watcher
             ),
+          currentFix: () => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).then((l) => toFix(l, 'gps')),
           lastKnown: getLastKnownFix,
           geocode: (lat, lng) => fetchReverseGeocode(lat, lng).then((d) => d.address),
           now: Date.now,
@@ -87,10 +113,17 @@ export const useLocationStore = create<LocationState>()(
         }
       }
 
+      // Foreground return: a full re-start (resets the "still looking" timer and the telemetry baseline).
+      const startFresh = async () => {
+        if (get().permission !== 'granted' && !(await syncPermission(false))) return
+        await engine.activate()
+      }
+
+      // Screen focus: just make sure it is running.
       const start = () => {
         void (async () => {
           if (get().permission !== 'granted' && !(await syncPermission(false))) return
-          await engine.activate()
+          await engine.ensure()
         })()
       }
 
@@ -114,12 +147,14 @@ export const useLocationStore = create<LocationState>()(
             // Wait for the persisted fix first: rehydration overwrites in-memory fields, so a fix that
             // arrived before it would be replaced by the older saved one.
             await whenHydrated()
-            if (await syncPermission(true)) await engine.activate()
-            // Watch only while the app is on screen: it is what keeps the pickup current, and it costs battery in the background.
+            // Registered before the first (possibly slow) activation so a quick background/foreground is never missed.
+            // Watch only while the app is on screen: it keeps the pickup current and costs battery in the background.
+            // iOS 'inactive' (permission dialog, notification shade, app switcher) is not a background: keep watching.
             AppState.addEventListener('change', (st) => {
-              if (st === 'active') start()
-              else engine.deactivate()
+              if (st === 'active') void startFresh()
+              else if (st === 'background') engine.deactivate()
             })
+            if (await syncPermission(true)) await engine.activate()
           })()
         },
 
@@ -136,7 +171,7 @@ export const useLocationStore = create<LocationState>()(
     {
       name: 'ocar_rider_location',
       version: 1,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => throttledStorage),
       partialize: partializeLocation,
       onRehydrateStorage: () => (state, error) => {
         // Fail soft on a storage error: keep going with an empty cache (the splash cap covers slow reads too).

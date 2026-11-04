@@ -11,7 +11,10 @@ const DEG_PER_M = 1 / 111_320 // metres of latitude
 
 let clock = T0
 let slice: LocationSlice
-let watchers: Array<{ emit: (f: Fix) => void; removed: boolean }>
+let watchers: Array<{ emit: (f: Fix) => void; fail: () => void; removed: boolean }>
+let currentFixCalls: number
+let currentFixResult: Fix | null
+let lastKnownDelay: Promise<void> | null
 let tracked: Array<[string, Record<string, unknown>]>
 let geocodeCalls: Array<{ lat: number; lng: number; resolve: (a: string) => void; reject: () => void }>
 let lastKnownResult: Fix | null
@@ -21,12 +24,13 @@ const fix = (northM: number, source: Fix['source'] = 'gps', fixedAt = clock): Fi
 
 function build() {
   const deps: LocationDeps = {
-    watch: async (onFix) => {
-      const w = { emit: onFix, removed: false }
+    watch: async (onFix, onError) => {
+      const w = { emit: onFix, fail: onError, removed: false }
       watchers.push(w)
       return { remove: () => { w.removed = true } }
     },
-    lastKnown: async () => lastKnownResult,
+    lastKnown: async () => { if (lastKnownDelay) await lastKnownDelay; return lastKnownResult },
+    currentFix: async () => { currentFixCalls++; if (!currentFixResult) throw new Error('none'); return currentFixResult },
     geocode: (lat, lng) => new Promise<string>((resolve, reject) => { geocodeCalls.push({ lat, lng, resolve, reject: () => reject(new Error('x')) }) }),
     now: () => clock,
     track: (event, props) => { tracked.push([event, props]) },
@@ -45,6 +49,9 @@ beforeEach(() => {
   tracked = []
   geocodeCalls = []
   lastKnownResult = null
+  currentFixCalls = 0
+  currentFixResult = null
+  lastKnownDelay = null
 })
 afterEach(() => { vi.useRealTimers() })
 
@@ -163,5 +170,89 @@ describe('the address', () => {
     expect(geocodeCalls).toHaveLength(1)
     clock += 15_000; watchers[0]!.emit(fix(0, 'gps', clock))
     expect(geocodeCalls).toHaveLength(2)
+  })
+})
+
+describe('a quiet or dead watcher', () => {
+  it('asks for a fix directly once the watcher has been silent for 30 s (iOS reports nothing while stationary)', async () => {
+    const e = build()
+    await e.activate()
+    watchers[0]!.emit(fix(0, 'gps', T0))
+    currentFixResult = fix(0, 'gps', T0 + 31_000)
+    await advance(15_000)
+    expect(currentFixCalls).toBe(0)
+    await advance(16_000)
+    expect(currentFixCalls).toBeGreaterThan(0)
+    expect(slice.fixedAt).toBe(T0 + 31_000)
+  })
+
+  it('restarts a watcher whose native subscription died', async () => {
+    const e = build()
+    await e.activate()
+    watchers[0]!.fail()
+    expect(watchers[0]!.removed).toBe(true)
+    await advance(3_000)
+    expect(watchers).toHaveLength(2)
+    expect(watchers[1]!.removed).toBe(false)
+  })
+
+  it('does not restart after deactivate', async () => {
+    const e = build()
+    await e.activate()
+    watchers[0]!.fail()
+    e.deactivate()
+    await advance(10_000)
+    expect(watchers).toHaveLength(1)
+  })
+})
+
+describe('ensure (screen focus)', () => {
+  it('leaves a running tracker and its timeout state alone', async () => {
+    const e = build()
+    await e.activate()
+    await advance(8_000)
+    expect(slice.timedOut).toBe(true)
+    await e.ensure()
+    expect(slice.timedOut).toBe(true) // focusing a screen must not flip "Set pickup location" back to "Finding..."
+    expect(watchers).toHaveLength(1)
+  })
+  it('starts the tracker when it is not running', async () => {
+    const e = build()
+    await e.ensure()
+    expect(watchers).toHaveLength(1)
+  })
+})
+
+describe('sign-out', () => {
+  it('an OS last-known answer that lands after reset does not put the previous rider back', async () => {
+    let release!: () => void
+    lastKnownDelay = new Promise<void>((r) => { release = r })
+    lastKnownResult = fix(0, 'os', T0)
+    const e = build()
+    void e.activate()
+    await flush()
+    e.deactivate()
+    e.reset()
+    release()
+    await flush()
+    expect(slice.lat).toBeNull()
+    expect(geocodeCalls).toHaveLength(0)
+  })
+})
+
+describe('a rough fix', () => {
+  it('does not replace a precise live one just because it is newer', async () => {
+    const e = build()
+    await e.activate()
+    watchers[0]!.emit({ ...fix(0, 'gps', T0), accuracy: 15 })
+    clock += 2_000
+    watchers[0]!.emit({ ...fix(1500, 'os', clock), accuracy: 1500 })
+    expect(slice.lat).toBeCloseTo(20.29, 4)
+  })
+  it('is accepted when there is no precise live fix to protect', async () => {
+    const e = build()
+    await e.activate()
+    watchers[0]!.emit({ ...fix(1500, 'os', T0), accuracy: 1500 })
+    expect(slice.lat).not.toBeNull()
   })
 })
