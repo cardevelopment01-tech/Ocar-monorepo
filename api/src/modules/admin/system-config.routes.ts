@@ -7,6 +7,7 @@ import { recordAuditLog } from '@/lib/audit-log'
 import { listConfig, getConfigById, getConfigValue, validateConfigValue, updateConfigValue } from '@/lib/system-config'
 import { validateConfigBounds, versionPairCheck } from '@/lib/system-config-bounds'
 import { openDiscountedRideCount } from '@/modules/offers/offers.repository'
+import { cashDiscountGuard } from '@/modules/offers/cash-discount-guard'
 
 const router: IRouter = Router()
 
@@ -36,6 +37,14 @@ router.patch('/:id', async (req, res, next) => {
       const pairError = pair.check(value, await getConfigValue(pair.siblingKey, '0.0.0'))
       if (pairError) throw httpError(422, pairError, AppErrors.VALIDATION_ERROR.code)
     }
+
+    // Cash discounts change what a driver collects: refuse any save that would leave them on with old driver builds allowed.
+    const cashGuard = cashDiscountGuard(before.key, value, {
+      cashDiscounts: await getConfigValue('offers_cash_discounts_enabled', 'false'),
+      driverAndroidMin: await getConfigValue('app_update_driver_android_min', '0.0.0'),
+      updateGateEnabled: await getConfigValue('app_update_enabled', 'true'),
+    })
+    if (cashGuard) throw httpError(422, cashGuard, 'CASH_DISCOUNT_GUARD')
 
     const expected = req.body?.expectedUpdatedAt
     if (expected !== undefined && (typeof expected !== 'string' || Number.isNaN(Date.parse(expected)))) {

@@ -5,6 +5,7 @@ import { findActiveOffers, getUserUsage, listGrantedOfferIds } from './offers.re
 import { parseOrThrow } from './admin-offers.service'
 import { previewOffers, type PreviewInput } from './offers.service'
 import { describeOffer } from './engine'
+import { offersPreviewRejectionsTotal } from '@/observability/offers-metrics'
 
 const previewSchema = z.object({
   category_id: z.number().int().positive(),
@@ -19,6 +20,7 @@ const previewSchema = z.object({
   originCityId: z.number().int().positive().nullable().optional(),
   destinationCityId: z.number().int().positive().nullable().optional(),
   code: z.string().trim().max(40).optional(),
+  autoOffer: z.string().regex(/^(none|\d{1,18})$/).optional(),
   paymentChannel: z.enum(['cash', 'online', 'wallet']),
   scheduledFor: z.string().datetime({ offset: true }).optional(),
 })
@@ -31,6 +33,7 @@ export const preview: RequestHandler = async (req, res, next) => {
     const result = await previewOffers(req.user!.id, input)
     // Only a wrong typed code counts toward the guess limit (see offersCodeGuessLimiters).
     res.locals['codeGuessFailed'] = result.rejected.some((r) => r.reason === 'UNKNOWN_CODE' || r.reason === 'NOT_ASSIGNED')
+    for (const r of result.rejected) offersPreviewRejectionsTotal.inc({ reason: r.reason })
     res.json(result)
   } catch (err) { next(err) }
 }

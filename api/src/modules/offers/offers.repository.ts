@@ -2,7 +2,11 @@ import type { PoolClient } from 'pg'
 import { pool } from '@/db/client'
 import { cachedRead, invalidate } from '@/lib/cache/reference-cache'
 import { OFFERS_CACHE_TTL_SECONDS } from '@/constants/limits'
+import { logger } from '@/lib/logger'
+import { offersRedemptionsTotal, offersReserveRefusedTotal } from '@/observability/offers-metrics'
 import type { Benefit, Rule } from './offers.types'
+
+const log = logger.child({ module: 'offers-repository' })
 
 // ── Offer reads ──────────────────────────────────────────────────────────────
 
@@ -139,7 +143,7 @@ export async function reserveRedemption(client: PoolClient, a: ReserveArgs): Pro
        RETURNING count`,
       [a.offerId, a.userId, a.perUserLimit]
     )
-    if (usage.rowCount === 0) return await reject(client, 'USER_LIMIT')
+    if (usage.rowCount === 0) return await reject(client, 'USER_LIMIT', a.offerId)
 
     const spend = a.discount + a.cashback
     const offer = await client.query(
@@ -151,7 +155,7 @@ export async function reserveRedemption(client: PoolClient, a: ReserveArgs): Pro
         RETURNING id`,
       [a.offerId, spend]
     )
-    if (offer.rowCount === 0) return await reject(client, await whyOfferRefused(client, a.offerId, spend))
+    if (offer.rowCount === 0) return await reject(client, await whyOfferRefused(client, a.offerId, spend), a.offerId)
 
     const ins = await client.query<{ id: string }>(
       `INSERT INTO offer_redemptions (offer_id, offer_version_id, user_id, ride_id, status, discount_amount, cashback_amount)
@@ -159,6 +163,7 @@ export async function reserveRedemption(client: PoolClient, a: ReserveArgs): Pro
       [a.offerId, a.versionId, a.userId, a.rideId, a.discount, a.cashback]
     )
     await client.query('RELEASE SAVEPOINT offers_reserve')
+    offersRedemptionsTotal.inc({ status: 'reserved' })
     return { ok: true, redemptionId: BigInt(ins.rows[0]!.id) }
   } catch (err) {
     // A unique-index hit (a second live redemption for the ride) or any error: undo our increments, let the caller decide.
@@ -167,9 +172,12 @@ export async function reserveRedemption(client: PoolClient, a: ReserveArgs): Pro
   }
 }
 
-async function reject(client: PoolClient, reason: Extract<ReserveResult, { ok: false }>['reason']): Promise<ReserveResult> {
+async function reject(client: PoolClient, reason: Extract<ReserveResult, { ok: false }>['reason'], offerId: bigint): Promise<ReserveResult> {
   await client.query('ROLLBACK TO SAVEPOINT offers_reserve')
   await client.query('RELEASE SAVEPOINT offers_reserve')
+  offersReserveRefusedTotal.inc({ reason })
+  // An alert-ready line: a budget running out mid-campaign is the thing ops must notice.
+  if (reason === 'BUDGET') log.warn({ offerId: offerId.toString() }, 'offer budget exhausted')
   return { ok: false, reason }
 }
 
@@ -192,6 +200,7 @@ export async function consumeRedemption(client: Pick<PoolClient, 'query'>, rideI
     [rideId]
   )
   const r = res.rows[0]
+  if (r) offersRedemptionsTotal.inc({ status: 'consumed' })
   return r ? { discount: parseFloat(r.discount_amount), cashback: parseFloat(r.cashback_amount), userId: BigInt(r.user_id) } : null
 }
 
@@ -215,6 +224,7 @@ async function undo(client: Pick<PoolClient, 'query'>, rideId: bigint, from: 're
   )
   const r = res.rows[0]
   if (!r) return false
+  offersRedemptionsTotal.inc({ status: to })
   const spend = parseFloat(r.discount_amount) + parseFloat(r.cashback_amount)
   await client.query(
     `UPDATE offers SET budget_spent = GREATEST(budget_spent - $2, 0), redemption_count = GREATEST(redemption_count - 1, 0) WHERE id = $1`,

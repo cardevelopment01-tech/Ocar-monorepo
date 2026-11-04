@@ -1,6 +1,7 @@
 import { pool } from '@/db/client'
 import { logger } from '@/lib/logger'
 import { invalidateOffers, releaseRedemption } from './offers.repository'
+import { offersBudgetRemaining } from '@/observability/offers-metrics'
 
 const log = logger.child({ module: 'offers-worker' })
 
@@ -37,6 +38,7 @@ export async function releaseStaleReservations(olderThanMinutes = 30): Promise<n
     }
   }
   if (released > 0) log.warn({ released }, 'released stale offer reservations')
+  await refreshBudgetGauge().catch((err: unknown) => log.error({ err }, 'budget gauge refresh failed'))
   return released
 }
 
@@ -52,4 +54,14 @@ export async function endExpiredOffers(): Promise<number> {
     for (const r of res.rows) if (r.code) await invalidateOffers(r.code)
   }
   return res.rowCount ?? 0
+}
+
+/** Publishes how many rupees are left in each live offer budget. Reset first so an ended offer's series disappears. */
+export async function refreshBudgetGauge(): Promise<number> {
+  const res = await pool.query<{ id: string; left: string }>(
+    `SELECT id::text, (budget_total - budget_spent)::text AS left FROM offers WHERE status = 'active' AND budget_total IS NOT NULL`
+  )
+  offersBudgetRemaining.reset()
+  for (const r of res.rows) offersBudgetRemaining.set({ offer: r.id }, Number(r.left))
+  return res.rows.length
 }
