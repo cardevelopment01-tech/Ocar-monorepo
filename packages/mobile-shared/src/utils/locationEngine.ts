@@ -26,6 +26,8 @@ export type LocationSlice = {
   source: FixSource | null
   timedOut: boolean
   ready: boolean
+  /** Metres of uncertainty of the fix now held, when the OS gave one. Not persisted (a saved fix has none). */
+  accuracy: number | null
 }
 
 export type LocationDeps = {
@@ -72,13 +74,12 @@ export function createLocationEngine(io: {
   let hadSavedAtActivation = false
   let savedAgeAtActivation: number | null = null
 
-  let currentAccuracy: number | undefined // of the fix now in the slice (not persisted: a saved fix has none)
-
   const current = (): Fix | null => {
     const { lat, lng, fixedAt, source } = get()
     if (lat === null || lng === null || fixedAt === null) return null
     const fix: Fix = { lat, lng, fixedAt, source: source ?? 'cache' }
-    if (currentAccuracy !== undefined) fix.accuracy = currentAccuracy
+    const { accuracy } = get()
+    if (accuracy !== null) fix.accuracy = accuracy
     return fix
   }
 
@@ -141,7 +142,7 @@ export function createLocationEngine(io: {
     const ref = anchor ?? (get().address && prev ? { lat: prev.lat, lng: prev.lng } : null)
     const moved = movedBeyondGeocodeReuse(ref, best)
     if (moved && ref && get().address) patch.address = ''
-    currentAccuracy = best.accuracy
+    patch.accuracy = best.accuracy ?? null
     set(patch)
 
     if (shouldGeocode(best, now) && now >= retryAt && (moved || (!get().address && !geocoding))) startGeocode(best)
@@ -237,7 +238,6 @@ export function createLocationEngine(io: {
   /** Forget everything about the saved place (sign-out). */
   function reset() {
     epoch++
-    currentAccuracy = undefined
     geocodeSeq++
     geocoding = false
     anchor = null

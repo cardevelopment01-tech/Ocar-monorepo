@@ -18,6 +18,15 @@ export const FRESH_MS = 60_000
 export const WATCH_INTERVAL_MS = 5000
 /** A fix this close to the last one only refreshes its timestamp, so GPS jitter does not re-render the map. */
 export const JITTER_M = 8
+/** A fix less precise than this (metres) cannot place a pickup; with approximate-only permission fixes are 1-2 km off. */
+export const APPROX_ACCURACY_M = 500
+
+export type PermissionLevel = 'fine' | 'coarse' | 'unknown'
+
+/** The location we are getting is approximate: the rider granted "approximate" only, or the current fix is too rough. */
+export function isApproximate(permissionLevel: PermissionLevel, accuracy: number | null): boolean {
+  return permissionLevel === 'coarse' || (accuracy !== null && accuracy > APPROX_ACCURACY_M)
+}
 export const OLD_MS = 30 * 60_000
 export const FIX_TIMEOUT_MS = 8000
 export const GEOCODE_REUSE_M = 150

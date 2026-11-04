@@ -22,6 +22,7 @@ import { fetchReverseGeocode } from '@/features/booking/api'
 import { useBookingDraftStore } from '@/features/booking/store'
 import { ScheduleSheet } from '@/features/booking/components/ScheduleSheet'
 import { useFreshness, useLocationStore } from '@/store/useLocationStore'
+import { PreciseLocationNotice } from '@/features/home/PreciseLocationNotice'
 import type { RideType } from '@/features/booking/api'
 import { ease, geo, h } from '@/theme/homeTokens'
 import { MapHero } from '@/features/home/MapHero'
@@ -327,6 +328,8 @@ export default function HomeScreen() {
                 <View style={styles.handle} />
               </View>
             </GestureDetector>
+
+            <PreciseLocationNotice />
 
             <Animated.View style={[styles.searchSlot, flowBar]}>
               <SearchBar onPress={toBookingAuto} onLater={toBookingLater} />

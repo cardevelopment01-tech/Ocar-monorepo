@@ -6,6 +6,7 @@ import {
   freshnessOf,
   isFresh,
   shouldGeocode,
+  isApproximate,
   movedBeyondGeocodeReuse,
   partializeLocation,
   pickBest,
@@ -155,5 +156,18 @@ describe('shouldGeocode', () => {
     expect(shouldGeocode(fix(5_000, 'cache'), NOW)).toBe(false)
     expect(shouldGeocode(fix(90_000, 'gps'), NOW)).toBe(false)
     expect(shouldGeocode(null, NOW)).toBe(false)
+  })
+})
+
+describe('isApproximate', () => {
+  it('approximate-only permission is approximate whatever the fix says', () => {
+    expect(isApproximate('coarse', 10)).toBe(true)
+    expect(isApproximate('coarse', null)).toBe(true)
+  })
+  it('a precise permission is approximate only when the fix is rougher than 500 m', () => {
+    expect(isApproximate('fine', 30)).toBe(false)
+    expect(isApproximate('fine', 500)).toBe(false)
+    expect(isApproximate('fine', 501)).toBe(true)
+    expect(isApproximate('unknown', null)).toBe(false) // no data is not evidence of a rough fix
   })
 })

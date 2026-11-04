@@ -19,7 +19,7 @@ let tracked: Array<[string, Record<string, unknown>]>
 let geocodeCalls: Array<{ lat: number; lng: number; resolve: (a: string) => void; reject: () => void }>
 let lastKnownResult: Fix | null
 
-const empty = (): LocationSlice => ({ lat: null, lng: null, address: '', fixedAt: null, source: null, timedOut: false, ready: false })
+const empty = (): LocationSlice => ({ lat: null, lng: null, address: '', fixedAt: null, source: null, timedOut: false, ready: false, accuracy: null })
 const fix = (northM: number, source: Fix['source'] = 'gps', fixedAt = clock): Fix => ({ lat: 20.29 + northM * DEG_PER_M, lng: 85.82, fixedAt, source })
 
 function build() {
@@ -254,5 +254,17 @@ describe('a rough fix', () => {
     await e.activate()
     watchers[0]!.emit({ ...fix(1500, 'os', T0), accuracy: 1500 })
     expect(slice.lat).not.toBeNull()
+  })
+})
+
+describe('accuracy', () => {
+  it('is held with the fix so the UI can tell a rough location from a precise one, and cleared by a fix with none', async () => {
+    const e = build()
+    await e.activate()
+    watchers[0]!.emit({ ...fix(0, 'gps', T0), accuracy: 18 })
+    expect(slice.accuracy).toBe(18)
+    clock += 5_000
+    watchers[0]!.emit(fix(40, 'gps', clock))
+    expect(slice.accuracy).toBeNull()
   })
 })

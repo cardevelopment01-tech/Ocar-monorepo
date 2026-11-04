@@ -9,12 +9,14 @@ import {
   WATCH_INTERVAL_MS,
   createLocationEngine,
   freshnessOf,
+  isApproximate,
   getLastKnownFix,
   partializeLocation,
   toFix,
   track,
   type Fix,
   type FixSource,
+  type PermissionLevel,
   type Freshness,
   type PermissionState,
 } from '@ocar/mobile-shared'
@@ -29,6 +31,9 @@ type LocationState = {
   // in-memory only. Never persist these: `initialized: true` on disk would make init() a no-op forever.
   source: FixSource | null
   permission: PermissionState
+  /** Android: did the rider grant precise (fine) or approximate (coarse) location. In memory only. */
+  permissionLevel: PermissionLevel
+  accuracy: number | null
   timedOut: boolean
   hydrated: boolean
   /** First usable state reached: a saved/real fix exists, permission was denied, or the first attempt finished. */
@@ -102,7 +107,10 @@ export const useLocationStore = create<LocationState>()(
             set({ permission: 'granted', permissionDenied: false })
             // Approximate-only permission gives fixes 1-2 km off: record it so we can tell that apart from a code bug.
             const level = res.android?.accuracy
-            if (level) track('location_permission', { level })
+            if (level) {
+              track('location_permission', { level })
+              set({ permissionLevel: level === 'coarse' ? 'coarse' : 'fine' })
+            }
             return true
           }
           set({ permission: prompt || res.status === 'denied' ? 'denied' : 'unknown', permissionDenied: prompt || res.status === 'denied', ready: true })
@@ -134,6 +142,8 @@ export const useLocationStore = create<LocationState>()(
         fixedAt: null,
         source: null,
         permission: 'unknown',
+        permissionLevel: 'unknown',
+        accuracy: null,
         timedOut: false,
         hydrated: false,
         ready: false,
@@ -224,4 +234,10 @@ export function useFreshness(): Freshness {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- compute only reads the store
   }, [focused])
   return freshness
+}
+
+/** True when the location we are getting is approximate (approximate-only permission, or a fix too rough for a pickup).
+ *  A boolean selector, so it re-renders only when it flips. */
+export function useApproximateLocation(): boolean {
+  return useLocationStore((s) => s.permission === 'granted' && isApproximate(s.permissionLevel, s.accuracy))
 }

@@ -14,7 +14,8 @@ import { fetchClassifyTrip, fetchNearestCityId, fetchPlaceDetail, fetchRoute, fe
 import { useAutocomplete } from '@/features/booking/hooks/useAutocomplete'
 import { useBookingDraftStore, type BookingPlace } from '@/features/booking/store'
 import type { RideType } from '@/features/booking/api'
-import { useFreshness, useLocationStore } from '@/store/useLocationStore'
+import { useApproximateLocation, useFreshness, useLocationStore } from '@/store/useLocationStore'
+import { PreciseLocationNotice } from '@/features/home/PreciseLocationNotice'
 import { useRecentSearchesStore } from '@/store/useRecentSearchesStore'
 import { RedirectToast } from '@/features/booking/components/RedirectToast'
 import { sectionLabel } from '@/theme/homeTokens'
@@ -59,6 +60,7 @@ export default function BookingPickersScreen() {
   const drop = useBookingDraftStore((s) => s.drop)
   const pickupAuto = useBookingDraftStore((s) => s.pickupAuto)
   const focused = useIsFocused()
+  const approximate = useApproximateLocation()
   const setPickup = useBookingDraftStore((s) => s.setPickup)
   const setDrop = useBookingDraftStore((s) => s.setDrop)
   const setRoute = useBookingDraftStore((s) => s.setRoute)
@@ -91,12 +93,13 @@ export default function BookingPickersScreen() {
   // The auto-filled pickup also follows the live fix (the rider walked, or the first fix was rough) until they choose a
   // place themselves; one they chose is never moved.
   useEffect(() => {
-    if (freshness !== 'live' || locLat === null || locLng === null || !focused) return
+    // An approximate location (1-2 km off) must not become the pickup: the rider sets it on the map instead.
+    if (freshness !== 'live' || locLat === null || locLng === null || !focused || approximate) return
     if (pickup && (!pickupAuto || drop)) return // a chosen pickup never moves; and once a destination is set the quote is being built
     if (pickup && haversineMetres([pickup.lat, pickup.lng], [locLat, locLng]) < 30 && (pickup.address === (locAddress || 'Current Location') || !locAddress)) return
     if (!pickup) track('location_pickup_autofill', { age_s: Math.round(ageMs(useLocationStore.getState().fixedAt ?? 0, Date.now()) / 1000), source: useLocationStore.getState().source ?? 'none' })
     setPickup({ address: locAddress || 'Current Location', lat: locLat, lng: locLng }, true)
-  }, [pickup, pickupAuto, drop, focused, freshness, locLat, locLng, locAddress, setPickup])
+  }, [pickup, pickupAuto, drop, focused, approximate, freshness, locLat, locLng, locAddress, setPickup])
 
   // Which field is actively showing a TextInput right now -- null means both
   // rows show their confirmed/placeholder text. Distinct from "which field was
@@ -288,7 +291,7 @@ export default function BookingPickersScreen() {
   }, [pickup, drop])
 
   // Same wording as the home pill (pillTextFor), so both screens flip together at the 8 s fix cap.
-  const pickupLabel = pickup ? pickup.address || 'Set pickup location' : pillTextFor(freshness, '').text
+  const pickupLabel = pickup ? pickup.address || 'Set pickup location' : approximate ? 'Set pickup location' : pillTextFor(freshness, '').text
   const canContinue = !!pickup && !!drop
 
   return (
@@ -316,6 +319,8 @@ export default function BookingPickersScreen() {
           <Text style={styles.riderPillText} numberOfLines={1}>{bookingForOther ? riderName : 'For me'}</Text>
         </Pressable>
       </View>
+
+      <PreciseLocationNotice />
 
       <View style={styles.headerBody}>
         {/* Fixed-height route card -- fields only ever show their own text or an
