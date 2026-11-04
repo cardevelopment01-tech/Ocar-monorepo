@@ -381,3 +381,20 @@ export async function listGrantedOfferIds(userId: bigint): Promise<bigint[]> {
   )
   return r.rows.map((x) => BigInt(x.offer_id))
 }
+
+/**
+ * Rides that carry an offer discount and have not been paid yet. Commission is read when a ride settles, so restoring
+ * the rate while these are open charges commission on their discounted fare (review decision D21): the Config page warns
+ * the admin with this number. Cheap and rare (only on an admin save of commission_percent).
+ */
+export async function openDiscountedRideCount(): Promise<number> {
+  const res = await pool.query<{ n: string }>(
+    `SELECT count(*)::text AS n
+       FROM fare_snapshots fs
+       JOIN rides r ON r.id = fs.ride_id
+      WHERE fs.discount_amount > 0
+        AND r.status NOT IN ('cancelled', 'no_drivers')
+        AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.ride_id = r.id AND p.status = 'completed')`
+  )
+  return Number(res.rows[0]?.n ?? 0)
+}

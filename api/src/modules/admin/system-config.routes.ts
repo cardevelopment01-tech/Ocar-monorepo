@@ -6,6 +6,7 @@ import { AppErrors } from '@/constants/errors'
 import { recordAuditLog } from '@/lib/audit-log'
 import { listConfig, getConfigById, getConfigValue, validateConfigValue, updateConfigValue } from '@/lib/system-config'
 import { validateConfigBounds, versionPairCheck } from '@/lib/system-config-bounds'
+import { openDiscountedRideCount } from '@/modules/offers/offers.repository'
 
 const router: IRouter = Router()
 
@@ -57,7 +58,19 @@ router.patch('/:id', async (req, res, next) => {
       ipAddress: req.ip ?? null,
     })
 
-    res.json({ config: updated })
+    // Raising the commission while rides carry an offer discount charges commission on their discounted fare when they
+    // settle (commission is read at settlement). Warn, never block: the admin may well want exactly that.
+    const warnings: { code: string; openDiscountedRides: number; message: string }[] = []
+    if (before.key === 'commission_percent' && parseFloat(value) > parseFloat(before.value)) {
+      const open = await openDiscountedRideCount().catch(() => 0)
+      if (open > 0) {
+        warnings.push({
+          code: 'OPEN_DISCOUNTED_RIDES', openDiscountedRides: open,
+          message: `${open} ride${open === 1 ? '' : 's'} with a rider offer ${open === 1 ? 'is' : 'are'} not paid yet and will settle at the new commission rate.`,
+        })
+      }
+    }
+    res.json(warnings.length > 0 ? { config: updated, warnings } : { config: updated })
   } catch (err) { next(err) }
 })
 

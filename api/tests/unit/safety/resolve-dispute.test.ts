@@ -76,3 +76,27 @@ describe('resolveDispute — refund cap', () => {
     expect(insert).toBeDefined()
   })
 })
+
+// payments.amount is what the rider paid (the payable) since offers: a dispute can never refund more than that, so no
+// code change was needed -- this pins it. Gross fare 454, rider paid 363.20 after a 90.80 offer.
+describe('resolveDispute — refund cap on a discounted ride', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(repo.getDisputeCoreById).mockResolvedValue({ id: 10n, ride_id: 500n, driver_id: 42n } as never)
+    vi.mocked(repo.getDisputeById).mockResolvedValue({ id: 10n, ride_id: 500n, driver_id: 42n } as never)
+    vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 500n, driver_id: 42n } as never)
+  })
+  it('rejects a refund of the gross fare and accepts exactly what was paid', async () => {
+    scriptClient('363.20', '0')
+    await expect(resolveDispute(10n, { ...base, outcome: 'full_refund', refundAmount: 400 })).rejects.toMatchObject({ appCode: 'REFUND_EXCEEDS_PAYMENT' })
+    scriptClient('363.20', '0')
+    await resolveDispute(10n, { ...base, outcome: 'full_refund', refundAmount: 363.2 })
+    expect(fakeClient.query.mock.calls.some(c => (c[0] as string).includes('INSERT INTO refunds'))).toBe(true)
+  })
+  it('after 300 was refunded only 63.20 remains', async () => {
+    scriptClient('363.20', '300')
+    await expect(resolveDispute(10n, { ...base, outcome: 'partial_refund', refundAmount: 64 })).rejects.toMatchObject({ appCode: 'REFUND_EXCEEDS_PAYMENT' })
+    scriptClient('363.20', '300')
+    await resolveDispute(10n, { ...base, outcome: 'partial_refund', refundAmount: 63.2 })
+  })
+})
