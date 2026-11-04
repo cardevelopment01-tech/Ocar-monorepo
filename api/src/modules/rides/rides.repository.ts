@@ -700,6 +700,7 @@ export async function getActiveRideForDriver(driverId: bigint, includeUnsettledC
        d.full_name  AS driver_name,
        d.phone      AS driver_phone,
        fs.total_estimated,
+       ocar_payable(fs.total_estimated, fs.discount_amount)::text AS driver_fare,
        fs.pricing_version, fs.overtime_min, fs.overtime_fare,
        hrc.hour_rate AS round_trip_hour_rate
      FROM rides r
@@ -1505,7 +1506,7 @@ export async function getUserRideHistory(
       `SELECT r.id::text, r.status, r.ride_type, r.origin_address, r.destination_address,
               r.requested_at, r.completed_at,
               d.full_name AS driver_name,
-              COALESCE(fs.total_final, fs.total_estimated)::text AS fare
+              ocar_payable(COALESCE(fs.total_final, fs.total_estimated), fs.discount_amount)::text AS fare
        FROM rides r
        LEFT JOIN drivers d         ON d.id = r.driver_id
        LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
@@ -1600,7 +1601,7 @@ export async function getUpcomingRides(userId: bigint): Promise<unknown[]> {
   const res = await pool.query(
     `SELECT r.id::text, r.ride_type, r.origin_address, r.destination_address,
             r.scheduled_for,
-            fs.total_estimated::text AS fare
+            ocar_payable(fs.total_estimated, fs.discount_amount)::text AS fare
      FROM rides r
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
      WHERE r.user_id = $1 AND r.status = 'scheduled'
@@ -1628,7 +1629,7 @@ export async function getDriverTripHistory(
       `SELECT r.id::text, r.status, r.ride_type, r.origin_address, r.destination_address,
               r.requested_at, r.started_at, r.completed_at,
               u.name AS user_name,
-              COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
+              ocar_payable(COALESCE(fs.total_final, fs.total_estimated), fs.discount_amount)::text AS fare,
               COALESCE(p.driver_earning, 0)::text AS driver_earning
        FROM rides r
        LEFT JOIN users u           ON u.id = r.user_id
@@ -1657,6 +1658,8 @@ export interface PendingAssignment {
   dest_lat: number | null
   dest_lng: number | null
   total_estimated: string | null
+  /** What the driver would earn on this ride (the payable), when a rider offer lowered it. */
+  driver_fare?: string | null
   ride_type: string
   is_return_cab: boolean
   distance_to_pickup_metres: number
@@ -1692,6 +1695,7 @@ export async function getPendingAssignmentsForDriver(
        (SELECT rp.km_limit FROM rental_packages rp WHERE rp.id = r.rental_package_id) AS rental_km_limit,
        (SELECT COUNT(*)::int FROM ride_stops rs WHERE rs.ride_id = r.id) AS stop_count,
        fs.total_estimated,
+       ocar_payable(fs.total_estimated, fs.discount_amount)::text AS driver_fare,
        COALESCE(
          CASE
            WHEN ra.driver_lat IS NOT NULL AND ra.driver_lng IS NOT NULL
@@ -1768,7 +1772,7 @@ export async function getDriverEarningsSummary(
        FROM (
          SELECT ${bucketExpr} AS bucket,
                 p.driver_earning::numeric AS earn,
-                COALESCE(fs.total_final, fs.total_estimated)::numeric AS fare
+                ocar_payable(COALESCE(fs.total_final, fs.total_estimated), fs.discount_amount)::numeric AS fare
          FROM rides r
          LEFT JOIN payments p        ON p.ride_id = r.id
          LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id

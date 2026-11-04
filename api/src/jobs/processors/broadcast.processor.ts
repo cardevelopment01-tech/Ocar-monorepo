@@ -173,7 +173,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       pickupLat:        data.originLat,
       pickupLng:        data.originLng,
       distanceToPickup: Math.round(driver.distance_metres),
-      estimatedFare:    ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
+      // What the driver earns: the payable, so a rider offer is visible before they accept (review decision D20).
+      estimatedFare:    (ride.cash_due ?? ride.total_estimated) != null ? parseFloat((ride.cash_due ?? ride.total_estimated)!) : 0,
       rideType:         data.rideType,
       isReturnCab:      data.isReturnCab,
     }
@@ -200,7 +201,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       destinationLat:    ride.dest_lat ?? undefined,
       destinationLng:    ride.dest_lng ?? undefined,
       distanceToPickup:  Math.round(driver.distance_metres),
-      estimatedFare:     ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
+      estimatedFare:     (ride.cash_due ?? ride.total_estimated) != null ? parseFloat((ride.cash_due ?? ride.total_estimated)!) : 0,
       rideType:          data.rideType,
       isReturnCab:       data.isReturnCab,
       expiresAt:         driver.expiresAt.toISOString(),
@@ -211,6 +212,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     if (ride.trip_hours)  requestPayload['tripHours'] = Number(ride.trip_hours)
     if (categoryName)     requestPayload['rideCategoryName'] = categoryName
     if (ride.payment_channel) requestPayload['paymentChannel'] = ride.payment_channel
+    if (parseFloat(ride.discount_amount ?? '0') > 0) requestPayload['riderOffer'] = true
     if (ride.estimated_km != null) requestPayload['tripKm'] = Number(ride.estimated_km)
     if (ride.estimated_min != null) requestPayload['tripMin'] = Math.round(Number(ride.estimated_min))
     if (ride.rental_km_limit != null) requestPayload['kmLimit'] = Number(ride.rental_km_limit)

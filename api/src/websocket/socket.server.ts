@@ -193,7 +193,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
               pickupLat:        a.origin_lat,
               pickupLng:        a.origin_lng,
               distanceToPickup: Math.round(a.distance_to_pickup_metres),
-              estimatedFare:    a.total_estimated != null ? parseFloat(a.total_estimated) : 0,
+              estimatedFare:    (a.driver_fare ?? a.total_estimated) != null ? parseFloat((a.driver_fare ?? a.total_estimated)!) : 0,
               rideType:         a.ride_type,
               isReturnCab:      a.is_return_cab,
               expiresAt:        a.expires_at,

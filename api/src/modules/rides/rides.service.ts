@@ -1558,6 +1558,8 @@ export async function addRideStop(
        WHERE ride_id = $1`,
       [rideId, chargeApplied, ride.ride_type === 'one_way'],
     )
+    // A sixth writer of the fare total (found by the writers guard test): the discount is re-derived, never grown.
+    await finaliseDiscount(pool, rideId)
   }
 
   // Re-order so the new stop sits where the driver will actually reach it, then
@@ -2318,7 +2320,7 @@ export async function adminAssignDriver(
     pickupLat: workingRide.origin_lat,
     pickupLng: workingRide.origin_lng,
     distanceToPickup: Math.round(candidate.distance_metres ?? 0),
-    estimatedFare: workingRide.total_estimated != null ? parseFloat(workingRide.total_estimated) : 0,
+    estimatedFare: (workingRide.cash_due ?? workingRide.total_estimated) != null ? parseFloat((workingRide.cash_due ?? workingRide.total_estimated)!) : 0,
     rideType: workingRide.ride_type,
     isReturnCab: workingRide.is_return_cab,
     expiresAt: expiresAt.toISOString(),
