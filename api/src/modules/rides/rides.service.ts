@@ -14,7 +14,7 @@ import { getTodayStatus } from '@/modules/drivers/driver-verification.repository
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import { resolveForBooking, type AppliedOffer, type PreviewInput } from '@/modules/offers/offers.service'
-import { finaliseDiscount, payableForRide, settleOfferOnPayment } from '@/modules/offers/settlement'
+import { finaliseDiscount, onRideCancelled, payableForRide, releaseForRide, settleOfferOnPayment } from '@/modules/offers/settlement'
 import { normalizeCode, reserveRedemption } from '@/modules/offers/offers.repository'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
@@ -1831,6 +1831,9 @@ export async function cancelRide(
       [rideId, ride.status, userId]
     )
 
+    // With a fee the ride did real work (the offer is used up); without one the offer goes back to the rider.
+    await onRideCancelled(client, rideId, feeAmount > 0)
+
     if (stage === 'before_dispatch') {
       await client.query(
         `UPDATE ride_advance_meta SET status = 'cancelled' WHERE ride_id = $1`,
@@ -1936,6 +1939,8 @@ export async function cancelRideAsDriver(
        VALUES ($1, 'driver', $2, $3, $4, $5, false, 0, false)`,
       [rideId, stage, driverId, reasonCode ?? null, reason ?? null]
     )
+    // A driver cancel never charges the rider, so their offer is given back.
+    await onRideCancelled(client, rideId, false)
 
     await client.query(
       `INSERT INTO ride_status_history (ride_id, from_status, to_status, actor, actor_id)
@@ -2158,6 +2163,8 @@ export async function forceResolveRide(
         [rideId]
       )
     }
+
+    if (outcome === 'cancelled') await releaseForRide(client, rideId, `ride ${actor} cancelled`)
 
     if (ride.driver_id) {
       const tripsIncrement = outcome === 'completed' ? ', trips_completed = trips_completed + 1' : ''

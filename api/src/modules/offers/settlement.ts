@@ -1,7 +1,7 @@
 import type { PoolClient } from 'pg'
 import { getConfigValue } from '@/lib/system-config'
 import { computeBenefit } from './engine'
-import { consumeRedemption } from './offers.repository'
+import { consumeRedemption, releaseRedemption } from './offers.repository'
 import type { Benefit, FareComponents } from './offers.types'
 import { roundPaise } from './money'
 
@@ -99,4 +99,19 @@ export async function payableForRide(q: Queryable, rideId: bigint): Promise<numb
  */
 export async function settleOfferOnPayment(q: Queryable, rideId: bigint): Promise<void> {
   await consumeRedemption(q as PoolClient, rideId)
+}
+
+/**
+ * A ride was cancelled. With no fee charged the offer is given back (budget, slot and the rider's use). With a
+ * cancellation fee the ride did real work, so the offer counts as used and the benefit is lost. Runs inside the
+ * cancellation's transaction; idempotent and a no-op for a ride with no offer.
+ */
+export async function onRideCancelled(q: Queryable, rideId: bigint, feeCharged: boolean): Promise<void> {
+  if (feeCharged) await consumeRedemption(q, rideId)
+  else await releaseRedemption(q, rideId, 'ride cancelled')
+}
+
+/** The ride closed with no driver (no_drivers) or an admin cancelled it: nothing was delivered, give the offer back. */
+export async function releaseForRide(q: Queryable, rideId: bigint, reason: string): Promise<void> {
+  await releaseRedemption(q, rideId, reason)
 }

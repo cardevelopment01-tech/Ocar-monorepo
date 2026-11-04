@@ -1,5 +1,7 @@
 import { socketEvents } from '@/websocket/socket.server'
 import * as repo from '@/modules/rides/rides.repository'
+import { pool } from '@/db/client'
+import { releaseForRide } from '@/modules/offers/settlement'
 import { BROADCAST_WINDOW_SECONDS, BROADCAST_MAX_DRIVERS, BACKGROUND_ACCEPT_WINDOW_SECONDS, maxPickupRadiusMetres } from '@/constants/limits'
 import { rideAckKey } from '@/constants/redis-keys'
 import { client as redis } from '@/db/redis'
@@ -119,6 +121,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       // CAS: a driver may have accepted between the status read at the top and now.
       const closed = await repo.updateRideStatusCAS(rideId, 'requested', 'no_drivers')
       if (!closed) return
+      // Nothing was delivered: give the rider's offer back.
+      await releaseForRide(pool, rideId, 'no drivers')
       await repo.logStatusHistory({
         rideId,
         fromStatus: 'requested',
