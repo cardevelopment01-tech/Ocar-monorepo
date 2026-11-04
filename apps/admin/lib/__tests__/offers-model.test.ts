@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { OfferDetail, OffersMeta, Redemption } from '../offers-api'
 import {
-  TEMPLATES, budgetUsedPercent, draftFromOffer, emptyDraft, groupCatalog, publishChecklist, redemptionsCsv, termsChanged, toPayload, validateDraft,
+  istNextDayStart, TEMPLATES, budgetUsedPercent, draftFromOffer, emptyDraft, groupCatalog, publishChecklist, redemptionsCsv, termsChanged, toPayload, validateDraft,
   type Draft,
 } from '../offers-model'
 
@@ -151,5 +151,38 @@ describe('budgetUsedPercent and redemptionsCsv', () => {
     const csv = redemptionsCsv(rows).split('\n')
     expect(csv[0]).toBe('Redemption,Ride,Rider,Status,Discount,Cashback,Reserved at,Consumed at,Released at,Reason')
     expect(csv[1]).toBe('1,7,3,consumed,40.00,0.00,a,b,,"said ""hi"", ok"')
+  })
+})
+
+describe('review hardening', () => {
+  it("an unchanged existing offer is not re-judged against today's limits; changed terms are", () => {
+    const old = draft({ percent: '15' })
+    const tighter = { ...META, capabilities: { ...META.capabilities, maxDiscountPercent: 10 } }
+    expect(validateDraft(old, tighter)[0]).toMatch(/more than 10%/)
+    expect(validateDraft(old, tighter, { checkBenefit: false })).toEqual([])
+    const cb = draft({ benefitType: 'cashback_percent', percent: '5' })
+    expect(validateDraft(cb, META, { checkBenefit: false })).toEqual([])
+    expect(validateDraft({ ...old, name: ' ' }, tighter, { checkBenefit: false })).toEqual(['Give the offer a name.'])
+  })
+
+  it('a route needs a from and a to city on every row', () => {
+    const meta = { ...META, rules: [...META.rules, { kind: 'route', label: 'Route', fields: [{ key: 'pairs', type: 'multi' as const, label: 'Origin and destination cities' }] }] }
+    const rule = (pairs: unknown[]) => draft({ rules: [{ kind: 'route', pairs }] })
+    expect(validateDraft(rule([{ originCityId: 0, destinationCityId: 0 }]), meta)[0]).toMatch(/pick a from and a to city/)
+    expect(validateDraft(rule([{ originCityId: 1, destinationCityId: 0 }]), meta)[0]).toMatch(/pick a from and a to city/)
+    expect(validateDraft(rule([]), meta)[0]).toMatch(/pick a from and a to city/)
+    expect(validateDraft(rule([{ originCityId: 1, destinationCityId: 2 }]), meta)).toEqual([])
+  })
+
+  it('an assigned offer keeps its kind and needs no code', () => {
+    const d = draftFromOffer({ id: '1', code: null, name: 'Gift', kind: 'assigned', status: 'active', version: 1, summary: null, budget_total: null, budget_spent: '0',
+      global_limit: null, redemption_count: 0, starts_at: null, ends_at: null, created_at: '', updated_at: '',
+      versions: [{ id: '2', version: 1, rules: [], benefit: { type: 'percent_off', percent: 10 }, per_user_limit: null, stacking: 'exclusive', display: {}, created_at: '' }] } as unknown as OfferDetail)
+    expect(d.kind).toBe('assigned')
+    expect(validateDraft(d, META)).toEqual([])
+  })
+
+  it('"up to and including" a date means before the start of the next India-time day', () => {
+    expect(istNextDayStart('2026-11-03')).toBe('2026-11-03T18:30:00.000Z')
   })
 })

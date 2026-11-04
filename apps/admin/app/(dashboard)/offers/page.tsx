@@ -10,6 +10,8 @@ import { budgetUsedPercent } from '@/lib/offers-model'
 import { extractErrorMessage } from '@/lib/http-errors'
 import { cn } from '@/lib/utils'
 
+const PAGE = 100
+
 const TABS = [
   { key: '', label: 'All' },
   { key: 'active', label: 'Live' },
@@ -52,8 +54,10 @@ export default function OffersPage() {
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
   const requestId = useRef(0)
+  const [hasMore, setHasMore] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 350)
@@ -65,13 +69,14 @@ export default function OffersPage() {
     setLoading(true)
     setError('')
     try {
-      const params: { status?: string; search?: string; limit: number } = { limit: 100 }
+      const params: { status?: string; search?: string; limit: number } = { limit: PAGE }
       if (tab) params.status = tab
       if (debounced) params.search = debounced
       const data = await offersApi.list(params)
       if (mine !== requestId.current) return
       setOffers(data.offers)
       setCounts(data.counts)
+      setHasMore(data.offers.length === PAGE)
     } catch (err) {
       if (mine !== requestId.current) return
       setOffers([])
@@ -81,6 +86,22 @@ export default function OffersPage() {
     }
   }, [tab, debounced])
   useEffect(() => { void load() }, [load])
+
+  async function loadMore() {
+    setLoadingMore(true)
+    try {
+      const params: { status?: string; search?: string; limit: number; offset: number } = { limit: 100, offset: offers.length }
+      if (tab) params.status = tab
+      if (debounced) params.search = debounced
+      const data = await offersApi.list(params)
+      setOffers((prev) => [...prev, ...data.offers])
+      setHasMore(data.offers.length === PAGE)
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Could not load more offers.'))
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
   const countOf = (key: string) => (key === '' ? total : counts[key] ?? 0)
@@ -146,6 +167,13 @@ export default function OffersPage() {
             </tbody>
           </table>
         </div>
+        {hasMore && !loading && (
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-text-muted">Showing {offers.length}. There are more.</p>
+            <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className="btn-secondary disabled:opacity-50">{loadingMore ? 'Loading…' : 'Show more'}</button>
+          </div>
+        )}
+        {debounced && <p className="text-xs text-text-muted">The numbers on the tabs count every offer, not just the matches.</p>}
       </div>
     </div>
   )

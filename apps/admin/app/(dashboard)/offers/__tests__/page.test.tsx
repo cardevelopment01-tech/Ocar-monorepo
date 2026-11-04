@@ -260,3 +260,79 @@ describe('Offer detail', () => {
     expect(screen.getByRole('button', { name: /Download CSV/ })).toBeEnabled()
   })
 })
+
+describe('review hardening (screens)', () => {
+  it('the sample ride can be given a city, vehicle and ride type, and they reach the server', async () => {
+    const user = userEvent.setup()
+    render(<NewOfferPage />)
+    await screen.findByLabelText('Name')
+    await user.type(screen.getByLabelText('Percent'), '10')
+    await user.selectOptions(screen.getByLabelText('Ride type'), 'round_trip')
+    await user.selectOptions(screen.getByLabelText('Vehicle'), '1')
+    await user.selectOptions(screen.getByLabelText('From city'), '2')
+    await waitFor(() => expect(api.previewDraft).toHaveBeenLastCalledWith(expect.objectContaining({
+      sample: expect.objectContaining({ ride: expect.objectContaining({ rideType: 'round_trip', categoryId: 1, cityId: 2, originCityId: 2 }) }),
+    })))
+  })
+
+  it('a half-failed save (new version made, then the patch refused) re-reads the offer so a retry does not make a duplicate version', async () => {
+    const user = userEvent.setup()
+    api.patch.mockRejectedValueOnce(Object.assign(new Error('x'), { isAxiosError: true, response: { status: 422, data: { error: 'The budget of a live offer can only go up' } } }))
+    render(<OfferDetailPage />)
+    await screen.findByRole('heading', { name: 'Ten off' })
+    await user.click(screen.getByRole('tab', { name: 'Terms' }))
+    const percent = await screen.findByLabelText('Percent')
+    await user.clear(percent); await user.type(percent, '12')
+    const budget = screen.getByLabelText('Budget (₹)')
+    await user.clear(budget); await user.type(budget, '100')
+    const loadsBefore = api.get.mock.calls.length
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(api.createVersion).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('The budget of a live offer can only go up')).toBeInTheDocument()
+    expect(api.get.mock.calls.length).toBeGreaterThan(loadsBefore)
+  })
+
+  it('an existing offer can still be renamed after the cap is lowered below its percent', async () => {
+    const user = userEvent.setup()
+    api.meta.mockResolvedValue({ ...META, capabilities: { ...META.capabilities, maxDiscountPercent: 5 } })
+    render(<OfferDetailPage />)
+    await screen.findByRole('heading', { name: 'Ten off' })
+    await user.click(screen.getByRole('tab', { name: 'Terms' }))
+    const name = await screen.findByLabelText('Name')
+    await user.clear(name); await user.type(name, 'Renamed')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('5', { name: 'Renamed' }))
+    expect(screen.queryByText(/more than 5%/)).not.toBeInTheDocument()
+  })
+
+  it('redemptions: the download pages through every match, and From after To explains itself', async () => {
+    const user = userEvent.setup()
+    const page1 = Array.from({ length: 200 }, (_, i) => ({ id: String(i), user_id: '3', ride_id: String(i), status: 'consumed', discount_amount: '10.00', cashback_amount: '0', reserved_at: '2026-11-03T10:00:00Z', consumed_at: null, released_at: null, reason: null }))
+    api.redemptions.mockImplementation(async (_id: string, p: { offset?: number }) => ((p.offset ?? 0) === 0 ? page1 : [page1[0]]))
+    URL.createObjectURL = vi.fn(() => 'blob:x'); URL.revokeObjectURL = vi.fn()
+    render(<OfferDetailPage />)
+    await screen.findByRole('heading', { name: 'Ten off' })
+    await user.click(screen.getByRole('tab', { name: 'Redemptions' }))
+    await screen.findByText(/Showing the latest 200/)
+    await user.click(screen.getByRole('button', { name: /Download CSV/ }))
+    await waitFor(() => expect(api.redemptions).toHaveBeenCalledWith('5', expect.objectContaining({ offset: 200 })))
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalled())
+
+    await user.type(screen.getByLabelText('From'), '2026-11-10')
+    await user.type(screen.getByLabelText('To'), '2026-11-01')
+    expect(await screen.findByText('The From date is after the To date.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Download CSV/ })).toBeDisabled()
+  })
+
+  it('the list offers "Show more" when a full page came back', async () => {
+    const user = userEvent.setup()
+    const full = Array.from({ length: 100 }, (_, i) => row({ id: String(i + 1), name: `Offer ${i + 1}` }))
+    api.list.mockResolvedValueOnce({ offers: full, counts: { active: 140 } }).mockResolvedValueOnce({ offers: [row({ id: '101', name: 'Offer 101' })], counts: { active: 140 } })
+    render(<OffersPage />)
+    await screen.findByText('Offer 1')
+    await user.click(screen.getByRole('button', { name: 'Show more' }))
+    await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 100 })))
+    expect(await screen.findByText('Offer 101')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument()
+  })
+})

@@ -7,7 +7,7 @@ import type { Benefit, BenefitType, OfferDetail, OfferPayload, OffersMeta, Redem
 
 export type Draft = {
   name: string
-  kind: 'code' | 'auto'
+  kind: 'code' | 'auto' | 'assigned'
   code: string
   benefitType: BenefitType
   percent: string
@@ -85,11 +85,13 @@ export function benefitOf(d: Draft): Benefit {
 
 /** India-time midnight for a date input, as an ISO instant. */
 export function istStart(date: string): string { return new Date(`${date}T00:00:00+05:30`).toISOString() }
+/** Midnight India time at the START of the day after `date`: the exclusive upper bound for "up to and including `date`". */
+export function istNextDayStart(date: string): string { return new Date(new Date(`${date}T00:00:00+05:30`).getTime() + 86_400_000).toISOString() }
 /** The instant an offer "ending on" this date stops: the end of that day in India time. */
 export function istEndOfDay(date: string): string { return new Date(`${date}T23:59:59+05:30`).toISOString() }
 
 export function toPayload(d: Draft, status: 'draft' | 'active'): OfferPayload {
-  const p: OfferPayload = { name: d.name.trim(), kind: d.kind, status, rules: d.rules, benefit: benefitOf(d) }
+  const p: OfferPayload = { name: d.name.trim(), kind: d.kind === 'auto' ? 'auto' : 'code', status, rules: d.rules, benefit: benefitOf(d) }
   if (d.kind === 'code') p.code = d.code.trim().toUpperCase()
   const per = num(d.perUserLimit); p.perUserLimit = per ?? null
   const budget = num(d.budgetTotal); p.budgetTotal = budget ?? null
@@ -105,7 +107,7 @@ export function draftFromOffer(o: OfferDetail): Draft {
   const v = o.versions[0]
   const b = v?.benefit ?? { type: 'percent_off' as const }
   return {
-    name: o.name, kind: o.kind === 'auto' ? 'auto' : 'code', code: o.code ?? '', benefitType: b.type,
+    name: o.name, kind: o.kind, code: o.code ?? '', benefitType: b.type,
     percent: b.percent != null ? String(b.percent) : '', amount: b.amount != null ? String(b.amount) : '',
     maxDiscount: b.maxDiscount != null ? String(b.maxDiscount) : '', maxCashback: b.maxCashback != null ? String(b.maxCashback) : '',
     expiresInDays: b.expiresInDays != null ? String(b.expiresInDays) : '30',
@@ -125,7 +127,8 @@ export function termsChanged(a: Draft, b: Draft): boolean {
 const positive = (s: string) => s.trim() !== '' && Number.isFinite(Number(s)) && Number(s) > 0
 
 /** Plain messages for everything wrong with a draft. Empty means it can be sent. The server validates again. */
-export function validateDraft(d: Draft, meta: OffersMeta): string[] {
+export function validateDraft(d: Draft, meta: OffersMeta, opts: { checkBenefit?: boolean } = {}): string[] {
+  const checkBenefit = opts.checkBenefit ?? true
   const errs: string[] = []
   if (!d.name.trim()) errs.push('Give the offer a name.')
   if (d.kind === 'code') {
@@ -133,6 +136,9 @@ export function validateDraft(d: Draft, meta: OffersMeta): string[] {
     else if (!/^[A-Za-z0-9_-]{3,24}$/.test(d.code.trim())) errs.push('The code must be 3 to 24 letters, numbers, - or _ with no spaces.')
   }
   const cap = meta.capabilities.maxDiscountPercent
+  // An existing offer is judged against today's limits only when its terms change: lowering the cap or switching
+  // cashback off must not stop an admin renaming it, extending it or topping up its budget.
+  if (checkBenefit) {
   if (d.benefitType === 'percent_off') {
     if (!positive(d.percent)) errs.push('Enter the percent off.')
     else if (Number(d.percent) > 100) errs.push('Percent off cannot be more than 100.')
@@ -149,6 +155,7 @@ export function validateDraft(d: Draft, meta: OffersMeta): string[] {
     if (!meta.capabilities.cashback) errs.push('Cashback offers are not switched on yet.')
     if (!positive(d.benefitType === 'cashback_percent' ? d.percent : d.amount)) errs.push('Enter the cashback value.')
     if (!positive(d.expiresInDays)) errs.push('Enter how many days the cashback lasts.')
+  }
   }
   for (const r of d.rules) errs.push(...validateRule(r, meta))
   if (d.perUserLimit.trim() !== '' && !(Number.isInteger(Number(d.perUserLimit)) && Number(d.perUserLimit) > 0)) errs.push('Uses per rider must be a whole number, 1 or more.')
@@ -172,10 +179,14 @@ function validateRule(r: Rule, meta: OffersMeta): string[] {
     return e
   }
   const e: string[] = []
+  if (r.kind === 'route') {
+    const pairs = (Array.isArray(r['pairs']) ? r['pairs'] : []) as { originCityId?: number; destinationCityId?: number }[]
+    if (pairs.length === 0 || pairs.some((p) => !((p.originCityId ?? 0) > 0) || !((p.destinationCityId ?? 0) > 0))) e.push(`${label}: pick a from and a to city for every route.`)
+  }
   for (const f of def.fields) {
     const v = r[f.key]
     if (f.type === 'number' && !(typeof v === 'number' && Number.isFinite(v) && v > 0)) e.push(`${label}: enter ${f.label.toLowerCase()}.`)
-    if (f.type === 'multi' && f.key !== 'bothDirections' && !(Array.isArray(v) && v.length > 0)) e.push(`${label}: choose at least one.`)
+    if (f.type === 'multi' && f.key !== 'bothDirections' && !(r.kind === 'route' && f.key === 'pairs') && !(Array.isArray(v) && v.length > 0)) e.push(`${label}: choose at least one.`)
   }
   return e
 }

@@ -24,7 +24,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
  * One form for creating an offer and editing its terms. Rules, discount kinds and the limits all come from the server
  * catalog (`meta`); the sentence and the sample ride come from the server too (PreviewPanel).
  */
-export default function OfferForm({ meta, draft, onChange, mode, readOnly = false, lookups, submitting, error, onSave, ownId }: {
+export default function OfferForm({ meta, draft, onChange, mode, readOnly = false, lookups, submitting, error, onSave, ownId, checkBenefit = true }: {
   meta: OffersMeta
   draft: Draft
   onChange: (d: Draft) => void
@@ -36,13 +36,16 @@ export default function OfferForm({ meta, draft, onChange, mode, readOnly = fals
   onSave: (publish: boolean) => void
   /** the offer being edited, so its own code is not reported as a duplicate */
   ownId?: string
+  /** false when editing an existing offer whose terms are unchanged: today's limits do not apply to it */
+  checkBenefit?: boolean
 }) {
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => onChange({ ...draft, [k]: v })
-  const errors = useMemo(() => validateDraft(draft, meta), [draft, meta])
+  const errors = useMemo(() => validateDraft(draft, meta, { checkBenefit }), [draft, meta, checkBenefit])
   const checklist = useMemo(() => publishChecklist(draft, meta), [draft, meta])
   const [touched, setTouched] = useState(false)
   const [codeTaken, setCodeTaken] = useState(false)
-  const benefits = meta.benefits.filter((b) => !b.isCashback || meta.capabilities.cashback)
+  // The stored type is always selectable, so an existing cashback offer never shows the wrong value.
+  const benefits = meta.benefits.filter((b) => !b.isCashback || meta.capabilities.cashback || b.type === draft.benefitType)
   const cap = meta.capabilities.maxDiscountPercent
 
   // A changed code is no longer the one we checked.
@@ -74,7 +77,7 @@ export default function OfferForm({ meta, draft, onChange, mode, readOnly = fals
           <fieldset disabled={ro || mode === 'edit'}>
             <legend className={labelCls}>How riders get it</legend>
             <div className="flex flex-wrap gap-2">
-              {([['code', 'They type a code'], ['auto', 'Applied automatically']] as const).map(([v, l]) => (
+              {([['code', 'They type a code'], ['auto', 'Applied automatically'], ...(draft.kind === 'assigned' ? [['assigned', 'Given to specific riders']] : [])] as [Draft['kind'], string][]).map(([v, l]) => (
                 <label key={v} className={`inline-flex items-center gap-2 min-h-[40px] px-3 rounded-xl border text-sm cursor-pointer ${draft.kind === v ? 'border-primary bg-primary-light text-primary font-semibold' : 'border-border bg-surface text-text-secondary'}`}>
                   <input type="radio" name="of-kind" checked={draft.kind === v} onChange={() => set('kind', v)} />{l}
                 </label>
@@ -204,7 +207,7 @@ export default function OfferForm({ meta, draft, onChange, mode, readOnly = fals
           </div>
         )}
       </div>
-      <PreviewPanel draft={draft} />
+      <PreviewPanel draft={draft} lookups={lookups} />
     </form>
   )
 }

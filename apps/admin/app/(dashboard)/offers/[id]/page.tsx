@@ -8,7 +8,7 @@ import OfferForm from '@/components/offers/OfferForm'
 import { useOffersSetup } from '@/components/offers/useOffersSetup'
 import { useAdminAuth } from '@/lib/auth-context'
 import { offersApi, type OfferDetail, type OfferStats, type OfferStatus, type Redemption } from '@/lib/offers-api'
-import { budgetUsedPercent, draftFromOffer, redemptionsCsv, termsChanged, toPayload, istEndOfDay, type Draft } from '@/lib/offers-model'
+import { budgetUsedPercent, draftFromOffer, redemptionsCsv, termsChanged, toPayload, istEndOfDay, istNextDayStart, type Draft } from '@/lib/offers-model'
 import { extractErrorMessage } from '@/lib/http-errors'
 import { cn } from '@/lib/utils'
 
@@ -80,11 +80,12 @@ export default function OfferDetailPage() {
       if (draft.budgetTotal !== saved.budgetTotal) patch.budgetTotal = draft.budgetTotal.trim() === '' ? null : Number(draft.budgetTotal)
       if (draft.globalLimit !== saved.globalLimit) patch.globalLimit = draft.globalLimit.trim() === '' ? null : Number(draft.globalLimit)
       if (Object.keys(patch).length > 0) await offersApi.patch(offer.id, patch)
-      await load()
       setNotice('Saved. Changes apply to new bookings only; rides already booked keep the old terms.')
     } catch (err) {
       setSaveError(extractErrorMessage(err, 'Could not save the changes.'))
     } finally {
+      // Always re-read: a new version may already exist even if the second step failed, and a retry must not create it again.
+      await load()
       setSubmitting(false)
     }
   }
@@ -153,7 +154,7 @@ export default function OfferDetailPage() {
         setupError ? <p role="alert" className="admin-card text-sm text-danger">{setupError}</p>
         : !meta ? <p className="admin-card text-sm text-text-muted">Loading…</p>
         : (
-          <OfferForm meta={meta} draft={draft} onChange={setDraft} mode="edit" readOnly={!canWrite || offer.status === 'ended'} lookups={lookups}
+          <OfferForm meta={meta} draft={draft} onChange={setDraft} mode="edit" readOnly={!canWrite || offer.status === 'ended'} lookups={lookups} checkBenefit={termsChanged(saved ?? draft, draft)}
             submitting={submitting} error={saveError} onSave={() => void saveTerms()} ownId={offer.id} />
         )
       )}
@@ -198,11 +199,12 @@ function RedemptionsTab({ offerId }: { offerId: string }) {
 
   useEffect(() => {
     let live = true
+    if (from !== '' && to !== '' && from > to) { setRows([]); setLoading(false); return }
     setLoading(true)
     const params: Parameters<typeof offersApi.redemptions>[1] = { limit: 200 }
     if (status) params.status = status
     if (from) params.from = new Date(`${from}T00:00:00+05:30`).toISOString()
-    if (to) params.to = new Date(`${to}T23:59:59+05:30`).toISOString()
+    if (to) params.to = istNextDayStart(to)
     offersApi.redemptions(offerId, params)
       .then((r) => { if (live) { setRows(r); setError('') } })
       .catch((err) => { if (live) { setRows([]); setError(extractErrorMessage(err, 'Could not load redemptions.')) } })
@@ -210,8 +212,33 @@ function RedemptionsTab({ offerId }: { offerId: string }) {
     return () => { live = false }
   }, [offerId, status, from, to])
 
-  function exportCsv() {
-    const url = URL.createObjectURL(new Blob([redemptionsCsv(rows)], { type: 'text/csv' }))
+  const [exporting, setExporting] = useState(false)
+  const badRange = from !== '' && to !== '' && from > to
+
+  /** Every row that matches the filters, not just the ones on screen (pages of 200, up to 10,000). */
+  async function exportCsv() {
+    setExporting(true)
+    try {
+      const base: Parameters<typeof offersApi.redemptions>[1] = { limit: 200 }
+      if (status) base.status = status
+      if (from) base.from = new Date(`${from}T00:00:00+05:30`).toISOString()
+      if (to) base.to = istNextDayStart(to)
+      const all: Redemption[] = []
+      for (let offset = 0; offset < 10_000; offset += 200) {
+        const page = await offersApi.redemptions(offerId, { ...base, offset })
+        all.push(...page)
+        if (page.length < 200) break
+      }
+      download(redemptionsCsv(all))
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Could not prepare the download.'))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  function download(csv: string) {
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
     const a = document.createElement('a')
     a.href = url
     a.download = `offer-${offerId}-redemptions.csv`
@@ -232,8 +259,9 @@ function RedemptionsTab({ offerId }: { offerId: string }) {
         </div>
         <div><label htmlFor="rd-from" className="block text-xs font-semibold text-text-muted mb-1.5">From</label><input id="rd-from" type="date" className={sel} value={from} onChange={(e) => setFrom(e.target.value)} /></div>
         <div><label htmlFor="rd-to" className="block text-xs font-semibold text-text-muted mb-1.5">To</label><input id="rd-to" type="date" className={sel} value={to} onChange={(e) => setTo(e.target.value)} /></div>
-        <button type="button" onClick={exportCsv} disabled={rows.length === 0} className="btn-secondary inline-flex items-center gap-2 disabled:opacity-50 disabled:pointer-events-none"><Download size={14} /> Download CSV</button>
+        <button type="button" onClick={() => void exportCsv()} disabled={rows.length === 0 || exporting || badRange} className="btn-secondary inline-flex items-center gap-2 disabled:opacity-50 disabled:pointer-events-none"><Download size={14} /> {exporting ? 'Preparing…' : 'Download CSV'}</button>
       </div>
+      {badRange && <p role="alert" className="text-xs text-danger">The From date is after the To date.</p>}
       <div className="overflow-x-auto">
         <table className="data-table">
           <thead><tr><th>When</th><th>Ride</th><th>Rider</th><th>Status</th><th className="!text-right">Discount</th></tr></thead>
@@ -253,7 +281,7 @@ function RedemptionsTab({ offerId }: { offerId: string }) {
           </tbody>
         </table>
       </div>
-      {rows.length === 200 && <p className="text-xs text-text-muted">Showing the latest 200. Narrow the dates to see older ones.</p>}
+      {rows.length === 200 && <p className="text-xs text-text-muted">Showing the latest 200. The download includes every match.</p>}
     </div>
   )
 }

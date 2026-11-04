@@ -20,6 +20,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   '/disputes':              { title: 'Disputes',       subtitle: 'Unresolved issues requiring action' },
   '/sos':                   { title: 'SOS Alerts',     subtitle: 'Emergency response' },
   '/payments':              { title: 'Payments',       subtitle: 'Transaction overview' },
+  '/offers':                { title: 'Offers',         subtitle: 'Rider discounts and codes' },
   '/settlements':           { title: 'Settlements',    subtitle: 'Driver payout management' },
   '/refunds':               { title: 'Refunds',        subtitle: 'Refund processing' },
   '/config/rate-cards':     { title: 'Rate Cards',     subtitle: 'Fare configuration' },
@@ -54,7 +55,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   const path = usePathname()
   const searchParams = useSearchParams()
   const { admin, logout } = useAdminAuth()
-  const baseMeta = PAGE_META[path] ?? { title: 'Admin', subtitle: '' }
+  // /offers/new and /offers/123 share the section's title.
+  const baseMeta = PAGE_META[path] ?? (path.startsWith('/offers/') ? PAGE_META['/offers'] : undefined) ?? { title: 'Admin', subtitle: '' }
   const meta = path === '/analytics'
     ? { ...baseMeta, subtitle: REPORT_TAB_SUBTITLE[searchParams.get('tab') ?? 'overview'] ?? baseMeta.subtitle }
     : baseMeta

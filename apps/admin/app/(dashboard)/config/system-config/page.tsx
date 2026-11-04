@@ -117,7 +117,8 @@ export default function SystemConfigPage() {
     const { saved, warnings: warned } = await ed.save()
     setReviewOpen(false)
     if (saved > 0) setToast(`${saved} ${saved === 1 ? 'setting' : 'settings'} updated`)
-    setWarnings(warned)
+    // Warnings stay until dismissed: saving an unrelated setting must not hide that discounted rides are still unpaid.
+    if (warned.length > 0) setWarnings((prev) => Array.from(new Set([...prev, ...warned])))
   }
 
   const activeRail = activeId ?? railItems[0]?.id ?? null
