@@ -755,11 +755,9 @@ const RIDE_SELECT_SQL = `SELECT
        (d.status = 'active')  AS driver_verified,
        d.reference_selfie_url AS driver_photo,
        fs.total_estimated,
-       -- The cash the driver collects and the rider-offer discount already taken off it. Until offers exist
-       -- (PR2 swaps both for the payable and the stored discount) cash_due is the settled fare, same as the
-       -- driver app computed itself, so adding them changes nothing a driver sees.
-       COALESCE(fs.total_final, fs.total_estimated) AS cash_due,
-       0::numeric AS discount_amount,
+       -- The cash the driver collects (the payable) and the rider-offer discount already taken off the gross fare.
+       ocar_payable(COALESCE(fs.total_final, fs.total_estimated), fs.discount_amount) AS cash_due,
+       fs.discount_amount,
        fs.total_final, fs.base_fare, fs.distance_fare, fs.time_fare, fs.stop_fare,
        fs.hour_surcharge, fs.overage_fare, fs.surge_fare, fs.surge_multiplier,
        fs.actual_km, fs.actual_min, fs.estimated_km::float8 AS estimated_km, fs.estimated_min::float8 AS estimated_min,
@@ -1536,6 +1534,8 @@ export interface FareRecomputeInput {
   rental_package_id: number | null
   origin_city_id:   number | null
   total_estimated:  number
+  /** The offer discount reserved on this quote; 0 when none. */
+  discount_amount?: number
 }
 
 export async function getFareRecomputeInput(rideId: bigint): Promise<FareRecomputeInput | null> {
@@ -1543,7 +1543,7 @@ export async function getFareRecomputeInput(rideId: bigint): Promise<FareRecompu
     `SELECT r.category_id::int, r.origin_city_id::int,
             fs.ride_type, fs.is_return_cab, fs.estimated_km::float8, fs.estimated_min::float8,
             fs.stop_count::int, fs.trip_hours::float8, fs.pricing_version::int, fs.rental_package_id::int,
-            fs.total_estimated::float8
+            fs.total_estimated::float8, fs.discount_amount::float8 AS discount_amount
      FROM fare_snapshots fs
      JOIN rides r ON r.id = fs.ride_id
      WHERE fs.ride_id = $1`,

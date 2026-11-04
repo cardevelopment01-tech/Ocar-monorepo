@@ -14,6 +14,7 @@ import { getTodayStatus } from '@/modules/drivers/driver-verification.repository
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import { resolveForBooking, type AppliedOffer, type PreviewInput } from '@/modules/offers/offers.service'
+import { finaliseDiscount, payableForRide, settleOfferOnPayment } from '@/modules/offers/settlement'
 import { normalizeCode, reserveRedemption } from '@/modules/offers/offers.repository'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
@@ -2069,6 +2070,7 @@ export async function endRideEarlyAsDriver(
        WHERE ride_id = $1`,
       [rideId, actualDistanceKm, actualDurationMin, finalFare]
     )
+    await finaliseDiscount(pool, rideId)
   }
 
   const completedAt = new Date().toISOString()
@@ -2197,6 +2199,7 @@ export async function forceResolveRide(
          WHERE ride_id = $1`,
         [rideId, wait]
       )
+      await finaliseDiscount(pool, rideId)
     } catch (err) {
       log.error({ err, rideId }, 'force-complete fare finalisation failed')
     }
@@ -2644,6 +2647,7 @@ export async function verifyEndOTP(
          WHERE ride_id = $1`,
         [rideId, s.measured_km, gpsDurationMin, s.overage_km, s.overage_min, s.overage_fare, s.total]
       )
+      await finaliseDiscount(pool, rideId)
       finalFare = s.total
       rentalSettled = true
       if (s.review_reason) await repo.flagRideForReview(rideId, s.review_reason)
@@ -2825,6 +2829,7 @@ export async function verifyEndOTP(
        WHERE ride_id = $1`,
       [rideId, billedKm, billedMin, totalFinal, earlyTermKm, earlyTermMin, overtimeMin, overtimeFare]
     )
+    await finaliseDiscount(pool, rideId)
 
     finalFare = totalFinal
   }
@@ -2849,6 +2854,7 @@ export async function verifyEndOTP(
         [rideId, waitTotal]
       )
       if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
+      await finaliseDiscount(pool, rideId)
     }
   }
 
@@ -2904,12 +2910,9 @@ export async function settleRideCompletionPayment(
   const rideData = await repo.getRideCoreById(rideId)
   const paymentChannel = rideData?.payment_channel ?? 'cash'
 
-  const fareRow = await pool.query(
-    `SELECT COALESCE(total_final, total_estimated) AS amount
-     FROM fare_snapshots WHERE ride_id = $1`,
-    [rideId]
-  )
-  const fareAmount = parseFloat(fareRow.rows[0]?.amount ?? '0')
+  // What the rider pays: the gross fare less the offer discount, re-derived on the final fare. Gateway order, wallet
+  // debit and the cash the driver collects all come from this one number.
+  const fareAmount = await payableForRide(pool, rideId)
 
   if (paymentChannel === 'online') {
     await createPaymentRecord(rideId, 'payu_online', { status: 'pending' })
@@ -2963,6 +2966,7 @@ export async function settleRideCompletionPayment(
   } else {
     await deductCommission(rideId, driverId)
   }
+  await settleOfferOnPayment(pool, rideId)
   // Stamp the same claim collectCash uses, so a client still on the
   // cash-collection screen (kill switch flipped after it loaded) sees
   // cash_collected_at already set and no-ops instead of double-settling.
@@ -3050,11 +3054,7 @@ export async function collectCash(
   if ((ride.payment_channel ?? 'cash') !== 'cash') throw httpError(409, 'Ride is not a cash ride', 'NOT_CASH_RIDE')
   if (ride.cash_collected_at) return { collected: parseFloat(ride.cash_collected_amount ?? '0'), discrepancy: ride.cash_discrepancy }
 
-  const fareRow = await pool.query(
-    `SELECT COALESCE(total_final, total_estimated) AS amount FROM fare_snapshots WHERE ride_id = $1`,
-    [rideId]
-  )
-  const fare = parseFloat(fareRow.rows[0]?.amount ?? '0')
+  const fare = await payableForRide(pool, rideId)
   const collected = input.notCollected ? 0 : (input.collectedAmount ?? fare)
   const tolerance = parseFloat(await getConfigValue('cash_collection_tolerance', '1'))
   const discrepancy = input.notCollected === true || Math.abs(collected - fare) > tolerance
@@ -3097,6 +3097,7 @@ export async function collectCash(
       crossedBelowMin = await deductCommission(rideId, driverId, client)
     }
     if (ride.user_id != null && fare > 0) await creditCashback(rideId, BigInt(ride.user_id), fare, client)
+    await settleOfferOnPayment(client, rideId)
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK').catch(() => undefined)

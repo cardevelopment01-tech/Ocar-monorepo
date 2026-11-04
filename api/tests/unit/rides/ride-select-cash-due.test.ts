@@ -14,12 +14,12 @@ import { compareVersions } from '@/modules/app-version/app-version.policy'
 describe('ride select exposes cash_due and discount_amount', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('selects cash_due as the settled fare falling back to the estimate, and a zero discount', async () => {
+  it('selects cash_due as the payable (settled fare, else the estimate, less the discount) and the stored discount', async () => {
     vi.mocked(pool.query).mockResolvedValue({ rows: [] } as never)
     await getRideById(1n)
     const sql = String(vi.mocked(pool.query).mock.calls[0]?.[0])
-    expect(sql).toMatch(/COALESCE\(fs\.total_final, fs\.total_estimated\) AS cash_due/)
-    expect(sql).toMatch(/0::numeric AS discount_amount/)
+    expect(sql).toMatch(/ocar_payable\(COALESCE\(fs\.total_final, fs\.total_estimated\), fs\.discount_amount\) AS cash_due/)
+    expect(sql).toMatch(/fs\.discount_amount,/)
   })
 })
 

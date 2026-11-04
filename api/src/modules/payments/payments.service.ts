@@ -15,6 +15,7 @@ import {
 import * as packagesService from '@/modules/packages/packages.service'
 import * as packagesRepo from '@/modules/packages/packages.repository'
 import type { BillingMode } from '@/modules/rides/rides.types'
+import { finaliseDiscount, payableOf, settleOfferOnPayment } from '@/modules/offers/settlement'
 
 const log = logger.child({ module: 'payments-service' })
 
@@ -85,9 +86,11 @@ export async function createPaymentRecord(
   // Runs on the caller's transaction when given one (cash settlement), so the payment row it inserts is visible
   // to the commission deduction that follows on the same connection.
   const q = sharedClient ?? pool
+  // The payment is for what the rider pays: the gross fare less any offer discount, re-derived on the final fare first.
+  await finaliseDiscount(q, rideId)
   const fareRes = await q.query(
     `SELECT fs.id AS fare_snapshot_id,
-            fs.total_final, fs.total_estimated,
+            fs.total_final, fs.total_estimated, fs.discount_amount,
             r.user_id, r.driver_id
      FROM fare_snapshots fs
      JOIN rides r ON r.id = fs.ride_id
@@ -98,7 +101,8 @@ export async function createPaymentRecord(
   const fare = fareRes.rows[0]
   if (!fare) throw Object.assign(new Error('Fare snapshot not found'), { httpStatus: 404 })
 
-  const amount = parseFloat(fare.total_final ?? fare.total_estimated)
+  const discount = parseFloat(fare.discount_amount ?? '0')
+  const amount = payableOf({ total: fare.total_final ?? fare.total_estimated, discount_amount: discount })
   const commissionPct = await getCommissionPercent()
   const commissionAmt = Math.round(amount * commissionPct) / 100
   const driverEarning = Math.round((amount - commissionAmt) * 100) / 100
@@ -112,13 +116,13 @@ export async function createPaymentRecord(
        ride_id, user_id, driver_id, fare_snapshot_id,
        amount, channel, status,
        commission_percent, commission_amount, driver_earning,
-       captured_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       captured_at, discount_amount
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      ON CONFLICT (ride_id) DO NOTHING`,
     [
       rideId, fare.user_id, fare.driver_id, fare.fare_snapshot_id,
       amount, channel, status, commissionPct, commissionAmt, driverEarning,
-      capturedAt,
+      capturedAt, discount,
     ]
   )
 }
@@ -357,6 +361,7 @@ export async function confirmRidePayment(
     }
     await accrueDriverEarning(rideId, BigInt(row.driver_id), client)
     await creditCashback(rideId, BigInt(row.user_id), parseFloat(row.amount), client)
+    await settleOfferOnPayment(client, rideId)
 
     await client.query('COMMIT')
 

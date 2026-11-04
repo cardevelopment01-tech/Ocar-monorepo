@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // The claim + settlement now run on ONE transaction client (so a mid-settlement failure rolls the claim back).
 const fakeClient = { query: vi.fn(), release: vi.fn() }
+vi.mock('@/modules/offers/settlement', () => ({
+  payableForRide: vi.fn(async (q: { query: (sql: string) => Promise<{ rows: { amount?: string }[] }> }) => {
+    const r = await q.query('fare')
+    return parseFloat(r.rows[0]?.amount ?? '0')
+  }),
+  finaliseDiscount: vi.fn(), settleOfferOnPayment: vi.fn(),
+}))
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn(() => Promise.resolve(fakeClient)) } }))
 vi.mock('@/db/redis', () => ({ client: { del: vi.fn() } }))
 vi.mock('@/lib/otp', () => ({ generateOtp: vi.fn(() => '1234'), hashOtp: vi.fn(() => 'h') }))
