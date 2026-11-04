@@ -2,17 +2,22 @@ import { haversineMetres } from './polyline'
 
 // Pure rules for the "instant location" behaviour (saved fix -> OS last-known -> fresh GPS).
 // Kept free of expo-location / React Native imports so vitest (plain node) can test every branch.
-// Numbers come from the eng + design review: 2 min live window, 30 min "recent" window, 8 s fix cap,
-// 150 m geocode reuse radius, 1 km camera glide-vs-snap cutoff.
+// Numbers: 60 s live window (a foreground watcher delivers a fix every few seconds, so a fix older than this means the
+// signal is gone), 30 min "recent" window, 8 s "still looking" cap (the watcher keeps running past it), 150 m geocode reuse
+// radius, 1 km camera glide-vs-snap cutoff.
 
 export type FixSource = 'cache' | 'os' | 'gps'
 export type PermissionState = 'unknown' | 'granted' | 'denied'
 export type Freshness = 'live' | 'recent' | 'old' | 'timeout' | 'denied'
 
-export type Fix = { lat: number; lng: number; fixedAt: number; source: FixSource }
+export type Fix = { lat: number; lng: number; fixedAt: number; source: FixSource; /** metres of uncertainty, when the OS gave one */ accuracy?: number }
 type Point = { lat: number; lng: number }
 
-export const FRESH_MS = 2 * 60_000
+export const FRESH_MS = 60_000
+/** How often the foreground watcher asks for a fix (Android; iOS reports on every change). */
+export const WATCH_INTERVAL_MS = 5000
+/** A fix this close to the last one only refreshes its timestamp, so GPS jitter does not re-render the map. */
+export const JITTER_M = 8
 export const OLD_MS = 30 * 60_000
 export const FIX_TIMEOUT_MS = 8000
 export const GEOCODE_REUSE_M = 150
@@ -26,10 +31,16 @@ export function ageMs(fixedAt: number, now: number): number {
   return age < 0 ? Number.POSITIVE_INFINITY : age
 }
 
-/** A fix the booking flow may trust: a real GPS fix this launch, or any fix younger than FRESH_MS. */
+/** A fix the booking flow may trust: younger than FRESH_MS, whatever its source. A GPS fix from this launch is not
+ *  trusted forever: the rider may have travelled since, so its age counts like any other. */
 export function isFresh(fix: Fix | null, now: number): boolean {
   if (!fix) return false
-  return fix.source === 'gps' || ageMs(fix.fixedAt, now) < FRESH_MS
+  return ageMs(fix.fixedAt, now) < FRESH_MS
+}
+
+/** Worth a street-address lookup: a real device fix (not the saved one) that is still current. */
+export function shouldGeocode(fix: Fix | null, now: number): boolean {
+  return !!fix && fix.source !== 'cache' && ageMs(fix.fixedAt, now) < FRESH_MS
 }
 
 /** Newer timestamp wins; a future timestamp never wins; ties go to the better source (gps > os > cache). */

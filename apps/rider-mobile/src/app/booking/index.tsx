@@ -4,7 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts, pillTextFor, getApiErrorMessage, haversineMetres } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, pillTextFor, getApiErrorMessage, haversineMetres, ageMs, track } from '@ocar/mobile-shared'
 
 // Same threshold as the API (MIN_TRIP_DISTANCE_METRES): closer than this is the same place, not a trip.
 const SAME_PLACE_METRES = 100
@@ -57,6 +57,7 @@ export default function BookingPickersScreen() {
   const insets = useSafeAreaInsets()
   const pickup = useBookingDraftStore((s) => s.pickup)
   const drop = useBookingDraftStore((s) => s.drop)
+  const pickupAuto = useBookingDraftStore((s) => s.pickupAuto)
   const setPickup = useBookingDraftStore((s) => s.setPickup)
   const setDrop = useBookingDraftStore((s) => s.setDrop)
   const setRoute = useBookingDraftStore((s) => s.setRoute)
@@ -86,10 +87,15 @@ export default function BookingPickersScreen() {
   // Pickup defaults to the current location, but only from a fresh fix (GPS this launch, or under 2 minutes
   // old). The saved location seeds the home map only: it must never become a booking pickup, since a stale
   // spot would be quoted and dispatched. Tapping FROM still lets the rider override it, same as web.
+  // The auto-filled pickup also follows the live fix (the rider walked, or the first fix was rough) until they choose a
+  // place themselves; one they chose is never moved.
   useEffect(() => {
-    if (pickup || freshness !== 'live' || locLat === null) return
-    setPickup({ address: locAddress || 'Current Location', lat: locLat, lng: locLng! })
-  }, [pickup, freshness, locLat, locLng, locAddress, setPickup])
+    if (freshness !== 'live' || locLat === null || locLng === null) return
+    if (pickup && !pickupAuto) return
+    if (pickup && haversineMetres([pickup.lat, pickup.lng], [locLat, locLng]) < 30 && (pickup.address === (locAddress || 'Current Location') || !locAddress)) return
+    if (!pickup) track('location_pickup_autofill', { age_s: Math.round(ageMs(useLocationStore.getState().fixedAt ?? 0, Date.now()) / 1000), source: useLocationStore.getState().source ?? 'none' })
+    setPickup({ address: locAddress || 'Current Location', lat: locLat, lng: locLng }, true)
+  }, [pickup, pickupAuto, freshness, locLat, locLng, locAddress, setPickup])
 
   // Which field is actively showing a TextInput right now -- null means both
   // rows show their confirmed/placeholder text. Distinct from "which field was
