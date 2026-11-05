@@ -43,6 +43,7 @@ router.patch('/:id', async (req, res, next) => {
       cashDiscounts: await getConfigValue('offers_cash_discounts_enabled', 'false'),
       driverAndroidMin: await getConfigValue('app_update_driver_android_min', '0.0.0'),
       updateGateEnabled: await getConfigValue('app_update_enabled', 'true'),
+      guardEnforced: await getConfigValue('offers_cash_guard_enforced', 'true'),
     })
     if (cashGuard) throw httpError(422, cashGuard, 'CASH_DISCOUNT_GUARD')
 

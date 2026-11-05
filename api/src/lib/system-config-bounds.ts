@@ -42,6 +42,8 @@ const ALLOWED_VALUES: Record<string, readonly string[]> = {
   // Read as on only when exactly 'true'; a typo would silently leave a kill switch looking off.
   offers_enabled: ['true', 'false'],
   offers_cash_discounts_enabled: ['true', 'false'],
+  // 'false' lifts the cash-discount driver-version guard (internal testing); anything else must be refused, not read as on.
+  offers_cash_guard_enforced: ['true', 'false'],
   offers_cashback_enabled: ['true', 'false'],
 }
 
