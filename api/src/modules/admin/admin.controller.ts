@@ -709,7 +709,8 @@ export async function postAdminRateCard(
     if (req.body.stop_charge !== undefined && req.body.stop_charge !== null)
       data.stopCharge = Number(req.body.stop_charge);
     if (req.body.base_fare !== undefined && req.body.base_fare !== null)
-      data.baseFare = Number(req.body.base_fare);
+      // Strict: Number('') / Number(true) / Number([]) would quietly become a real rate. Non-numbers become NaN, which the service rejects.
+      data.baseFare = typeof req.body.base_fare === 'number' ? req.body.base_fare : NaN;
     if (req.body.city_id !== undefined)
       data.cityId = req.body.city_id != null ? Number(req.body.city_id) : null;
     if (req.body.notes !== undefined) data.notes = String(req.body.notes);

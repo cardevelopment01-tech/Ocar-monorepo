@@ -568,6 +568,8 @@ export async function createAdminRateCard(data: Parameters<typeof repo.createAdm
   if (data.baseFare !== undefined && (!Number.isFinite(data.baseFare) || data.baseFare < 0 || data.baseFare > 99999)) {
     throw createHttpError(AppErrors.VALIDATION_ERROR)
   }
+  // Rentals are priced from the package fare, so a base fare would be stored and shown but never charged.
+  if (data.rideType === 'rental' && (data.baseFare ?? 0) > 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
   return repo.createAdminRateCard(data)
 }
 
