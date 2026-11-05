@@ -685,6 +685,7 @@ export async function postAdminRateCard(
       kmPerDay?: number | null;
       driverAllowancePerDay?: number | null;
       stopCharge?: number;
+      baseFare?: number;
       cityId?: number | null;
       notes?: string | null;
     } = {};
@@ -707,6 +708,9 @@ export async function postAdminRateCard(
     // Omitted = keep the previous version's per-stop price (the repository carries it forward).
     if (req.body.stop_charge !== undefined && req.body.stop_charge !== null)
       data.stopCharge = Number(req.body.stop_charge);
+    if (req.body.base_fare !== undefined && req.body.base_fare !== null)
+      // Strict: Number('') / Number(true) / Number([]) would quietly become a real rate. Non-numbers become NaN, which the service rejects.
+      data.baseFare = typeof req.body.base_fare === 'number' ? req.body.base_fare : NaN;
     if (req.body.city_id !== undefined)
       data.cityId = req.body.city_id != null ? Number(req.body.city_id) : null;
     if (req.body.notes !== undefined) data.notes = String(req.body.notes);

@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, colors, fonts, maybeRequestReview, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, buildTripFacts, colors, dropDisplay, fonts, maybeRequestReview, radii, spacing, typography } from '@ocar/mobile-shared'
 import { fetchProfile } from '@/features/profile/api'
 import { DriverAvatar, driverViewFromRide } from '@/features/ride-tracking/components/DriverIdentity'
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
@@ -13,7 +13,7 @@ import { fetchRouteLeg } from '@/features/ride-tracking/api'
 import type { RideDetailExtra } from '@/features/ride-tracking/types'
 import { RatingSection } from './RatingSection'
 import {
-  buildInvoiceRows, buildTimeline, formatMoney, formatTripWhen, paymentState, tripMetrics, tripTitle,
+  buildInvoiceRows, buildTimeline, formatMoney, formatTripWhen, paymentState, tripTitle,
 } from './tripSummaryModel'
 
 // Support has no in-app entry on mobile yet; email is the channel the web site already publishes
@@ -77,12 +77,10 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
   const showFare = fareValue > 0
   const fareText = formatMoney(fareValue)
   const when = formatTripWhen(ride.completedAt ?? ride.requestedAt)
-  const metrics = tripMetrics(ride)
+  const facts = completed ? buildTripFacts(ride) : []
   const timeline = buildTimeline(ride)
-  const dropLabel = ride.rideType === 'round_trip' ? 'Drop and return' : ride.rideType === 'rental' ? 'Route' : 'Drop'
-  const dropValue = ride.rideType === 'rental'
-    ? (ride.tripHours ? `${ride.tripHours}h city ride, flexible` : 'Hourly city ride, flexible')
-    : (ride.destinationAddress ?? 'Destination')
+  // The drop is always the real address (a rental books one too); the package is only a caption under it.
+  const drop = dropDisplay(ride)
   const driverView = driverViewFromRide(ride)
   const hasDriver = completed && ride.driverId != null
   // Only label a fee that exists: a free cancellation has no fare to caption.
@@ -156,26 +154,46 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
         {/* Route */}
         <View style={styles.section}>
+          {/* One row per stop with its own marker, so the drop marker sits level with "Drop" however long the pickup is. */}
+          <View>
           <View style={styles.routeRow}>
-            <View style={styles.dots}>
+            <View style={styles.markerCol}>
               <View style={[styles.dot, styles.dotPickup]} />
               <View style={styles.line} />
+            </View>
+            <View style={[styles.routeText, styles.pickupText]}>
+              <Text style={styles.routeLabel}>Pickup</Text>
+              <Text style={styles.routeValue} numberOfLines={3}>{ride.originAddress ?? 'Pickup location'}</Text>
+            </View>
+          </View>
+          <View style={styles.routeRow}>
+            <View style={styles.markerCol}>
               <View style={[styles.dot, styles.dotDrop]} />
             </View>
             <View style={styles.routeText}>
-              <View>
-                <Text style={styles.routeLabel}>Pickup</Text>
-                <Text style={styles.routeValue} numberOfLines={2}>{ride.originAddress ?? 'Pickup location'}</Text>
-              </View>
-              <View>
-                <Text style={styles.routeLabel}>{dropLabel}</Text>
-                <Text style={styles.routeValue} numberOfLines={2}>{dropValue}</Text>
-              </View>
+              <Text style={styles.routeLabel}>{drop.label}</Text>
+              <Text style={styles.routeValue} numberOfLines={3}>{drop.value}</Text>
+              {drop.note ? <Text style={styles.routeNote}>{drop.note}</Text> : null}
             </View>
           </View>
+          </View>
           {ride.stops.length > 0 ? <StopTimeline stops={ride.stops} /> : null}
-          {metrics && completed ? <Text style={styles.sub}>{metrics}</Text> : null}
         </View>
+
+        {/* When it ran and how far: start, end, distance, time taken. */}
+        {facts.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Trip summary</Text>
+            <View style={styles.receipt}>
+              {facts.map((f) => (
+                <View key={f.key} style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>{f.label}</Text>
+                  <Text style={styles.receiptAmount}>{f.value}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         {/* Fare receipt: label and detail left, amount right in tabular figures. */}
         {completed && invoice.rows.length > 0 ? (
@@ -188,12 +206,12 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
                     <Text style={styles.receiptLabel}>{row.label}</Text>
                     {row.detail ? <Text style={styles.receiptDetail}>{row.detail}</Text> : null}
                   </View>
-                  <Text style={styles.receiptAmount} maxFontSizeMultiplier={1.3}>{formatMoney(row.amount)}</Text>
+                  <Text style={styles.receiptAmount} maxFontSizeMultiplier={1.3}>{row.negative ? `−${formatMoney(row.amount)}` : formatMoney(row.amount)}</Text>
                 </View>
               ))}
             </View>
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalLabel}>{invoice.discount > 0 ? 'You paid' : 'Total'}</Text>
               <Text style={styles.totalAmount} maxFontSizeMultiplier={1.3}>{formatMoney(invoice.total)}</Text>
             </View>
             {pay ? (
@@ -306,14 +324,16 @@ const styles = StyleSheet.create({
   dueText: { ...typography.label, fontSize: 14, fontFamily: fonts.bold, color: colors.ink900, flex: 1 },
 
   routeRow: { flexDirection: 'row', gap: spacing.sm + 4 },
-  dots: { alignItems: 'center', paddingVertical: 5 },
+  markerCol: { width: 10, alignItems: 'center', paddingTop: 7 },
+  pickupText: { paddingBottom: spacing.sm + 4 },
   dot: { width: 10, height: 10 },
   dotPickup: { borderRadius: 5, backgroundColor: colors.primary },
   dotDrop: { borderRadius: 2, backgroundColor: colors.ink900 },
-  line: { width: 1, flex: 1, minHeight: 24, backgroundColor: colors.border },
-  routeText: { flex: 1, minWidth: 0, gap: spacing.md },
+  line: { width: 1, flex: 1, marginTop: 2, backgroundColor: colors.border },
+  routeText: { flex: 1, minWidth: 0 },
   routeLabel: { ...typography.label, color: colors.ink600 },
   routeValue: { ...typography.body, lineHeight: 22, color: colors.ink900, fontFamily: fonts.semibold },
+  routeNote: { ...typography.label, color: colors.ink600 },
 
   sectionTitle: { ...typography.title, fontSize: 16, color: colors.ink900 },
   receipt: { gap: spacing.sm + 4 },

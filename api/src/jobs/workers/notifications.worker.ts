@@ -243,7 +243,7 @@ export const notificationsWorker = new Worker(
       let fareStr = ''
       try {
         const fareRes = await pool.query<{ amount: string }>(
-          `SELECT COALESCE(total_final, total_estimated)::numeric AS amount
+          `SELECT ocar_payable(COALESCE(total_final, total_estimated), discount_amount)::numeric AS amount
            FROM fare_snapshots WHERE ride_id = $1`,
           [BigInt(data.rideId)]
         )

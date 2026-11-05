@@ -32,7 +32,7 @@ export default function MapPickerScreen() {
   const setPickup = useBookingDraftStore((s) => s.setPickup)
   const setDrop = useBookingDraftStore((s) => s.setDrop)
   const addRecent = useRecentSearchesStore((s) => s.addRecent)
-  useLocationTracking()
+  useLocationTracking(true, true) // placing a pickup: GPS-grade accuracy while this screen is on show
   const locLat = useLocationStore((s) => s.lat)
   const locLng = useLocationStore((s) => s.lng)
   const locAddress = useLocationStore((s) => s.address)

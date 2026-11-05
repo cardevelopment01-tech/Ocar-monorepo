@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ── Mocks must be declared before any imports that trigger the module graph ───
 
+const bookingClient = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [], rowCount: 0 })), release: vi.fn() }))
 vi.mock('@/modules/rides/rides.repository', () => ({
+  insertFareSnapshot:     vi.fn(),
+  insertRideStops:        vi.fn(),
   createRide:         vi.fn(),
   logStatusHistory:   vi.fn(),
   createRideAssignment: vi.fn(),
@@ -17,7 +20,7 @@ vi.mock('@/modules/pricing/pricing.service', () => ({
 }))
 
 vi.mock('@/db/client', () => ({
-  pool: { query: vi.fn() },
+  pool: { query: vi.fn(), connect: vi.fn(async () => bookingClient) },
 }))
 
 vi.mock('@/websocket/socket.server', () => ({
@@ -167,7 +170,8 @@ describe('createBooking, pricing_version on the fare snapshot', () => {
     vi.mocked(repo.getActiveRideIdForUser).mockResolvedValue(null)
   })
 
-  const snapshotInsert = () => vi.mocked(pool.query).mock.calls.find(c => /INSERT INTO fare_snapshots/.test(c[0] as string))!
+  // The snapshot is written by the repository on the booking transaction's client; assert what the service hands it.
+  const snapshot = () => vi.mocked(repo.insertFareSnapshot).mock.calls[0]![1]
 
   it('a round trip is stored as version 2 with its booked-hours charge', async () => {
     vi.mocked(pricing.getFareEstimate).mockResolvedValue({
@@ -175,17 +179,13 @@ describe('createBooking, pricing_version on the fare snapshot', () => {
       breakdown: { ...FARE_STUB.breakdown, waiting_fare: 108 },
     })
     await createBooking(USER_ID, { ...BASE_REQUEST, rideType: 'round_trip', tripHours: 6 })
-    const params = snapshotInsert()[1] as unknown[]
-    expect(params.at(-2)).toBe(2)
-    expect(params.at(-1)).toBe(108)
+    expect(snapshot()).toMatchObject({ pricingVersion: 2, waitingFare: 108, discountAmount: 0 })
   })
 
   it('a one-way booking stays version 1 with no waiting fare', async () => {
     vi.mocked(pricing.getFareEstimate).mockResolvedValue(FARE_STUB)
     await createBooking(USER_ID, { ...BASE_REQUEST })
-    const params = snapshotInsert()[1] as unknown[]
-    expect(params.at(-2)).toBe(1)
-    expect(params.at(-1)).toBe(0)
+    expect(snapshot()).toMatchObject({ pricingVersion: 1, waitingFare: 0, discountAmount: 0 })
   })
 })
 

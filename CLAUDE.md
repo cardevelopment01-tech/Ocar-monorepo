@@ -100,6 +100,18 @@ grace (`ROUND_TRIP_OVERTIME_GRACE_MIN`). `isHourlyRoundTrip()` in `lib/fare.ts` 
 settlement. **Never change what an existing version computes** — add a version 3 instead. The clock facts clients show
 (`bookedUntil`, `overtimeGraceMin`, `overtimeRate`) come from `lib/trip-window.ts`; clients never hardcode the grace.
 
+### Offers: `payments.amount` is what the rider pays
+`fare_snapshots.total_*` stay the **gross** fare and carry `discount_amount`; `payments.amount` is the **payable**
+(`ocar_payable(gross, discount)` in SQL, `payableOf()`/`payableForRide()` in `offers/settlement.ts`). Commission, TDS, PayU
+amount matching, driver earnings, the cash the driver collects, and refund caps all read the payable, so they needed no
+change. Raw `COALESCE(total_final, total_estimated)` is the gross fare: anything rider- or driver-facing about money must go
+through `ocar_payable()` (`tests/unit/offers/payable-guard.test.ts` fails on an unclassified raw reader). Every statement
+that sets `total_final`/`total_estimated` must be followed by `finaliseDiscount()` (the same test enforces it): the discount
+can shrink with the final fare, never grow. The launch offer is **driver-funded**: it only applies while `commission_percent`
+is 0 (set by hand; no date logic) and outside package-billing cities; there is no wallet credit and no `promo_credit`.
+Plan and decisions: `docs/superpowers/plans/2026-11-03-offers-and-coupons.md`. Flags: `offers_enabled`,
+`offers_cash_discounts_enabled`, `offers_cashback_enabled` (all `'false'`), cap `offers_max_discount_percent`.
+
 ### City boundaries are admin-owned
 `cities.boundary` (Polygon, 4326) is edited by admins in the app (`/cities` → "Edit boundary",
 `/api/v1/admin/geo/cities/:id/boundary[/preview]`), not by migrations. **Never write

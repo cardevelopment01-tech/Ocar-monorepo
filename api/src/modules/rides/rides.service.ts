@@ -13,6 +13,10 @@ import * as repo from './rides.repository'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
+import { resolveForBooking, type AppliedOffer, type PreviewInput } from '@/modules/offers/offers.service'
+import { finaliseDiscount, onRideCancelled, payableForRide, payableOf, releaseForRide, settleOfferOnPayment } from '@/modules/offers/settlement'
+import { driverFare } from '@/modules/offers/driver-fare'
+import { normalizeCode, reserveRedemption } from '@/modules/offers/offers.repository'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
 import { enqueueBreadcrumb } from '@/lib/gps-buffer'
@@ -593,6 +597,80 @@ export async function boundBookingDistance(data: BookingRequest, userId: bigint)
   }
 }
 
+// ── Offers at booking ─────────────────────────────────────────
+
+function offerNotApplicable(message: string, reason: string) {
+  return Object.assign(httpError(422, message, 'OFFER_NOT_APPLICABLE'), { details: { reason } })
+}
+
+/** 409: the price the rider saw is not the price now. Books nothing; the body carries the new price and why. */
+function priceChanged(fareTotal: number, offer: AppliedOffer | null, reason: string, payable: number) {
+  return Object.assign(httpError(409, 'The price has changed', 'PRICE_CHANGED'), {
+    details: { fareTotal, discount: offer?.discount ?? 0, payable, appliedOffer: offer, reason },
+  })
+}
+
+/** What the booking response tells the client about price. Absent offer: discount 0, payable = the gross fare. */
+function bookingPrice(total: number, offer: AppliedOffer | null) {
+  const discount = offer?.discount ?? 0
+  return { discount, payable: payableOf({ total, discount_amount: discount }), appliedOffer: offer }
+}
+
+/**
+ * The offer this booking gets, or null. Offers run only when the rider typed a code or sent the payable they saw
+ * (expectedPayable): an older app sends neither, so it never gets an automatic offer and the price it displayed is the
+ * price it pays. While offers are off a code is ignored and the booking is at the gross fare. A typed code that does not
+ * apply fails the booking (it never silently books at full price); a changed price answers 409 and books nothing.
+ */
+async function resolveBookingOffer(
+  userId: bigint,
+  data: BookingRequest,
+  fareReq: FareEstimateRequest,
+  originCityId: number | null,
+  fareEstimate: Awaited<ReturnType<typeof getFareEstimate>>,
+): Promise<AppliedOffer | null> {
+  const rawCode = data.couponCode
+  if (rawCode !== undefined && (typeof rawCode !== 'string' || rawCode.trim().length > 40)) {
+    throw httpError(422, 'Invalid coupon code', AppErrors.VALIDATION_ERROR.code)
+  }
+  const code = rawCode?.trim() ?? ''
+  const expected = data.expectedPayable
+  if (expected !== undefined && !(typeof expected === 'number' && Number.isFinite(expected) && expected >= 0)) {
+    throw httpError(422, 'Invalid expectedPayable', AppErrors.VALIDATION_ERROR.code)
+  }
+  if (!code && expected === undefined) return null
+
+  const input: PreviewInput = { ...fareReq, paymentChannel: data.paymentChannel ?? 'cash', originCityId, destinationCityId: null }
+  if (code) input.code = code
+  if (data.scheduledFor !== undefined) input.scheduledFor = data.scheduledFor
+  if (data.autoOffer !== undefined) {
+    if (typeof data.autoOffer !== 'string' || !/^(none|\d{1,18})$/.test(data.autoOffer)) throw httpError(422, 'Invalid autoOffer', AppErrors.VALIDATION_ERROR.code)
+    input.autoOffer = data.autoOffer
+  }
+  // The destination city is judged from the coordinates, not the client's id (the route rule must not be spoofable).
+  if (data.destinationLat !== undefined && data.destinationLng !== undefined) {
+    input.destinationCityId = (await findNearestCity(data.destinationLat, data.destinationLng))?.id ?? null
+  }
+  const evaluation = await resolveForBooking(userId, input, fareEstimate)
+  if (!evaluation.enabled) {
+    // Offers went off after the rider saw a discounted price: they must be told, not billed the gross fare silently.
+    const gross = evaluation.result.fareTotal
+    if (expected !== undefined && Math.abs(gross - expected) > 0.01) throw priceChanged(gross, null, 'OFFER_UNAVAILABLE', gross)
+    return null
+  }
+
+  const offer = evaluation.chosen
+  if (code && (!offer || offer.code !== normalizeCode(code))) {
+    const why = evaluation.result.rejected[0]
+    throw offerNotApplicable(why?.message ?? "This offer isn't available right now", why?.reason ?? 'DISABLED')
+  }
+  const { fareTotal, payable } = evaluation.result
+  if (expected !== undefined && Math.abs(payable - expected) > 0.01) {
+    throw priceChanged(fareTotal, offer, offer ? 'FARE_CHANGED' : 'OFFER_UNAVAILABLE', payable)
+  }
+  return offer
+}
+
 export async function createBooking(userId: bigint, data: BookingRequest) {
   // Only immediate bookings conflict with an existing active ride — a
   // scheduled-for-later booking (data.scheduledFor set) is fine to stack on
@@ -701,6 +779,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   if (data.rentalPackageId !== undefined) fareReq.rental_package_id = data.rentalPackageId
   if (originCity           !== null)      fareReq.city_id           = originCity.id
   const fareEstimate = await getFareEstimate(fareReq)
+  const offer = await resolveBookingOffer(userId, data, fareReq, originCity?.id ?? null, fareEstimate)
 
   const rideInput: Parameters<typeof repo.createRide>[0] = {
     userId,
@@ -727,66 +806,65 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     rideInput.scheduledFor = data.scheduledFor
     rideInput.status = 'scheduled'
   }
+  // One transaction: the ride, its stops, the fare snapshot and the offer reservation are all created or none are
+  // (before, a failed snapshot insert left a ride with no fare). Reservation goes last so the shared offer row is
+  // locked for the shortest time.
+  const chargePerStop = fareEstimate.charge_per_stop
+  const client = await pool.connect()
   let ride
   try {
-    ride = await repo.createRide(rideInput)
+    await client.query('BEGIN')
+    ride = await repo.createRide(rideInput, client)
+    if (data.stops && data.stops.length > 0) {
+      // Same rate card the fare above was quoted on, so each stop row and stop_fare agree.
+      await repo.insertRideStops(BigInt(ride.id), data.stops.map(stop => ({ ...stop, chargeApplied: chargePerStop })), client)
+    }
+    await repo.insertFareSnapshot(client, {
+      rideId: ride.id,
+      rateCardId: fareEstimate.rate_card_id,
+      rentalPackageId: data.rentalPackageId ?? null,
+      rideType: data.rideType,
+      isReturnCab: data.isReturnCab ?? false,
+      surgeEventId: fareEstimate.surge_event_id,
+      surgeMultiplier: fareEstimate.surge_multiplier,
+      estimatedKm: data.distanceKm,
+      estimatedMin: data.durationMin,
+      stopCount: fareStopCount,
+      tripHours: effectiveTripHours,
+      baseFare: fareEstimate.breakdown.base_fare,
+      distanceFare: fareEstimate.breakdown.distance_fare,
+      timeFare: fareEstimate.breakdown.time_fare,
+      stopFare: fareEstimate.breakdown.stop_fare,
+      hourSurcharge: fareEstimate.breakdown.hour_surcharge,
+      surgeFare: fareEstimate.breakdown.surge_fare,
+      total: fareEstimate.breakdown.total,
+      pricingVersion: fareEstimate.pricing_version,
+      waitingFare: fareEstimate.breakdown.waiting_fare ?? 0,
+      discountAmount: offer?.discount ?? 0,
+    })
+    if (offer) {
+      const reserved = await reserveRedemption(client, {
+        offerId: BigInt(offer.offerId), versionId: BigInt(offer.versionId), userId, rideId: BigInt(ride.id),
+        discount: offer.discount, cashback: offer.cashback, perUserLimit: offer.perUserLimit,
+      })
+      if (!reserved.ok) {
+        // Lost a race for the last of a budget or a per-user use between the preview and now.
+        throw data.couponCode?.trim()
+          ? offerNotApplicable("This offer isn't available right now", reserved.reason)
+          : priceChanged(fareEstimate.breakdown.total, null, 'OFFER_UNAVAILABLE', fareEstimate.breakdown.total)
+      }
+    }
+    await client.query('COMMIT')
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined)
     // rides_one_live_per_user_idx: a concurrent double-tap that slipped past the check above.
     if ((err as { code?: string }).code === '23505') {
       throw httpError(409, 'You already have an active ride', 'RIDE_ALREADY_ACTIVE')
     }
     throw err
+  } finally {
+    client.release()
   }
-
-  if (data.stops && data.stops.length > 0) {
-    // Same rate card the fare above was quoted on, so each stop row and stop_fare agree.
-    const chargePerStop = fareEstimate.charge_per_stop
-    await repo.insertRideStops(
-      BigInt(ride.id),
-      data.stops.map(stop => ({ ...stop, chargeApplied: chargePerStop }))
-    )
-  }
-
-  await pool.query(
-    `INSERT INTO fare_snapshots (
-       ride_id, rate_card_id, rental_package_id,
-       ride_type, is_return_cab,
-       surge_event_id, surge_multiplier,
-       estimated_km, estimated_min, stop_count, trip_hours,
-       base_fare, distance_fare, time_fare,
-       stop_fare, hour_surcharge, surge_fare,
-       total_estimated, status,
-       pricing_version, waiting_fare,
-       rental_km_limit, rental_duration_minutes, rental_extra_per_km, rental_extra_per_min
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'estimate',$19,$20,
-       -- pin the package terms quoted now; admins edit packages in place (migration 099)
-       (SELECT km_limit         FROM rental_packages WHERE id = $3),
-       (SELECT duration_minutes FROM rental_packages WHERE id = $3),
-       (SELECT extra_per_km     FROM rental_packages WHERE id = $3),
-       (SELECT extra_per_min    FROM rental_packages WHERE id = $3))`,
-    [
-      ride.id,
-      fareEstimate.rate_card_id,
-      data.rentalPackageId ?? null,
-      data.rideType,
-      data.isReturnCab ?? false,
-      fareEstimate.surge_event_id,
-      fareEstimate.surge_multiplier,
-      data.distanceKm,
-      data.durationMin,
-      fareStopCount,
-      effectiveTripHours,
-      fareEstimate.breakdown.base_fare,
-      fareEstimate.breakdown.distance_fare,
-      fareEstimate.breakdown.time_fare,
-      fareEstimate.breakdown.stop_fare,
-      fareEstimate.breakdown.hour_surcharge,
-      fareEstimate.breakdown.surge_fare,
-      fareEstimate.breakdown.total,
-      fareEstimate.pricing_version,
-      fareEstimate.breakdown.waiting_fare ?? 0,
-    ]
-  )
 
   if (scheduledForDate) {
     await repo.logStatusHistory({
@@ -818,6 +896,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
       scheduledFor:    data.scheduledFor,
       estimatedFare:   fareEstimate.breakdown.total,
       surgeMultiplier: fareEstimate.surge_multiplier,
+      ...bookingPrice(fareEstimate.breakdown.total, offer),
     }
   }
 
@@ -868,6 +947,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     status:          'requested',
     estimatedFare:   fareEstimate.breakdown.total,
     surgeMultiplier: fareEstimate.surge_multiplier,
+    ...bookingPrice(fareEstimate.breakdown.total, offer),
   }
 }
 
@@ -1497,6 +1577,8 @@ export async function addRideStop(
        WHERE ride_id = $1`,
       [rideId, chargeApplied, ride.ride_type === 'one_way'],
     )
+    // A sixth writer of the fare total (found by the writers guard test): the discount is re-derived, never grown.
+    await finaliseDiscount(pool, rideId)
   }
 
   // Re-order so the new stop sits where the driver will actually reach it, then
@@ -1768,6 +1850,9 @@ export async function cancelRide(
       [rideId, ride.status, userId]
     )
 
+    // With a fee the ride did real work (the offer is used up); without one the offer goes back to the rider.
+    await onRideCancelled(client, rideId, feeAmount > 0)
+
     if (stage === 'before_dispatch') {
       await client.query(
         `UPDATE ride_advance_meta SET status = 'cancelled' WHERE ride_id = $1`,
@@ -1871,6 +1956,8 @@ export async function cancelRideAsDriver(
        VALUES ($1, 'driver', $2, $3, $4, $5, false, 0, false)`,
       [rideId, stage, driverId, reasonCode ?? null, reason ?? null]
     )
+    // A driver cancel never charges the rider, so their offer is given back.
+    await onRideCancelled(client, rideId, false)
 
     await client.query(
       `INSERT INTO ride_status_history (ride_id, from_status, to_status, actor, actor_id)
@@ -1946,6 +2033,7 @@ export async function endRideEarlyAsDriver(
     rate_per_km: string
     rate_per_min: string
     min_fare: string
+    base_fare?: string
     return_rate_per_km: string | null
     total_estimated: string
     pricing_version?: number
@@ -1954,7 +2042,7 @@ export async function endRideEarlyAsDriver(
     hour_rate?: string | null
   }>(
     `SELECT fs.surge_multiplier, fs.stop_fare, fs.is_return_cab,
-            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km,
+            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.base_fare, rc.return_rate_per_km,
             fs.total_estimated, fs.pricing_version, fs.trip_hours, fs.waiting_fare, rc.hour_rate
      FROM fare_snapshots fs
      JOIN rate_cards rc ON rc.id = fs.rate_card_id
@@ -1970,6 +2058,7 @@ export async function endRideEarlyAsDriver(
         rate_per_km:        parseFloat(snap.rate_per_km),
         rate_per_min:       parseFloat(snap.rate_per_min),
         min_fare:           parseFloat(snap.min_fare),
+        base_fare:          parseFloat(snap.base_fare ?? '0'),
         return_rate_per_km: snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
       },
       ride_type:        'one_way', // no hour_surcharge on an aborted trip
@@ -2007,6 +2096,7 @@ export async function endRideEarlyAsDriver(
        WHERE ride_id = $1`,
       [rideId, actualDistanceKm, actualDurationMin, finalFare]
     )
+    await finaliseDiscount(pool, rideId)
   }
 
   const completedAt = new Date().toISOString()
@@ -2093,6 +2183,8 @@ export async function forceResolveRide(
       )
     }
 
+    if (outcome === 'cancelled') await releaseForRide(client, rideId, `ride ${actor} cancelled`)
+
     if (ride.driver_id) {
       const tripsIncrement = outcome === 'completed' ? ', trips_completed = trips_completed + 1' : ''
       await client.query(
@@ -2135,6 +2227,7 @@ export async function forceResolveRide(
          WHERE ride_id = $1`,
         [rideId, wait]
       )
+      await finaliseDiscount(pool, rideId)
     } catch (err) {
       log.error({ err, rideId }, 'force-complete fare finalisation failed')
     }
@@ -2253,7 +2346,7 @@ export async function adminAssignDriver(
     pickupLat: workingRide.origin_lat,
     pickupLng: workingRide.origin_lng,
     distanceToPickup: Math.round(candidate.distance_metres ?? 0),
-    estimatedFare: workingRide.total_estimated != null ? parseFloat(workingRide.total_estimated) : 0,
+    estimatedFare: driverFare(workingRide),
     rideType: workingRide.ride_type,
     isReturnCab: workingRide.is_return_cab,
     expiresAt: expiresAt.toISOString(),
@@ -2441,6 +2534,7 @@ interface RoundTripSnapshot {
   rate_per_km:              string
   rate_per_min:             string
   min_fare:                 string
+  base_fare?:               string
   return_rate_per_km:       string | null
   hour_rate:                string | null
   km_per_day:               string | null
@@ -2451,7 +2545,7 @@ async function loadRoundTripSnapshot(rideId: bigint): Promise<RoundTripSnapshot 
   const res = await pool.query<RoundTripSnapshot>(
     `SELECT fs.surge_multiplier, fs.stop_fare, fs.stop_count, fs.is_return_cab,
             fs.estimated_km, fs.trip_hours, fs.pricing_version, fs.waiting_fare,
-            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km,
+            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.base_fare, rc.return_rate_per_km,
             rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day
      FROM fare_snapshots fs
      JOIN rate_cards rc ON rc.id = fs.rate_card_id
@@ -2582,6 +2676,7 @@ export async function verifyEndOTP(
          WHERE ride_id = $1`,
         [rideId, s.measured_km, gpsDurationMin, s.overage_km, s.overage_min, s.overage_fare, s.total]
       )
+      await finaliseDiscount(pool, rideId)
       finalFare = s.total
       rentalSettled = true
       if (s.review_reason) await repo.flagRideForReview(rideId, s.review_reason)
@@ -2643,6 +2738,7 @@ export async function verifyEndOTP(
             rate_per_km:         parseFloat(snap.rate_per_km),
             rate_per_min:        parseFloat(snap.rate_per_min),
             min_fare:            parseFloat(snap.min_fare),
+            base_fare:           parseFloat(snap.base_fare ?? '0'),
             return_rate_per_km:  snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
           },
           ride_type:        'one_way',  // no driver allowance on early termination
@@ -2676,6 +2772,7 @@ export async function verifyEndOTP(
             rate_per_km:        parseFloat(snap.rate_per_km),
             rate_per_min:       parseFloat(snap.rate_per_min),
             min_fare:           parseFloat(snap.min_fare),
+            base_fare:          parseFloat(snap.base_fare ?? '0'),
             return_rate_per_km: snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
             hour_rate:          hourlyRate,
           },
@@ -2699,6 +2796,7 @@ export async function verifyEndOTP(
             rate_per_km:  parseFloat(snap.rate_per_km),
             rate_per_min: parseFloat(snap.rate_per_min),
             min_fare:     parseFloat(snap.min_fare),
+            base_fare:    parseFloat(snap.base_fare ?? '0'),
             return_rate_per_km:       snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
             km_per_day:               snap.km_per_day != null ? parseFloat(snap.km_per_day) : null,
             driver_allowance_per_day: snap.driver_allowance_per_day != null ? parseFloat(snap.driver_allowance_per_day) : null,
@@ -2763,6 +2861,7 @@ export async function verifyEndOTP(
        WHERE ride_id = $1`,
       [rideId, billedKm, billedMin, totalFinal, earlyTermKm, earlyTermMin, overtimeMin, overtimeFare]
     )
+    await finaliseDiscount(pool, rideId)
 
     finalFare = totalFinal
   }
@@ -2787,6 +2886,7 @@ export async function verifyEndOTP(
         [rideId, waitTotal]
       )
       if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
+      await finaliseDiscount(pool, rideId)
     }
   }
 
@@ -2842,12 +2942,9 @@ export async function settleRideCompletionPayment(
   const rideData = await repo.getRideCoreById(rideId)
   const paymentChannel = rideData?.payment_channel ?? 'cash'
 
-  const fareRow = await pool.query(
-    `SELECT COALESCE(total_final, total_estimated) AS amount
-     FROM fare_snapshots WHERE ride_id = $1`,
-    [rideId]
-  )
-  const fareAmount = parseFloat(fareRow.rows[0]?.amount ?? '0')
+  // What the rider pays: the gross fare less the offer discount, re-derived on the final fare. Gateway order, wallet
+  // debit and the cash the driver collects all come from this one number.
+  const fareAmount = await payableForRide(pool, rideId)
 
   if (paymentChannel === 'online') {
     await createPaymentRecord(rideId, 'payu_online', { status: 'pending' })
@@ -2901,6 +2998,7 @@ export async function settleRideCompletionPayment(
   } else {
     await deductCommission(rideId, driverId)
   }
+  await settleOfferOnPayment(pool, rideId)
   // Stamp the same claim collectCash uses, so a client still on the
   // cash-collection screen (kill switch flipped after it loaded) sees
   // cash_collected_at already set and no-ops instead of double-settling.
@@ -2988,11 +3086,7 @@ export async function collectCash(
   if ((ride.payment_channel ?? 'cash') !== 'cash') throw httpError(409, 'Ride is not a cash ride', 'NOT_CASH_RIDE')
   if (ride.cash_collected_at) return { collected: parseFloat(ride.cash_collected_amount ?? '0'), discrepancy: ride.cash_discrepancy }
 
-  const fareRow = await pool.query(
-    `SELECT COALESCE(total_final, total_estimated) AS amount FROM fare_snapshots WHERE ride_id = $1`,
-    [rideId]
-  )
-  const fare = parseFloat(fareRow.rows[0]?.amount ?? '0')
+  const fare = await payableForRide(pool, rideId)
   const collected = input.notCollected ? 0 : (input.collectedAmount ?? fare)
   const tolerance = parseFloat(await getConfigValue('cash_collection_tolerance', '1'))
   const discrepancy = input.notCollected === true || Math.abs(collected - fare) > tolerance
@@ -3035,6 +3129,7 @@ export async function collectCash(
       crossedBelowMin = await deductCommission(rideId, driverId, client)
     }
     if (ride.user_id != null && fare > 0) await creditCashback(rideId, BigInt(ride.user_id), fare, client)
+    await settleOfferOnPayment(client, rideId)
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK').catch(() => undefined)

@@ -231,6 +231,10 @@ export type CreateBookingInput = {
   riderName?: string
   riderPhone?: string
   isReturnCab?: boolean
+  /** Offers (all optional; absent for an app talking to a server with offers off). */
+  couponCode?: string
+  expectedPayable?: number
+  autoOffer?: string
 }
 
 export async function createBooking(input: CreateBookingInput): Promise<BookingResult> {

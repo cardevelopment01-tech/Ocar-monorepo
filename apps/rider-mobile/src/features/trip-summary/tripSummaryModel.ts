@@ -1,4 +1,6 @@
 import type { RideDetail } from '@ocar/mobile-shared'
+// Deep path, like clampToRadius: the barrel pulls in React Native, which this pure-logic file (and its test) must not.
+import { rentalFareLines } from '@ocar/mobile-shared/src/utils/tripFacts'
 
 // Pure logic behind the Trip summary screen, kept out of the component so it is unit-testable.
 
@@ -17,19 +19,23 @@ export function formatMoney(value: string | number | null | undefined): string {
 }
 
 // `detail` is the quiet second line under the label (quantity, rate); the label itself stays a plain noun.
-export type InvoiceRow = { key: string; label: string; detail?: string; amount: number }
+export type InvoiceRow = { key: string; label: string; detail?: string; amount: number; /** shown as a minus (an offer taken off) */ negative?: boolean }
 
 type InvoiceSource = Pick<RideDetail,
   'baseFare' | 'distanceFare' | 'timeFare' | 'stopFare' | 'hourSurcharge' | 'overageFare' | 'surgeFare' |
   'surgeMultiplier' | 'actualKm' | 'actualMin' | 'totalFinal' | 'totalEstimated'> &
-  Partial<Pick<RideDetail, 'tripHours' | 'waitingFare' | 'overtimeMin' | 'overtimeFare' | 'overtimeGraceMin'>>
+  Partial<Pick<RideDetail, 'tripHours' | 'waitingFare' | 'overtimeMin' | 'overtimeFare' | 'overtimeGraceMin' | 'discountAmount' |
+    'rideType' | 'overageKm' | 'overageMin' | 'rentalExtraPerKm' | 'rentalExtraPerMin' | 'rentalKmLimit' | 'rentalDurationMinutes'>>
 
 // Only components that were actually charged (> 0), each labelled with its quantity. If the
 // components do not add up to the total, a single "Adjustments" row makes up the gap so the
 // page never shows an invoice that silently disagrees with its own total.
-export function buildInvoiceRows(r: InvoiceSource): { rows: InvoiceRow[]; total: number; isEstimate: boolean } {
+export function buildInvoiceRows(r: InvoiceSource): { rows: InvoiceRow[]; total: number; isEstimate: boolean; discount: number } {
   const isEstimate = r.totalFinal == null
-  const total = num(isEstimate ? r.totalEstimated : r.totalFinal)
+  // The components add up to the GROSS fare; an offer is taken off afterwards, so the total is what the rider pays.
+  const gross = num(isEstimate ? r.totalEstimated : r.totalFinal)
+  const discount = Math.min(num(r.discountAmount), gross)
+  const total = gross
   const km = num(r.actualKm)
   const min = Math.round(num(r.actualMin))
   const surge = num(r.surgeMultiplier)
@@ -48,11 +54,22 @@ export function buildInvoiceRows(r: InvoiceSource): { rows: InvoiceRow[]; total:
     // After surge: overtime is not surged. Only present once the trip settled with time past the booked window.
     { key: 'overtime', label: 'Extra time', detail: `${num(r.overtimeMin)} min${grace ? `, after ${grace} free minutes` : ''}`, amount: (r.overtimeMin ?? 0) > 0 ? num(r.overtimeFare) : 0 },
   ]
-  const rows = candidates.filter((c) => c.amount > 0)
+  let rows = candidates.filter((c) => c.amount > 0)
+  // A rental reads as package price, extra distance and extra time (each with its quantity x rate), not as a
+  // "Base fare" plus one lump of "Extra distance or time".
+  const rental = rentalFareLines({ ...r, rideType: r.rideType ?? '' })
+  if (rental) {
+    const made = new Set(rental.map((l) => l.key))
+    // Only swap out a generic row when its replacement was actually produced, so nothing falls into "Adjustments".
+    const dropBase = made.has('package')
+    const dropOverage = made.has('extra') || made.has('extra-km') || made.has('extra-time')
+    rows = [...rental, ...rows.filter((c) => !(dropBase && c.key === 'base') && !(dropOverage && c.key === 'overage'))]
+  }
   const gap = Math.round((total - rows.reduce((s, c) => s + c.amount, 0)) * 100) / 100
   // Sub-rupee differences are rounding, not something to show a rider as a line item.
   if (Math.abs(gap) >= 1) rows.push({ key: 'adjust', label: 'Adjustments', amount: gap })
-  return { rows, total, isEstimate }
+  if (discount > 0) rows.push({ key: 'offer', label: 'Offer', amount: discount, negative: true })
+  return { rows, total: Math.round((total - discount) * 100) / 100, isEstimate, discount }
 }
 
 export type PaymentState =
@@ -60,13 +77,13 @@ export type PaymentState =
   | { kind: 'paid'; text: string }
 
 export function paymentState(
-  r: Pick<RideDetail, 'totalFinal' | 'totalEstimated'> & { paymentChannel: string | null; cashCollectedAt: string | null },
+  r: Pick<RideDetail, 'totalFinal' | 'totalEstimated'> & Partial<Pick<RideDetail, 'cashDue'>> & { paymentChannel: string | null; cashCollectedAt: string | null },
 ): PaymentState {
   const channel = r.paymentChannel ?? 'cash'
   if (channel === 'cash') {
     return r.cashCollectedAt
       ? { kind: 'paid', text: 'Paid in cash' }
-      : { kind: 'cash_due', text: `Pay ${formatMoney(r.totalFinal ?? r.totalEstimated)} cash to your driver` }
+      : { kind: 'cash_due', text: `Pay ${formatMoney(r.cashDue ?? r.totalFinal ?? r.totalEstimated)} cash to your driver` }
   }
   return { kind: 'paid', text: channel === 'wallet' ? 'Paid via wallet' : 'Paid online' }
 }
@@ -86,20 +103,6 @@ export function tripTitle(r: Pick<RideDetail, 'rideType' | 'assignedCategoryName
   const cat = r.assignedCategoryName ?? r.bookedCategoryName
   const type = rideTypeLabels[r.rideType]
   return [cat, type].filter(Boolean).join(' · ') || 'Ride'
-}
-
-// "58 min · 28.4 km". Actuals when the trip settled them; otherwise the duration from the ride's own
-// start/finish times (one-way rides never get actuals). No stop count: the stops are listed right above.
-export function tripMetrics(r: Pick<RideDetail, 'actualKm' | 'actualMin' | 'startedAt' | 'completedAt'>): string | null {
-  const parts: string[] = []
-  let min = Math.round(num(r.actualMin))
-  if (min <= 0 && r.startedAt && r.completedAt) {
-    min = Math.round((new Date(r.completedAt).getTime() - new Date(r.startedAt).getTime()) / 60000)
-  }
-  const km = num(r.actualKm)
-  if (Number.isFinite(min) && min > 0) parts.push(`${min} min`)
-  if (km > 0) parts.push(`${km} km`)
-  return parts.length ? parts.join(' · ') : null
 }
 
 export type TimelineStep = { key: string; time: string; label: string; note?: string }

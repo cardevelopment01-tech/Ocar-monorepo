@@ -173,6 +173,53 @@ function payuSdkLimiter(prefix: string, max: number) {
 export const payuHashLimiter = payuSdkLimiter('payuhash', 60)
 export const payuConfirmLimiter = payuSdkLimiter('payuconfirm', 20)
 
+// Offers (review decision D16). Previewing is cheap but runs the fare engine, so it is capped per principal per
+// minute. Guessing codes is the abuse case: 10 FAILED attempts per 10 minutes, counted per rider and per IP, so
+// rotating accounts from one address (or one account over many addresses) both hit a wall. A request counts as
+// failed only when the controller sets res.locals.codeGuessFailed (unknown code, not-assigned); successful previews
+// and the re-preview after a 409 PRICE_CHANGED never count. skip is injectable so a test can switch the limiter on.
+export function makeOffersPreviewLimiter(skip: () => boolean = skipInTest) {
+  const options: Parameters<typeof rateLimit>[0] = {
+    windowMs: 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip,
+    passOnStoreError: true,
+    keyGenerator: (req) => `offerspreview:${principalKey(req)}`,
+    message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
+  }
+  const store = skip === skipInTest ? redisStore('rl:offerspreview:') : undefined
+  if (store !== undefined) options.store = store
+  return rateLimit(options)
+}
+export const offersPreviewLimiter = makeOffersPreviewLimiter()
+
+export function makeOffersCodeGuessLimiters(skip: () => boolean = skipInTest) {
+  const build = (prefix: string, key: (req: Request) => string) => {
+    const options: Parameters<typeof rateLimit>[0] = {
+      windowMs: 10 * 60 * 1000,
+      max: 10,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip,
+      skipSuccessfulRequests: true,
+      requestWasSuccessful: (_req, res) => !res.locals['codeGuessFailed'],
+      passOnStoreError: true,
+      keyGenerator: (req) => `${prefix}:${key(req)}`,
+      message: { error: 'Too many wrong codes. Try again later.', code: 'RATE_LIMIT_EXCEEDED' },
+    }
+    const store = skip === skipInTest ? redisStore(`rl:${prefix}:`) : undefined
+    if (store !== undefined) options.store = store
+    return rateLimit(options)
+  }
+  return [
+    build('offersguessuser', principalKey),
+    build('offersguessip', (req) => req.ip ?? 'unknown'),
+  ]
+}
+export const offersCodeGuessLimiters = makeOffersCodeGuessLimiters()
+
 // Per (principal, ride) masked-call throttle — real phone calls cost real
 // money per minute, so this is intentionally tighter than chat.
 const maskedCallLimiterOptions: Parameters<typeof rateLimit>[0] = {

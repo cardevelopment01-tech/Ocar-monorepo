@@ -445,6 +445,26 @@ aws autoscaling start-instance-refresh \
   --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'
 ```
 
+## Database password rotation (managed RDS master password)
+
+The RDS master password (`ocar_admin`) is created and rotated every 7 days by AWS (`manage_master_user_password` in `rds.tf`;
+secret `rds!db-...` in Secrets Manager). A rotation changes the password in place: open connections keep working, **new**
+connections that present the old one are refused with Postgres `28P01`. The first rotation on prd (5 Nov 2026, 04:09 UTC) did
+exactly that: the API's cached password was the old one and every call that needed a new connection
+returned 500 until the cache expired. Same class as `docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md`.
+
+**Setup (already in place on prd):** `/ocar/prd/api-env` has `DB_AUTH_MODE=secrets-manager` and no `DATABASE_URL`. `user_data.sh.tpl`
+derives `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_SECRET_ARN` from RDS at boot, so there is no copied password to go stale. The instance role
+can read the secret (`rds_secret_read`, `iam.tf`). A new environment must set `DB_AUTH_MODE=secrets-manager` in its api-env the same way.
+
+**How the API survives a rotation:** it reads the secret on each new connection with a 15 s cache (it was 5 min, which left up to 5 minutes
+of refused new connections after each rotation) and, on `28P01`, forgets the cache and retries once, so callers see nothing. Test on
+**stg first**: `aws secretsmanager rotate-secret --secret-id <stg secret arn>` (changes stg only), then confirm no 5xx and no `28P01`.
+Never `rds_iam` on `ocar_admin`.
+
+**If "Database password rejected" (alert) or `28P01` persists past a minute:** check `DB_AUTH_MODE` in api-env. If the env still uses a
+copied `DATABASE_URL`, put the current secret's password in it (`pnpm env:edit <env>`) and roll the active color.
+
 ## PayU collections
 
 PayU collects ride fares, driver wallet top-ups and package purchases
@@ -575,6 +595,42 @@ Action: look up the `mihpayid` in the PayU dashboard. Refund it there
 manually (duplicate / unknown / wrong amount), or, if it clearly belongs to a
 pending payment, attribute it by hand and record what you did. The API never
 guesses an owner.
+
+## Offers and coupons
+
+Design: `docs/superpowers/plans/2026-11-03-offers-and-coupons.md`. Money model: the rider pays the post-offer amount, the
+driver is paid that same amount (not the gross fare), and no commission is taken while `commission_percent` is 0. Offers
+only apply while `commission_percent` is 0 and never in package-billing cities, so restoring commission by hand stops new
+offers on its own. The commission holiday itself is switched on and off manually.
+
+**Switches** (`system_config`, Admin > Config; all default `'false'`):
+
+| Key | Effect |
+|---|---|
+| `offers_enabled` | Master switch. Off: preview answers `enabled:false`, the apps hide every coupon row, booking ignores offers. |
+| `offers_cash_discounts_enabled` | Lets cash rides get a discount. Saving it `true` is refused (422 `CASH_DISCOUNT_GUARD`) until the guard conditions hold; read the message. |
+| `offers_cashback_enabled` | Cashback benefits. Leave off until riders can spend wallet credit. |
+| `offers_max_discount_percent` | Hard cap on any discount as a percent of the fare (default 15). |
+
+**Go-live order:** staging soak -> prod `offers_enabled=true` with cash discounts still off -> raise the driver app minimum
+version (`app_update_driver_android_min`) once the driver release that understands discounted fares is out -> only then
+`offers_cash_discounts_enabled=true`. Cashback last.
+
+**Kill switch:** set `offers_enabled` to `'false'`. In-flight reservations are released by the sweep (below); rides already
+booked keep their discount.
+
+**Metrics** (Grafana, `offers_*`):
+- `offers_redemptions_total{status}` - reserved / consumed / released / reversed.
+- `offers_preview_rejections_total{reason}` and `offers_reserve_refused_total{reason}` - spikes in `BUDGET_EXHAUSTED` or
+  `DISABLED` mean an offer ran out or was ended while riders still see it.
+- `offers_budget_remaining{offer}` - burn rate per offer.
+
+**Stuck reservations:** the `sweep_offer_reservations` job releases reservations whose ride never settled; `sweep_offer_expiry`
+ends offers past their end date. If an offer's budget looks too low, check for `reserved` rows older than the sweep window in
+`offer_redemptions` before raising the budget.
+
+**Changing an offer mid-flight:** edit through Admin > Offers (creates a new version; riders with the old price get a 409
+`PRICE_CHANGED` and see the new price, nothing is re-booked automatically).
 
 ## Updating an observability secret (Grafana Cloud alerting/SLO/synthetics)
 

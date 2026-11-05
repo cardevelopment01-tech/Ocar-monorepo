@@ -111,3 +111,8 @@ html.overflow-hidden {
            text-text-secondary text-sm font-semibold hover:bg-surface-2 transition-all duration-150 cursor-pointer;
   }
 }
+
+/* Money/number fields are typed, not stepped: the +/- spinner moves by the step (0.01 on fares), which is useless. */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }

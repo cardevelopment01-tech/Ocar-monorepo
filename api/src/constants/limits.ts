@@ -54,6 +54,10 @@ export const SPEED_LIMIT_CITY_KMPH = 50
 export const SPEED_LIMIT_HIGHWAY_KMPH = 70
 
 export const DRIVER_MIN_WALLET_BALANCE = 500
+// First driver app build whose active-ride card shows the server's cash_due (and the rider-offer note).
+// Cash discounts must not be switched on until app_update_driver_android_min is at least this (Task 11 guard);
+// an older build would tell the driver to collect the undiscounted fare.
+export const CASH_DUE_MIN_DRIVER_VERSION = '1.2.0'
 export const CASHBACK_RIDE_PERCENT = 0.05
 export const CASHBACK_EXPIRY_DAYS = 30
 export const REFERRAL_REFERRER_BONUS = 100
@@ -152,3 +156,6 @@ export const ROUND_TRIP_OVERTIME_GRACE_MIN = 5
 export const ROUND_TRIP_OVERTIME_REVIEW_MIN = 60
 // Longest booking priced per hour; above this the per-day package applies (unchanged).
 export const ROUND_TRIP_HOURLY_MAX_HOURS = 24
+
+// Offers: how long the active-offer list and a looked-up code are cached (admin writes invalidate them).
+export const OFFERS_CACHE_TTL_SECONDS = 30

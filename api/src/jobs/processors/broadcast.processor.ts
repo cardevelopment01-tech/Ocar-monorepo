@@ -1,5 +1,8 @@
 import { socketEvents } from '@/websocket/socket.server'
 import * as repo from '@/modules/rides/rides.repository'
+import { pool } from '@/db/client'
+import { releaseForRide } from '@/modules/offers/settlement'
+import { driverFare } from '@/modules/offers/driver-fare'
 import { BROADCAST_WINDOW_SECONDS, BROADCAST_MAX_DRIVERS, BACKGROUND_ACCEPT_WINDOW_SECONDS, maxPickupRadiusMetres } from '@/constants/limits'
 import { rideAckKey } from '@/constants/redis-keys'
 import { client as redis } from '@/db/redis'
@@ -119,6 +122,9 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       // CAS: a driver may have accepted between the status read at the top and now.
       const closed = await repo.updateRideStatusCAS(rideId, 'requested', 'no_drivers')
       if (!closed) return
+      // Nothing was delivered: give the rider's offer back.
+      // Best effort: the stale-reservation sweep gives it back if this fails, and the rider must still be told.
+      await releaseForRide(pool, rideId, 'no drivers').catch((err: unknown) => log.error({ err, rideId: data.rideId }, 'offer release failed'))
       await repo.logStatusHistory({
         rideId,
         fromStatus: 'requested',
@@ -173,7 +179,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       pickupLat:        data.originLat,
       pickupLng:        data.originLng,
       distanceToPickup: Math.round(driver.distance_metres),
-      estimatedFare:    ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
+      // What the driver earns: the payable, so a rider offer is visible before they accept (review decision D20).
+      estimatedFare:    driverFare(ride),
       rideType:         data.rideType,
       isReturnCab:      data.isReturnCab,
     }
@@ -200,7 +207,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       destinationLat:    ride.dest_lat ?? undefined,
       destinationLng:    ride.dest_lng ?? undefined,
       distanceToPickup:  Math.round(driver.distance_metres),
-      estimatedFare:     ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
+      estimatedFare:     driverFare(ride),
       rideType:          data.rideType,
       isReturnCab:       data.isReturnCab,
       expiresAt:         driver.expiresAt.toISOString(),
@@ -211,6 +218,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     if (ride.trip_hours)  requestPayload['tripHours'] = Number(ride.trip_hours)
     if (categoryName)     requestPayload['rideCategoryName'] = categoryName
     if (ride.payment_channel) requestPayload['paymentChannel'] = ride.payment_channel
+    if (parseFloat(ride.discount_amount ?? '0') > 0) requestPayload['riderOffer'] = true
     if (ride.estimated_km != null) requestPayload['tripKm'] = Number(ride.estimated_km)
     if (ride.estimated_min != null) requestPayload['tripMin'] = Math.round(Number(ride.estimated_min))
     if (ride.rental_km_limit != null) requestPayload['kmLimit'] = Number(ride.rental_km_limit)

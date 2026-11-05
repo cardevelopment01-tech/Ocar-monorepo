@@ -12,6 +12,13 @@ import { useBookingDraftStore } from '@/features/booking/store'
 import { formatPickupTime } from '@/lib/formatPickupTime'
 import { resolveSelectedCategory } from '@/features/booking/resolveSelectedCategory'
 import { createBooking, resolveBookingError } from '@/features/booking/api'
+import { CouponLine } from '@/features/offers/CouponLine'
+import { OfferSheet } from '@/features/offers/OfferSheet'
+import { PriceChangedBanner } from '@/features/offers/PriceChangedBanner'
+import { useOfferPreview } from '@/features/offers/useOfferPreview'
+import {
+  bookAmount, bookingOfferFields, couponLineState, formatRupees, parseOfferNotApplicable, parsePriceChanged, priceChangedMessage, savingsLabel,
+} from '@/features/offers/offerModel'
 import { socket } from '@/services/socket'
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -72,6 +79,8 @@ export default function BookingFareScreen() {
   const [nearbyDrivers, setNearbyDrivers] = useState<Array<{ driverId: string; lat: number; lng: number; categoryId: number }>>([])
   const [refreshSignal, setRefreshSignal] = useState(0)
   const [paymentNote, setPaymentNote] = useState<string | null>(null)
+  const [offerSheetOpen, setOfferSheetOpen] = useState(false)
+  const [priceBanner, setPriceBanner] = useState<string | null>(null)
 
   // Hide any category whose estimate fetch failed (e.g. no rate card for this
   // ride_type -- auto_rickshaw only has `rental`) once loading has settled;
@@ -102,12 +111,31 @@ export default function BookingFareScreen() {
   const selectedFare = effectiveSelected != null
     ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])?.breakdown.total
     : undefined
+  // Offers: the server prices the selected ride again whenever it changes (category, route, schedule, a typed code or
+  // the rider's choice). A failed check never blocks booking at the plain fare.
+  const offerRequest = useMemo(
+    () => (effectiveSelected != null && pickup && drop && distanceKm != null && durationMin != null
+      ? {
+          categoryId: effectiveSelected, rideType, distanceKm, durationMin, paymentChannel: 'cash' as const,
+          originLat: pickup.lat, originLng: pickup.lng, destinationLat: drop.lat, destinationLng: drop.lng,
+          ...(rideType === 'round_trip' && tripHours !== null ? { tripHours } : {}),
+          ...(stops.length > 0 ? { stopCount: stops.length } : {}),
+          ...(isReturnCab ? { isReturnCab: true } : {}),
+          ...(scheduledFor ? { scheduledFor } : {}),
+        }
+      : null),
+    [effectiveSelected, rideType, distanceKm, durationMin, pickup, drop, tripHours, stops.length, isReturnCab, scheduledFor],
+  )
+  const offers = useOfferPreview(offerRequest)
+  const couponState = couponLineState({ status: offers.status, preview: offers.preview, typedCode: offers.typedCode, fullPrice: selectedFare ?? null })
+  const payable = bookAmount(selectedFare ?? null, offers.preview)
+  const hasOffer = couponState.kind === 'applied' && payable != null && selectedFare != null && payable < selectedFare
   // Nearby cars only matter for a ride NOW. A ride booked for later is dispatched shortly before its time, so an empty
   // street at this moment must not stop the rider from booking it.
   const liveCheck = driversPolled && !scheduledFor
   const allUnavailable = liveCheck && visibleCategories.length > 0 && visibleCategories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
   const selectedNoCars = liveCheck && effectiveSelected != null && (driverEta[effectiveSelected]?.count ?? 0) === 0
-  const canBook = effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars
+  const canBook = effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars && !offers.bookLocked
 
   // Available categories first, unavailable ones pushed to the bottom rather
   // than left interleaved -- categories list order otherwise comes straight
@@ -144,6 +172,7 @@ export default function BookingFareScreen() {
       if (scheduledFor) input.scheduledFor = scheduledFor
       if (riderName && riderPhone) { input.riderName = riderName; input.riderPhone = riderPhone }
       if (isReturnCab) input.isReturnCab = true
+      Object.assign(input, bookingOfferFields({ preview: offers.preview, typedCode: offers.typedCode, choice: offers.choice }))
 
       const result = await createBooking(input)
 
@@ -163,7 +192,18 @@ export default function BookingFareScreen() {
       resetDraft()
       router.replace(`/ride/${rideId}`)
     } catch (err) {
-      setBookError(resolveBookingError(err))
+      const changed = parsePriceChanged(err)
+      const refused = parseOfferNotApplicable(err)
+      if (changed) {
+        // Say what changed and why, re-check, and let the rider decide: never rebook on their behalf (design review D8).
+        setPriceBanner(priceChangedMessage(changed, offers.preview?.payable ?? null, offers.typedCode || offers.preview?.applied?.code || null))
+        offers.retry()
+      } else if (refused) {
+        setBookError(refused.message)
+        offers.retry()
+      } else {
+        setBookError(resolveBookingError(err))
+      }
     } finally {
       setBooking(false)
       bookInFlightRef.current = false
@@ -300,12 +340,14 @@ export default function BookingFareScreen() {
                 return (
                   <CategoryCard
                     category={item}
-                    fareTotal={estimates[item.id]?.breakdown.total ?? null}
                     loading={loading && estimates[item.id] === undefined}
                     selected={!isReturnCab && effectiveSelected === item.id}
                     onPress={() => { setSelectedCategoryId(item.id); setIsReturnCab(false) }}
                     eta={driverEta[item.id] ?? null}
                     disabled={noCars}
+                    {...(hasOffer && !isReturnCab && effectiveSelected === item.id && offers.preview && payable != null
+                      ? { fareTotal: payable, grossFare: offers.preview.fareTotal, offerSavingText: `Save ${formatRupees(offers.preview.discount)}${offers.preview.applied?.code ? ` with ${offers.preview.applied.code}` : ''}` }
+                      : { fareTotal: estimates[item.id]?.breakdown.total ?? null })}
                   />
                 )
               }}
@@ -329,6 +371,8 @@ export default function BookingFareScreen() {
               </Pressable>
             </View>
             {paymentNote ? <Text style={styles.paymentNote}>{paymentNote}</Text> : null}
+            {priceBanner ? <PriceChangedBanner message={priceBanner} onDismiss={() => setPriceBanner(null)} /> : null}
+            <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} />
             {bookError ? (
               <Text style={styles.error} accessibilityLiveRegion="polite">
                 {bookError}
@@ -338,14 +382,26 @@ export default function BookingFareScreen() {
               label={
                 allUnavailable
                   ? 'No drivers available'
-                  : selectedFare != null
-                  ? `Book · ₹${Math.round(selectedFare)}`
+                  : payable != null
+                  ? `Book · ₹${Math.round(payable)}`
                   : 'Book'
               }
               onPress={() => void handleBook()}
               disabled={!canBook}
               loading={booking}
-              accessibilityLabel="Book this ride"
+              accessibilityLabel={hasOffer && payable != null && selectedFare != null ? `Book this ride, ${savingsLabel(selectedFare, payable)}` : 'Book this ride'}
+            />
+            <OfferSheet
+              visible={offerSheetOpen}
+              onClose={() => setOfferSheetOpen(false)}
+              applied={offers.preview?.applied ?? null}
+              alternatives={offers.preview?.alternatives ?? []}
+              ineligible={offers.preview?.ineligible ?? []}
+              codeMessage={couponState.kind === 'rejected' ? couponState.message : null}
+              checking={offers.status === 'loading'}
+              onApplyCode={offers.applyCode}
+              onChoose={offers.chooseOffer}
+              onRemove={offers.preview?.applied?.kind === 'auto' ? offers.removeAuto : offers.removeCode}
             />
           </View>
         </View>

@@ -27,6 +27,8 @@ export type RideRequestPayload = {
   kmLimit?: number
   // the booked vehicle category, e.g. "Sedan" (set by the server when known)
   rideCategoryName?: string
+  // a rider offer lowered the fare: estimatedFare is already what the driver earns
+  riderOffer?: boolean
 }
 
 export type PendingRideRequest = RideRequestPayload & {

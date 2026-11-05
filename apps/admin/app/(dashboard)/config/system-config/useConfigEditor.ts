@@ -69,20 +69,23 @@ export function useConfigEditor() {
 
   const discardAll = useCallback(() => { setDrafts({}); setRowNotes({}) }, [])
 
-  const save = useCallback(async (): Promise<{ saved: number; failed: number }> => {
+  const save = useCallback(async (): Promise<{ saved: number; failed: number; warnings: string[] }> => {
     setSaving(true)
     const byId = new Map(configs.map(c => [c.id, c]))
     const remaining = { ...drafts }
     const notes: Record<string, string> = {}
     const conflicts: string[] = []
     let saved = 0
+    const warnings: string[] = []
 
     // Sequential on purpose: a stable audit-log order, and one failure never hides another.
     for (const ch of changes) {
       const id = ch.r.config.id
       try {
         const updated = await systemConfigApi.update(id, ch.to, ch.r.config.updatedAt)
-        byId.set(id, updated)
+        const { warnings: w, ...config } = updated
+        if (w) warnings.push(...w)
+        byId.set(id, config)
         delete remaining[id]
         saved++
       } catch (err) {
@@ -111,7 +114,7 @@ export function useConfigEditor() {
     setDrafts(remaining)
     setRowNotes(notes)
     setSaving(false)
-    return { saved, failed: Object.keys(notes).length }
+    return { saved, failed: Object.keys(notes).length, warnings }
   }, [changes, configs, drafts])
 
   return { configs, status, loadError, load, drafts, rowNotes, changes, setDraft, resetDraft, discardAll, save, saving }

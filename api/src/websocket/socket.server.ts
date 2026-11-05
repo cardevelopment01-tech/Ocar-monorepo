@@ -1,3 +1,4 @@
+import { driverFare } from '@/modules/offers/driver-fare'
 import { Server } from 'socket.io'
 import type { Server as HttpServer } from 'http'
 import { createAdapter } from '@socket.io/redis-streams-adapter'
@@ -193,7 +194,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
               pickupLat:        a.origin_lat,
               pickupLng:        a.origin_lng,
               distanceToPickup: Math.round(a.distance_to_pickup_metres),
-              estimatedFare:    a.total_estimated != null ? parseFloat(a.total_estimated) : 0,
+              estimatedFare:    driverFare(a),
               rideType:         a.ride_type,
               isReturnCab:      a.is_return_cab,
               expiresAt:        a.expires_at,

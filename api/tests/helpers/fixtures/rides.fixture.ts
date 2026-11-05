@@ -295,6 +295,8 @@ export async function driveRideToCompletion(
 // use (nothing deletes a ride in production), it only surfaces as a test-teardown
 // FK violation, which is easy to mistake for test flakiness instead of a real gap.
 async function deleteRideAndDescendantsOnce(pool: Pool, rideIds: string[]) {
+  // Offer redemptions point at the ride; they are the first thing to go.
+  await pool.query('DELETE FROM offer_redemptions WHERE ride_id = ANY($1)', [rideIds])
   await pool.query(
     `DELETE FROM payment_gateway_events WHERE payment_id IN (SELECT id FROM payments WHERE ride_id = ANY($1))`,
     [rideIds]
