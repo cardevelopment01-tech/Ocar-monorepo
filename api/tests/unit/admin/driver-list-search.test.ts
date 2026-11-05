@@ -30,3 +30,17 @@ describe('listDrivers search', () => {
     expect(params.slice(0, 2)).toEqual(['%--%', '%--%'])
   })
 })
+
+describe('listDrivers docs-to-review queue', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    query.mockResolvedValue({ rows: [{ total: '0' }] })
+  })
+
+  it('includes docs_rejected drivers who re-uploaded (their status never leaves docs_rejected)', async () => {
+    await listDrivers({ docsToReview: true, limit: 20, offset: 0 })
+    const [sql] = query.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain("d.status IN ('active', 'suspended', 'docs_rejected')")
+    expect(sql).toContain("dd.status = 'pending'")
+  })
+})
