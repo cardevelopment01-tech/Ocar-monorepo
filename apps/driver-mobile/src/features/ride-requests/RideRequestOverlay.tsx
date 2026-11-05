@@ -123,11 +123,11 @@ export function RideRequestOverlay() {
   )
 
   const reject = useCallback(() => {
-    if (dismissedRef.current || pending?.rideId == null || !isTapArmed(pending.receivedAtMs, Date.now())) return
+    if (dismissedRef.current || resolved || pending?.rideId == null || !isTapArmed(pending.receivedAtMs, Date.now())) return
     setStatus('rejected')
     void declineRideRequest(pending.rideId)
     animateOut(pending.rideId)
-  }, [animateOut, pending?.rideId, pending?.receivedAtMs])
+  }, [animateOut, resolved, pending?.rideId, pending?.receivedAtMs])
 
   const handleBack = useCallback((): boolean => {
     if (!pending) return false
@@ -146,12 +146,16 @@ export function RideRequestOverlay() {
     setIsAccepting(false)
     setError(null)
     // Buttons wake up 700 ms after the card appears: dimmed until then, then a quick fade to full.
-    setArmed(false)
-    actionsOpacity.set(0.5)
-    schedule(() => {
-      setArmed(true)
-      actionsOpacity.set(withTiming(1, { duration: reduced ? 0 : 160, easing: EASE_OUT }))
-    }, TAP_GUARD_MS)
+    // One clock for the buttons and the handlers: the request's own receipt time.
+    const armIn = Math.max(0, TAP_GUARD_MS - (Date.now() - pending.receivedAtMs))
+    setArmed(armIn === 0)
+    actionsOpacity.set(armIn === 0 ? 1 : 0.5)
+    if (armIn > 0) {
+      schedule(() => {
+        setArmed(true)
+        actionsOpacity.set(withTiming(1, { duration: reduced ? 0 : 160, easing: EASE_OUT }))
+      }, armIn)
+    }
 
     // Deplete the ring across the whole accept window on the UI thread.
     ringProgress.set(1)
@@ -246,7 +250,7 @@ export function RideRequestOverlay() {
   const pan = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(!reduced && !resolved)
+        .enabled(!reduced && !resolved && armed) // a flick during the tap guard would slide the card away and decline nothing
         .onBegin(() => {
           dragStartY.set(sheetY.get())
         })
@@ -267,7 +271,7 @@ export function RideRequestOverlay() {
           }
         }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [height, reduced, resolved, reject],
+    [height, reduced, resolved, armed, reject],
   )
 
   const sheetStyle = useAnimatedStyle(() => ({ opacity: sheetOpacity.get(), transform: [{ translateY: sheetY.get() }] }))
@@ -349,7 +353,7 @@ export function RideRequestOverlay() {
             <LinearGradient colors={['#0B4A50', '#0E8FA3']} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={styles.band}>
               <View style={styles.handle} />
               {voiceOn ? <SpeakerBadge speaking={speaking} /> : null}
-              <Animated.View entering={entrances[0]} style={styles.bandInner}>
+              <Animated.View entering={entrances[0]} style={[styles.bandInner, voiceOn ? styles.bandInnerVoice : null]}>
                 <View style={styles.chipBlock}>
                   <ReadAlong active={reading === 'type'} tone="dark">
                     <View style={styles.chipRow}>
@@ -494,6 +498,7 @@ const styles = StyleSheet.create({
   band: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg - 2 },
   handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, marginTop: spacing.sm + 2, marginBottom: spacing.md, backgroundColor: 'rgba(255,255,255,0.4)' },
   bandInner: { gap: 2 },
+  bandInnerVoice: { paddingRight: 44 }, // room for the speaker badge in the corner
   chipBlock: { alignSelf: 'flex-start', marginBottom: spacing.sm },
   chipRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   fareRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },

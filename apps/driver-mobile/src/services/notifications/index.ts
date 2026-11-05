@@ -20,6 +20,18 @@ async function getFcmToken(): Promise<string | null> {
   }
 }
 
+async function hasLoudChannels(): Promise<boolean> {
+  try {
+    const [loud, gone] = await Promise.all([
+      Notifications.getNotificationChannelAsync('ride_requests_v3'),
+      Notifications.getNotificationChannelAsync('ride_gone_v1'),
+    ])
+    return !!loud && !!gone
+  } catch {
+    return false
+  }
+}
+
 let stopTokenRefresh: (() => void) | null = null
 
 export async function setupPushNotifications(opts: { prompt?: boolean } = {}): Promise<void> {
@@ -61,13 +73,14 @@ export async function setupPushNotifications(opts: { prompt?: boolean } = {}): P
       // Replaces a ringing ride-request notification (same tag) when the request is over, so its sound stops at once.
       { channelId: 'ride_gone_v1', name: 'Ride request ended', description: 'Quietly clears a ride request that is no longer available', importance: Notifications.AndroidImportance.LOW, silent: true },
     ],
-    deviceCapabilities: { rideAlertV3: true },
+    // Claim the loud channel only if it (and its silent replacement) really exist on this phone.
+    deviceCapabilities: (created) => ({ rideAlertV3: created.has('ride_requests_v3') && created.has('ride_gone_v1') }),
   })
   useAuthStore.getState().setPushPermissionGranted(granted)
   if (granted) {
     // FCM rotates tokens (reinstall, data clear, long idle); without this the server keeps the dead one.
     stopTokenRefresh?.()
-    stopTokenRefresh = onTokenRefresh(getMessaging(getApp()), (token) => { registerDeviceToken(api, token, { rideAlertV3: true }).catch(() => {}) })
+    stopTokenRefresh = onTokenRefresh(getMessaging(getApp()), (token) => { void hasLoudChannels().then((ok) => registerDeviceToken(api, token, { rideAlertV3: ok })).catch(() => {}) })
   }
 }
 
