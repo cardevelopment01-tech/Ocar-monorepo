@@ -94,7 +94,8 @@ export default function RideTrackingScreen() {
   const [pickupUpdating, setPickupUpdating] = useState(false)
   const [pickupError, setPickupError] = useState<string | null>(null)
   const [pickupToast, setPickupToast] = useState(false)
-  const [detailsExpanded, setDetailsExpanded] = useState(false)
+  // Open by default: pickup, drop and stops are the first thing a rider on a live trip looks for.
+  const [detailsExpanded, setDetailsExpanded] = useState(true)
   // Stops whose "driver can't reach this" prompt the rider chose to keep; the timeline Skip still works.
   const [keptStops, setKeptStops] = useState<number[]>([])
   const [skippingStop, setSkippingStop] = useState(false)

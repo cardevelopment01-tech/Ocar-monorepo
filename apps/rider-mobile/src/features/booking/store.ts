@@ -5,6 +5,9 @@ export type BookingPlace = { address: string; lat: number; lng: number }
 
 interface BookingDraftState {
   pickup: BookingPlace | null
+  /** True while the pickup is the rider's current location filled in automatically: it follows the live fix until the rider
+   *  picks a place themselves. */
+  pickupAuto: boolean
   drop: BookingPlace | null
   distanceKm: number | null
   durationMin: number | null
@@ -31,7 +34,8 @@ interface BookingDraftState {
   /** Empty strings mean "booking for myself" -- matches web's BookingForSheet contract. */
   riderName: string
   riderPhone: string
-  setPickup: (place: BookingPlace) => void
+  setPickup: (place: BookingPlace, auto?: boolean) => void
+  clearPickup: () => void
   setDrop: (place: BookingPlace) => void
   setRoute: (distanceKm: number, durationMin: number, originCityId: number | null, routePoints: [number, number][]) => void
   setSelectedCategoryId: (id: number) => void
@@ -53,6 +57,7 @@ const MAX_STOPS = 3
 // GET /rides/me/active-user, not this store), so no zustand/persist here.
 export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
   pickup: null,
+  pickupAuto: false,
   drop: null,
   distanceKm: null,
   durationMin: null,
@@ -66,7 +71,8 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
   scheduledFor: null,
   riderName: '',
   riderPhone: '',
-  setPickup: (place) => set({ pickup: place }),
+  setPickup: (place, auto = false) => set({ pickup: place, pickupAuto: auto }),
+  clearPickup: () => set({ pickup: null, pickupAuto: false }),
   setDrop: (place) => set({ drop: place }),
   setRoute: (distanceKm, durationMin, originCityId, routePoints) => set({ distanceKm, durationMin, originCityId, routePoints }),
   setSelectedCategoryId: (id) => set({ selectedCategoryId: id }),
@@ -90,6 +96,7 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
   reset: () =>
     set({
       pickup: null,
+      pickupAuto: false,
       drop: null,
       distanceKm: null,
       durationMin: null,

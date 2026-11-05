@@ -5,6 +5,8 @@ import {
   cameraMode,
   freshnessOf,
   isFresh,
+  shouldGeocode,
+  isApproximate,
   movedBeyondGeocodeReuse,
   partializeLocation,
   pickBest,
@@ -47,11 +49,12 @@ describe('pickBest', () => {
 })
 
 describe('isFresh', () => {
-  it('a gps fix is fresh regardless of age', () => expect(isFresh(fix(3 * 60 * MIN, 'gps'), NOW)).toBe(true))
-  it('cache/os are fresh only under 2 minutes', () => {
-    expect(isFresh(fix(119_000, 'cache'), NOW)).toBe(true)
-    expect(isFresh(fix(120_000, 'cache'), NOW)).toBe(false)
-    expect(isFresh(fix(121_000, 'os'), NOW)).toBe(false)
+  it('a gps fix goes stale like any other: three hours old is not fresh', () => expect(isFresh(fix(3 * 60 * MIN, 'gps'), NOW)).toBe(false))
+  it('every source is fresh only under 60 seconds', () => {
+    expect(isFresh(fix(59_000, 'gps'), NOW)).toBe(true)
+    expect(isFresh(fix(59_000, 'cache'), NOW)).toBe(true)
+    expect(isFresh(fix(60_000, 'gps'), NOW)).toBe(false)
+    expect(isFresh(fix(61_000, 'os'), NOW)).toBe(false)
   })
   it('no fix is not fresh; a future timestamp is not fresh', () => {
     expect(isFresh(null, NOW)).toBe(false)
@@ -61,8 +64,8 @@ describe('isFresh', () => {
 
 describe('ageBucket', () => {
   it('splits at 2 and 30 minutes', () => {
-    expect(ageBucket(NOW - (2 * MIN - 1), NOW)).toBe('live')
-    expect(ageBucket(NOW - 2 * MIN, NOW)).toBe('recent')
+    expect(ageBucket(NOW - (MIN - 1), NOW)).toBe('live')
+    expect(ageBucket(NOW - MIN, NOW)).toBe('recent')
     expect(ageBucket(NOW - (30 * MIN - 1), NOW)).toBe('recent')
     expect(ageBucket(NOW - 30 * MIN, NOW)).toBe('old')
   })
@@ -74,11 +77,12 @@ describe('freshnessOf', () => {
   it('denied wins over everything', () => {
     expect(freshnessOf({ ...base, permission: 'denied', fix: fix(1000, 'gps') })).toBe('denied')
   })
-  it('live for a gps fix or a fix under 2 minutes', () => {
+  it('live for any fix under a minute, whatever its source; an old gps fix is only recent', () => {
     expect(freshnessOf({ ...base, fix: fix(0, 'gps') })).toBe('live')
-    expect(freshnessOf({ ...base, fix: fix(MIN, 'cache') })).toBe('live')
+    expect(freshnessOf({ ...base, fix: fix(30_000, 'cache') })).toBe('live')
+    expect(freshnessOf({ ...base, fix: fix(10 * MIN, 'gps') })).toBe('recent')
   })
-  it('recent for 2-30 minute cache, old for 30+ or none', () => {
+  it('recent for 1-30 minute fix, old for 30+ or none', () => {
     expect(freshnessOf({ ...base, fix: fix(10 * MIN) })).toBe('recent')
     expect(freshnessOf({ ...base, fix: fix(31 * MIN) })).toBe('old')
     expect(freshnessOf({ ...base, fix: null })).toBe('old')
@@ -142,5 +146,28 @@ describe('partializeLocation', () => {
   it('keeps only the four persisted fields (never initialized/ready/permission)', () => {
     const state = { lat: 1, lng: 2, address: 'x', fixedAt: 3, initialized: true, ready: true, permission: 'granted', init: () => {} }
     expect(partializeLocation(state)).toEqual({ lat: 1, lng: 2, address: 'x', fixedAt: 3 })
+  })
+})
+
+describe('shouldGeocode', () => {
+  it('looks up the address for a current device fix, not the saved one or an old one', () => {
+    expect(shouldGeocode(fix(5_000, 'os'), NOW)).toBe(true)
+    expect(shouldGeocode(fix(5_000, 'gps'), NOW)).toBe(true)
+    expect(shouldGeocode(fix(5_000, 'cache'), NOW)).toBe(false)
+    expect(shouldGeocode(fix(90_000, 'gps'), NOW)).toBe(false)
+    expect(shouldGeocode(null, NOW)).toBe(false)
+  })
+})
+
+describe('isApproximate', () => {
+  it('approximate-only permission is approximate whatever the fix says', () => {
+    expect(isApproximate('coarse', 10)).toBe(true)
+    expect(isApproximate('coarse', null)).toBe(true)
+  })
+  it('a precise permission is approximate only when the fix is rougher than 500 m', () => {
+    expect(isApproximate('fine', 30)).toBe(false)
+    expect(isApproximate('fine', 500)).toBe(false)
+    expect(isApproximate('fine', 501)).toBe(true)
+    expect(isApproximate('unknown', null)).toBe(false) // no data is not evidence of a rough fix
   })
 })

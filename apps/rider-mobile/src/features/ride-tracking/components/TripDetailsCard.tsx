@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native'
-import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { colors, dropDisplay, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import type { RideDetailExtra } from '../types'
 
 export type TripDetailsCardProps = {
@@ -14,26 +14,32 @@ export type TripDetailsCardProps = {
 // previously had no address display at all for a ride with no stops (the
 // StopTimeline-driven "Trip details" toggle only appeared when stops existed).
 export function TripDetailsCard({ ride, fare }: TripDetailsCardProps) {
-  const dropLabel = ride.rideType === 'round_trip' ? 'Drop & return' : ride.rideType === 'rental' ? 'Route' : 'Drop'
-  const dropValue = ride.rideType === 'rental'
-    ? (ride.tripHours ? `${ride.tripHours}h city ride · flexible` : 'Hourly city ride · flexible')
-    : (ride.destinationAddress ?? 'Destination')
+  // The real drop address for every ride type (a rental books one too); the package is a caption, never a stand-in.
+  const drop = dropDisplay(ride)
 
   return (
     <View style={styles.row}>
-      <View style={styles.dots}>
-        <View style={[styles.dot, styles.dotPickup]} />
-        <View style={styles.line} />
-        <View style={[styles.dot, styles.dotDrop]} />
-      </View>
       <View style={styles.textCol}>
-        <View>
-          <Text style={styles.label}>Pickup</Text>
-          <Text style={styles.value} numberOfLines={1}>{ride.originAddress ?? 'Your location'}</Text>
+        {/* One row per stop with its own marker, so the drop marker sits level with "Drop" whatever the pickup length. */}
+        <View style={styles.stopRow}>
+          <View style={styles.markerCol}>
+            <View style={[styles.dot, styles.dotPickup]} />
+            <View style={styles.line} />
+          </View>
+          <View style={[styles.stopText, styles.pickupText]}>
+            <Text style={styles.label}>Pickup</Text>
+            <Text style={styles.value} numberOfLines={3}>{ride.originAddress ?? 'Your location'}</Text>
+          </View>
         </View>
-        <View>
-          <Text style={styles.label}>{dropLabel}</Text>
-          <Text style={styles.value} numberOfLines={1}>{dropValue}</Text>
+        <View style={styles.stopRow}>
+          <View style={styles.markerCol}>
+            <View style={[styles.dot, styles.dotDrop]} />
+          </View>
+          <View style={styles.stopText}>
+            <Text style={styles.label}>{drop.label}</Text>
+            <Text style={styles.value} numberOfLines={3}>{drop.value}</Text>
+            {drop.note ? <Text style={styles.note}>{drop.note}</Text> : null}
+          </View>
         </View>
       </View>
       {fare ? (
@@ -48,14 +54,18 @@ export function TripDetailsCard({ ride, fare }: TripDetailsCardProps) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: radii.xl, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
-  dots: { alignItems: 'center', gap: 2, alignSelf: 'stretch', paddingVertical: 3 },
+  stopRow: { flexDirection: 'row', gap: spacing.sm },
+  markerCol: { width: 10, alignItems: 'center', paddingTop: 5 },
+  stopText: { flex: 1, minWidth: 0 },
+  pickupText: { paddingBottom: spacing.sm },
   dot: { width: 9, height: 9, borderRadius: 5 },
   dotPickup: { backgroundColor: colors.primary },
   dotDrop: { backgroundColor: colors.ink900 },
-  line: { width: 1, flex: 1, minHeight: 20, backgroundColor: colors.border },
-  textCol: { flex: 1, minWidth: 0, gap: spacing.sm },
+  line: { width: 1, flex: 1, marginTop: 2, backgroundColor: colors.border },
+  textCol: { flex: 1, minWidth: 0 },
   label: { ...typography.caption, fontSize: 11, color: colors.ink400, fontFamily: fonts.semibold },
   value: { ...typography.label, fontSize: 13, color: colors.ink900, fontFamily: fonts.semibold },
+  note: { ...typography.caption, fontSize: 11, color: colors.ink600 },
   fareCol: { alignItems: 'flex-end', flexShrink: 0 },
   fareValue: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
 })

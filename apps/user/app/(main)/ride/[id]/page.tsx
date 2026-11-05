@@ -110,17 +110,21 @@ function RouteRow({ ride, fare, status }: { ride: RideDetail | null; fare: strin
       <div className="flex-1 min-w-0 space-y-2">
         <div>
           <p className="text-[12px] font-medium text-text-muted">Pickup</p>
-          <p className="text-sm font-medium truncate text-text-primary">{ride?.origin_address ?? 'Your location'}</p>
+          <p className="text-sm font-medium text-text-primary break-words">{ride?.origin_address ?? 'Your location'}</p>
         </div>
         <div>
           <p className="text-[12px] font-medium text-text-muted">
-            {ride?.ride_type === 'round_trip' ? 'Drop & return' : ride?.ride_type === 'rental' ? 'Route' : 'Drop'}
+            {ride?.ride_type === 'round_trip' ? 'Drop & return' : 'Drop'}
           </p>
-          <p className="text-sm font-medium truncate text-text-primary">
-            {ride?.ride_type === 'rental'
-              ? (ride.trip_hours ? `${ride.trip_hours}h rental · flexible` : 'Hourly rental · flexible')
-              : (ride?.destination_address ?? 'Destination')}
+          {/* A rental books a real drop-off too: show it like any other trip, with the package as a caption. */}
+          <p className="text-sm font-medium text-text-primary break-words">
+            {ride?.destination_address ?? (ride?.ride_type === 'rental' ? 'Drop location not set' : 'Destination')}
           </p>
+          {ride?.ride_type === 'rental' && (
+            <p className="text-[12px] font-medium mt-0.5 text-text-muted">
+              {ride.trip_hours ? `City ride · ${ride.trip_hours} hour package` : 'City ride · hourly package'}
+            </p>
+          )}
           {ride?.ride_type === 'round_trip' && ride.return_at && (
             <p className="text-[12px] font-medium mt-0.5 text-accent">
               {status === 'returning' ? 'Driver is heading back · ' : ''}Back by {formatReturnAt(ride.return_at)}
@@ -749,7 +753,7 @@ export default function RidePage() {
       ? { sub: 'Still searching — this is taking longer than usual' }
       : {}),
     ...(status === 'in_progress' && ride?.ride_type === 'rental'
-      ? { label: 'Rental in progress', sub: 'Flexible route active' }
+      ? { label: 'Rental in progress', sub: 'Your city ride is under way' }
       : {}),
   }
   // No driver fix yet -> no ETA; say so instead of leaving the banner silently blank.
@@ -992,7 +996,7 @@ export default function RidePage() {
                   <div>
                     <p className="text-[10px] font-semibold text-sky-400 uppercase tracking-wide">Rental package</p>
                     <p className="text-[13px] font-bold text-sky-800">
-                      {ride.trip_hours ? `${ride.trip_hours}-hour package · flexible route` : 'Hourly rental · flexible route'}
+                      {ride.trip_hours ? `${ride.trip_hours}-hour package` : 'Hourly rental'}
                     </p>
                   </div>
                 </div>

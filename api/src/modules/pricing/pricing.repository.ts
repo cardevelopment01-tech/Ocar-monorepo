@@ -27,9 +27,9 @@ export async function getCurrentRateCard(categoryId: number, rideType: string, c
   const card = await cachedRead('rate_cards', key, RATE_CARD_CACHE_TTL_SECONDS, () =>
     fetchCurrentRateCardFromDb(categoryId, rideType, cityId)
   )
-  // A card cached by a build that predates rate_cards.stop_charge (migration 106) has no such
-  // field; read through to the DB rather than quote stops as free for up to the 1h cache TTL.
-  if (card && (card as { stop_charge?: unknown }).stop_charge === undefined) {
+  // A card cached by a build that predates rate_cards.base_fare (migration 121) has no such
+  // field; read through to the DB rather than quote without the base fare for up to the 1h cache TTL.
+  if (card && (card as { base_fare?: unknown }).base_fare === undefined) {
     return fetchCurrentRateCardFromDb(categoryId, rideType, cityId)
   }
   return card
@@ -58,7 +58,7 @@ export async function getAllCurrentRateCards() {
     `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type,
             rc.city_id::int AS city_id, rc.rate_per_km, rc.rate_per_min, rc.min_fare,
             rc.return_rate_per_km, rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day,
-            rc.cancellation_fee, rc.stop_charge, rc.effective_from, rc.effective_to, rc.notes,
+            rc.cancellation_fee, rc.stop_charge, rc.base_fare, rc.effective_from, rc.effective_to, rc.notes,
             rc.created_by::int AS created_by, rc.created_at,
             vc.display_name AS category_name,
             vc.slug AS category_slug,
@@ -76,7 +76,7 @@ export async function getRateCardHistory() {
   const res = await pool.query(
     `SELECT rch.id::int AS id, rch.rate_card_id::int AS rate_card_id,
             rch.rate_per_km, rch.rate_per_min, rch.min_fare, rch.return_rate_per_km, rch.hour_rate,
-            rch.stop_charge,
+            rch.stop_charge, rch.base_fare,
             rch.changed_by::int AS changed_by, rch.change_reason, rch.created_at,
             rch.city_id::int AS city_id,
             vc.display_name AS category_name,
@@ -283,6 +283,8 @@ export async function createRateCard(data: {
   driverAllowancePerDay?: number | null
   /** Flat fee per added stop. Omitted = carry the previous version's value forward (0 for a brand-new card). */
   stopCharge?: number
+  /** Flat base fare added to every fare. Omitted = carry the previous version's value forward (0 for a brand-new card). */
+  baseFare?: number
   cityId?: number | null
   notes?: string | null
   adminId: number
@@ -307,12 +309,12 @@ export async function createRateCard(data: {
         `INSERT INTO rate_card_history
            (rate_card_id, rate_per_km, rate_per_min, min_fare,
             return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-            city_id, changed_by, change_reason, stop_charge)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            city_id, changed_by, change_reason, stop_charge, base_fare)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           old.id, old.rate_per_km, old.rate_per_min, old.min_fare,
           old.return_rate_per_km, old.hour_rate, old.km_per_day, old.driver_allowance_per_day,
-          old.city_id, data.adminId, data.notes ?? null, old.stop_charge,
+          old.city_id, data.adminId, data.notes ?? null, old.stop_charge, old.base_fare,
         ]
       )
     }
@@ -321,8 +323,8 @@ export async function createRateCard(data: {
       `INSERT INTO rate_cards
          (category_id, ride_type, rate_per_km, rate_per_min,
           min_fare, return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-          city_id, notes, created_by, stop_charge, cancellation_fee)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          city_id, notes, created_by, stop_charge, cancellation_fee, base_fare)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         data.categoryId, data.rideType,
@@ -339,6 +341,8 @@ export async function createRateCard(data: {
         // Not editable in the admin form yet: carry the previous version's cancellation fee forward
         // (NULL = no fee) instead of dropping it to NULL on every rate edit.
         expired.rows[0]?.cancellation_fee ?? null,
+        // Same carry-forward for the flat base fare.
+        data.baseFare ?? Number(expired.rows[0]?.base_fare ?? 0),
       ]
     )
 

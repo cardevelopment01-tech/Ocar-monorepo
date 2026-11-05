@@ -7,6 +7,20 @@ const state = () => useBookingDraftStore.getState()
 describe('booking draft store', () => {
   beforeEach(() => state().reset())
 
+  it('a pickup is auto (follows the live fix) only when set as such, and a chosen place clears that', () => {
+    state().setPickup(place(1), true)
+    expect(state().pickupAuto).toBe(true)
+    state().setPickup(place(2))
+    expect(state().pickupAuto).toBe(false)
+    state().setPickup(place(3), true)
+    state().clearPickup()
+    expect(state().pickup).toBeNull()
+    expect(state().pickupAuto).toBe(false)
+    state().setPickup(place(3), true)
+    state().reset()
+    expect(state().pickupAuto).toBe(false)
+  })
+
   it('starts as an undeclared one-way draft', () => {
     expect(state().rideType).toBe('one_way')
     expect(state().rideTypeDeclared).toBe(false)
