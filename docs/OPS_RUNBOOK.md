@@ -609,6 +609,7 @@ offers on its own. The commission holiday itself is switched on and off manually
 |---|---|
 | `offers_enabled` | Master switch. Off: preview answers `enabled:false`, the apps hide every coupon row, booking ignores offers. |
 | `offers_cash_discounts_enabled` | Lets cash rides get a discount. Saving it `true` is refused (422 `CASH_DISCOUNT_GUARD`) until the guard conditions hold; read the message. |
+| `offers_cash_guard_enforced` | Default `'true'`. Set `'false'` to lift the cash-discount driver-version guard for internal testing before the cash_due driver build (1.2.0) is in production. While lifted, a discounted cash ride reaching a driver on an older app shows that driver the undiscounted fare. Put it back to `'true'` (refused while cash discounts are on and the driver minimum is still low) before the public launch. |
 | `offers_cashback_enabled` | Cashback benefits. Leave off until riders can spend wallet credit. |
 | `offers_max_discount_percent` | Hard cap on any discount as a percent of the fare (default 15). |
 

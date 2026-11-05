@@ -62,6 +62,17 @@ describe('cash discount guard on the config route', () => {
     expect(m.update).not.toHaveBeenCalled()
   })
 
+  it('with the guard switched off on purpose, cash discounts can be turned on below the build, and the switch itself saves', async () => {
+    m.cfg['offers_cash_guard_enforced'] = 'false'
+    m.byId.mockResolvedValue(row('offers_cash_discounts_enabled', 'false'))
+    expect((await request(app).patch('/cfg/3').send({ value: 'true' })).status).toBe(200)
+    m.cfg = { offers_cash_discounts_enabled: 'true', app_update_driver_android_min: '0.0.0', app_update_enabled: 'true', offers_cash_guard_enforced: 'false' }
+    m.byId.mockResolvedValue(row('offers_cash_guard_enforced', 'false'))
+    const back = await request(app).patch('/cfg/3').send({ value: 'true' })
+    expect(back.status).toBe(422) // cannot be put back while cash discounts are on and the minimum is still low
+    expect(back.body.code).toBe('CASH_DISCOUNT_GUARD')
+  })
+
   it('does not touch other settings', async () => {
     m.byId.mockResolvedValue(row('cashback_ride_percent', '5'))
     expect((await request(app).patch('/cfg/3').send({ value: '9' })).status).toBe(200)

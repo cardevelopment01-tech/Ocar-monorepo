@@ -14,6 +14,23 @@ const V = CASH_DUE_MIN_DRIVER_VERSION
 const state = (o: Partial<CashGuardState> = {}): CashGuardState => ({ cashDiscounts: 'false', driverAndroidMin: '0.0.0', updateGateEnabled: 'true', ...o })
 
 describe('cashDiscountGuard', () => {
+  it('can be lifted on purpose: with the switch off, cash discounts may be on below the build, and the minimum may be lowered', () => {
+    const lifted = state({ driverAndroidMin: '0.0.0', guardEnforced: 'false' })
+    expect(cashDiscountGuard('offers_cash_discounts_enabled', 'true', lifted)).toBeNull()
+    expect(cashDiscountGuard('app_update_driver_android_min', '0.0.0', state({ cashDiscounts: 'true', guardEnforced: 'false' }))).toBeNull()
+  })
+  it('lifting it (turning the switch off) is allowed at any time, even with cash discounts on', () => {
+    expect(cashDiscountGuard('offers_cash_guard_enforced', 'false', state({ cashDiscounts: 'true', driverAndroidMin: '0.0.0' }))).toBeNull()
+  })
+  it('putting it back is refused while cash discounts are on and the minimum is still low, and allowed once it is raised or cash discounts are off', () => {
+    const on = state({ cashDiscounts: 'true', driverAndroidMin: '1.0.0', guardEnforced: 'false' })
+    expect(cashDiscountGuard('offers_cash_guard_enforced', 'true', on)).toMatch(/before the guard can go back on/)
+    expect(cashDiscountGuard('offers_cash_guard_enforced', 'true', { ...on, driverAndroidMin: V })).toBeNull()
+    expect(cashDiscountGuard('offers_cash_guard_enforced', 'true', { ...on, cashDiscounts: 'false' })).toBeNull()
+  })
+  it('is enforced when the switch is absent (older callers)', () => {
+    expect(cashDiscountGuard('offers_cash_discounts_enabled', 'true', state({ driverAndroidMin: '1.1.0' }))).not.toBeNull()
+  })
   it('ignores every other setting', () => {
     expect(cashDiscountGuard('commission_percent', '15', state())).toBeNull()
     expect(cashDiscountGuard('app_update_rider_android_min', '0.0.0', state({ cashDiscounts: 'true' }))).toBeNull()
