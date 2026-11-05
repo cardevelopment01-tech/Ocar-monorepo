@@ -1939,6 +1939,7 @@ export async function endRideEarlyAsDriver(
     rate_per_km: string
     rate_per_min: string
     min_fare: string
+    base_fare?: string
     return_rate_per_km: string | null
     total_estimated: string
     pricing_version?: number
@@ -1947,7 +1948,7 @@ export async function endRideEarlyAsDriver(
     hour_rate?: string | null
   }>(
     `SELECT fs.surge_multiplier, fs.stop_fare, fs.is_return_cab,
-            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km,
+            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.base_fare, rc.return_rate_per_km,
             fs.total_estimated, fs.pricing_version, fs.trip_hours, fs.waiting_fare, rc.hour_rate
      FROM fare_snapshots fs
      JOIN rate_cards rc ON rc.id = fs.rate_card_id
@@ -1963,6 +1964,7 @@ export async function endRideEarlyAsDriver(
         rate_per_km:        parseFloat(snap.rate_per_km),
         rate_per_min:       parseFloat(snap.rate_per_min),
         min_fare:           parseFloat(snap.min_fare),
+        base_fare:          parseFloat(snap.base_fare ?? '0'),
         return_rate_per_km: snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
       },
       ride_type:        'one_way', // no hour_surcharge on an aborted trip
@@ -2434,6 +2436,7 @@ interface RoundTripSnapshot {
   rate_per_km:              string
   rate_per_min:             string
   min_fare:                 string
+  base_fare?:               string
   return_rate_per_km:       string | null
   hour_rate:                string | null
   km_per_day:               string | null
@@ -2444,7 +2447,7 @@ async function loadRoundTripSnapshot(rideId: bigint): Promise<RoundTripSnapshot 
   const res = await pool.query<RoundTripSnapshot>(
     `SELECT fs.surge_multiplier, fs.stop_fare, fs.stop_count, fs.is_return_cab,
             fs.estimated_km, fs.trip_hours, fs.pricing_version, fs.waiting_fare,
-            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.return_rate_per_km,
+            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.base_fare, rc.return_rate_per_km,
             rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day
      FROM fare_snapshots fs
      JOIN rate_cards rc ON rc.id = fs.rate_card_id
@@ -2636,6 +2639,7 @@ export async function verifyEndOTP(
             rate_per_km:         parseFloat(snap.rate_per_km),
             rate_per_min:        parseFloat(snap.rate_per_min),
             min_fare:            parseFloat(snap.min_fare),
+            base_fare:           parseFloat(snap.base_fare ?? '0'),
             return_rate_per_km:  snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
           },
           ride_type:        'one_way',  // no driver allowance on early termination
@@ -2669,6 +2673,7 @@ export async function verifyEndOTP(
             rate_per_km:        parseFloat(snap.rate_per_km),
             rate_per_min:       parseFloat(snap.rate_per_min),
             min_fare:           parseFloat(snap.min_fare),
+            base_fare:          parseFloat(snap.base_fare ?? '0'),
             return_rate_per_km: snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
             hour_rate:          hourlyRate,
           },
@@ -2692,6 +2697,7 @@ export async function verifyEndOTP(
             rate_per_km:  parseFloat(snap.rate_per_km),
             rate_per_min: parseFloat(snap.rate_per_min),
             min_fare:     parseFloat(snap.min_fare),
+            base_fare:    parseFloat(snap.base_fare ?? '0'),
             return_rate_per_km:       snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
             km_per_day:               snap.km_per_day != null ? parseFloat(snap.km_per_day) : null,
             driver_allowance_per_day: snap.driver_allowance_per_day != null ? parseFloat(snap.driver_allowance_per_day) : null,

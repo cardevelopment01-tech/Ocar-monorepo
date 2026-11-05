@@ -17,6 +17,8 @@ export interface RateCard {
   driver_allowance_per_day: string | null
   /** Flat fee per added stop on this ride type; 0 = stops are free. */
   stop_charge: string
+  /** Flat amount added to every one-way / round-trip fare, before surge; 0 = none. */
+  base_fare: string
   effective_from: string
   created_at: string
 }
@@ -32,6 +34,7 @@ export interface RateCardHistoryRow {
   rate_per_min: string
   min_fare: string
   stop_charge?: string | null
+  base_fare?: string | null
   change_reason: string | null
   created_at: string
 }
@@ -70,6 +73,8 @@ export const pricingApi = {
     driver_allowance_per_day?: number | null
     /** Omit to keep the current version's per-stop price; 0 makes stops free. */
     stop_charge?: number
+    /** Omit to keep the current version's base fare; 0 removes it. */
+    base_fare?: number
     notes?: string
   }) => api.post('/api/v1/admin/pricing/rate-cards', data).then(r => r.data as RateCard),
 
