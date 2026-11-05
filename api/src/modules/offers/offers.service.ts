@@ -26,6 +26,8 @@ export type AppliedOffer = {
   summary: string
   discount: number
   cashback: number
+  /** For the reservation made at booking; clients ignore it. */
+  perUserLimit: number | null
 }
 
 export type Rejection = { offerId?: string; code?: string; reason: ReasonCode; message: string }
@@ -84,7 +86,8 @@ async function isAssignedTo(userId: bigint, offerId: bigint): Promise<boolean> {
   return (r.rowCount ?? 0) > 0
 }
 
-export type Evaluation = { chosen: AppliedOffer | null; result: PreviewResult }
+/** enabled=false: offers are off, so a booking ignores any coupon and books at the gross fare. */
+export type Evaluation = { chosen: AppliedOffer | null; result: PreviewResult; enabled: boolean }
 
 /** The full decision for one quote: what applies, what else could, and why the rest does not. Never trusts client amounts. */
 export async function evaluateOffers(userId: bigint, input: PreviewInput, estimate: FareEstimateResponse): Promise<Evaluation> {
@@ -92,7 +95,7 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
   const fareTotal = roundPaise(sumComponents(fare))
   const empty: PreviewResult = { fareTotal, discount: 0, cashback: 0, payable: fareTotal, applied: null, alternatives: [], rejected: [] }
 
-  if ((await getConfigValue('offers_enabled', 'false')) !== 'true') return { chosen: null, result: empty }
+  if ((await getConfigValue('offers_enabled', 'false')) !== 'true') return { chosen: null, result: empty, enabled: false }
 
   const [commissionPct, cashDiscounts, cashCollection, cashbackOn, maxPctRaw] = await Promise.all([
     getConfigValue('commission_percent', '15'),
@@ -121,7 +124,7 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
     } else candidates.push(typedOffer)
   }
   for (const o of await findActiveOffers()) if (o.kind === 'auto' && o.id !== typedOffer?.id) candidates.push(o)
-  if (candidates.length === 0) return { chosen: null, result: { ...empty, rejected } }
+  if (candidates.length === 0) return { chosen: null, result: { ...empty, rejected }, enabled: true }
 
   // Independent lookups run together; the ride count is only needed when a first-ride rule is present.
   const needsRideCount = candidates.some((c) => c.rules.some((r) => r.kind === 'new_user' || r.kind === 'first_n_rides'))
@@ -146,6 +149,7 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
   const toApplied = (o: OfferRecord, discount: number, cashback: number): AppliedOffer => ({
     offerId: o.id.toString(), versionId: o.versionId.toString(), code: o.code, name: o.name, kind: o.kind,
     summary: describeOffer({ rules: o.rules, benefit: o.benefit, per_user_limit: o.perUserLimit }), discount, cashback,
+    perUserLimit: o.perUserLimit,
   })
   const reject = (o: OfferRecord, reason: ReasonCode, detail?: Record<string, number | string>) => {
     // Only the offer the rider typed is explained; auto offers that do not fit are simply not shown.
@@ -182,6 +186,7 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
   const chosen = eligible[0] ?? null
   return {
     chosen,
+    enabled: true,
     result: {
       fareTotal, discount: chosen?.discount ?? 0, cashback: chosen?.cashback ?? 0,
       payable: roundPaise(Math.max(fareTotal - (chosen?.discount ?? 0), 0)),

@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+vi.mock('@/modules/offers/settlement', async (orig) => ({
+  ...(await orig<typeof import('@/modules/offers/settlement')>()),
+  finaliseDiscount: vi.fn(),
+  settleOfferOnPayment: vi.fn(),
+}))
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 // createPaymentRecord's commission-percent lookup now reads through
 // getConfigValue -> the system_config cache (@/lib/cache/reference-cache ->
@@ -36,7 +41,7 @@ describe('createPaymentRecord', () => {
     expect(sql).toContain('captured_at')
     expect(params).toContain('completed')
     expect(params).toContain('cash_direct')
-    expect(params[params.length - 1]).toBeInstanceOf(Date)
+    expect(params.at(-2)).toBeInstanceOf(Date) // captured_at; discount_amount is last
   })
 
   it('online: inserts status=pending with NULL captured_at', async () => {
@@ -45,6 +50,19 @@ describe('createPaymentRecord', () => {
     const params = insert[1] as unknown[]
     expect(params).toContain('pending')
     expect(params).toContain('razorpay_online')
-    expect(params[params.length - 1]).toBeNull()
+    expect(params.at(-2)).toBeNull()
+  })
+
+  it('a discounted ride is recorded at the payable, with commission on it and the discount kept for reports', async () => {
+    vi.mocked(pool.query).mockReset()
+    vi.mocked(pool.query)
+      .mockResolvedValueOnce({ rows: [{ ...FARE_ROW.rows[0], total_final: '454.00', discount_amount: '90.80' }], rowCount: 1 } as never)
+      .mockResolvedValueOnce({ rows: [{ value: '10' }], rowCount: 1 } as never) // commission 10%
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 } as never)
+    await createPaymentRecord(BigInt(101), 'cash_direct')
+    const params = vi.mocked(pool.query).mock.calls.find(([sql]) => (sql as string).includes('INSERT INTO payments'))![1] as unknown[]
+    expect(params).toContain(363.2) // amount = the payable
+    expect(params.at(-1)).toBe(90.8) // discount_amount
+    expect(params).toContain(36.32) // 10% commission on the payable
   })
 })

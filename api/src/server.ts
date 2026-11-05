@@ -115,6 +115,9 @@ async function start(): Promise<void> {
     {},
     { repeat: { every: 5 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
   )
+  // Offers: stale reservations every 10 minutes, expiry every minute (cheap, indexed by status).
+  await schedulerQueue.add('sweep_offer_reservations', {}, { repeat: { every: 10 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true })
+  await schedulerQueue.add('sweep_offer_expiry', {}, { repeat: { every: 60 * 1000 }, removeOnComplete: true, removeOnFail: true })
 
   // Daily admin digest (CEO E2): one schedule shared by every instance (upsert is idempotent),
   // 09:00 IST; delivery dedupe lives in Redis (admin-digest.ts).

@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg'
 import { pool } from '@/db/client'
 import { cachedRead } from '@/lib/cache/reference-cache'
 import { logger } from '@/lib/logger'
@@ -346,8 +347,8 @@ export async function createRide(data: {
   paymentChannel?: string
   riderName?: string
   riderPhone?: string
-}) {
-  const res = await pool.query(
+}, client?: PoolClient) {
+  const res = await (client ?? pool).query(
     `INSERT INTO rides (
        user_id, category_id, ride_type, is_return_cab,
        origin, destination,
@@ -383,6 +384,59 @@ export async function createRide(data: {
   return res.rows[0]
 }
 
+export type FareSnapshotInput = {
+  rideId: bigint | string
+  rateCardId: number
+  rentalPackageId: number | null
+  rideType: string
+  isReturnCab: boolean
+  surgeEventId: number | null
+  surgeMultiplier: number
+  estimatedKm: number
+  estimatedMin: number
+  stopCount: number
+  tripHours: number
+  baseFare: number
+  distanceFare: number
+  timeFare: number
+  stopFare: number
+  hourSurcharge: number
+  surgeFare: number
+  total: number
+  pricingVersion: number
+  waitingFare: number
+  /** Rupees a rider offer takes off the gross total; 0 when none. total_* stay gross. */
+  discountAmount: number
+}
+
+/** The estimate snapshot written at booking, on the booking transaction's client. */
+export async function insertFareSnapshot(client: PoolClient, p: FareSnapshotInput): Promise<void> {
+  await client.query(
+    `INSERT INTO fare_snapshots (
+       ride_id, rate_card_id, rental_package_id,
+       ride_type, is_return_cab,
+       surge_event_id, surge_multiplier,
+       estimated_km, estimated_min, stop_count, trip_hours,
+       base_fare, distance_fare, time_fare,
+       stop_fare, hour_surcharge, surge_fare,
+       total_estimated, status,
+       pricing_version, waiting_fare, discount_amount,
+       rental_km_limit, rental_duration_minutes, rental_extra_per_km, rental_extra_per_min
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'estimate',$19,$20,$21,
+       -- pin the package terms quoted now; admins edit packages in place (migration 099)
+       (SELECT km_limit         FROM rental_packages WHERE id = $3),
+       (SELECT duration_minutes FROM rental_packages WHERE id = $3),
+       (SELECT extra_per_km     FROM rental_packages WHERE id = $3),
+       (SELECT extra_per_min    FROM rental_packages WHERE id = $3))`,
+    [
+      p.rideId, p.rateCardId, p.rentalPackageId, p.rideType, p.isReturnCab, p.surgeEventId, p.surgeMultiplier,
+      p.estimatedKm, p.estimatedMin, p.stopCount, p.tripHours,
+      p.baseFare, p.distanceFare, p.timeFare, p.stopFare, p.hourSurcharge, p.surgeFare,
+      p.total, p.pricingVersion, p.waitingFare, p.discountAmount,
+    ]
+  )
+}
+
 // ── Ride stops (waypoints) ────────────────────────────────────
 
 // One INSERT per stop inside a transaction, not a single multi-row VALUES —
@@ -390,12 +444,14 @@ export async function createRide(data: {
 // at MAX_STOPS_PER_RIDE, so the extra round-trips are negligible.
 export async function insertRideStops(
   rideId: bigint,
-  stops: Array<StopInput & { chargeApplied: number }>
+  stops: Array<StopInput & { chargeApplied: number }>,
+  shared?: PoolClient
 ): Promise<RideStop[]> {
   if (stops.length === 0) return []
-  const client = await pool.connect()
+  // With a shared client the caller owns the transaction (booking is one transaction); otherwise open our own.
+  const client = shared ?? await pool.connect()
   try {
-    await client.query('BEGIN')
+    if (!shared) await client.query('BEGIN')
     const rows: RideStop[] = []
     for (let i = 0; i < stops.length; i++) {
       const stop = stops[i]!
@@ -413,13 +469,13 @@ export async function insertRideStops(
       )
       rows.push(res.rows[0]!)
     }
-    await client.query('COMMIT')
+    if (!shared) await client.query('COMMIT')
     return rows
   } catch (err) {
-    await client.query('ROLLBACK')
+    if (!shared) await client.query('ROLLBACK')
     throw err
   } finally {
-    client.release()
+    if (!shared) client.release()
   }
 }
 
@@ -644,6 +700,7 @@ export async function getActiveRideForDriver(driverId: bigint, includeUnsettledC
        d.full_name  AS driver_name,
        d.phone      AS driver_phone,
        fs.total_estimated,
+       ocar_payable(fs.total_estimated, fs.discount_amount)::text AS driver_fare,
        fs.pricing_version, fs.overtime_min, fs.overtime_fare,
        hrc.hour_rate AS round_trip_hour_rate
      FROM rides r
@@ -699,11 +756,9 @@ const RIDE_SELECT_SQL = `SELECT
        (d.status = 'active')  AS driver_verified,
        d.reference_selfie_url AS driver_photo,
        fs.total_estimated,
-       -- The cash the driver collects and the rider-offer discount already taken off it. Until offers exist
-       -- (PR2 swaps both for the payable and the stored discount) cash_due is the settled fare, same as the
-       -- driver app computed itself, so adding them changes nothing a driver sees.
-       COALESCE(fs.total_final, fs.total_estimated) AS cash_due,
-       0::numeric AS discount_amount,
+       -- The cash the driver collects (the payable) and the rider-offer discount already taken off the gross fare.
+       ocar_payable(COALESCE(fs.total_final, fs.total_estimated), fs.discount_amount) AS cash_due,
+       fs.discount_amount,
        fs.total_final, fs.base_fare, fs.distance_fare, fs.time_fare, fs.stop_fare,
        fs.hour_surcharge, fs.overage_fare, fs.surge_fare, fs.surge_multiplier,
        fs.actual_km, fs.actual_min, fs.estimated_km::float8 AS estimated_km, fs.estimated_min::float8 AS estimated_min,
@@ -1453,7 +1508,7 @@ export async function getUserRideHistory(
       `SELECT r.id::text, r.status, r.ride_type, r.origin_address, r.destination_address,
               r.requested_at, r.completed_at,
               d.full_name AS driver_name,
-              COALESCE(fs.total_final, fs.total_estimated)::text AS fare
+              ocar_payable(COALESCE(fs.total_final, fs.total_estimated), fs.discount_amount)::text AS fare
        FROM rides r
        LEFT JOIN drivers d         ON d.id = r.driver_id
        LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
@@ -1482,6 +1537,8 @@ export interface FareRecomputeInput {
   rental_package_id: number | null
   origin_city_id:   number | null
   total_estimated:  number
+  /** The offer discount reserved on this quote; 0 when none. */
+  discount_amount?: number
 }
 
 export async function getFareRecomputeInput(rideId: bigint): Promise<FareRecomputeInput | null> {
@@ -1489,7 +1546,7 @@ export async function getFareRecomputeInput(rideId: bigint): Promise<FareRecompu
     `SELECT r.category_id::int, r.origin_city_id::int,
             fs.ride_type, fs.is_return_cab, fs.estimated_km::float8, fs.estimated_min::float8,
             fs.stop_count::int, fs.trip_hours::float8, fs.pricing_version::int, fs.rental_package_id::int,
-            fs.total_estimated::float8
+            fs.total_estimated::float8, fs.discount_amount::float8 AS discount_amount
      FROM fare_snapshots fs
      JOIN rides r ON r.id = fs.ride_id
      WHERE fs.ride_id = $1`,
@@ -1546,7 +1603,7 @@ export async function getUpcomingRides(userId: bigint): Promise<unknown[]> {
   const res = await pool.query(
     `SELECT r.id::text, r.ride_type, r.origin_address, r.destination_address,
             r.scheduled_for,
-            fs.total_estimated::text AS fare
+            ocar_payable(fs.total_estimated, fs.discount_amount)::text AS fare
      FROM rides r
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
      WHERE r.user_id = $1 AND r.status = 'scheduled'
@@ -1574,7 +1631,7 @@ export async function getDriverTripHistory(
       `SELECT r.id::text, r.status, r.ride_type, r.origin_address, r.destination_address,
               r.requested_at, r.started_at, r.completed_at,
               u.name AS user_name,
-              COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
+              ocar_payable(COALESCE(fs.total_final, fs.total_estimated), fs.discount_amount)::text AS fare,
               COALESCE(p.driver_earning, 0)::text AS driver_earning
        FROM rides r
        LEFT JOIN users u           ON u.id = r.user_id
@@ -1603,6 +1660,8 @@ export interface PendingAssignment {
   dest_lat: number | null
   dest_lng: number | null
   total_estimated: string | null
+  /** What the driver would earn on this ride (the payable), when a rider offer lowered it. */
+  driver_fare?: string | null
   ride_type: string
   is_return_cab: boolean
   distance_to_pickup_metres: number
@@ -1638,6 +1697,7 @@ export async function getPendingAssignmentsForDriver(
        (SELECT rp.km_limit FROM rental_packages rp WHERE rp.id = r.rental_package_id) AS rental_km_limit,
        (SELECT COUNT(*)::int FROM ride_stops rs WHERE rs.ride_id = r.id) AS stop_count,
        fs.total_estimated,
+       ocar_payable(fs.total_estimated, fs.discount_amount)::text AS driver_fare,
        COALESCE(
          CASE
            WHEN ra.driver_lat IS NOT NULL AND ra.driver_lng IS NOT NULL
@@ -1714,7 +1774,7 @@ export async function getDriverEarningsSummary(
        FROM (
          SELECT ${bucketExpr} AS bucket,
                 p.driver_earning::numeric AS earn,
-                COALESCE(fs.total_final, fs.total_estimated)::numeric AS fare
+                ocar_payable(COALESCE(fs.total_final, fs.total_estimated), fs.discount_amount)::numeric AS fare
          FROM rides r
          LEFT JOIN payments p        ON p.ride_id = r.id
          LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id

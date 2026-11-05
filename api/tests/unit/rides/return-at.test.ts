@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ── Mocks must be declared before any imports that trigger the module graph ───
 
+const bookingClient = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [], rowCount: 0 })), release: vi.fn() }))
 vi.mock('@/modules/rides/rides.repository', () => ({
+  insertFareSnapshot:     vi.fn(),
+  insertRideStops:        vi.fn(),
   createRide:         vi.fn(),
   logStatusHistory:   vi.fn(),
   createRideAssignment: vi.fn(),
@@ -17,7 +20,7 @@ vi.mock('@/modules/pricing/pricing.service', () => ({
 }))
 
 vi.mock('@/db/client', () => ({
-  pool: { query: vi.fn() },
+  pool: { query: vi.fn(), connect: vi.fn(async () => bookingClient) },
 }))
 
 vi.mock('@/websocket/socket.server', () => ({

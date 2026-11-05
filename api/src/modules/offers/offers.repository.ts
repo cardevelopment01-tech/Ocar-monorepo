@@ -184,7 +184,7 @@ async function whyOfferRefused(client: PoolClient, offerId: bigint, spend: numbe
 }
 
 /** Reserved -> consumed. Idempotent: the first call returns the amounts, later calls (and a released one) return null. */
-export async function consumeRedemption(client: PoolClient, rideId: bigint): Promise<{ discount: number; cashback: number; userId: bigint } | null> {
+export async function consumeRedemption(client: Pick<PoolClient, 'query'>, rideId: bigint): Promise<{ discount: number; cashback: number; userId: bigint } | null> {
   const res = await client.query<{ discount_amount: string; cashback_amount: string; user_id: string }>(
     `UPDATE offer_redemptions SET status = 'consumed', consumed_at = now()
       WHERE ride_id = $1 AND status = 'reserved'
@@ -196,17 +196,17 @@ export async function consumeRedemption(client: PoolClient, rideId: bigint): Pro
 }
 
 /** Reserved -> released: gives the budget, the global slot and the user's use back. False if there was nothing to release. */
-export async function releaseRedemption(client: PoolClient, rideId: bigint, reason: string): Promise<boolean> {
+export async function releaseRedemption(client: Pick<PoolClient, 'query'>, rideId: bigint, reason: string): Promise<boolean> {
   return undo(client, rideId, 'reserved', 'released', reason)
 }
 
 /** Consumed -> reversed (refund or dispute after the benefit was given). False if it was not consumed. */
-export async function reverseRedemption(client: PoolClient, rideId: bigint, reason: string): Promise<boolean> {
+export async function reverseRedemption(client: Pick<PoolClient, 'query'>, rideId: bigint, reason: string): Promise<boolean> {
   // The offer WAS used: budget and the global slot come back, the rider's own use does not (refund-and-reuse loop).
   return undo(client, rideId, 'consumed', 'reversed', reason)
 }
 
-async function undo(client: PoolClient, rideId: bigint, from: 'reserved' | 'consumed', to: 'released' | 'reversed', reason: string): Promise<boolean> {
+async function undo(client: Pick<PoolClient, 'query'>, rideId: bigint, from: 'reserved' | 'consumed', to: 'released' | 'reversed', reason: string): Promise<boolean> {
   const res = await client.query<{ offer_id: string; user_id: string; discount_amount: string; cashback_amount: string }>(
     `UPDATE offer_redemptions SET status = $3, released_at = now(), reason = $4
       WHERE ride_id = $1 AND status = $2
@@ -225,6 +225,9 @@ async function undo(client: PoolClient, rideId: bigint, from: 'reserved' | 'cons
       `UPDATE offer_user_usage SET count = GREATEST(count - 1, 0) WHERE offer_id = $1 AND user_id = $2`,
       [r.offer_id, r.user_id]
     )
+    // The offer went back, so the ride is no longer discounted: every ocar_payable() reader shows the gross fare and a
+    // ride an admin later revives is billed in full instead of at a discount nobody holds.
+    await client.query(`UPDATE fare_snapshots SET discount_amount = 0 WHERE ride_id = $1`, [rideId])
   }
   return true
 }
@@ -380,4 +383,21 @@ export async function listGrantedOfferIds(userId: bigint): Promise<bigint[]> {
     [userId]
   )
   return r.rows.map((x) => BigInt(x.offer_id))
+}
+
+/**
+ * Rides that carry an offer discount and have not been paid yet. Commission is read when a ride settles, so restoring
+ * the rate while these are open charges commission on their discounted fare (review decision D21): the Config page warns
+ * the admin with this number. Cheap and rare (only on an admin save of commission_percent).
+ */
+export async function openDiscountedRideCount(): Promise<number> {
+  const res = await pool.query<{ n: string }>(
+    `SELECT count(*)::text AS n
+       FROM fare_snapshots fs
+       JOIN rides r ON r.id = fs.ride_id
+      WHERE fs.discount_amount > 0
+        AND r.status NOT IN ('cancelled', 'no_drivers')
+        AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.ride_id = r.id AND p.status = 'completed')`
+  )
+  return Number(res.rows[0]?.n ?? 0)
 }

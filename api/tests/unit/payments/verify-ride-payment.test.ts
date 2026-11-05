@@ -8,6 +8,11 @@ const fakeClient = {
   query: vi.fn().mockResolvedValue({ rows: [{ id: 1, balance: '1000', is_frozen: false }], rowCount: 1 }),
   release: vi.fn(),
 }
+vi.mock('@/modules/offers/settlement', async (orig) => ({
+  ...(await orig<typeof import('@/modules/offers/settlement')>()),
+  finaliseDiscount: vi.fn(),
+  settleOfferOnPayment: vi.fn(),
+}))
 vi.mock('@/db/client', () => ({
   pool: { query: vi.fn(), connect: vi.fn(() => Promise.resolve(fakeClient)) },
 }))
