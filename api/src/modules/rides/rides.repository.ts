@@ -699,6 +699,11 @@ const RIDE_SELECT_SQL = `SELECT
        (d.status = 'active')  AS driver_verified,
        d.reference_selfie_url AS driver_photo,
        fs.total_estimated,
+       -- The cash the driver collects and the rider-offer discount already taken off it. Until offers exist
+       -- (PR2 swaps both for the payable and the stored discount) cash_due is the settled fare, same as the
+       -- driver app computed itself, so adding them changes nothing a driver sees.
+       COALESCE(fs.total_final, fs.total_estimated) AS cash_due,
+       0::numeric AS discount_amount,
        fs.total_final, fs.base_fare, fs.distance_fare, fs.time_fare, fs.stop_fare,
        fs.hour_surcharge, fs.overage_fare, fs.surge_fare, fs.surge_multiplier,
        fs.actual_km, fs.actual_min, fs.estimated_km::float8 AS estimated_km, fs.estimated_min::float8 AS estimated_min,

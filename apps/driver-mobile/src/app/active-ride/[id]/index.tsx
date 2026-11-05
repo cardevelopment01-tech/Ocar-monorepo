@@ -29,6 +29,7 @@ import { useDriverPositionStore } from '@/services/location/driverPositionStore'
 import { useSpeedAlert } from '@/features/active-ride/useSpeedAlert'
 import { useTripWindow } from '@/features/active-ride/useTripWindow'
 import { settledCash } from '@/features/active-ride/settledCash'
+import { cashDueOf, riderOfferDiscount } from '@/features/active-ride/cashDue'
 
 // SOSButton's circle diameter, to centre it in the guided-nav control strip.
 const SOS_SIZE = 56
@@ -142,7 +143,8 @@ export default function ActiveRideScreen() {
 
   // The settled fare wins once it exists: the server expects cash against total_final (overtime, extra km,
   // rental overage all land there), so collecting against the quote records a false shortfall.
-  const expectedFare = parseFloat(ride.totalFinal ?? ride.totalEstimated ?? '0')
+  const expectedFare = cashDueOf(ride)
+  const offerDiscount = riderOfferDiscount(ride)
 
   // Cash already collected (here or earlier) or not a cash ride: show the summary, not the collection card.
   const settled = settledCash(ride, cashResult)
@@ -359,6 +361,7 @@ export default function ActiveRideScreen() {
           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
           <CashCollectionCard
             expectedFare={expectedFare}
+            offerDiscount={offerDiscount}
             riderName={ride.riderName}
             loading={cashLoading}
             error={null}
