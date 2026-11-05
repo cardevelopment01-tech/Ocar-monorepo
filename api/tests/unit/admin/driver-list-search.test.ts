@@ -40,7 +40,9 @@ describe('listDrivers docs-to-review queue', () => {
   it('includes docs_rejected drivers who re-uploaded (their status never leaves docs_rejected)', async () => {
     await listDrivers({ docsToReview: true, limit: 20, offset: 0 })
     const [sql] = query.mock.calls[0] as [string, unknown[]]
-    expect(sql).toContain("d.status IN ('active', 'suspended', 'docs_rejected')")
+    // the filter AND the per-row "n to review" badge must cover the same statuses
+    expect(sql.split("d.status IN ('active', 'suspended', 'docs_rejected')").length - 1).toBe(2)
+    expect(sql).not.toContain("d.status IN ('active', 'suspended')")
     expect(sql).toContain("dd.status = 'pending'")
   })
 })
