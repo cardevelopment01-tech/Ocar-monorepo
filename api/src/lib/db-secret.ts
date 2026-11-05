@@ -7,13 +7,23 @@ import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-sec
 // query — avoids hammering the API on connection-heavy bursts. Serves the
 // last-known-good value on a transient fetch error rather than failing a new
 // connection outright.
+// RDS-managed rotation changes the master password in place: connections that
+// are already open keep working, but a NEW connection with the old password is
+// refused (28P01). So the cache must be short, and db/client.ts calls
+// invalidateDbPassword() and retries once on 28P01, which makes a rotation
+// invisible to callers instead of up to a full TTL of failures.
 // Reads AWS_REGION directly from process.env, not the app's Zod config module
 // — this file is also imported by migrate.ts, which deliberately stays
 // standalone (reads only the env vars it needs) rather than requiring every
 // prod env var the full config schema demands just to run a migration.
-const CACHE_TTL_MS = 5 * 60 * 1000
+export const CACHE_TTL_MS = 15 * 1000
 const client = new SecretsManagerClient({ region: process.env['AWS_REGION'] || 'ap-south-1' })
 let cached: { password: string; fetchedAt: number } | null = null
+
+/** Forget the cached password so the next connection re-reads Secrets Manager. */
+export function invalidateDbPassword(): void {
+  cached = null
+}
 
 export async function getDbPassword(secretArn: string): Promise<string> {
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.password
