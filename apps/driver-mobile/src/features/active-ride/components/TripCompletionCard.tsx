@@ -57,7 +57,7 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
           <Feather name="check" size={36} color={colors.inkInverse} />
         </Animated.View>
         <Text style={styles.heroTitle}>Trip complete</Text>
-        <Text style={styles.route} numberOfLines={2}>{route}</Text>
+        <Text style={styles.route} numberOfLines={3}>{route}</Text>
       </View>
 
       {facts.length > 0 ? (

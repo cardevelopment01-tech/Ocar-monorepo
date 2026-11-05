@@ -154,23 +154,28 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
         {/* Route */}
         <View style={styles.section}>
+          {/* One row per stop with its own marker, so the drop marker sits level with "Drop" however long the pickup is. */}
+          <View>
           <View style={styles.routeRow}>
-            <View style={styles.dots}>
+            <View style={styles.markerCol}>
               <View style={[styles.dot, styles.dotPickup]} />
               <View style={styles.line} />
+            </View>
+            <View style={[styles.routeText, styles.pickupText]}>
+              <Text style={styles.routeLabel}>Pickup</Text>
+              <Text style={styles.routeValue} numberOfLines={3}>{ride.originAddress ?? 'Pickup location'}</Text>
+            </View>
+          </View>
+          <View style={styles.routeRow}>
+            <View style={styles.markerCol}>
               <View style={[styles.dot, styles.dotDrop]} />
             </View>
             <View style={styles.routeText}>
-              <View>
-                <Text style={styles.routeLabel}>Pickup</Text>
-                <Text style={styles.routeValue} numberOfLines={3}>{ride.originAddress ?? 'Pickup location'}</Text>
-              </View>
-              <View>
-                <Text style={styles.routeLabel}>{drop.label}</Text>
-                <Text style={styles.routeValue} numberOfLines={3}>{drop.value}</Text>
-                {drop.note ? <Text style={styles.routeNote}>{drop.note}</Text> : null}
-              </View>
+              <Text style={styles.routeLabel}>{drop.label}</Text>
+              <Text style={styles.routeValue} numberOfLines={3}>{drop.value}</Text>
+              {drop.note ? <Text style={styles.routeNote}>{drop.note}</Text> : null}
             </View>
+          </View>
           </View>
           {ride.stops.length > 0 ? <StopTimeline stops={ride.stops} /> : null}
         </View>
@@ -319,12 +324,13 @@ const styles = StyleSheet.create({
   dueText: { ...typography.label, fontSize: 14, fontFamily: fonts.bold, color: colors.ink900, flex: 1 },
 
   routeRow: { flexDirection: 'row', gap: spacing.sm + 4 },
-  dots: { alignItems: 'center', paddingVertical: 5 },
+  markerCol: { width: 10, alignItems: 'center', paddingTop: 7 },
+  pickupText: { paddingBottom: spacing.sm + 4 },
   dot: { width: 10, height: 10 },
   dotPickup: { borderRadius: 5, backgroundColor: colors.primary },
   dotDrop: { borderRadius: 2, backgroundColor: colors.ink900 },
-  line: { width: 1, flex: 1, minHeight: 24, backgroundColor: colors.border },
-  routeText: { flex: 1, minWidth: 0, gap: spacing.md },
+  line: { width: 1, flex: 1, marginTop: 2, backgroundColor: colors.border },
+  routeText: { flex: 1, minWidth: 0 },
   routeLabel: { ...typography.label, color: colors.ink600 },
   routeValue: { ...typography.body, lineHeight: 22, color: colors.ink900, fontFamily: fonts.semibold },
   routeNote: { ...typography.label, color: colors.ink600 },
