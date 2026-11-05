@@ -168,6 +168,8 @@ export interface BookingRequest {
   couponCode?: string
   /** The payable the rider saw. A different server price answers 409 PRICE_CHANGED and books nothing. Auto offers need it. */
   expectedPayable?: number
+  /** 'none' = the rider removed the automatic offer; an offer id = the one they picked. Absent = the best offer. */
+  autoOffer?: string
   /** Booking on behalf of someone else — omitted/undefined means "myself" */
   riderName?: string
   riderPhone?: string

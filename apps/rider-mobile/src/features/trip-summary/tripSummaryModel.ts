@@ -19,20 +19,23 @@ export function formatMoney(value: string | number | null | undefined): string {
 }
 
 // `detail` is the quiet second line under the label (quantity, rate); the label itself stays a plain noun.
-export type InvoiceRow = { key: string; label: string; detail?: string; amount: number }
+export type InvoiceRow = { key: string; label: string; detail?: string; amount: number; /** shown as a minus (an offer taken off) */ negative?: boolean }
 
 type InvoiceSource = Pick<RideDetail,
   'baseFare' | 'distanceFare' | 'timeFare' | 'stopFare' | 'hourSurcharge' | 'overageFare' | 'surgeFare' |
   'surgeMultiplier' | 'actualKm' | 'actualMin' | 'totalFinal' | 'totalEstimated'> &
-  Partial<Pick<RideDetail, 'tripHours' | 'waitingFare' | 'overtimeMin' | 'overtimeFare' | 'overtimeGraceMin' |
+  Partial<Pick<RideDetail, 'tripHours' | 'waitingFare' | 'overtimeMin' | 'overtimeFare' | 'overtimeGraceMin' | 'discountAmount' |
     'rideType' | 'overageKm' | 'overageMin' | 'rentalExtraPerKm' | 'rentalExtraPerMin' | 'rentalKmLimit' | 'rentalDurationMinutes'>>
 
 // Only components that were actually charged (> 0), each labelled with its quantity. If the
 // components do not add up to the total, a single "Adjustments" row makes up the gap so the
 // page never shows an invoice that silently disagrees with its own total.
-export function buildInvoiceRows(r: InvoiceSource): { rows: InvoiceRow[]; total: number; isEstimate: boolean } {
+export function buildInvoiceRows(r: InvoiceSource): { rows: InvoiceRow[]; total: number; isEstimate: boolean; discount: number } {
   const isEstimate = r.totalFinal == null
-  const total = num(isEstimate ? r.totalEstimated : r.totalFinal)
+  // The components add up to the GROSS fare; an offer is taken off afterwards, so the total is what the rider pays.
+  const gross = num(isEstimate ? r.totalEstimated : r.totalFinal)
+  const discount = Math.min(num(r.discountAmount), gross)
+  const total = gross
   const km = num(r.actualKm)
   const min = Math.round(num(r.actualMin))
   const surge = num(r.surgeMultiplier)
@@ -65,7 +68,8 @@ export function buildInvoiceRows(r: InvoiceSource): { rows: InvoiceRow[]; total:
   const gap = Math.round((total - rows.reduce((s, c) => s + c.amount, 0)) * 100) / 100
   // Sub-rupee differences are rounding, not something to show a rider as a line item.
   if (Math.abs(gap) >= 1) rows.push({ key: 'adjust', label: 'Adjustments', amount: gap })
-  return { rows, total, isEstimate }
+  if (discount > 0) rows.push({ key: 'offer', label: 'Offer', amount: discount, negative: true })
+  return { rows, total: Math.round((total - discount) * 100) / 100, isEstimate, discount }
 }
 
 export type PaymentState =
@@ -73,13 +77,13 @@ export type PaymentState =
   | { kind: 'paid'; text: string }
 
 export function paymentState(
-  r: Pick<RideDetail, 'totalFinal' | 'totalEstimated'> & { paymentChannel: string | null; cashCollectedAt: string | null },
+  r: Pick<RideDetail, 'totalFinal' | 'totalEstimated'> & Partial<Pick<RideDetail, 'cashDue'>> & { paymentChannel: string | null; cashCollectedAt: string | null },
 ): PaymentState {
   const channel = r.paymentChannel ?? 'cash'
   if (channel === 'cash') {
     return r.cashCollectedAt
       ? { kind: 'paid', text: 'Paid in cash' }
-      : { kind: 'cash_due', text: `Pay ${formatMoney(r.totalFinal ?? r.totalEstimated)} cash to your driver` }
+      : { kind: 'cash_due', text: `Pay ${formatMoney(r.cashDue ?? r.totalFinal ?? r.totalEstimated)} cash to your driver` }
   }
   return { kind: 'paid', text: channel === 'wallet' ? 'Paid via wallet' : 'Paid online' }
 }

@@ -46,6 +46,8 @@ import airportImg from '../../../assets/home/way-airport.jpg'
 import safetyImg from '../../../assets/home/way-safety.jpg'
 import tripImg from '../../../assets/home/way-trip.jpg'
 import firstRideImg from '../../../assets/home/promo-first-ride.jpg'
+import { fetchOffers, type OfferListItem } from '@/features/offers/api'
+import { homeOffer } from '@/features/offers/offerList'
 import businessImg from '../../../assets/home/promo-business.jpg'
 
 // Sheet layout above the search bar: padding-top 14 + handle hit area (28 - 12 + 2).
@@ -276,8 +278,12 @@ export default function HomeScreen() {
     { key: 'safety', kind: 'safety', title: 'Trip Safety, Always On', sub: 'Live-tracked, every ride', image: safetyImg, bg: '#0A252B', onPress: () => router.push('/info/safety') },
     { key: 'trip', kind: 'trip', title: 'Puri – Konark Day Trip', sub: 'The Golden Triangle, one chauffeur', image: tripImg, bg: '#22130C', onPress: () => router.push('/info/golden-triangle') },
   ]
+  // A real offer from the server, or nothing: the old hard-coded "20% off your first ride" promised something no system could honour.
+  const [offerList, setOfferList] = useState<OfferListItem[]>([])
+  useEffect(() => { fetchOffers().then(setOfferList).catch(() => setOfferList([])) }, [])
+  const live = homeOffer(offerList)
   const promos: Promo[] = [
-    { key: 'first', eyebrow: 'Limited-time', title: '20% off your first ride', sub: 'On Sedan, SUV & Luxury bookings', image: firstRideImg, bg: '#10161C', onPress: toBookingAuto },
+    ...(live ? [{ key: `offer-${live.id}`, eyebrow: 'Offer', title: live.name, sub: live.summary, image: firstRideImg, bg: '#10161C', onPress: toBookingAuto } satisfies Promo] : []),
     { key: 'biz', eyebrow: 'Ocar for Business', title: 'Corporate travel, elevated', sub: 'Dedicated billing & priority chauffeurs', image: businessImg, bg: '#1C1510' },
   ]
 

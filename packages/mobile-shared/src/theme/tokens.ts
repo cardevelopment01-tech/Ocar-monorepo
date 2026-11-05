@@ -29,6 +29,10 @@ const riderColors = {
   accentOrangeLight: '#FFF7ED',
   money: '#059669',
   moneyLight: '#D1FAE5',
+  // Text-safe money green: `money` is 3.3:1 on moneyLight and 3.8:1 on white (below AA); this is 4.8:1 and 5.5:1.
+  moneyInk: '#047857',
+  // Wash behind an applied offer; moneyInk on it is 4.9:1.
+  moneySubtle: '#E9F6EF',
   bg: '#F6FBFB',
   surface: '#FFFFFF',
   surface2: '#F7F6F1',

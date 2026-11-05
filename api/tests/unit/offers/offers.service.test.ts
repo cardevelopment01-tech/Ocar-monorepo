@@ -152,6 +152,26 @@ describe('evaluateOffers', () => {
     expect(pool.query).toHaveBeenCalledTimes(1)
   })
 
+  it("a rider who removed the automatic offer gets none, and one who picked an offer gets that one, not the best", async () => {
+    const big = offer({ name: 'big', benefit: { type: 'flat_off', amount: 60 } })
+    const small = offer({ name: 'small', benefit: { type: 'flat_off', amount: 10 } })
+    vi.mocked(findActiveOffers).mockResolvedValue([big, small])
+    expect((await run()).result.applied?.name).toBe('big')
+    expect((await run({ autoOffer: 'none' })).result.applied).toBeNull()
+    expect((await run({ autoOffer: small.id.toString() })).result.applied?.name).toBe('small')
+    expect((await run({ autoOffer: '999' })).result.applied).toBeNull()
+  })
+
+  it('lists an automatic offer the rider is a little short of as ineligible with how much more, but not other misses', async () => {
+    vi.mocked(findActiveOffers).mockResolvedValue([
+      offer({ name: 'needs 500', rules: [{ kind: 'min_fare', amount: 500 }] }),
+      offer({ name: 'cash only', rules: [{ kind: 'payment_channel', channels: ['cash'] }] }),
+    ])
+    const { result } = await run()
+    expect(result.ineligible).toEqual([expect.objectContaining({ name: 'needs 500', message: 'Add ₹46 more to use this offer' })])
+    expect(result.rejected).toEqual([])
+  })
+
   it('rejects when the per-user limit, global limit or budget is used up (preview-time check)', async () => {
     const o = offer({ code: 'L1', kind: 'code', perUserLimit: 1 })
     vi.mocked(getOfferByCode).mockResolvedValue(o)

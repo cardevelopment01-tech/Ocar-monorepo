@@ -643,6 +643,10 @@ async function resolveBookingOffer(
   const input: PreviewInput = { ...fareReq, paymentChannel: data.paymentChannel ?? 'cash', originCityId, destinationCityId: null }
   if (code) input.code = code
   if (data.scheduledFor !== undefined) input.scheduledFor = data.scheduledFor
+  if (data.autoOffer !== undefined) {
+    if (typeof data.autoOffer !== 'string' || !/^(none|\d{1,18})$/.test(data.autoOffer)) throw httpError(422, 'Invalid autoOffer', AppErrors.VALIDATION_ERROR.code)
+    input.autoOffer = data.autoOffer
+  }
   // The destination city is judged from the coordinates, not the client's id (the route rule must not be spoofable).
   if (data.destinationLat !== undefined && data.destinationLng !== undefined) {
     input.destinationCityId = (await findNearestCity(data.destinationLat, data.destinationLng))?.id ?? null

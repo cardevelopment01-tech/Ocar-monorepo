@@ -17,16 +17,17 @@ import { teardownPushNotifications } from '@/services/notifications'
 import { fetchProfile, updateProfile, type ProfileStats } from '@/features/profile/api'
 
 // `go` = live row (chevron); rows without it are inert and show `badge` (default "Soon").
-type Go = 'notifications' | 'places' | 'safety' | 'support'
+type Go = 'notifications' | 'places' | 'safety' | 'offers' | 'support'
 type MenuItem = { icon: React.ComponentProps<typeof Feather>['name']; label: string; sub: string; go?: Go; badge?: string }
 const MENU: MenuItem[] = [
   { icon: 'bell', label: 'Notifications', sub: 'Alerts & preferences', go: 'notifications' },
   { icon: 'map-pin', label: 'Saved places', sub: 'Home, Work & more', go: 'places' },
   { icon: 'shield', label: 'Safety', sub: 'Emergency contacts', go: 'safety' },
+  { icon: 'tag', label: 'Offers', sub: 'Discounts for your rides', go: 'offers' },
   { icon: 'credit-card', label: 'Payment', sub: 'Pay your driver in cash', badge: 'Cash' },
   { icon: 'help-circle', label: 'Help & Support', sub: 'Email our support team', go: 'support' },
 ]
-const ROUTES: Record<Exclude<Go, 'support'>, string> = { notifications: '/notification-settings', places: '/saved-places', safety: '/safety' }
+const ROUTES: Record<Exclude<Go, 'support'>, string> = { notifications: '/notification-settings', places: '/saved-places', safety: '/safety', offers: '/offers' }
 const SUPPORT_EMAIL = 'grievance@ocarindia.com'
 const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=Ocar%20rider%20support`
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0'

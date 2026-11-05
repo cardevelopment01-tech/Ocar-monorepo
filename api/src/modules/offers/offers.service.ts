@@ -14,6 +14,8 @@ export type PreviewInput = FareEstimateRequest & {
   scheduledFor?: string
   originCityId?: number | null
   destinationCityId?: number | null
+  /** The rider's choice about automatic offers: 'none' declines them, an offer id picks that one. Absent = best offer. */
+  autoOffer?: string
 }
 
 export type AppliedOffer = {
@@ -32,7 +34,12 @@ export type AppliedOffer = {
 
 export type Rejection = { offerId?: string; code?: string; reason: ReasonCode; message: string }
 
+/** An automatic offer the rider is close to qualifying for (only "add ₹X more" cases), shown greyed in the offer sheet. */
+export type Ineligible = { offerId: string; name: string; summary: string; message: string }
+
 export type PreviewResult = {
+  /** false while offers are off: clients hide every offer control and book exactly as before. */
+  enabled: boolean
   fareTotal: number
   discount: number
   cashback: number
@@ -40,6 +47,7 @@ export type PreviewResult = {
   applied: AppliedOffer | null
   alternatives: AppliedOffer[]
   rejected: Rejection[]
+  ineligible: Ineligible[]
 }
 
 /** The single source of rider-facing reason copy. */
@@ -93,7 +101,7 @@ export type Evaluation = { chosen: AppliedOffer | null; result: PreviewResult; e
 export async function evaluateOffers(userId: bigint, input: PreviewInput, estimate: FareEstimateResponse): Promise<Evaluation> {
   const fare = components(estimate.breakdown)
   const fareTotal = roundPaise(sumComponents(fare))
-  const empty: PreviewResult = { fareTotal, discount: 0, cashback: 0, payable: fareTotal, applied: null, alternatives: [], rejected: [] }
+  const empty: PreviewResult = { enabled: false, fareTotal, discount: 0, cashback: 0, payable: fareTotal, applied: null, alternatives: [], rejected: [], ineligible: [] }
 
   if ((await getConfigValue('offers_enabled', 'false')) !== 'true') return { chosen: null, result: empty, enabled: false }
 
@@ -123,8 +131,16 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
       typedOffer = null
     } else candidates.push(typedOffer)
   }
-  for (const o of await findActiveOffers()) if (o.kind === 'auto' && o.id !== typedOffer?.id) candidates.push(o)
-  if (candidates.length === 0) return { chosen: null, result: { ...empty, rejected }, enabled: true }
+  // A rider who removed the automatic offer, or picked a different one, is not given the "best" one behind their back.
+  const autoChoice = input.autoOffer
+  if (autoChoice !== 'none') {
+    for (const o of await findActiveOffers()) {
+      if (o.kind !== 'auto' || o.id === typedOffer?.id) continue
+      if (autoChoice !== undefined && o.id.toString() !== autoChoice) continue
+      candidates.push(o)
+    }
+  }
+  if (candidates.length === 0) return { chosen: null, result: { ...empty, enabled: true, rejected }, enabled: true }
 
   // Independent lookups run together; the ride count is only needed when a first-ride rule is present.
   const needsRideCount = candidates.some((c) => c.rules.some((r) => r.kind === 'new_user' || r.kind === 'first_n_rides'))
@@ -146,6 +162,7 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
   }
 
   const eligible: AppliedOffer[] = []
+  const ineligible: Ineligible[] = []
   const toApplied = (o: OfferRecord, discount: number, cashback: number): AppliedOffer => ({
     offerId: o.id.toString(), versionId: o.versionId.toString(), code: o.code, name: o.name, kind: o.kind,
     summary: describeOffer({ rules: o.rules, benefit: o.benefit, per_user_limit: o.perUserLimit }), discount, cashback,
@@ -154,6 +171,8 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
   const reject = (o: OfferRecord, reason: ReasonCode, detail?: Record<string, number | string>) => {
     // Only the offer the rider typed is explained; auto offers that do not fit are simply not shown.
     if (o.id === typedOffer?.id) rejected.push({ offerId: o.id.toString(), ...(o.code ? { code: o.code } : {}), reason, message: reasonMessage(reason, detail) })
+    // The one auto-offer miss worth showing: a rider a little short of the minimum fare is told how much more.
+    else if (o.kind === 'auto' && reason === 'MIN_FARE') ineligible.push({ offerId: o.id.toString(), name: o.name, summary: describeOffer({ rules: o.rules, benefit: o.benefit, per_user_limit: o.perUserLimit }), message: reasonMessage(reason, detail) })
   }
 
   for (const o of candidates) {
@@ -188,9 +207,10 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
     chosen,
     enabled: true,
     result: {
+      enabled: true,
       fareTotal, discount: chosen?.discount ?? 0, cashback: chosen?.cashback ?? 0,
       payable: roundPaise(Math.max(fareTotal - (chosen?.discount ?? 0), 0)),
-      applied: chosen, alternatives: eligible.slice(1), rejected,
+      applied: chosen, alternatives: eligible.slice(1), rejected, ineligible,
     },
   }
 }

@@ -49,6 +49,9 @@ export type BookingResult = {
   scheduledFor?: string
   estimatedFare: number
   surgeMultiplier: number
+  /** Present once offers exist: what an offer took off and what the rider pays. */
+  discount?: number
+  payable?: number
 }
 
 export type VehicleCategory = {
