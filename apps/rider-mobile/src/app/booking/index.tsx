@@ -61,7 +61,7 @@ export default function BookingPickersScreen() {
   const pickupAuto = useBookingDraftStore((s) => s.pickupAuto)
   const focused = useIsFocused()
   const approximate = useApproximateLocation()
-  useLocationTracking()
+  useLocationTracking(true, true) // placing a pickup: GPS-grade accuracy while this screen is on show
   const setPickup = useBookingDraftStore((s) => s.setPickup)
   const clearPickup = useBookingDraftStore((s) => s.clearPickup)
   const setDrop = useBookingDraftStore((s) => s.setDrop)
