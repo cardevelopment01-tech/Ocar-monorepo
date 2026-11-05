@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Vibration } from 'react-native'
 import { setAudioModeAsync, useAudioPlayer, type AudioPlayer } from 'expo-audio'
-import * as Speech from 'expo-speech'
+import { getSpeech } from './speech'
 import rideAlertSoundAsset from '../../../assets/sounds/ride-request.wav'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 import { buildAnnouncementSegments, estimateSpeechMs, segmentAt, segmentAtTime, SPEECH_LOCALE } from './buildAnnouncement'
@@ -79,7 +79,8 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
     }
     ring()
     Vibration.vibrate(VIBRATION_PATTERN, true)
-    if (voiceEnabled && request) {
+    const Speech = voiceEnabled && request ? getSpeech() : null // null: no voice on this build; the ring carries on alone
+    if (Speech && request) {
       const segments = buildAnnouncementSegments(request, language)
       const text = segments.map((s) => s.text).join(' ')
       const announcement = useAnnouncementStore.getState()
@@ -135,7 +136,7 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
       clearTimeout(watchdog)
       stopTimeline()
       useAnnouncementStore.getState().reset()
-      if (spoke) Promise.resolve(Speech.stop()).catch(() => {}) // only what this hook started: other speech in the app is left alone
+      if (spoke) Promise.resolve(getSpeech()?.stop()).catch(() => {}) // only what this hook started: other speech in the app is left alone
       safePause(player)
       Vibration.cancel()
     }

@@ -1,5 +1,5 @@
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio'
-import * as Speech from 'expo-speech'
+import { getSpeech } from './speech'
 import rideAlertSoundAsset from '../../../assets/sounds/ride-request.wav'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
@@ -37,14 +37,15 @@ export async function playTestAlert(): Promise<void> {
     clearTimeout(watchdog)
     if (running?.stop === stop) running = null
     try { player.pause(); player.remove() } catch { /* already released */ }
-    if (spoke) Promise.resolve(Speech.stop()).catch(() => {})
+    if (spoke) Promise.resolve(getSpeech()?.stop()).catch(() => {})
   }
   running = { stop }
   watchdog = setTimeout(stop, 15_000) // a speech engine that never calls back must not leave the player behind
   setTimeout(() => {
     if (done) return
     try { player.pause() } catch { /* already released */ }
-    if (voiceEnabled) {
+    const Speech = voiceEnabled ? getSpeech() : null
+    if (Speech) {
       spoke = true
       Speech.speak(buildAnnouncement(SAMPLE, language), { language: SPEECH_LOCALE[language], rate: 0.95, onDone: stop, onStopped: stop, onError: stop })
     } else stop()
