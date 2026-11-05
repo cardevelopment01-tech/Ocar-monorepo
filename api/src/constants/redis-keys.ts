@@ -1,6 +1,10 @@
 export const rideAckKey = (rideId: string, driverId: string): string =>
   `ride:ack:${rideId}:${driverId}`
 
+/** Set when a ride request ended for a driver; a ride-request push that has not gone out yet checks it and stays unsent. */
+export const rideGoneKey = (rideId: string, driverId: string): string =>
+  `ride:gone:${rideId}:${driverId}`
+
 export const ridePushSentKey = (rideId: string, driverId: string): string =>
   `ride:push_sent:${rideId}:${driverId}`
 

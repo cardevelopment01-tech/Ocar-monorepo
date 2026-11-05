@@ -53,7 +53,7 @@ describe('processBroadcast — immediate push for a backgrounded match', () => {
     await processBroadcast(baseData)
 
     expect(socketEvents.sendRideRequest).toHaveBeenCalledWith('8', expect.any(Object))
-    expect(sendRideRequestPushOnce).toHaveBeenCalledWith('354', '8', 'A', 'B', expect.any(Number))
+    expect(sendRideRequestPushOnce).toHaveBeenCalledWith('354', '8', 'A', 'B', expect.any(Number), expect.objectContaining({ rideType: expect.any(String), distanceToPickup: expect.any(Number) }))
   })
 
   it('does not immediately push a live (is_available=true) match', async () => {

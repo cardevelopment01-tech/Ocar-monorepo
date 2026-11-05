@@ -67,3 +67,10 @@ describe('resolvePushRoute (driver-mobile)', () => {
     expect(resolveTapRoute({})).toBeNull()
   })
 })
+
+describe('ride_request_gone (the silent replacement for a ride request that is over)', () => {
+  it('goes nowhere on arrival and on tap', () => {
+    expect(resolvePushRoute({ type: 'ride_request_gone', rideId: '5' })).toBeNull()
+    expect(resolveTapRoute({ type: 'ride_request_gone', rideId: '5' })).toBeNull()
+  })
+})

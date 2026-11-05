@@ -24,12 +24,11 @@ const HYDRATION_WAIT_TIMEOUT_MS = 5_000
 
 // Without a handler Expo drops every notification it is asked to present while the app is open.
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (n) => {
+    // "Ride request ended" is a silent swap for a ringing push: with the app open the overlay already closed itself.
+    const gone = n.request.content.data?.['type'] === 'ride_request_gone'
+    return { shouldShowBanner: !gone, shouldShowList: !gone, shouldPlaySound: !gone, shouldSetBadge: false }
+  },
 })
 
 // A cold-start tap's 600ms delay isn't guaranteed to land after zustand-persist

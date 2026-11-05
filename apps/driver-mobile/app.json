@@ -41,6 +41,7 @@
                              "config":  {
                                             "googleMapsApiKey":  "AIzaSyAAVGxzN9sRx8fOBOQxwITVIk8lPC6sGtM"
                                         },
+                             "entitlements":  { "com.apple.developer.usernotifications.time-sensitive": true },
                              "infoPlist":  {
                                                "UIBackgroundModes":  [
                                                                          "location",
@@ -96,7 +97,7 @@
                                  "@react-native-firebase/app",
     "@react-native-firebase/crashlytics",
     "@sentry/react-native/expo",
-                                 ["expo-notifications", { "icon": "./assets/brand/notification-icon.png", "color": "#0E8FA3" }],
+                                 ["expo-notifications", { "icon": "./assets/brand/notification-icon.png", "color": "#0E8FA3", "sounds": ["./assets/sounds/ride_request_long.wav"] }],
     "@react-native-firebase/messaging",
                                  "@react-native-community/datetimepicker",
                                  [

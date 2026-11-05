@@ -210,17 +210,32 @@ export async function upsertDeviceToken(p: {
   ownerId: bigint
   token: string
   platform: string
+  /** The app build has the loud ride-request channel. Re-registering from an older build resets it to false. */
+  rideAlertV3?: boolean
 }): Promise<void> {
   await pool.query(
-    `INSERT INTO device_tokens (owner_type, owner_id, token, platform, last_seen_at)
-     VALUES ($1, $2, $3, $4, now())
+    `INSERT INTO device_tokens (owner_type, owner_id, token, platform, ride_alert_v3, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, now())
      ON CONFLICT (token) DO UPDATE
        SET owner_type = EXCLUDED.owner_type,
            owner_id   = EXCLUDED.owner_id,
            platform   = EXCLUDED.platform,
+           ride_alert_v3 = EXCLUDED.ride_alert_v3,
            last_seen_at = now()`,
-    [p.ownerType, p.ownerId, p.token, p.platform]
+    [p.ownerType, p.ownerId, p.token, p.platform, p.rideAlertV3 ?? false]
   )
+}
+
+/** A driver's device tokens split by whether the build has the loud ride-request channel. */
+export async function getDriverTokensByRideAlert(driverId: bigint): Promise<{ v3: string[]; legacy: string[] }> {
+  const res = await pool.query<{ token: string; ride_alert_v3: boolean }>(
+    `SELECT token, ride_alert_v3 FROM device_tokens WHERE owner_type = 'driver' AND owner_id = $1`,
+    [driverId]
+  )
+  return {
+    v3: res.rows.filter(r => r.ride_alert_v3).map(r => r.token),
+    legacy: res.rows.filter(r => !r.ride_alert_v3).map(r => r.token),
+  }
 }
 
 export async function deleteDeviceToken(token: string, ownerType: DeviceOwnerType, ownerId: bigint): Promise<void> {

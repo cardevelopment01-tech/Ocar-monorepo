@@ -25,6 +25,8 @@ export type RideRequestPayload = {
   tripMin?: number
   // a rental's included distance (its package km limit)
   kmLimit?: number
+  // the booked vehicle category, e.g. "Sedan" (set by the server when known)
+  rideCategoryName?: string
   // a rider offer lowered the fare: estimatedFare is already what the driver earns
   riderOffer?: boolean
 }
