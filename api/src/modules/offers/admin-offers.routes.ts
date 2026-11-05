@@ -27,11 +27,12 @@ const page = (req: Request) => ({
 router.use(authenticate())
 
 router.get('/meta', read, wrap(() => service.meta()))
+router.post('/preview-draft', read, wrap((req) => service.previewDraft(req.body)))
 router.get('/', read, wrap(async (req) => {
   const q: { status?: string; search?: string; limit: number; offset: number } = page(req)
   if (typeof req.query['status'] === 'string') q.status = req.query['status']
   if (typeof req.query['search'] === 'string') q.search = req.query['search']
-  return { offers: await service.listOffers(q) }
+  return service.listOffers(q)
 }))
 router.post('/', write, wrap(async (req) => ({ offer: await service.createOffer(req.admin!.id, req.body, req.ip ?? null) }), 201))
 router.get('/:id', read, wrap(async (req) => ({ offer: await service.getOffer(id(req)) })))
@@ -41,7 +42,9 @@ router.post('/:id/simulate', read, wrap((req) => service.simulate(id(req), req.b
 router.get('/:id/stats', read, wrap((req) => service.stats(id(req))))
 router.get('/:id/redemptions', read, wrap(async (req) => {
   const { limit, offset } = page(req)
-  return { redemptions: await service.redemptions(id(req), limit, offset) }
+  const filter: Record<string, string> = {}
+  for (const k of ['status', 'from', 'to'] as const) if (typeof req.query[k] === 'string' && req.query[k]) filter[k] = req.query[k] as string
+  return { redemptions: await service.redemptions(id(req), limit, offset, filter) }
 }))
 
 export default router

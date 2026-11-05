@@ -16,7 +16,7 @@ const cfg = vi.hoisted(() => ({ values: {} as Record<string, string> }))
 vi.mock('@/lib/system-config', () => ({ getConfigValue: vi.fn(async (k: string, fb: string) => cfg.values[k] ?? fb) }))
 const repo = vi.hoisted(() => ({
   createOfferTx: vi.fn(), createVersionTx: vi.fn(), lockOfferForUpdate: vi.fn(), patchOfferTx: vi.fn(), getOfferAdmin: vi.fn(),
-  listOffersAdmin: vi.fn(), offerStats: vi.fn(), listRedemptions: vi.fn(), invalidateOffers: vi.fn(), normalizeCode: (c: string) => c.trim().toUpperCase(),
+  listOffersAdmin: vi.fn(), offerStatusCounts: vi.fn(), offerStats: vi.fn(), listRedemptions: vi.fn(), invalidateOffers: vi.fn(), normalizeCode: (c: string) => c.trim().toUpperCase(),
 }))
 vi.mock('@/modules/offers/offers.repository', () => repo)
 
@@ -42,6 +42,9 @@ beforeEach(() => {
   repo.lockOfferForUpdate.mockResolvedValue({ status: 'draft', budget_total: null, budget_spent: '0', starts_at: null, code: 'SAVE10' })
   repo.createVersionTx.mockResolvedValue({ versionId: 10n, version: 2 })
   repo.offerStats.mockResolvedValue([{ status: 'consumed', n: 2, discount: 80, cashback: 0 }])
+  repo.listOffersAdmin.mockResolvedValue([row])
+  repo.offerStatusCounts.mockResolvedValue({ active: 2, draft: 1 })
+  repo.listRedemptions.mockResolvedValue([])
   client.query.mockResolvedValue({ rows: [], rowCount: 0 })
 })
 
@@ -194,5 +197,46 @@ describe('simulate', () => {
     repo.getOfferAdmin.mockResolvedValue({ offer: row, versions: [version] })
     const yes = await request(app).post('/admin/offers/5/simulate').send({ fare, ride: {} })
     expect(yes.body).toMatchObject({ eligible: true, discount: 40 })
+  })
+})
+
+describe('list, counts, redemption filters and the draft preview (PR3)', () => {
+  it('the list returns the offers with a summary and the per-status counts for the tabs', async () => {
+    const res = await request(app).get('/admin/offers?status=active')
+    expect(res.status).toBe(200)
+    expect(res.body.counts).toEqual({ active: 2, draft: 1 })
+    expect(res.body.offers[0].summary).toBe('10% off')
+    expect(repo.listOffersAdmin).toHaveBeenCalledWith(expect.objectContaining({ status: 'active' }))
+  })
+
+  it('redemptions pass a status and date window through, and reject a bad status with 422', async () => {
+    const ok = await request(app).get('/admin/offers/5/redemptions?status=consumed&from=2026-11-01T00:00:00Z&to=2026-11-30T00:00:00Z')
+    expect(ok.status).toBe(200)
+    expect(repo.listRedemptions).toHaveBeenCalledWith(5n, 50, 0, { status: 'consumed', from: '2026-11-01T00:00:00Z', to: '2026-11-30T00:00:00Z' })
+    expect((await request(app).get('/admin/offers/5/redemptions?status=nope')).status).toBe(422)
+  })
+
+  it('preview-draft returns only the sentence without a sample ride', async () => {
+    const res = await request(app).post('/admin/offers/preview-draft').send({
+      rules: [{ kind: 'new_user' }], benefit: { type: 'percent_off', percent: 10, maxDiscount: 50 },
+    })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ summary: '10% off, max ₹50, new users' })
+  })
+
+  it('preview-draft runs a sample ride and says why a rule fails; nothing is saved', async () => {
+    const fare = { base: 400, distance: 0, time: 0, stop: 0, hourSurcharge: 0, waiting: 0, surge: 0, overage: 0 }
+    const body = { rules: [{ kind: 'min_fare', amount: 500 }], benefit: { type: 'percent_off', percent: 10 }, sample: { fare, ride: {} } }
+    const no = await request(app).post('/admin/offers/preview-draft').send(body)
+    expect(no.body).toMatchObject({ eligible: false, reason: 'MIN_FARE', message: 'Add ₹100 more to use this offer' })
+    const yes = await request(app).post('/admin/offers/preview-draft').send({ ...body, rules: [] })
+    expect(yes.body).toMatchObject({ eligible: true, discount: 40 })
+    expect(repo.createOfferTx).not.toHaveBeenCalled()
+  })
+
+  it('preview-draft rejects an invalid rule with 422 and is readable by finance', async () => {
+    expect((await request(app).post('/admin/offers/preview-draft').send({ rules: [{ kind: 'min_fare', amount: -1 }], benefit: { type: 'percent_off', percent: 10 } })).status).toBe(422)
+    role.current = 'finance_admin'
+    expect((await request(app).post('/admin/offers/preview-draft').send({ benefit: { type: 'percent_off', percent: 10 } })).status).toBe(200)
   })
 })

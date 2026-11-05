@@ -9,7 +9,7 @@ import { computeBenefit, describeOffer, evaluateRules } from './engine'
 import { ruleCatalog } from './rules'
 import { reasonMessage } from './offers.service'
 import * as repo from './offers.repository'
-import type { Benefit, EvalContext, FareComponents } from './offers.types'
+import type { Benefit, EvalContext, FareComponents, Rule } from './offers.types'
 
 const VALIDATION = AppErrors.VALIDATION_ERROR.code
 const NOT_FOUND = AppErrors.NOT_FOUND
@@ -113,7 +113,8 @@ const withSummary = (row: repo.AdminOfferRow) => ({
 })
 
 export async function listOffers(q: { status?: string; search?: string; limit: number; offset: number }) {
-  return (await repo.listOffersAdmin(q)).map(withSummary)
+  const [rows, counts] = await Promise.all([repo.listOffersAdmin(q), repo.offerStatusCounts()])
+  return { offers: rows.map(withSummary), counts }
 }
 
 export async function getOffer(id: bigint) {
@@ -225,8 +226,19 @@ export async function stats(offerId: bigint) {
   }
 }
 
-export async function redemptions(offerId: bigint, limit: number, offset: number) {
-  return repo.listRedemptions(offerId, limit, offset)
+const redemptionFilterSchema = z.object({
+  status: z.enum(['reserved', 'consumed', 'released', 'reversed']).optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
+})
+
+export async function redemptions(offerId: bigint, limit: number, offset: number, filter: unknown = {}) {
+  const f = parseOrThrow(redemptionFilterSchema, filter)
+  const clean: repo.RedemptionFilter = {}
+  if (f.status) clean.status = f.status
+  if (f.from) clean.from = f.from
+  if (f.to) clean.to = f.to
+  return repo.listRedemptions(offerId, limit, offset, clean)
 }
 
 const fareField = z.number().nonnegative().default(0)
@@ -242,23 +254,44 @@ export const simulateSchema = z.object({
   now: z.string().datetime({ offset: true }).optional(),
 })
 
-/** What this offer's current version would do for a sample ride. Rules and benefit only: flags and limits are live concerns. */
-export async function simulate(offerId: bigint, body: unknown) {
-  const s = parseOrThrow(simulateSchema, body)
-  const offer = await getOffer(offerId)
-  const cur = offer.versions[0]
-  if (!cur) throw httpError(NOT_FOUND.httpStatus, NOT_FOUND.message, NOT_FOUND.code)
+type Version = { rules: Rule[]; benefit: Benefit }
+
+async function runSimulation(version: Version, s: z.output<typeof simulateSchema>) {
   const ctx: EvalContext = {
     now: s.now ? new Date(s.now) : new Date(),
     user: { id: 0n, completedRides: s.completedRides, createdAt: new Date(0) },
     ride: { ...s.ride, scheduledFor: s.ride.scheduledFor ? new Date(s.ride.scheduledFor) : null },
     fare: s.fare as FareComponents,
   }
-  const rules = evaluateRules(cur.rules, ctx)
+  const rules = evaluateRules(version.rules, ctx)
   const cap = parseFloat(await getConfigValue('offers_max_discount_percent', '15'))
-  const benefit = rules.ok ? computeBenefit(cur.benefit, ctx.fare, cap) : { discount: 0, cashback: 0 }
+  const benefit = rules.ok ? computeBenefit(version.benefit, ctx.fare, Number.isFinite(cap) ? cap : 15) : { discount: 0, cashback: 0 }
   return {
     eligible: rules.ok, reason: rules.ok ? null : rules.reason, message: rules.ok ? null : reasonMessage(rules.reason, rules.detail),
-    ...benefit, summary: describeOffer({ rules: cur.rules, benefit: cur.benefit }),
+    ...benefit, summary: describeOffer(version),
   }
+}
+
+/** What this offer's current version would do for a sample ride. Rules and benefit only: flags and limits are live concerns. */
+export async function simulate(offerId: bigint, body: unknown) {
+  const s = parseOrThrow(simulateSchema, body)
+  const offer = await getOffer(offerId)
+  const cur = offer.versions[0]
+  if (!cur) throw httpError(NOT_FOUND.httpStatus, NOT_FOUND.message, NOT_FOUND.code)
+  return runSimulation(cur, s)
+}
+
+const draftSchema = z.object({
+  rules: z.array(ruleSchema).max(20).default([]),
+  benefit: benefitSchema,
+  // Without a sample ride only the sentence is returned; with one, the rider-side outcome too.
+  sample: simulateSchema.optional(),
+})
+
+/** The live sentence and "preview as rider" for a form that is still being filled in; nothing is saved. */
+export async function previewDraft(body: unknown) {
+  const d = parseOrThrow(draftSchema, body)
+  const summary = describeOffer({ rules: d.rules, benefit: d.benefit })
+  if (!d.sample) return { summary }
+  return runSimulation({ rules: d.rules, benefit: d.benefit }, d.sample)
 }

@@ -367,13 +367,26 @@ export async function offerStats(offerId: bigint) {
   return r.rows as { status: string; n: number; discount: number; cashback: number }[]
 }
 
-export async function listRedemptions(offerId: bigint, limit: number, offset: number) {
+export type RedemptionFilter = { status?: string; from?: string; to?: string }
+
+export async function listRedemptions(offerId: bigint, limit: number, offset: number, f: RedemptionFilter = {}) {
   const r = await pool.query(
     `SELECT id, user_id, ride_id, status, discount_amount, cashback_amount, reserved_at, consumed_at, released_at, reason
-       FROM offer_redemptions WHERE offer_id = $1 ORDER BY id DESC LIMIT $2 OFFSET $3`,
-    [offerId, limit, offset]
+       FROM offer_redemptions
+      WHERE offer_id = $1
+        AND ($4::text IS NULL OR status = $4)
+        AND ($5::timestamptz IS NULL OR reserved_at >= $5)
+        AND ($6::timestamptz IS NULL OR reserved_at < $6)
+      ORDER BY id DESC LIMIT $2 OFFSET $3`,
+    [offerId, limit, offset, f.status ?? null, f.from ?? null, f.to ?? null]
   )
   return r.rows
+}
+
+/** How many offers sit in each status, for the list tabs. One cheap grouped count. */
+export async function offerStatusCounts(): Promise<Record<string, number>> {
+  const r = await pool.query<{ status: string; n: number }>(`SELECT status, count(*)::int AS n FROM offers GROUP BY status`)
+  return Object.fromEntries(r.rows.map((x) => [x.status, x.n]))
 }
 
 /** Offers a rider can see: active auto offers plus any granted to them. Never a code offer (it appears once typed). */

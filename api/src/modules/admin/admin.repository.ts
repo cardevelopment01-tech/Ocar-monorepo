@@ -931,7 +931,7 @@ export async function listDriverPayments(
   // Page the bare payment ids first (single-table query, so the driver index is the obvious plan), then join.
   const dataRes = await pool.query(
     `SELECT p.id::text, p.status, p.channel, p.created_at,
-            p.amount::text, p.commission_amount::text, p.driver_earning::text,
+            p.amount::text, p.discount_amount::text, p.commission_amount::text, p.driver_earning::text,
             r.id::text AS ride_id,
             u.name AS user_name
      FROM (
@@ -2575,7 +2575,7 @@ export async function listAdminPayments(filters: {
   const dataRes = await pool.query(
     `${withMatches}SELECT
        p.id::text, p.status, p.channel, p.created_at,
-       p.amount::text, p.commission_amount::text, p.driver_earning::text,
+       p.amount::text, p.discount_amount::text, p.commission_amount::text, p.driver_earning::text,
        r.id::text AS ride_id,
        u.name AS user_name,
        d.full_name AS driver_name
