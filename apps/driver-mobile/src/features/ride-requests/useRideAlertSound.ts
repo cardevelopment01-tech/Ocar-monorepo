@@ -98,7 +98,6 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
     let finished = false
     let spoke = false
     let sawBoundary = false
-    let timer: ReturnType<typeof setTimeout> | undefined
     let watchdog: ReturnType<typeof setTimeout> | undefined
     let fallback: ReturnType<typeof setTimeout> | undefined
     let timeline: ReturnType<typeof setInterval> | undefined
@@ -120,7 +119,7 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
       announcement.reset()
       resumeRing()
     }
-    timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       if (cancelled) return
       safePause(player)
       spoke = true

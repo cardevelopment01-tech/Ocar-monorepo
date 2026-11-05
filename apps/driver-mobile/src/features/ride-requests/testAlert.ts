@@ -30,7 +30,6 @@ export async function playTestAlert(): Promise<void> {
   const { voiceEnabled, language } = useAlertPrefsStore.getState()
   let done = false
   let spoke = false
-  let watchdog: ReturnType<typeof setTimeout> | undefined
   const stop = () => {
     if (done) return
     done = true
@@ -40,7 +39,7 @@ export async function playTestAlert(): Promise<void> {
     if (spoke) Promise.resolve(getSpeech()?.stop()).catch(() => {})
   }
   running = { stop }
-  watchdog = setTimeout(stop, 15_000) // a speech engine that never calls back must not leave the player behind
+  const watchdog = setTimeout(() => stop(), 15_000) // a speech engine that never calls back must not leave the player behind
   setTimeout(() => {
     if (done) return
     try { player.pause() } catch { /* already released */ }

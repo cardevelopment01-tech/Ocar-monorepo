@@ -11,6 +11,10 @@ const base: RideRequestPayload = {
   expiresAt: '', timeoutSeconds: 20, paymentChannel: 'cash', tripKm: 28.4, rideCategoryName: 'Sedan',
 }
 
+/** The payload without the given optional fields (exactOptionalPropertyTypes forbids setting them to undefined). */
+const without = (p: RideRequestPayload, keys: string[]): RideRequestPayload =>
+  Object.fromEntries(Object.entries(p).filter(([k]) => !keys.includes(k))) as RideRequestPayload
+
 describe('shortenAddress', () => {
   it('keeps the locality, drops PIN, state-with-PIN and country', () => {
     expect(shortenAddress('Saheed Nagar, Bhubaneswar, Odisha 751007, India')).toBe('Saheed Nagar, Bhubaneswar')
@@ -43,8 +47,7 @@ describe('buildAnnouncement (English)', () => {
     expect(buildAnnouncement({ ...base, rideType: 'rental', tripHours: 4 })).toContain('Rental, Sedan, 4 hours.')
   })
   it('skips what it does not know instead of saying "undefined" or "zero"', () => {
-    const { rideCategoryName: _c, tripKm: _t, paymentChannel: _p, ...bare } = base
-    const text = buildAnnouncement({ ...bare, estimatedFare: 0, distanceToPickup: 0 })
+    const text = buildAnnouncement({ ...without(base, ['rideCategoryName', 'tripKm', 'paymentChannel']), estimatedFare: 0, distanceToPickup: 0 })
     expect(text).toBe('New ride request. One way. Pickup Saheed Nagar, Bhubaneswar. Drop Badambadi, Cuttack.')
     expect(text).not.toMatch(/undefined|NaN|zero|0 rupees/)
   })
@@ -80,8 +83,7 @@ describe('segments and read-along position', () => {
     expect(buildAnnouncementSegments(base, 'hi').map((s) => s.text).join(' ')).toBe(buildAnnouncement(base, 'hi'))
   })
   it('a missing drop or fare drops that segment instead of leaving an empty one', () => {
-    const { paymentChannel: _p, ...noPay } = base
-    expect(buildAnnouncementSegments({ ...noPay, drop: '751007', estimatedFare: 0 }).map((s) => s.key)).toEqual(['intro', 'type', 'pickup'])
+    expect(buildAnnouncementSegments({ ...without(base, ['paymentChannel']), drop: '751007', estimatedFare: 0 }).map((s) => s.key)).toEqual(['intro', 'type', 'pickup'])
   })
   it('segmentAt maps every character to the part it is in, at the edges too', () => {
     expect(segmentAt(segs, 0)).toBe('intro')
