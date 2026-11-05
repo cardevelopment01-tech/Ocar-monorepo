@@ -29,6 +29,8 @@ const BOUNDS: Record<string, ConfigBounds> = {
   exotel_max_calls_per_ride:        { min: 1, max: 50 },
   exotel_call_time_limit_seconds:   { min: 30, max: 3_600 },
   exotel_daily_budget_inr:          { min: 0, max: 100_000 },
+  // The largest share of the eligible fare an offer may take off; driver-funded, so keep it at or under the normal commission.
+  offers_max_discount_percent:      { min: 0, max: 50 },
 }
 
 // Typed `string` in the table but really booleans — free text here would silently break the reader.
@@ -37,6 +39,10 @@ const ALLOWED_VALUES: Record<string, readonly string[]> = {
   // Anything but exactly 'true' reads as off, so a typo here would silently disable payments.
   mobile_payments_enabled: ['true', 'false'],
   app_update_enabled: ['true', 'false'],
+  // Read as on only when exactly 'true'; a typo would silently leave a kill switch looking off.
+  offers_enabled: ['true', 'false'],
+  offers_cash_discounts_enabled: ['true', 'false'],
+  offers_cashback_enabled: ['true', 'false'],
 }
 
 // Version rows (app_update_<app>_<platform>_min|recommended): the policy compares major.minor.patch,
