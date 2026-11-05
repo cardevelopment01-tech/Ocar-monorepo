@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { rentalPreviewRequest } from './offerModel'
 import {
   autoOfferParam, bookAmount, bookingOfferFields, buildFareLines, couponLineState, formatRupees, parseOfferNotApplicable, parsePriceChanged,
   priceChangedMessage, savingsLabel, type AppliedOffer, type OfferPreview,
@@ -96,5 +97,19 @@ describe('409 PRICE_CHANGED and 422 OFFER_NOT_APPLICABLE', () => {
     expect(parseOfferNotApplicable({ response: { status: 422, data: { code: 'OFFER_NOT_APPLICABLE', error: 'Add ₹46 more to use this offer', details: { reason: 'MIN_FARE' } } } }))
       .toEqual({ message: 'Add ₹46 more to use this offer', reason: 'MIN_FARE' })
     expect(parseOfferNotApplicable({ response: { status: 422, data: { code: 'VALIDATION_ERROR' } } })).toBeNull()
+  })
+})
+
+describe('rentalPreviewRequest', () => {
+  const base = { categoryId: 2, packageId: 9, pickup: { lat: 20.3, lng: 85.8 }, drop: { lat: 20.4, lng: 85.9 }, stopCount: 0, scheduledFor: null }
+  it('prices a package, not a distance, and leaves out stops and schedule when there are none', () => {
+    expect(rentalPreviewRequest(base)).toEqual({
+      categoryId: 2, rideType: 'rental', distanceKm: 0, durationMin: 0, paymentChannel: 'cash', rentalPackageId: 9,
+      originLat: 20.3, originLng: 85.8, destinationLat: 20.4, destinationLng: 85.9,
+    })
+  })
+  it('carries the stop count and a booked-for-later time', () => {
+    const r = rentalPreviewRequest({ ...base, stopCount: 2, scheduledFor: '2026-12-01T05:00:00.000Z' })
+    expect(r).toMatchObject({ stopCount: 2, scheduledFor: '2026-12-01T05:00:00.000Z' })
   })
 })

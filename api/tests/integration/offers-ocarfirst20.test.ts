@@ -29,7 +29,7 @@ const CODE = 'OCARFIRST20'
 // and the booking exactly as the app does with the fare screen's route.
 const ROUTE = { distanceKm: 30, durationMin: 45 } as const
 const ADMIN = 'ocarfirst20-admin@ocar.test'
-const PHONES = { newRider: '+919700000701', returning: '+919700000702', driver: '+919700000703', online: '+919700000704', off: '+919700000705' } as const
+const PHONES = { rental: '+919700000706', newRider: '+919700000701', returning: '+919700000702', driver: '+919700000703', online: '+919700000704', off: '+919700000705' } as const
 const KEYS = ['offers_enabled', 'commission_percent', 'offers_cash_discounts_enabled', 'offers_max_discount_percent'] as const
 const saved: Record<string, string> = {}
 let categoryId: number
@@ -198,6 +198,27 @@ describe('2. a brand-new rider, everything switched on', () => {
     expect(res.body.applied).toBeNull()
     expect(res.body.rejected[0]?.reason).toBe('UNKNOWN_CODE')
     expect(String(res.body.rejected[0]?.message).length).toBeGreaterThan(5)
+  })
+})
+
+describe('2b. City Ride (hourly rental) takes the code too', () => {
+  it('preview and booking on a rental package: discounted payable, reserved redemption', async () => {
+    await setConfig('offers_enabled', 'true'); await setConfig('commission_percent', '0'); await setConfig('offers_cash_discounts_enabled', 'true'); await setConfig('offers_max_discount_percent', '20')
+    const { accessToken } = await loginUser(app, redis, PHONES.rental)
+    const hatch = Number((await pool.query("SELECT id FROM vehicle_categories WHERE slug = 'hatchback' LIMIT 1")).rows[0].id)
+    const pkg = (await pool.query(`SELECT id::int AS id, package_fare::float8 AS fare FROM rental_packages WHERE category_id = $1 AND is_active AND city_id IS NULL ORDER BY id LIMIT 1`, [hatch])).rows[0]
+    const body = { category_id: hatch, ride_type: 'rental', distance_km: 0, duration_min: 0, rental_package_id: pkg.id, paymentChannel: 'cash', originLat: 20.29, originLng: 85.82, destinationLat: 20.45, destinationLng: 85.88, code: CODE }
+    const p = await request(app).post('/api/v1/offers/preview').set('Authorization', `Bearer ${accessToken}`).send(body)
+    expect(p.status, JSON.stringify(p.body)).toBe(200)
+    expect(p.body.applied?.code?.toUpperCase()).toBe(CODE)
+    expect(p.body.discount).toBeCloseTo(Math.min(p.body.fareTotal * 0.2, 100), 1)
+    const booked = await request(app).post('/api/v1/rides').set('Authorization', `Bearer ${accessToken}`)
+      .send({ categoryId: hatch, rideType: 'rental', rentalPackageId: pkg.id, originLat: 20.29, originLng: 85.82, originAddress: 'A', destinationLat: 20.45, destinationLng: 85.88, destinationAddress: 'B', distanceKm: 0, durationMin: 0, paymentChannel: 'cash', couponCode: CODE, expectedPayable: p.body.payable })
+    expect(booked.status, JSON.stringify(booked.body)).toBe(201)
+    expect(booked.body.discount).toBeCloseTo(p.body.discount, 2)
+    expect(booked.body.payable).toBeCloseTo(p.body.payable, 2)
+    const red = await pool.query(`SELECT status FROM offer_redemptions WHERE ride_id = $1`, [booked.body.rideId])
+    expect(red.rows[0].status).toBe('reserved')
   })
 })
 

@@ -36,7 +36,8 @@ export async function previewOffer(input: PreviewRequest, signal?: AbortSignal):
   if (input.destinationLat !== undefined) body['destinationLat'] = input.destinationLat
   if (input.destinationLng !== undefined) body['destinationLng'] = input.destinationLng
   if (input.tripHours !== undefined) body['trip_hours'] = input.tripHours
-  if (input.rentalPackageId !== undefined) body['rental_package_id'] = input.rentalPackageId
+  // The package id can arrive as a string from the API; the offers endpoint wants a number.
+  if (input.rentalPackageId !== undefined) body['rental_package_id'] = Number(input.rentalPackageId)
   if (input.stopCount !== undefined) body['stop_count'] = input.stopCount
   if (input.isReturnCab) body['is_return_cab'] = true
   if (input.scheduledFor) body['scheduledFor'] = input.scheduledFor

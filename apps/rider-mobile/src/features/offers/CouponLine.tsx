@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { Skeleton, colors, fonts, spacing, typography } from '@ocar/mobile-shared'
+import { Skeleton, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
 import { formatRupees, type CouponLineState } from './offerModel'
+import { OfferTicket } from './OfferTicket'
 
 type Props = {
   state: CouponLineState
@@ -27,10 +28,13 @@ export function CouponLine({ state, onOpenSheet, onRemove, onRetry }: Props) {
 
   if (state.kind === 'idle') {
     return (
-      <Pressable style={styles.row} onPress={onOpenSheet} accessibilityRole="button" accessibilityLabel="Have a code? Add an offer code">
-        <Feather name="tag" size={16} color={colors.ink600} />
-        <Text style={styles.idle}>Have a code?</Text>
-        <Feather name="chevron-right" size={16} color={colors.ink400} />
+      <Pressable style={styles.idleRow} onPress={onOpenSheet} accessibilityRole="button" accessibilityLabel="Have a code? Add an offer code">
+        <View style={styles.idleBadge}><Feather name="tag" size={16} color={colors.primaryDark} /></View>
+        <View style={styles.textCol}>
+          <Text style={styles.idle}>Have a code?</Text>
+          <Text style={styles.idleSub}>Add it to save on this ride</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color={colors.ink400} />
       </Pressable>
     )
   }
@@ -39,16 +43,21 @@ export function CouponLine({ state, onOpenSheet, onRemove, onRetry }: Props) {
     const title = state.auto ? 'Best offer applied' : `${state.offer.code ?? state.offer.name} applied`
     const detail = state.auto ? state.offer.summary : `You save ${formatRupees(state.offer.discount)}`
     return (
-      <View style={styles.row} accessibilityLiveRegion="polite">
-        <Feather name="check-circle" size={16} color={colors.moneyInk} />
-        <View style={styles.textCol}>
-          <Text style={styles.applied} numberOfLines={2}>{title} · {detail}</Text>
-        </View>
-        {/* Remove for a typed code, Change (opens the sheet, where Remove also lives) for an automatic one. */}
-        <Pressable style={styles.action} onPress={state.auto ? onOpenSheet : onRemove} hitSlop={6} accessibilityRole="button"
-          accessibilityLabel={state.auto ? 'Change offer' : `Remove ${state.offer.code ?? 'offer'}`}>
-          <Text style={styles.actionText}>{state.auto ? 'Change' : 'Remove'}</Text>
-        </Pressable>
+      <View style={styles.ticketWrap} accessibilityLiveRegion="polite">
+        <OfferTicket
+          tone="applied" animateIn notch={colors.surface}
+          title={state.auto ? 'Best offer applied' : (state.offer.code ?? state.offer.name)}
+          subtitle={state.auto ? detail : `${state.offer.summary}`}
+          saving={`Save ${formatRupees(state.offer.discount)}`}
+          accessibilityLabel={`${title}. ${detail}`}
+          right={
+            /* Remove for a typed code, Change (opens the sheet, where Remove also lives) for an automatic one. */
+            <Pressable style={styles.action} onPress={state.auto ? onOpenSheet : onRemove} hitSlop={6} accessibilityRole="button"
+              accessibilityLabel={state.auto ? 'Change offer' : `Remove ${state.offer.code ?? 'offer'}`}>
+              <Text style={styles.actionText}>{state.auto ? 'Change' : 'Remove'}</Text>
+            </Pressable>
+          }
+        />
       </View>
     )
   }
@@ -83,7 +92,11 @@ const styles = StyleSheet.create({
   // 48px: the target is the whole row, comfortably over the 44px minimum.
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 48, marginBottom: spacing.xs },
   textCol: { flex: 1, minWidth: 0 },
-  idle: { ...typography.body, flex: 1, fontFamily: fonts.semibold, color: colors.ink600 },
+  idleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 56, marginBottom: spacing.xs, paddingHorizontal: spacing.sm, borderRadius: radii.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border },
+  idleBadge: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
+  idle: { ...typography.body, fontFamily: fonts.semibold, color: colors.ink900 },
+  idleSub: { ...typography.caption, color: colors.ink600 },
+  ticketWrap: { marginBottom: spacing.xs },
   applied: { ...typography.body, fontFamily: fonts.semibold, color: colors.moneyInk },
   problem: { ...typography.body, fontFamily: fonts.semibold, color: colors.ink900 },
   note: { ...typography.body, color: colors.ink600 },

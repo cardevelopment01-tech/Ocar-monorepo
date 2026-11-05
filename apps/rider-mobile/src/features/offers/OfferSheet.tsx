@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { Button, SlideModal, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
 import { formatRupees, type AppliedOffer, type IneligibleOffer } from './offerModel'
+import { OfferTicket } from './OfferTicket'
 
 type Props = {
   visible: boolean
@@ -43,7 +44,13 @@ export function OfferSheet({ visible, onClose, applied, alternatives, ineligible
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close offers" />
       <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
         <View style={styles.handle} />
-        <Text style={styles.title}>Offers</Text>
+        <View style={styles.header}>
+          <View style={styles.headerBadge}><Feather name="gift" size={20} color={colors.primaryDark} /></View>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Offers</Text>
+            <Text style={styles.headerSub}>Codes and offers for this ride</Text>
+          </View>
+        </View>
 
         <Text style={styles.label} nativeID="offer-code-label">Offer code</Text>
         <View style={styles.inputRow}>
@@ -69,28 +76,23 @@ export function OfferSheet({ visible, onClose, applied, alternatives, ineligible
         <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
           {eligible.length > 0 ? <Text style={styles.section}>Available for this ride</Text> : null}
           {eligible.map((o, i) => (
-            <Pressable key={o.offerId} style={[styles.offer, i === 0 && applied ? styles.offerOn : null]} onPress={() => { if (o.offerId !== applied?.offerId) onChoose(o); onClose() }}
+            <Pressable key={o.offerId} onPress={() => { if (o.offerId !== applied?.offerId) onChoose(o); onClose() }}
               accessibilityRole="button" accessibilityState={{ selected: i === 0 && applied != null }} accessibilityLabel={`${o.name}. ${o.summary}. You save ${formatRupees(o.discount)}`}>
-              <View style={styles.offerText}>
-                <Text style={styles.offerName}>{o.code ?? o.name}</Text>
-                <Text style={styles.offerSub}>{o.summary}</Text>
-              </View>
-              <Text style={styles.save}>Save {formatRupees(o.discount)}</Text>
+              <OfferTicket tone={i === 0 && applied ? 'applied' : 'available'} notch={colors.surface} title={o.code ?? o.name} subtitle={o.summary} saving={`Save ${formatRupees(o.discount)}`} />
             </Pressable>
           ))}
 
           {ineligible.length > 0 ? <Text style={styles.section}>Not yet</Text> : null}
           {ineligible.map((o) => (
-            <View key={o.offerId} style={[styles.offer, styles.offerOff]} accessible accessibilityLabel={`${o.name}. ${o.summary}. ${o.message}`}>
-              <View style={styles.offerText}>
-                <Text style={styles.offerName}>{o.name}</Text>
-                <Text style={styles.offerSub}>{o.summary}</Text>
-              </View>
-              <Text style={styles.why}>{o.message}</Text>
-            </View>
+            <OfferTicket key={o.offerId} tone="muted" notch={colors.surface} title={o.name} subtitle={o.message} accessibilityLabel={`${o.name}. ${o.summary}. ${o.message}`} />
           ))}
 
-          {eligible.length === 0 && ineligible.length === 0 ? <Text style={styles.empty}>No offers for this ride right now. Have a code? Enter it above.</Text> : null}
+          {eligible.length === 0 && ineligible.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <View style={styles.emptyBadge}><Feather name="tag" size={22} color={colors.ink400} /></View>
+              <Text style={styles.empty}>No offers for this ride right now. Have a code? Enter it above.</Text>
+            </View>
+          ) : null}
         </ScrollView>
 
         {applied ? (
@@ -107,7 +109,11 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1 },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, maxHeight: '80%' },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.sm },
-  title: { ...typography.headline, color: colors.ink900, marginBottom: spacing.sm },
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
+  headerBadge: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
+  headerText: { flex: 1 },
+  headerSub: { ...typography.caption, color: colors.ink600 },
+  title: { ...typography.headline, color: colors.ink900 },
   label: { ...typography.label, fontFamily: fonts.semibold, color: colors.ink600, marginBottom: spacing.xs },
   inputRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: colors.border, borderRadius: radii.lg, backgroundColor: colors.surface2, marginBottom: spacing.sm },
   input: { ...typography.body, flex: 1, minHeight: 48, paddingHorizontal: spacing.md, fontFamily: fonts.semibold, color: colors.ink900, letterSpacing: 0.5 },
@@ -125,7 +131,9 @@ const styles = StyleSheet.create({
   offerSub: { ...typography.caption, color: colors.ink600 },
   save: { ...typography.body, fontFamily: fonts.bold, color: colors.moneyInk },
   why: { ...typography.caption, fontFamily: fonts.semibold, color: colors.ink600, maxWidth: 130, textAlign: 'right' },
-  empty: { ...typography.body, color: colors.ink600, paddingVertical: spacing.md },
+  emptyBox: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
+  emptyBadge: { width: 48, height: 48, borderRadius: 24, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  empty: { ...typography.body, color: colors.ink600, textAlign: 'center', maxWidth: 280 },
   removeRow: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   removeText: { ...typography.body, fontFamily: fonts.bold, color: colors.error },
 })

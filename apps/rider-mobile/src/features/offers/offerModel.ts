@@ -161,3 +161,30 @@ export function bookingOfferFields(args: {
 export function isPaymentMethodRejection(r: Rejection | undefined): boolean {
   return r?.reason === 'PAYMENT_CHANNEL'
 }
+
+// ── The preview request for an hourly rental (City Ride) ─────────────────────
+
+/** What the server needs to price and check offers for a rental package: no distance (the package carries it). */
+export function rentalPreviewRequest(a: {
+  categoryId: number
+  packageId: number
+  pickup: { lat: number; lng: number }
+  drop: { lat: number; lng: number }
+  stopCount: number
+  scheduledFor: string | null
+}) {
+  return {
+    categoryId: a.categoryId,
+    rideType: 'rental' as const,
+    distanceKm: 0,
+    durationMin: 0,
+    paymentChannel: 'cash' as const,
+    rentalPackageId: a.packageId,
+    originLat: a.pickup.lat,
+    originLng: a.pickup.lng,
+    destinationLat: a.drop.lat,
+    destinationLng: a.drop.lng,
+    ...(a.stopCount > 0 ? { stopCount: a.stopCount } : {}),
+    ...(a.scheduledFor ? { scheduledFor: a.scheduledFor } : {}),
+  }
+}
