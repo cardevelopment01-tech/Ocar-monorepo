@@ -20,7 +20,7 @@ export function StopTimeline({ stops, onSkip }: StopTimelineProps) {
             </View>
             <View style={styles.textCol}>
               <Text style={styles.label}>Stop {stop.sequence}</Text>
-              <Text style={styles.address} numberOfLines={1}>{stop.address ?? `Stop ${i + 1}`}</Text>
+              <Text style={styles.address} numberOfLines={2}>{stop.address ?? `Stop ${i + 1}`}</Text>
             </View>
             {stop.status === 'pending' && onSkip ? (
               <Pressable

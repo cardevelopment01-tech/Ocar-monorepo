@@ -1,4 +1,6 @@
 import type { RideDetail } from '@ocar/mobile-shared'
+// Deep path, like clampToRadius: the barrel pulls in React Native, which this pure-logic file (and its test) must not.
+import { rentalFareLines } from '@ocar/mobile-shared/src/utils/tripFacts'
 
 // Pure logic behind the Trip summary screen, kept out of the component so it is unit-testable.
 
@@ -22,7 +24,8 @@ export type InvoiceRow = { key: string; label: string; detail?: string; amount: 
 type InvoiceSource = Pick<RideDetail,
   'baseFare' | 'distanceFare' | 'timeFare' | 'stopFare' | 'hourSurcharge' | 'overageFare' | 'surgeFare' |
   'surgeMultiplier' | 'actualKm' | 'actualMin' | 'totalFinal' | 'totalEstimated'> &
-  Partial<Pick<RideDetail, 'tripHours' | 'waitingFare' | 'overtimeMin' | 'overtimeFare' | 'overtimeGraceMin'>>
+  Partial<Pick<RideDetail, 'tripHours' | 'waitingFare' | 'overtimeMin' | 'overtimeFare' | 'overtimeGraceMin' |
+    'rideType' | 'overageKm' | 'overageMin' | 'rentalExtraPerKm' | 'rentalExtraPerMin' | 'rentalKmLimit' | 'rentalDurationMinutes'>>
 
 // Only components that were actually charged (> 0), each labelled with its quantity. If the
 // components do not add up to the total, a single "Adjustments" row makes up the gap so the
@@ -48,7 +51,11 @@ export function buildInvoiceRows(r: InvoiceSource): { rows: InvoiceRow[]; total:
     // After surge: overtime is not surged. Only present once the trip settled with time past the booked window.
     { key: 'overtime', label: 'Extra time', detail: `${num(r.overtimeMin)} min${grace ? `, after ${grace} free minutes` : ''}`, amount: (r.overtimeMin ?? 0) > 0 ? num(r.overtimeFare) : 0 },
   ]
-  const rows = candidates.filter((c) => c.amount > 0)
+  let rows = candidates.filter((c) => c.amount > 0)
+  // A rental reads as package price, extra distance and extra time (each with its quantity x rate), not as a
+  // "Base fare" plus one lump of "Extra distance or time".
+  const rental = rentalFareLines({ ...r, rideType: r.rideType ?? '' })
+  if (rental) rows = [...rental, ...rows.filter((c) => c.key !== 'base' && c.key !== 'overage')]
   const gap = Math.round((total - rows.reduce((s, c) => s + c.amount, 0)) * 100) / 100
   // Sub-rupee differences are rounding, not something to show a rider as a line item.
   if (Math.abs(gap) >= 1) rows.push({ key: 'adjust', label: 'Adjustments', amount: gap })

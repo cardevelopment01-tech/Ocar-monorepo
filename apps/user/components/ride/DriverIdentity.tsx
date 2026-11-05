@@ -54,7 +54,7 @@ export function DriverAvatar({ view, photo, size = 'md', chip = false }: {
 export function PlateBadge({ plate }: { plate: string | null }) {
   if (!plate) return null
   return (
-    <span aria-label={`Number plate ${plate}`} className="flex-shrink-0 px-2.5 py-1 rounded-lg border-2 border-text-primary bg-white text-[13px] font-extrabold tracking-[0.12em] text-text-primary whitespace-nowrap">
+    <span aria-label={`Number plate ${plate}`} className="flex-shrink-0 px-2.5 py-1 rounded-lg border-2 border-text-primary bg-[#FFD21F] text-[13px] font-extrabold tracking-[0.12em] text-[#14171A] whitespace-nowrap">
       {plate}
     </span>
   )

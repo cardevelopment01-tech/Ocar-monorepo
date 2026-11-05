@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native'
-import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { colors, dropDisplay, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
 import type { RideDetailExtra } from '../types'
 
 export type TripDetailsCardProps = {
@@ -14,10 +14,8 @@ export type TripDetailsCardProps = {
 // previously had no address display at all for a ride with no stops (the
 // StopTimeline-driven "Trip details" toggle only appeared when stops existed).
 export function TripDetailsCard({ ride, fare }: TripDetailsCardProps) {
-  const dropLabel = ride.rideType === 'round_trip' ? 'Drop & return' : ride.rideType === 'rental' ? 'Route' : 'Drop'
-  const dropValue = ride.rideType === 'rental'
-    ? (ride.tripHours ? `${ride.tripHours}h city ride · flexible` : 'Hourly city ride · flexible')
-    : (ride.destinationAddress ?? 'Destination')
+  // The real drop address for every ride type (a rental books one too); the package is a caption, never a stand-in.
+  const drop = dropDisplay(ride)
 
   return (
     <View style={styles.row}>
@@ -29,11 +27,12 @@ export function TripDetailsCard({ ride, fare }: TripDetailsCardProps) {
       <View style={styles.textCol}>
         <View>
           <Text style={styles.label}>Pickup</Text>
-          <Text style={styles.value} numberOfLines={1}>{ride.originAddress ?? 'Your location'}</Text>
+          <Text style={styles.value} numberOfLines={3}>{ride.originAddress ?? 'Your location'}</Text>
         </View>
         <View>
-          <Text style={styles.label}>{dropLabel}</Text>
-          <Text style={styles.value} numberOfLines={1}>{dropValue}</Text>
+          <Text style={styles.label}>{drop.label}</Text>
+          <Text style={styles.value} numberOfLines={3}>{drop.value}</Text>
+          {drop.note ? <Text style={styles.note}>{drop.note}</Text> : null}
         </View>
       </View>
       {fare ? (
@@ -56,6 +55,7 @@ const styles = StyleSheet.create({
   textCol: { flex: 1, minWidth: 0, gap: spacing.sm },
   label: { ...typography.caption, fontSize: 11, color: colors.ink400, fontFamily: fonts.semibold },
   value: { ...typography.label, fontSize: 13, color: colors.ink900, fontFamily: fonts.semibold },
+  note: { ...typography.caption, fontSize: 11, color: colors.ink600 },
   fareCol: { alignItems: 'flex-end', flexShrink: 0 },
   fareValue: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
 })

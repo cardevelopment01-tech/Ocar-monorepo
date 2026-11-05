@@ -131,3 +131,26 @@ describe('buildTimeline', () => {
     expect(buildTimeline({ ...base, bookedUntil: null })).toBeNull()
   })
 })
+
+describe('buildInvoiceRows for a rental', () => {
+  const rental = {
+    ...base, rideType: 'rental', baseFare: '800.00', distanceFare: '0.00', timeFare: '0.00', overageFare: '150.00',
+    overageKm: '12', overageMin: '20', rentalExtraPerKm: '10', rentalExtraPerMin: '1.5', rentalKmLimit: '40', rentalDurationMinutes: 240,
+    totalFinal: '950.00',
+  }
+  it('reads as package price, extra distance and extra time, not "Base fare" plus one lump', () => {
+    const { rows, total } = buildInvoiceRows(rental)
+    expect(rows.map((r) => r.label)).toEqual(['Package price', 'Extra distance', 'Extra time'])
+    expect(rows[0]).toMatchObject({ amount: 800, detail: '4 h · 40 km included' })
+    expect(rows[1]).toMatchObject({ amount: 120, detail: '12 km × ₹10' })
+    expect(rows[2]).toMatchObject({ amount: 30, detail: '20 min × ₹1.50' })
+    expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(total)
+  })
+  it('is just the package price when nothing was exceeded', () => {
+    const { rows } = buildInvoiceRows({ ...rental, overageFare: '0.00', overageKm: '0', overageMin: '0', totalFinal: '800.00' })
+    expect(rows.map((r) => r.label)).toEqual(['Package price'])
+  })
+  it('leaves other ride types alone', () => {
+    expect(buildInvoiceRows(base).rows[0]!.label).toBe('Base fare')
+  })
+})

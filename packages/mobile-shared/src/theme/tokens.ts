@@ -65,6 +65,9 @@ export const isRider = Constants.expoConfig?.slug === 'ocar-rider'
 
 export const colors = isRider ? riderColors : driverColors
 
+// Commercial vehicle number plates are black on yellow; every plate we draw uses this so a cab reads as a cab.
+export const PLATE_YELLOW = '#FFD21F'
+
 // Both web apps' .btn-primary is this exact teal->pink gradient (apps/driver/src/index.css,
 // apps/user/app/globals.css's bg-gradient-primary) -- fixed, not part of either app's own
 // palette split above, since it's identical on both sites regardless of their other colors.
