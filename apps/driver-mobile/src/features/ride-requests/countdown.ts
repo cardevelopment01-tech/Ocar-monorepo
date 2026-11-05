@@ -6,3 +6,13 @@ export function computeRemainingSeconds(timeoutSeconds: number, receivedAtMs: nu
   const elapsedSeconds = (nowMs - receivedAtMs) / 1000
   return Math.max(0, timeoutSeconds - elapsedSeconds)
 }
+
+/** The card slides over whatever the driver was doing (often tapping the map): ignore taps this long after it appears, so
+ *  a tap meant for something underneath can never accept or decline a ride. Short enough not to cost a fast driver anything. */
+export const TAP_GUARD_MS = 700
+
+/** True once taps on Accept/Decline count. A clock that went backwards (negative elapsed) counts as armed, never as locked. */
+export function isTapArmed(receivedAtMs: number, nowMs: number): boolean {
+  const elapsed = nowMs - receivedAtMs
+  return elapsed < 0 || elapsed >= TAP_GUARD_MS
+}

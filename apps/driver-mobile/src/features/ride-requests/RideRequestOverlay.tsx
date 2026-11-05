@@ -24,7 +24,7 @@ import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { GlassChip } from '@/features/go-online/components/ModeHero'
 import { acceptRideRequest, declineRideRequest } from './api'
-import { computeRemainingSeconds } from './countdown'
+import { computeRemainingSeconds, isTapArmed, TAP_GUARD_MS } from './countdown'
 import { useRideAlertSound } from './useRideAlertSound'
 import { ReadAlong, SpeakerBadge } from './ReadAlong'
 import { useAnnouncementStore } from '@/store/useAnnouncementStore'
@@ -71,6 +71,7 @@ export function RideRequestOverlay() {
   const [status, setStatus] = useState<'show' | Resolved>('show')
   const [seconds, setSeconds] = useState(0)
   const [isAccepting, setIsAccepting] = useState(false)
+  const [armed, setArmed] = useState(false) // Accept/Decline count only after TAP_GUARD_MS
   const [accepted, setAccepted] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -83,6 +84,7 @@ export function RideRequestOverlay() {
   const backdropOpacity = useSharedValue(0)
   const ringProgress = useSharedValue(1)
   const dragStartY = useSharedValue(0)
+  const actionsOpacity = useSharedValue(0.5)
 
   const rideId = pending?.rideId
   const resolved = status !== 'show'
@@ -121,11 +123,11 @@ export function RideRequestOverlay() {
   )
 
   const reject = useCallback(() => {
-    if (dismissedRef.current || pending?.rideId == null) return
+    if (dismissedRef.current || pending?.rideId == null || !isTapArmed(pending.receivedAtMs, Date.now())) return
     setStatus('rejected')
     void declineRideRequest(pending.rideId)
     animateOut(pending.rideId)
-  }, [animateOut, pending?.rideId])
+  }, [animateOut, pending?.rideId, pending?.receivedAtMs])
 
   const handleBack = useCallback((): boolean => {
     if (!pending) return false
@@ -143,6 +145,13 @@ export function RideRequestOverlay() {
     setAccepted(false)
     setIsAccepting(false)
     setError(null)
+    // Buttons wake up 700 ms after the card appears: dimmed until then, then a quick fade to full.
+    setArmed(false)
+    actionsOpacity.set(0.5)
+    schedule(() => {
+      setArmed(true)
+      actionsOpacity.set(withTiming(1, { duration: reduced ? 0 : 160, easing: EASE_OUT }))
+    }, TAP_GUARD_MS)
 
     // Deplete the ring across the whole accept window on the UI thread.
     ringProgress.set(1)
@@ -209,7 +218,7 @@ export function RideRequestOverlay() {
   }, [pending, handleBack])
 
   async function handleAccept() {
-    if (isAccepting || accepted || dismissedRef.current || !pending) return
+    if (isAccepting || accepted || dismissedRef.current || !pending || !isTapArmed(pending.receivedAtMs, Date.now())) return
     setIsAccepting(true)
     setError(null)
     try {
@@ -263,6 +272,7 @@ export function RideRequestOverlay() {
 
   const sheetStyle = useAnimatedStyle(() => ({ opacity: sheetOpacity.get(), transform: [{ translateY: sheetY.get() }] }))
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdropOpacity.get() }))
+  const actionsStyle = useAnimatedStyle(() => ({ opacity: actionsOpacity.get() }))
   const ringProps = useAnimatedProps(() => ({ strokeDashoffset: (1 - ringProgress.get()) * 100 }))
 
   // Staggered entrance for the info blocks -- never the actions row, which must be
@@ -412,10 +422,10 @@ export function RideRequestOverlay() {
 
               {/* Actions (never staggered -- reaction time matters) */}
               {showActions ? (
-                <View style={styles.actions}>
+                <Animated.View style={[styles.actions, actionsStyle]}>
                   <Pressable
                     onPress={reject}
-                    disabled={isAccepting}
+                    disabled={isAccepting || !armed}
                     accessibilityRole="button"
                     accessibilityLabel={`Decline ride request, ${secondsLeft} seconds remaining`}
                     style={({ pressed }) => [styles.decline, pressed && !isAccepting ? styles.pressed : null]}
@@ -442,9 +452,9 @@ export function RideRequestOverlay() {
 
                   <Pressable
                     onPress={() => void handleAccept()}
-                    disabled={isAccepting || accepted}
+                    disabled={isAccepting || accepted || !armed}
                     accessibilityRole="button"
-                    accessibilityState={{ disabled: isAccepting || accepted }}
+                    accessibilityState={{ disabled: isAccepting || accepted || !armed }}
                     accessibilityLabel={`Accept ride, ${secondsLeft} seconds remaining`}
                     style={({ pressed }) => [styles.acceptWrap, pressed && !isAccepting ? styles.pressed : null]}
                   >
@@ -458,7 +468,7 @@ export function RideRequestOverlay() {
                       <Text style={styles.acceptLabel}>{accepted ? 'Accepted' : 'Accept'}</Text>
                     </LinearGradient>
                   </Pressable>
-                </View>
+                </Animated.View>
               ) : null}
             </View>
           </Animated.View>

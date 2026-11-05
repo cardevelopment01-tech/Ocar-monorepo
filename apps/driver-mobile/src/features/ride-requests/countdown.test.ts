@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeRemainingSeconds } from './countdown'
+import { computeRemainingSeconds, isTapArmed, TAP_GUARD_MS } from './countdown'
 
 describe('computeRemainingSeconds', () => {
   it('returns the full timeout at the moment of receipt', () => {
@@ -25,5 +25,19 @@ describe('computeRemainingSeconds', () => {
     const receivedAt = 5_000_000
     const skewedNow = receivedAt + 3000
     expect(computeRemainingSeconds(10, receivedAt, skewedNow)).toBe(7)
+  })
+})
+
+describe('isTapArmed (accidental-tap guard)', () => {
+  const at = 2_000_000
+  it('ignores taps for the first 700 ms and counts them from then on', () => {
+    expect(TAP_GUARD_MS).toBe(700)
+    expect(isTapArmed(at, at)).toBe(false)
+    expect(isTapArmed(at, at + 699)).toBe(false)
+    expect(isTapArmed(at, at + 700)).toBe(true)
+    expect(isTapArmed(at, at + 5_000)).toBe(true)
+  })
+  it('a clock that moved backwards never locks the buttons', () => {
+    expect(isTapArmed(at, at - 10_000)).toBe(true)
   })
 })
