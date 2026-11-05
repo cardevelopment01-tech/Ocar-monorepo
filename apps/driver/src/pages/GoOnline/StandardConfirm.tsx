@@ -154,9 +154,9 @@ export default function StandardConfirm() {
                     {/* Number plate with frame */}
                     <div
                       className="inline-flex items-center rounded-lg px-3 py-1.5 mb-2"
-                      style={{ border: '1.5px solid rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.05)' }}
+                      style={{ border: '2px solid #14171A', background: '#FFD21F' }}
                     >
-                      <span className="font-display text-[22px] font-black text-white tracking-[0.18em]">
+                      <span className="font-display text-[22px] font-black tracking-[0.18em]" style={{ color: '#14171A' }}>
                         {vehicle.number_plate}
                       </span>
                     </div>

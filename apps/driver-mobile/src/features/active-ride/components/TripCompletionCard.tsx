@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import Animated, { Easing, FadeIn, ReduceMotion, ZoomIn } from 'react-native-reanimated'
-import { Button, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, buildTripFacts, colors, radii, rentalFareLines, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import type { RideDetailSettled } from '../useActiveRide'
 
 export type TripCompletionCardProps = {
@@ -31,10 +31,15 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
   const commissionIsEstimate = realCommission == null
   const commission = realCommission ?? Math.round(fare * 0.15)
   const net = realEarning ?? parseFloat((fare - commission).toFixed(2))
-  const isRental = ride.rideType === 'rental'
-  const route = isRental
-    ? `${ride.originAddress ?? '-'} · Flexible route`
-    : `${ride.originAddress ?? '-'} → ${ride.destinationAddress ?? '-'}`
+  // Every ride type, rentals included, has a real drop address: show the actual route.
+  const route = `${ride.originAddress ?? '-'} → ${ride.destinationAddress ?? '-'}`
+  const facts = buildTripFacts(ride)
+  // Rental: package price, extra km and extra time under the fare, so the driver sees what the rider is paying for.
+  const rentalLinesRaw = rentalFareLines(ride)
+  // The package/extra lines leave out surge and stops, so add what is left as one line and the lines always add up to the fare.
+  const rentalLines = rentalLinesRaw && fare - rentalLinesRaw.reduce((s, l) => s + l.amount, 0) >= 1
+    ? [...rentalLinesRaw, { key: 'other', label: 'Surge and extras', amount: fare - rentalLinesRaw.reduce((s, l) => s + l.amount, 0) }]
+    : rentalLinesRaw
   const headline = fmt(isCash ? (collectedCash ?? fare) : net)
   // Only when overtime was actually billed, so ordinary trips look exactly as before. The line
   // ties the live clock the driver watched to the number they are paid on.
@@ -52,8 +57,19 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
           <Feather name="check" size={36} color={colors.inkInverse} />
         </Animated.View>
         <Text style={styles.heroTitle}>Trip complete</Text>
-        <Text style={styles.route} numberOfLines={2}>{route}</Text>
+        <Text style={styles.route} numberOfLines={3}>{route}</Text>
       </View>
+
+      {facts.length > 0 ? (
+        <View style={styles.factsCard} accessibilityLabel="Trip summary">
+          {facts.map((f) => (
+            <View key={f.key} style={styles.fact}>
+              <Text style={styles.factLabel}>{f.label}</Text>
+              <Text style={styles.factValue}>{f.value}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       <Animated.View entering={FadeIn.duration(220).delay(80).reduceMotion(ReduceMotion.System)} style={styles.earningsCard}>
         <Text style={styles.earningsLabel}>{isCash ? 'Cash collected' : 'You earned'}</Text>
@@ -64,6 +80,17 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
             <Text style={styles.breakdownLabel}>Ride fare</Text>
             <Text style={styles.breakdownValue}>{fmt(fare)}</Text>
           </View>
+          {rentalLines && rentalLines.length > 0 ? (
+            // Already inside the fare above: indented detail, not more amounts to add.
+            <View style={styles.rentalLines}>
+              {rentalLines.map((l) => (
+                <View key={l.key} style={styles.breakdownRow}>
+                  <Text style={styles.rentalLabel} numberOfLines={2}>{l.label}{l.detail ? ` · ${l.detail}` : ''}</Text>
+                  <Text style={styles.rentalValue}>{fmt(l.amount)}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
           <View style={styles.breakdownRow}>
             <Text style={styles.breakdownLabel}>
               {isCash ? `Commission, deducted from wallet${commissionIsEstimate ? ' (est.)' : ''}` : `Platform commission${commissionIsEstimate ? ' (est.)' : ''}`}
@@ -113,6 +140,13 @@ const styles = StyleSheet.create({
   },
   heroTitle: { ...typography.display, color: colors.ink900 },
   route: { ...typography.label, color: colors.ink600, textAlign: 'center', maxWidth: '92%' },
+  factsCard: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.md, rowGap: spacing.sm },
+  fact: { width: '50%', gap: 2 },
+  factLabel: { ...typography.label, color: colors.ink600 },
+  factValue: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold, fontVariant: ['tabular-nums'] },
+  rentalLines: { gap: 2, paddingLeft: spacing.sm },
+  rentalLabel: { ...typography.label, color: colors.ink600, flexShrink: 1 },
+  rentalValue: { ...typography.label, color: colors.ink600, fontVariant: ['tabular-nums'] },
   earningsCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.md + 4 },
   earningsLabel: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
   earningsAmount: { fontSize: 40, lineHeight: 48, fontFamily: fonts.bold, color: colors.primary, marginBottom: spacing.sm },

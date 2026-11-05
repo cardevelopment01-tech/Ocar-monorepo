@@ -11,6 +11,7 @@ import { OtpEntryCard } from '@/features/active-ride/components/OtpEntryCard'
 import { CashCollectionCard } from '@/features/active-ride/components/CashCollectionCard'
 import { TripCompletionCard } from '@/features/active-ride/components/TripCompletionCard'
 import { RateRiderSheet } from '@/features/active-ride/components/RateRiderSheet'
+import { RouteCard } from '@/features/active-ride/components/RouteCard'
 import { RiderActionsRow } from '@/features/active-ride/components/RiderActionsRow'
 import { RideSheet } from '@/features/active-ride/components/RideSheet'
 import { StageSheet } from '@/features/active-ride/components/StageSheet'
@@ -245,7 +246,8 @@ export default function ActiveRideScreen() {
     header = {
       icon: 'flag',
       label: 'On your trip',
-      title: isRental ? 'Flexible route' : (ride.destinationAddress ?? 'Destination'),
+      // A rental books a real drop-off too; show it like any other trip (the badge already says it is a rental).
+      title: ride.destinationAddress ?? 'Destination',
       ...(isRental ? { badge: <RideTypeBadge kind="rental" /> } : roundTripBadge ? { badge: roundTripBadge } : {}),
     }
     primary = isRoundTrip ? (
@@ -376,6 +378,12 @@ export default function ActiveRideScreen() {
           }
         >
           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+          <RouteCard
+            rideType={ride.rideType}
+            originAddress={ride.originAddress}
+            destinationAddress={ride.destinationAddress}
+            tripHours={ride.tripHours}
+          />
           <RiderActionsRow
             rideId={rideId}
             riderName={ride.riderName}

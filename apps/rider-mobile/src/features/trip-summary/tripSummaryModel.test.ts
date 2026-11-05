@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildInvoiceRows, buildTimeline, formatMoney, formatTripWhen, paymentState, tripMetrics, tripTitle } from './tripSummaryModel'
+import { buildInvoiceRows, buildTimeline, formatMoney, formatTripWhen, paymentState, tripTitle } from './tripSummaryModel'
 
 const base = {
   baseFare: '120.00', distanceFare: '1020.00', timeFare: '290.00', stopFare: '0.00', hourSurcharge: '0.00',
@@ -56,19 +56,6 @@ describe('paymentState', () => {
   })
   it('wallet is paid', () => {
     expect(paymentState({ ...ride, paymentChannel: 'wallet' })).toEqual({ kind: 'paid', text: 'Paid via wallet' })
-  })
-})
-
-describe('tripMetrics', () => {
-  const none = { actualKm: null, actualMin: null, startedAt: null, completedAt: null }
-  it('joins duration and distance from actuals', () => {
-    expect(tripMetrics({ ...none, actualKm: '28.40', actualMin: '58.00' })).toBe('58 min · 28.4 km')
-  })
-  it('falls back to start/finish times for one-way rides', () => {
-    expect(tripMetrics({ ...none, startedAt: '2026-10-01T10:00:00Z', completedAt: '2026-10-01T10:58:00Z' })).toBe('58 min')
-  })
-  it('returns null when nothing is known', () => {
-    expect(tripMetrics(none)).toBeNull()
   })
 })
 
@@ -129,5 +116,37 @@ describe('buildTimeline', () => {
   it('is null without overtime or a booked window', () => {
     expect(buildTimeline({ ...base, overtimeMin: 0 })).toBeNull()
     expect(buildTimeline({ ...base, bookedUntil: null })).toBeNull()
+  })
+})
+
+describe('buildInvoiceRows for a rental', () => {
+  const rental = {
+    ...base, rideType: 'rental', baseFare: '800.00', distanceFare: '0.00', timeFare: '0.00', overageFare: '150.00',
+    overageKm: '12', overageMin: '20', rentalExtraPerKm: '10', rentalExtraPerMin: '1.5', rentalKmLimit: '40', rentalDurationMinutes: 240,
+    totalFinal: '950.00',
+  }
+  it('reads as package price, extra distance and extra time, not "Base fare" plus one lump', () => {
+    const { rows, total } = buildInvoiceRows(rental)
+    expect(rows.map((r) => r.label)).toEqual(['Package price', 'Extra distance', 'Extra time'])
+    expect(rows[0]).toMatchObject({ amount: 800, detail: '4 h · 40 km included' })
+    expect(rows[1]).toMatchObject({ amount: 120, detail: '12 km × ₹10' })
+    expect(rows[2]).toMatchObject({ amount: 30, detail: '20 min × ₹1.50' })
+    expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(total)
+  })
+  it('is just the package price when nothing was exceeded', () => {
+    const { rows } = buildInvoiceRows({ ...rental, overageFare: '0.00', overageKm: '0', overageMin: '0', totalFinal: '800.00' })
+    expect(rows.map((r) => r.label)).toEqual(['Package price'])
+  })
+  it('leaves other ride types alone', () => {
+    expect(buildInvoiceRows(base).rows[0]!.label).toBe('Base fare')
+  })
+})
+
+describe('buildInvoiceRows rental safety', () => {
+  const rental = { ...base, rideType: 'rental', baseFare: '0.00', distanceFare: '0.00', timeFare: '0.00', overageFare: '150.00', totalFinal: '150.00' }
+  it('keeps the generic overage row rather than falling into "Adjustments" when there is no package line', () => {
+    const { rows } = buildInvoiceRows(rental)
+    expect(rows.map((r) => r.label)).not.toContain('Adjustments')
+    expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(150)
   })
 })

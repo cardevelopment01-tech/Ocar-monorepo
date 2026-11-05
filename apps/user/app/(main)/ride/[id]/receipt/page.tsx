@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { ChevronDown, ChevronLeft, CheckCircle2, XCircle, Navigation, Clock, Star, LifeBuoy, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronLeft, CheckCircle2, XCircle, Star, LifeBuoy, AlertCircle } from 'lucide-react'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
 import { submitPayuForm, payMessage } from '@/lib/payu-checkout'
 import { DriverRow, driverViewFromRide } from '@/components/ride/DriverIdentity'
@@ -33,6 +33,54 @@ const FARE_LINES: { key: 'base_fare' | 'distance_fare' | 'time_fare' | 'stop_far
   { key: 'surge_fare',     label: 'Surge' },
   { key: 'overage_fare',   label: 'Overage' },
 ]
+
+const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
+
+// "4 h · 40 km included", from the package a rental was booked on.
+function packageDetail(ride: RideDetail): string | null {
+  const parts: string[] = []
+  const min = ride.rental_duration_minutes ?? 0
+  if (min > 0) parts.push(min % 60 === 0 ? `${min / 60} h` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`)
+  const km = ride.rental_km_limit != null ? parseFloat(ride.rental_km_limit) : 0
+  if (km > 0) parts.push(`${km} km included`)
+  return parts.length ? parts.join(' · ') : null
+}
+
+type ReceiptRow = { key: string; label: string; amount: number; detail: string | null }
+
+// The fare lines, same wording as the rider app. A rental reads as package price, extra distance and extra
+// time (quantity x rate) instead of "Base fare" plus one lump.
+function receiptRows(ride: RideDetail): ReceiptRow[] {
+  const rental = ride.ride_type === 'rental'
+  const rows: ReceiptRow[] = []
+  for (const { key, label } of FARE_LINES) {
+    const amount = ride[key] != null ? parseFloat(ride[key]!) : 0
+    if (!(amount > 0)) continue
+    if (rental && key === 'base_fare') {
+      rows.push({ key, label: 'Package price', amount, detail: packageDetail(ride) })
+    } else if (rental && key === 'overage_fare' && (ride.overage_km != null || ride.overage_min != null)) {
+      const perKm = parseFloat(ride.rental_extra_per_km ?? '0')
+      const perMin = parseFloat(ride.rental_extra_per_min ?? '0')
+      const km = parseFloat(ride.overage_km ?? '0')
+      const min = Math.round(parseFloat(ride.overage_min ?? '0'))
+      const kmAmount = Math.round(km * perKm * 100) / 100
+      const minAmount = Math.round(min * perMin * 100) / 100
+      // Split only when the parts add up to what was billed (old rentals have no stored rates); else one honest line.
+      if (km * perKm + min * perMin <= 0 || Math.abs(kmAmount + minAmount - amount) >= 1) {
+        rows.push({ key, label: 'Extra distance or time', amount, detail: null })
+      } else {
+        const crumb = Math.round((amount - kmAmount - minAmount) * 100) / 100
+        const kmFinal = kmAmount >= minAmount ? Math.round((kmAmount + crumb) * 100) / 100 : kmAmount
+        const minFinal = kmAmount >= minAmount ? minAmount : Math.round((minAmount + crumb) * 100) / 100
+        if (kmFinal > 0) rows.push({ key: 'extra_km', label: 'Extra distance', amount: kmFinal, detail: `${Math.round(km * 100) / 100} km × ₹${Number.isInteger(perKm) ? perKm : perKm.toFixed(2)}` })
+        if (minFinal > 0) rows.push({ key: 'extra_min', label: 'Extra time', amount: minFinal, detail: `${min} min × ₹${Number.isInteger(perMin) ? perMin : perMin.toFixed(2)}` })
+      }
+    } else {
+      rows.push({ key, label, amount, detail: fareDetail(key, ride) })
+    }
+  }
+  return rows
+}
 
 // Quiet second line under a receipt label (quantity), same wording as the rider app.
 function fareDetail(key: string, ride: RideDetail): string | null {
@@ -132,7 +180,19 @@ export default function RideReceiptPage() {
   const total        = money(ride.total_final) ?? money(ride.total_estimated)
   const totalLabel    = ride.total_final ? 'Final fare' : 'Estimated fare'
   const distanceKm    = ride.actual_km  != null ? parseFloat(ride.actual_km)  : null
-  const durationMin   = ride.actual_min != null ? parseFloat(ride.actual_min) : null
+  // Time taken: the measured minutes, else the gap between the ride's own start and finish (one-way rides get no actuals).
+  const measuredMin   = ride.actual_min != null ? Math.round(parseFloat(ride.actual_min)) : 0
+  const gapMin        = ride.started_at && ride.completed_at
+    ? Math.round((new Date(ride.completed_at).getTime() - new Date(ride.started_at).getTime()) / 60000)
+    : 0
+  const durationMin   = measuredMin > 0 ? measuredMin : Number.isFinite(gapMin) && gapMin > 0 ? gapMin : 0
+  const fmtDuration   = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${String(m % 60).padStart(2, '0')} min` : ''}`)
+  const tripFacts: { label: string; value: string }[] = [
+    ...(ride.started_at && !Number.isNaN(new Date(ride.started_at).getTime()) ? [{ label: 'Started', value: clock(new Date(ride.started_at)) }] : []),
+    ...(ride.completed_at && !Number.isNaN(new Date(ride.completed_at).getTime()) ? [{ label: 'Ended', value: clock(new Date(ride.completed_at)) }] : []),
+    ...(distanceKm != null && distanceKm > 0 ? [{ label: 'Distance', value: `${Math.round(distanceKm * 10) / 10} km` }] : []),
+    ...(durationMin > 0 ? [{ label: 'Time taken', value: fmtDuration(durationMin) }] : []),
+  ]
 
   return (
     <div className="h-full flex flex-col bg-background overflow-y-auto scrollbar-none">
@@ -218,20 +278,14 @@ export default function RideReceiptPage() {
               </div>
             </div>
           </div>
-          {(distanceKm != null || durationMin != null) && (
-            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border">
-              {distanceKm != null && (
-                <div className="flex items-center gap-1.5">
-                  <Navigation size={12} className="text-text-muted" />
-                  <span className="text-xs text-text-secondary font-medium">{distanceKm.toFixed(1)} km</span>
+          {isCompleted && tripFacts.length > 0 && (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3 pt-3 border-t border-border">
+              {tripFacts.map((f) => (
+                <div key={f.label}>
+                  <p className="text-xs text-text-secondary">{f.label}</p>
+                  <p className="text-sm font-semibold text-text-primary tabular-nums">{f.value}</p>
                 </div>
-              )}
-              {durationMin != null && (
-                <div className="flex items-center gap-1.5">
-                  <Clock size={12} className="text-text-muted" />
-                  <span className="text-xs text-text-secondary font-medium">{Math.round(durationMin)} min</span>
-                </div>
-              )}
+              ))}
             </div>
           )}
         </div>
@@ -259,20 +313,15 @@ export default function RideReceiptPage() {
           <div className="bg-surface rounded-2xl border border-border p-4">
             <p className="text-sm font-semibold text-text-primary mb-3">Fare receipt</p>
             <div className="space-y-3">
-              {FARE_LINES.map(({ key, label }) => {
-                const amount = money(ride[key])
-                if (!amount) return null
-                const detail = fareDetail(key, ride)
-                return (
-                  <div key={key} className="flex items-start justify-between gap-3 text-sm">
-                    <div>
-                      <p className="text-text-primary">{label}</p>
-                      {detail && <p className="text-xs text-text-secondary">{detail}</p>}
-                    </div>
-                    <span className="text-text-primary font-semibold tabular-nums">{amount}</span>
+              {receiptRows(ride).map(({ key, label, amount, detail }) => (
+                <div key={key} className="flex items-start justify-between gap-3 text-sm">
+                  <div>
+                    <p className="text-text-primary">{label}</p>
+                    {detail && <p className="text-xs text-text-secondary">{detail}</p>}
                   </div>
-                )
-              })}
+                  <span className="text-text-primary font-semibold tabular-nums">{rupees(amount)}</span>
+                </div>
+              ))}
               {/* After surge: overtime is not surged. Only present when the trip ran past the booked window. */}
               {(ride.overtimeMin ?? 0) > 0 && ride.overtimeFare != null && (
                 <div className="flex items-start justify-between gap-3 text-sm">

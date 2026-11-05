@@ -120,6 +120,14 @@ export type RideDetail = {
   surgeMultiplier: string | null
   actualKm: string | null
   actualMin: string | null
+  // Rental only (null otherwise): the package the ride was booked on and what ran past it, so the receipt can
+  // show package price / extra km / extra time as separate lines.
+  overageKm?: string | null
+  overageMin?: string | null
+  rentalExtraPerKm?: string | null
+  rentalExtraPerMin?: string | null
+  rentalKmLimit?: string | null
+  rentalDurationMinutes?: number | null
   requestedAt: string | null
   startedAt: string | null
   completedAt: string | null

@@ -94,6 +94,13 @@ export type RideDetail = {
   surge_multiplier: string | null
   actual_km: string | null
   actual_min: string | null
+  // Rental only: the package the ride was booked on and what ran past it.
+  overage_km?: string | null
+  overage_min?: string | null
+  rental_extra_per_km?: string | null
+  rental_extra_per_min?: string | null
+  rental_km_limit?: string | null
+  rental_duration_minutes?: number | null
   cancellation_reason: string | null
   cancellation_reason_code: string | null
   user_rating_given: number | null
