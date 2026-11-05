@@ -91,7 +91,7 @@ function UpdateRateDialog({
     rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
     return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '',
     km_per_day: card.km_per_day ?? '', driver_allowance_per_day: card.driver_allowance_per_day ?? '',
-    stop_charge: card.stop_charge ?? '0', notes: '',
+    stop_charge: card.stop_charge ?? '0', base_fare: card.base_fare ?? '0', notes: '',
   })
 
   useEffect(() => {
@@ -101,7 +101,7 @@ function UpdateRateDialog({
         rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
         return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '',
         km_per_day: card.km_per_day ?? '', driver_allowance_per_day: card.driver_allowance_per_day ?? '',
-        stop_charge: card.stop_charge ?? '0', notes: '',
+        stop_charge: card.stop_charge ?? '0', base_fare: card.base_fare ?? '0', notes: '',
       })
       setError('')
     }
@@ -124,6 +124,8 @@ function UpdateRateDialog({
         driver_allowance_per_day: form.driver_allowance_per_day !== '' ? parseFloat(form.driver_allowance_per_day) : null,
         // Blank = keep the current per-stop price; 0 = make stops free.
         ...(form.stop_charge !== '' ? { stop_charge: parseFloat(form.stop_charge) } : {}),
+        // Blank = keep the current base fare; 0 = remove it.
+        ...(form.base_fare !== '' ? { base_fare: parseFloat(form.base_fare) } : {}),
         notes: form.notes,
       })
       setOpen(false); onUpdated()
@@ -206,6 +208,14 @@ function UpdateRateDialog({
                   onChange={e => setForm(f => ({ ...f, min_fare: e.target.value }))} className={`${inputCls} font-mono`} />
                 <p className="text-xs text-text-muted mt-1">was {fmt(card.min_fare)}</p>
               </div>
+            </div>
+            <div>
+              <label className={labelCls}>Base fare (₹)</label>
+              <input type="number" step="0.01" min="0" value={form.base_fare}
+                onChange={e => setForm(f => ({ ...f, base_fare: e.target.value }))}
+                className="w-40 border border-border rounded-xl px-3 py-2 text-sm font-mono text-text-primary bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted"
+                placeholder="0" />
+              <p className="text-xs text-text-muted mt-1">was {fmt(card.base_fare)}. 0 = none. A flat amount added to every one-way and round-trip fare (before surge), on top of the km fare and minimum fare. Rides already booked keep their price.</p>
             </div>
             <div>
               <label className={labelCls}>Charge per stop (₹)</label>
@@ -728,6 +738,9 @@ export default function RateCardsPage() {
                                       {card.ride_type === 'round_trip' && (
                                         <span className="block text-[11px] font-sans font-medium text-text-muted mt-0.5">{card.km_per_day ?? '—'} km/day · {fmt(card.driver_allowance_per_day)} allowance · {fmt(card.hour_rate)}/hr</span>
                                       )}
+                                      {Number(card.base_fare) > 0 && (
+                                        <span className="block text-[11px] font-sans font-medium text-text-muted mt-0.5">{fmt(card.base_fare)} base fare</span>
+                                      )}
                                       {Number(card.stop_charge) > 0 && (
                                         <span className="block text-[11px] font-sans font-medium text-text-muted mt-0.5">{fmt(card.stop_charge)} per stop</span>
                                       )}
@@ -854,7 +867,7 @@ function CreateRateCardDialog({
   const [form, setForm] = useState({
     city_id: '', category_id: '', ride_type: 'one_way',
     rate_per_km: '', rate_per_min: '', min_fare: '',
-    return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', stop_charge: '', notes: '',
+    return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', stop_charge: '', base_fare: '', notes: '',
   })
 
   useEffect(() => {
@@ -862,7 +875,7 @@ function CreateRateCardDialog({
       setForm({
         city_id: '', category_id: '', ride_type: 'one_way',
         rate_per_km: '', rate_per_min: '', min_fare: '',
-        return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', stop_charge: '', notes: '',
+        return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', stop_charge: '', base_fare: '', notes: '',
       })
       setError('')
     }
@@ -886,6 +899,7 @@ function CreateRateCardDialog({
         km_per_day: form.km_per_day ? parseFloat(form.km_per_day) : null,
         driver_allowance_per_day: form.driver_allowance_per_day ? parseFloat(form.driver_allowance_per_day) : null,
         stop_charge: form.stop_charge !== '' ? parseFloat(form.stop_charge) : 0, // default: stops are free
+        base_fare: form.base_fare !== '' ? parseFloat(form.base_fare) : 0, // default: no base fare
         notes: form.notes,
       })
       setOpen(false); onCreated()
@@ -967,6 +981,12 @@ function CreateRateCardDialog({
                 <input type="number" step="0.01" min="0.01" required value={form.min_fare}
                   onChange={e => set('min_fare', e.target.value)} className={`${inputCls} font-mono`} />
               </div>
+            </div>
+            <div>
+              <label className={labelCls}>Base fare (₹)</label>
+              <input type="number" step="0.01" min="0" value={form.base_fare}
+                onChange={e => set('base_fare', e.target.value)} className={`${inputCls} font-mono`} placeholder="0" />
+              <p className="text-xs text-text-muted mt-1">0 = none. Flat amount added to every one-way and round-trip fare, before surge.</p>
             </div>
             <div>
               <label className={labelCls}>Charge per stop (₹)</label>

@@ -76,6 +76,7 @@ export async function getFareEstimate(
       rate_per_km:        parseFloat(rateCard.rate_per_km),
       rate_per_min:       parseFloat(rateCard.rate_per_min),
       min_fare:           parseFloat(rateCard.min_fare),
+      base_fare:          rateCard.base_fare != null ? parseFloat(rateCard.base_fare) : 0,
       return_rate_per_km: rateCard.return_rate_per_km != null
         ? parseFloat(rateCard.return_rate_per_km) : null,
       hour_rate: rateCard.hour_rate != null
