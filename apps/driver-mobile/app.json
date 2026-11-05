@@ -12,7 +12,7 @@
                  "icon":  "./assets/brand/app-icon.png",
                  "android":  {
                                  "package":  "com.ocarindia.driver",
-                                 "versionCode":  2,
+                                 "versionCode":  3,
                                  "googleServicesFile":  "./google-services.json",
                                  "icon":  "./assets/brand/app-icon.png",
                                  "adaptiveIcon":  {
