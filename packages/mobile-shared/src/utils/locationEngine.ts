@@ -34,8 +34,10 @@ export type LocationDeps = {
   /** Starts the foreground watcher; resolves to something that stops it. `precise` asks the OS for GPS-grade accuracy
    *  (the rider is placing a pickup); otherwise the cheap, fast network-assisted level. */
   watch: (onFix: (fix: Fix) => void, onError: () => void, precise: boolean) => Promise<{ remove: () => void }>
-  /** One fresh reading, no timeout (a late answer is still applied). Rejects on failure. Used to nudge a quiet watcher. */
-  currentFix: (precise: boolean) => Promise<Fix>
+  /** One fresh reading, no timeout (a late answer is still applied). Rejects on failure. Used to nudge a quiet watcher.
+   *  Always the cheap level, even in precise mode: it has no timeout and blocks further nudges until it settles, so a
+   *  GPS-grade request that hangs indoors must not be able to wedge it. It is the fallback when the precise watcher is quiet. */
+  currentFix: () => Promise<Fix>
   /** The OS's cached position (instant, maybe old). Resolves null when there is none. Never rejects. */
   lastKnown: () => Promise<Fix | null>
   geocode: (lat: number, lng: number) => Promise<string>
@@ -209,7 +211,7 @@ export function createLocationEngine(io: {
     if (kicking) return // one outstanding request at a time: it has no timeout of its own
     kicking = true
     const ep = epoch
-    deps.currentFix(precise).then((f) => { if (ep === epoch && wanted) receive(f) }, () => {}).finally(() => { kicking = false })
+    deps.currentFix().then((f) => { if (ep === epoch && wanted) receive(f) }, () => {}).finally(() => { kicking = false })
   }
 
   function fetchLastKnown() {
@@ -260,7 +262,6 @@ export function createLocationEngine(io: {
     precise = on
     if (wanted && active) {
       stopWatcher()
-      restarts = 0
       void startWatcher()
     }
   }

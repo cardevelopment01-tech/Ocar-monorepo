@@ -12,7 +12,6 @@ const DEG_PER_M = 1 / 111_320 // metres of latitude
 let clock = T0
 let slice: LocationSlice
 let watchers: Array<{ emit: (f: Fix) => void; fail: () => void; removed: boolean; precise: boolean }>
-let currentFixPrecise: boolean[]
 let currentFixCalls: number
 let currentFixResult: Fix | null
 let lastKnownDelay: Promise<void> | null
@@ -31,7 +30,7 @@ function build() {
       return { remove: () => { w.removed = true } }
     },
     lastKnown: async () => { if (lastKnownDelay) await lastKnownDelay; return lastKnownResult },
-    currentFix: async (precise) => { currentFixCalls++; currentFixPrecise.push(precise); if (!currentFixResult) throw new Error('none'); return currentFixResult },
+    currentFix: async () => { currentFixCalls++; if (!currentFixResult) throw new Error('none'); return currentFixResult },
     geocode: (lat, lng) => new Promise<string>((resolve, reject) => { geocodeCalls.push({ lat, lng, resolve, reject: () => reject(new Error('x')) }) }),
     now: () => clock,
     track: (event, props) => { tracked.push([event, props]) },
@@ -51,7 +50,6 @@ beforeEach(() => {
   geocodeCalls = []
   lastKnownResult = null
   currentFixCalls = 0
-  currentFixPrecise = []
   currentFixResult = null
   lastKnownDelay = null
 })
@@ -352,18 +350,17 @@ describe('precise mode (placing a pickup)', () => {
     await flush()
     expect(slice.lat).toBe(held)
   })
-  it('a watcher that dies while precise comes back precise, and direct nudges ask for it too', async () => {
+  it('a watcher that dies while precise comes back precise, and a quiet precise watcher still gets a (cheap) nudge', async () => {
     const e = build()
     await e.activate()
     e.setPrecise(true)
     await flush()
-    currentFixPrecise.length = 0 // only readings asked for after the switch count
+    const before = currentFixCalls
     watchers[1]!.fail()
     await advance(3_000)
     expect(watchers.at(-1)!.precise).toBe(true)
     await advance(31_000)
-    expect(currentFixPrecise.length).toBeGreaterThan(0)
-    expect(currentFixPrecise.every(Boolean)).toBe(true)
+    expect(currentFixCalls).toBeGreaterThan(before)
   })
   it('turning it on before tracking starts applies to the first watcher', async () => {
     const e = build()

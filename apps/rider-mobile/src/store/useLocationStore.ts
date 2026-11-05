@@ -114,10 +114,10 @@ export const useLocationStore = create<LocationState>()(
             ),
           // The system "turn on location" dialog may appear once per launch (on the first direct request); automatic
           // retries must never re-prompt a rider who said no.
-          currentFix: (precise) => {
+          currentFix: () => {
             const mayShow = !askedSettings
             askedSettings = true
-            return Location.getCurrentPositionAsync({ accuracy: precise ? Location.Accuracy.High : Location.Accuracy.Balanced, mayShowUserSettingsDialog: mayShow }).then((l) => toFix(l, 'gps'))
+            return Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: mayShow }).then((l) => toFix(l, 'gps'))
           },
           lastKnown: getLastKnownFix,
           geocode: (lat, lng) => fetchReverseGeocode(lat, lng).then((d) => d.address),
