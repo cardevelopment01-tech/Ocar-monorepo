@@ -65,6 +65,19 @@ describe('rentalFareLines', () => {
     const l = rentalFareLines({ ...base, overageFare: '150' })!
     expect(l[1]).toMatchObject({ key: 'extra', amount: 150 })
   })
+  it('one generic line for an old rental with no stored rates (never a wrong split)', () => {
+    const l = rentalFareLines({ ...base, rentalExtraPerKm: null, rentalExtraPerMin: null, overageFare: '150', overageKm: '12', overageMin: '20' })!
+    expect(l.map((x) => x.key)).toEqual(['package', 'extra'])
+    expect(l[1]!.amount).toBe(150)
+  })
+  it('one generic line when the parts do not add up to the overage fare', () => {
+    const l = rentalFareLines({ ...base, overageFare: '300', overageKm: '12', overageMin: '20' })!
+    expect(l.map((x) => x.key)).toEqual(['package', 'extra'])
+  })
+  it('puts a sub-rupee rounding crumb on the larger line so the lines sum to the overage', () => {
+    const l = rentalFareLines({ ...base, overageFare: '150.40', overageKm: '12', overageMin: '20' })!
+    expect(l.slice(1).reduce((s, x) => s + x.amount, 0)).toBeCloseTo(150.4, 2)
+  })
 })
 
 describe('rentalPackageDetail', () => {

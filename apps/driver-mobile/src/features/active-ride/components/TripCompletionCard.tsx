@@ -35,7 +35,11 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
   const route = `${ride.originAddress ?? '-'} → ${ride.destinationAddress ?? '-'}`
   const facts = buildTripFacts(ride)
   // Rental: package price, extra km and extra time under the fare, so the driver sees what the rider is paying for.
-  const rentalLines = rentalFareLines(ride)
+  const rentalLinesRaw = rentalFareLines(ride)
+  // The package/extra lines leave out surge and stops, so add what is left as one line and the lines always add up to the fare.
+  const rentalLines = rentalLinesRaw && fare - rentalLinesRaw.reduce((s, l) => s + l.amount, 0) >= 1
+    ? [...rentalLinesRaw, { key: 'other', label: 'Surge and extras', amount: fare - rentalLinesRaw.reduce((s, l) => s + l.amount, 0) }]
+    : rentalLinesRaw
   const headline = fmt(isCash ? (collectedCash ?? fare) : net)
   // Only when overtime was actually billed, so ordinary trips look exactly as before. The line
   // ties the live clock the driver watched to the number they are paid on.

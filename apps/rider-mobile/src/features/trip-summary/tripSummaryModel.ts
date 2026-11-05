@@ -55,7 +55,13 @@ export function buildInvoiceRows(r: InvoiceSource): { rows: InvoiceRow[]; total:
   // A rental reads as package price, extra distance and extra time (each with its quantity x rate), not as a
   // "Base fare" plus one lump of "Extra distance or time".
   const rental = rentalFareLines({ ...r, rideType: r.rideType ?? '' })
-  if (rental) rows = [...rental, ...rows.filter((c) => c.key !== 'base' && c.key !== 'overage')]
+  if (rental) {
+    const made = new Set(rental.map((l) => l.key))
+    // Only swap out a generic row when its replacement was actually produced, so nothing falls into "Adjustments".
+    const dropBase = made.has('package')
+    const dropOverage = made.has('extra') || made.has('extra-km') || made.has('extra-time')
+    rows = [...rental, ...rows.filter((c) => !(dropBase && c.key === 'base') && !(dropOverage && c.key === 'overage'))]
+  }
   const gap = Math.round((total - rows.reduce((s, c) => s + c.amount, 0)) * 100) / 100
   // Sub-rupee differences are rounding, not something to show a rider as a line item.
   if (Math.abs(gap) >= 1) rows.push({ key: 'adjust', label: 'Adjustments', amount: gap })
@@ -93,20 +99,6 @@ export function tripTitle(r: Pick<RideDetail, 'rideType' | 'assignedCategoryName
   const cat = r.assignedCategoryName ?? r.bookedCategoryName
   const type = rideTypeLabels[r.rideType]
   return [cat, type].filter(Boolean).join(' · ') || 'Ride'
-}
-
-// "58 min · 28.4 km". Actuals when the trip settled them; otherwise the duration from the ride's own
-// start/finish times (one-way rides never get actuals). No stop count: the stops are listed right above.
-export function tripMetrics(r: Pick<RideDetail, 'actualKm' | 'actualMin' | 'startedAt' | 'completedAt'>): string | null {
-  const parts: string[] = []
-  let min = Math.round(num(r.actualMin))
-  if (min <= 0 && r.startedAt && r.completedAt) {
-    min = Math.round((new Date(r.completedAt).getTime() - new Date(r.startedAt).getTime()) / 60000)
-  }
-  const km = num(r.actualKm)
-  if (Number.isFinite(min) && min > 0) parts.push(`${min} min`)
-  if (km > 0) parts.push(`${km} km`)
-  return parts.length ? parts.join(' · ') : null
 }
 
 export type TimelineStep = { key: string; time: string; label: string; note?: string }

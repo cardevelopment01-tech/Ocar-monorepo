@@ -113,9 +113,9 @@ export function rentalPackageDetail(r: Pick<RentalFareSource, 'rideType' | 'rent
 
 /**
  * A rental's fare as the lines a rider reads: the package price, then extra km and extra time as their own
- * lines (quantity x rate) instead of one lump. Null for any other ride type, or when the server did not send
- * the extras, so the caller keeps its generic rows. Extra time takes whatever remains of the overage so the
- * two lines always add up to the recorded overage fare.
+ * lines (quantity x rate) instead of one lump. Null for any other ride type. When the quantities and rates do
+ * not add up to the recorded overage fare (old rentals with no stored rates, say), a single generic
+ * "Extra distance or time" line is returned instead of a wrong split.
  */
 export function rentalFareLines(r: RentalFareSource): FareLine[] | null {
   if (r.rideType !== 'rental') return null
@@ -130,13 +130,19 @@ export function rentalFareLines(r: RentalFareSource): FareLine[] | null {
   const perMin = num(r.rentalExtraPerMin)
   const km = num(r.overageKm)
   const min = Math.round(num(r.overageMin))
-  if (r.overageKm == null && r.overageMin == null) {
+  const kmAmount = round2(km * perKm)
+  const minAmount = round2(min * perMin)
+  // Only split when the two parts really add up to what was billed. Old rentals have no stored rates, and a
+  // mismatch of a rupee or more means the split would put the wrong amount on the wrong line: one honest line instead.
+  if (km * perKm + min * perMin <= 0 || Math.abs(kmAmount + minAmount - overage) >= 1) {
     lines.push({ key: 'extra', label: 'Extra distance or time', amount: overage })
     return lines
   }
-  const kmAmount = km > 0 ? Math.min(overage, round2(km * perKm)) : 0
-  const minAmount = round2(overage - kmAmount)
-  if (kmAmount > 0) lines.push({ key: 'extra-km', label: 'Extra distance', detail: `${trimKm(km)} × ${formatRupees(perKm)}`, amount: kmAmount })
-  if (minAmount > 0) lines.push({ key: 'extra-time', label: 'Extra time', ...(min > 0 ? { detail: `${min} min × ${formatRupees(perMin)}` } : {}), amount: minAmount })
+  // Rounding crumbs (under a rupee) go to the larger line so the lines still sum to the overage fare.
+  const crumb = round2(overage - kmAmount - minAmount)
+  const kmFinal = kmAmount >= minAmount ? round2(kmAmount + crumb) : kmAmount
+  const minFinal = kmAmount >= minAmount ? minAmount : round2(minAmount + crumb)
+  if (kmFinal > 0) lines.push({ key: 'extra-km', label: 'Extra distance', detail: `${trimKm(km)} × ${formatRupees(perKm)}`, amount: kmFinal })
+  if (minFinal > 0) lines.push({ key: 'extra-time', label: 'Extra time', detail: `${min} min × ${formatRupees(perMin)}`, amount: minFinal })
   return lines
 }

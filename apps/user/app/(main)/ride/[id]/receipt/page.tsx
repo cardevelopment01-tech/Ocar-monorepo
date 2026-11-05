@@ -63,10 +63,18 @@ function receiptRows(ride: RideDetail): ReceiptRow[] {
       const perMin = parseFloat(ride.rental_extra_per_min ?? '0')
       const km = parseFloat(ride.overage_km ?? '0')
       const min = Math.round(parseFloat(ride.overage_min ?? '0'))
-      const kmAmount = km > 0 ? Math.min(amount, Math.round(km * perKm * 100) / 100) : 0
-      const minAmount = Math.round((amount - kmAmount) * 100) / 100
-      if (kmAmount > 0) rows.push({ key: 'extra_km', label: 'Extra distance', amount: kmAmount, detail: `${Math.round(km * 100) / 100} km × ${rupees(perKm)}` })
-      if (minAmount > 0) rows.push({ key: 'extra_min', label: 'Extra time', amount: minAmount, detail: min > 0 ? `${min} min × ₹${Number.isInteger(perMin) ? perMin : perMin.toFixed(2)}` : null })
+      const kmAmount = Math.round(km * perKm * 100) / 100
+      const minAmount = Math.round(min * perMin * 100) / 100
+      // Split only when the parts add up to what was billed (old rentals have no stored rates); else one honest line.
+      if (km * perKm + min * perMin <= 0 || Math.abs(kmAmount + minAmount - amount) >= 1) {
+        rows.push({ key, label: 'Extra distance or time', amount, detail: null })
+      } else {
+        const crumb = Math.round((amount - kmAmount - minAmount) * 100) / 100
+        const kmFinal = kmAmount >= minAmount ? Math.round((kmAmount + crumb) * 100) / 100 : kmAmount
+        const minFinal = kmAmount >= minAmount ? minAmount : Math.round((minAmount + crumb) * 100) / 100
+        if (kmFinal > 0) rows.push({ key: 'extra_km', label: 'Extra distance', amount: kmFinal, detail: `${Math.round(km * 100) / 100} km × ₹${Number.isInteger(perKm) ? perKm : perKm.toFixed(2)}` })
+        if (minFinal > 0) rows.push({ key: 'extra_min', label: 'Extra time', amount: minFinal, detail: `${min} min × ₹${Number.isInteger(perMin) ? perMin : perMin.toFixed(2)}` })
+      }
     } else {
       rows.push({ key, label, amount, detail: fareDetail(key, ride) })
     }
@@ -174,15 +182,14 @@ export default function RideReceiptPage() {
   const distanceKm    = ride.actual_km  != null ? parseFloat(ride.actual_km)  : null
   // Time taken: the measured minutes, else the gap between the ride's own start and finish (one-way rides get no actuals).
   const measuredMin   = ride.actual_min != null ? Math.round(parseFloat(ride.actual_min)) : 0
-  const durationMin   = measuredMin > 0
-    ? measuredMin
-    : ride.started_at && ride.completed_at
-      ? Math.round((new Date(ride.completed_at).getTime() - new Date(ride.started_at).getTime()) / 60000)
-      : 0
+  const gapMin        = ride.started_at && ride.completed_at
+    ? Math.round((new Date(ride.completed_at).getTime() - new Date(ride.started_at).getTime()) / 60000)
+    : 0
+  const durationMin   = measuredMin > 0 ? measuredMin : Number.isFinite(gapMin) && gapMin > 0 ? gapMin : 0
   const fmtDuration   = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${String(m % 60).padStart(2, '0')} min` : ''}`)
   const tripFacts: { label: string; value: string }[] = [
-    ...(ride.started_at ? [{ label: 'Started', value: clock(new Date(ride.started_at)) }] : []),
-    ...(ride.completed_at ? [{ label: 'Ended', value: clock(new Date(ride.completed_at)) }] : []),
+    ...(ride.started_at && !Number.isNaN(new Date(ride.started_at).getTime()) ? [{ label: 'Started', value: clock(new Date(ride.started_at)) }] : []),
+    ...(ride.completed_at && !Number.isNaN(new Date(ride.completed_at).getTime()) ? [{ label: 'Ended', value: clock(new Date(ride.completed_at)) }] : []),
     ...(distanceKm != null && distanceKm > 0 ? [{ label: 'Distance', value: `${Math.round(distanceKm * 10) / 10} km` }] : []),
     ...(durationMin > 0 ? [{ label: 'Time taken', value: fmtDuration(durationMin) }] : []),
   ]
