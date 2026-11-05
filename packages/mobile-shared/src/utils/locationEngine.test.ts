@@ -11,7 +11,8 @@ const DEG_PER_M = 1 / 111_320 // metres of latitude
 
 let clock = T0
 let slice: LocationSlice
-let watchers: Array<{ emit: (f: Fix) => void; fail: () => void; removed: boolean }>
+let watchers: Array<{ emit: (f: Fix) => void; fail: () => void; removed: boolean; precise: boolean }>
+let currentFixPrecise: boolean[]
 let currentFixCalls: number
 let currentFixResult: Fix | null
 let lastKnownDelay: Promise<void> | null
@@ -24,13 +25,13 @@ const fix = (northM: number, source: Fix['source'] = 'gps', fixedAt = clock): Fi
 
 function build() {
   const deps: LocationDeps = {
-    watch: async (onFix, onError) => {
-      const w = { emit: onFix, fail: onError, removed: false }
+    watch: async (onFix, onError, precise) => {
+      const w = { emit: onFix, fail: onError, removed: false, precise }
       watchers.push(w)
       return { remove: () => { w.removed = true } }
     },
     lastKnown: async () => { if (lastKnownDelay) await lastKnownDelay; return lastKnownResult },
-    currentFix: async () => { currentFixCalls++; if (!currentFixResult) throw new Error('none'); return currentFixResult },
+    currentFix: async (precise) => { currentFixCalls++; currentFixPrecise.push(precise); if (!currentFixResult) throw new Error('none'); return currentFixResult },
     geocode: (lat, lng) => new Promise<string>((resolve, reject) => { geocodeCalls.push({ lat, lng, resolve, reject: () => reject(new Error('x')) }) }),
     now: () => clock,
     track: (event, props) => { tracked.push([event, props]) },
@@ -50,6 +51,7 @@ beforeEach(() => {
   geocodeCalls = []
   lastKnownResult = null
   currentFixCalls = 0
+  currentFixPrecise = []
   currentFixResult = null
   lastKnownDelay = null
 })
@@ -323,5 +325,50 @@ describe('review fixes', () => {
     expect(calls).toHaveLength(1)
     settle(fix(0, 'gps', clock))
     await flush()
+  })
+})
+
+describe('precise mode (placing a pickup)', () => {
+  it('starts cheap, restarts the one watcher at GPS-grade accuracy, and goes back', async () => {
+    const e = build()
+    await e.activate()
+    expect(watchers.map((w) => w.precise)).toEqual([false])
+    e.setPrecise(true)
+    await flush()
+    expect(watchers.map((w) => [w.precise, w.removed])).toEqual([[false, true], [true, false]])
+    e.setPrecise(false)
+    await flush()
+    expect(watchers.filter((w) => !w.removed).map((w) => w.precise)).toEqual([false])
+  })
+  it('does nothing when the level did not change, and keeps the fix it already holds', async () => {
+    const e = build()
+    await e.activate()
+    watchers[0]!.emit(fix(0))
+    const held = slice.lat
+    e.setPrecise(false)
+    await flush()
+    expect(watchers).toHaveLength(1)
+    e.setPrecise(true)
+    await flush()
+    expect(slice.lat).toBe(held)
+  })
+  it('a watcher that dies while precise comes back precise, and direct nudges ask for it too', async () => {
+    const e = build()
+    await e.activate()
+    e.setPrecise(true)
+    await flush()
+    currentFixPrecise.length = 0 // only readings asked for after the switch count
+    watchers[1]!.fail()
+    await advance(3_000)
+    expect(watchers.at(-1)!.precise).toBe(true)
+    await advance(31_000)
+    expect(currentFixPrecise.length).toBeGreaterThan(0)
+    expect(currentFixPrecise.every(Boolean)).toBe(true)
+  })
+  it('turning it on before tracking starts applies to the first watcher', async () => {
+    const e = build()
+    e.setPrecise(true)
+    await e.activate()
+    expect(watchers.map((w) => w.precise)).toEqual([true])
   })
 })

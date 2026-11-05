@@ -31,10 +31,11 @@ export type LocationSlice = {
 }
 
 export type LocationDeps = {
-  /** Starts the foreground watcher; resolves to something that stops it. */
-  watch: (onFix: (fix: Fix) => void, onError: () => void) => Promise<{ remove: () => void }>
+  /** Starts the foreground watcher; resolves to something that stops it. `precise` asks the OS for GPS-grade accuracy
+   *  (the rider is placing a pickup); otherwise the cheap, fast network-assisted level. */
+  watch: (onFix: (fix: Fix) => void, onError: () => void, precise: boolean) => Promise<{ remove: () => void }>
   /** One fresh reading, no timeout (a late answer is still applied). Rejects on failure. Used to nudge a quiet watcher. */
-  currentFix: () => Promise<Fix>
+  currentFix: (precise: boolean) => Promise<Fix>
   /** The OS's cached position (instant, maybe old). Resolves null when there is none. Never rejects. */
   lastKnown: () => Promise<Fix | null>
   geocode: (lat: number, lng: number) => Promise<string>
@@ -65,6 +66,7 @@ export function createLocationEngine(io: {
   let restarts = 0
   let kicking = false
   let wanted = false // the caller wants tracking on (survives a watcher dying)
+  let precise = false // GPS-grade accuracy wanted (a pickup is being placed); survives a watcher restart
   let epoch = 0 // bumped by reset(): answers started before it must not repopulate a wiped store
 
   let geocodeSeq = 0
@@ -190,7 +192,7 @@ export function createLocationEngine(io: {
       scheduleRestart()
     }
     try {
-      const s = await deps.watch(live, died)
+      const s = await deps.watch(live, died, precise)
       if (mine !== token || !active) s.remove() // stopped (or restarted) while the watcher was starting
       else sub = s
     } catch {
@@ -207,7 +209,7 @@ export function createLocationEngine(io: {
     if (kicking) return // one outstanding request at a time: it has no timeout of its own
     kicking = true
     const ep = epoch
-    deps.currentFix().then((f) => { if (ep === epoch && wanted) receive(f) }, () => {}).finally(() => { kicking = false })
+    deps.currentFix(precise).then((f) => { if (ep === epoch && wanted) receive(f) }, () => {}).finally(() => { kicking = false })
   }
 
   function fetchLastKnown() {
@@ -251,6 +253,18 @@ export function createLocationEngine(io: {
     clearInterval(quietTimer)
   }
 
+  /** Switch between the cheap level and GPS-grade accuracy. A running watcher is restarted at the new level; the held
+   *  fix stays, so nothing flickers. Only a real change does anything. */
+  function setPrecise(on: boolean) {
+    if (on === precise) return
+    precise = on
+    if (wanted && active) {
+      stopWatcher()
+      restarts = 0
+      void startWatcher()
+    }
+  }
+
   /** Forget everything about the saved place (sign-out). */
   function reset() {
     epoch++
@@ -260,5 +274,5 @@ export function createLocationEngine(io: {
     retryAt = 0
   }
 
-  return { receive, activate, ensure, deactivate, reset, isActive: () => active }
+  return { receive, activate, ensure, deactivate, reset, setPrecise, isActive: () => active }
 }
