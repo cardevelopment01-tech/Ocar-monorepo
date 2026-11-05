@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAnnouncement, shortenAddress } from './buildAnnouncement'
+import { buildAnnouncement, buildAnnouncementSegments, estimateSpeechMs, segmentAt, segmentAtTime, shortenAddress } from './buildAnnouncement'
 import type { RideRequestPayload } from './types'
 
 // Value: protects=drivers hear the right ride type, places, distance and fare, short enough to finish inside the accept
@@ -67,5 +67,46 @@ describe('buildAnnouncement (Hindi)', () => {
     expect(buildAnnouncement(base, 'hi')).toBe(
       'नई राइड रिक्वेस्ट। वन वे, Sedan. पिकअप Saheed Nagar, Bhubaneswar, 1.2 किलोमीटर दूर. ड्रॉप Badambadi, Cuttack, 28 किलोमीटर. किराया 450 रुपये। कैश।'
     )
+  })
+})
+
+describe('segments and read-along position', () => {
+  const segs = buildAnnouncementSegments(base)
+  const text = buildAnnouncement(base)
+
+  it('the segments are the spoken sentence, in order, one per region', () => {
+    expect(segs.map((s) => s.key)).toEqual(['intro', 'type', 'pickup', 'drop', 'fare'])
+    expect(segs.map((s) => s.text).join(' ')).toBe(text)
+    expect(buildAnnouncementSegments(base, 'hi').map((s) => s.text).join(' ')).toBe(buildAnnouncement(base, 'hi'))
+  })
+  it('a missing drop or fare drops that segment instead of leaving an empty one', () => {
+    const { paymentChannel: _p, ...noPay } = base
+    expect(buildAnnouncementSegments({ ...noPay, drop: '751007', estimatedFare: 0 }).map((s) => s.key)).toEqual(['intro', 'type', 'pickup'])
+  })
+  it('segmentAt maps every character to the part it is in, at the edges too', () => {
+    expect(segmentAt(segs, 0)).toBe('intro')
+    expect(segmentAt(segs, text.indexOf('One way'))).toBe('type')
+    expect(segmentAt(segs, text.indexOf('Pickup'))).toBe('pickup')
+    expect(segmentAt(segs, text.indexOf('Drop'))).toBe('drop')
+    expect(segmentAt(segs, text.indexOf('Fare'))).toBe('fare')
+    expect(segmentAt(segs, text.indexOf('Pickup') - 1)).toBe('type') // the joining space belongs to the part before it
+    expect(segmentAt(segs, text.length - 1)).toBe('fare')
+    expect(segmentAt(segs, text.length)).toBeNull()
+    expect(segmentAt(segs, -1)).toBeNull()
+    expect(segmentAt([], 0)).toBeNull()
+  })
+  it('segmentAtTime walks the parts in order over the estimated duration, and is null outside it', () => {
+    const rank = ['intro', 'type', 'pickup', 'drop', 'fare']
+    const order = [0, 0.2, 0.4, 0.6, 0.8, 0.99].map((f) => rank.indexOf(segmentAtTime(segs, f * 8000, 8000)!))
+    expect(order[0]).toBe(0)
+    expect(order[order.length - 1]).toBe(4)
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(segmentAtTime(segs, 8000, 8000)).toBeNull()
+    expect(segmentAtTime(segs, -5, 8000)).toBeNull()
+    expect(segmentAtTime(segs, 100, 0)).toBeNull()
+  })
+  it('estimateSpeechMs grows with the text and stays bounded', () => {
+    expect(estimateSpeechMs(text)).toBeGreaterThan(estimateSpeechMs('Hi'))
+    expect(estimateSpeechMs('x'.repeat(1000))).toBeLessThan(11_000)
   })
 })

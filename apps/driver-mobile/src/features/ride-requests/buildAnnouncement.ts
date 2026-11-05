@@ -65,23 +65,66 @@ function payment(channel: string | undefined, lang: AnnouncementLang): string {
   return ''
 }
 
-export function buildAnnouncement(p: RideRequestPayload, lang: AnnouncementLang = 'en'): string {
+/** Which part of the pop-up a stretch of the spoken sentence belongs to. */
+export type SegmentKey = 'intro' | 'type' | 'pickup' | 'drop' | 'fare'
+export type Segment = { key: SegmentKey; text: string }
+
+/** The announcement as ordered parts, one per region of the pop-up. Joined with single spaces they are the spoken text. */
+export function buildAnnouncementSegments(p: RideRequestPayload, lang: AnnouncementLang = 'en'): Segment[] {
   const hi = lang === 'hi'
   const pickup = shortenAddress(p.pickup) || (hi ? 'पिकअप पॉइंट' : 'the pickup point')
   const drop = shortenAddress(p.drop)
   const away = Number.isFinite(p.distanceToPickup) && p.distanceToPickup > 0 ? metresOrKm(p.distanceToPickup, lang) : ''
-  const sentences: string[] = [hi ? 'नई राइड रिक्वेस्ट।' : 'New ride request.', `${typeWords(p, lang)}.`]
-
-  sentences.push(hi ? `पिकअप ${pickup}${away ? `, ${away} दूर` : ''}.` : `Pickup ${pickup}${away ? `, ${away} away` : ''}.`)
+  const segments: Segment[] = [
+    { key: 'intro', text: hi ? 'नई राइड रिक्वेस्ट।' : 'New ride request.' },
+    { key: 'type', text: `${typeWords(p, lang)}.` },
+    { key: 'pickup', text: hi ? `पिकअप ${pickup}${away ? `, ${away} दूर` : ''}.` : `Pickup ${pickup}${away ? `, ${away} away` : ''}.` },
+  ]
   if (drop) {
     const length = p.tripKm && p.tripKm > 0 ? `, ${tripKm(p.tripKm, lang)}` : ''
-    sentences.push(hi ? `ड्रॉप ${drop}${length}.` : `Drop ${drop}${length}.`)
+    segments.push({ key: 'drop', text: hi ? `ड्रॉप ${drop}${length}.` : `Drop ${drop}${length}.` })
   }
-  if (p.estimatedFare > 0) {
-    const fare = Math.round(p.estimatedFare)
-    sentences.push(hi ? `किराया ${fare} रुपये।` : `Fare ${fare} rupees.`)
-  }
+  const fare = p.estimatedFare > 0 ? (hi ? `किराया ${Math.round(p.estimatedFare)} रुपये।` : `Fare ${Math.round(p.estimatedFare)} rupees.`) : ''
   const pay = payment(p.paymentChannel, lang)
-  if (pay) sentences.push(pay)
-  return sentences.join(' ').replace(/\s+/g, ' ').trim()
+  const fareText = [fare, pay].filter(Boolean).join(' ')
+  if (fareText) segments.push({ key: 'fare', text: fareText })
+  return segments
+}
+
+export function buildAnnouncement(p: RideRequestPayload, lang: AnnouncementLang = 'en'): string {
+  return buildAnnouncementSegments(p, lang).map((s) => s.text).join(' ').replace(/\s+/g, ' ').trim()
+}
+
+/** Start offset of each segment inside the joined sentence. */
+function offsets(segments: Segment[]): number[] {
+  const out: number[] = []
+  let at = 0
+  for (const s of segments) {
+    out.push(at)
+    at += s.text.length + 1 // the joining space
+  }
+  return out
+}
+
+/** The segment the character at `charIndex` of the joined sentence belongs to; null outside it. */
+export function segmentAt(segments: Segment[], charIndex: number): SegmentKey | null {
+  if (segments.length === 0 || charIndex < 0) return null
+  const starts = offsets(segments)
+  const total = starts[starts.length - 1]! + segments[segments.length - 1]!.text.length
+  if (charIndex >= total) return null
+  let found = 0
+  for (let i = 0; i < starts.length; i++) if (charIndex >= starts[i]!) found = i
+  return segments[found]!.key
+}
+
+/** When the speech engine reports no word positions: the segment expected at `elapsedMs`, assuming an even pace over `totalMs`. */
+export function segmentAtTime(segments: Segment[], elapsedMs: number, totalMs: number): SegmentKey | null {
+  if (segments.length === 0 || totalMs <= 0 || elapsedMs < 0 || elapsedMs >= totalMs) return null
+  const length = segments.reduce((n, s) => n + s.text.length + 1, 0) - 1
+  return segmentAt(segments, Math.floor((elapsedMs / totalMs) * length))
+}
+
+/** A generous estimate of how long the sentence takes to say, in ms (same shape as the ring-resume safety timer). */
+export function estimateSpeechMs(text: string, rate = 0.95): number {
+  return (Math.min(9_000, 2_500 + text.length * 70) / Math.max(0.5, rate)) * 0.9
 }

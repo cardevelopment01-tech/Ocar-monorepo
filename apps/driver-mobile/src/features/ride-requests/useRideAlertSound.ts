@@ -4,7 +4,8 @@ import { setAudioModeAsync, useAudioPlayer, type AudioPlayer } from 'expo-audio'
 import * as Speech from 'expo-speech'
 import rideAlertSoundAsset from '../../../assets/sounds/ride-request.wav'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
-import { buildAnnouncement, SPEECH_LOCALE } from './buildAnnouncement'
+import { buildAnnouncementSegments, estimateSpeechMs, segmentAt, segmentAtTime, SPEECH_LOCALE } from './buildAnnouncement'
+import { useAnnouncementStore } from '@/store/useAnnouncementStore'
 import { stopTestAlert } from './testAlert'
 import type { RideRequestPayload } from './types'
 
@@ -27,6 +28,7 @@ const VIBRATION_PATTERN = [0, 400, 200, 400]
 // Ring once (long enough to get the driver's attention), then read the request aloud, then ring again until the request
 // is answered. The ring is paused while speaking so the two never fight over the speaker.
 const RING_BEFORE_SPEECH_MS = 1600
+const FALLBACK_AFTER_MS = 1200 // no word positions this long after the voice starts: follow the clock instead
 
 let audioModeSet = false
 
@@ -68,6 +70,8 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
     let spoke = false
     let timer: ReturnType<typeof setTimeout> | undefined
     let watchdog: ReturnType<typeof setTimeout> | undefined
+    let timeline: ReturnType<typeof setInterval> | undefined
+    const stopTimeline = () => { clearInterval(timeline); timeline = undefined }
     const ring = () => {
       if (cancelled) return
       player.seekTo(0).catch(() => {})
@@ -76,15 +80,47 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
     ring()
     Vibration.vibrate(VIBRATION_PATTERN, true)
     if (voiceEnabled && request) {
-      const text = buildAnnouncement(request, language)
+      const segments = buildAnnouncementSegments(request, language)
+      const text = segments.map((s) => s.text).join(' ')
+      const announcement = useAnnouncementStore.getState()
+      let sawBoundary = false
       timer = setTimeout(() => {
         if (cancelled) return
         safePause(player)
         spoke = true
-        const resume = () => { clearTimeout(watchdog); ring() }
+        const finish = () => {
+          clearTimeout(watchdog)
+          stopTimeline()
+          announcement.reset()
+          ring()
+        }
         // No TTS engine, a missing language or lost audio focus can mean no callback ever fires: the ring must come back anyway.
-        watchdog = setTimeout(resume, Math.min(9_000, 2_500 + text.length * 70))
-        Speech.speak(text, { language: SPEECH_LOCALE[language], rate: 0.95, onDone: resume, onStopped: resume, onError: resume })
+        watchdog = setTimeout(finish, Math.min(9_000, 2_500 + text.length * 70))
+        Speech.speak(text, {
+          language: SPEECH_LOCALE[language],
+          rate: 0.95,
+          onStart: () => {
+            if (cancelled) return
+            announcement.set({ speaking: true, segment: null })
+            // Some Android speech engines never report word positions. If none arrive shortly after the start, follow an even
+            // pace over the estimated duration instead; real positions take over the moment they show up.
+            const startedAt = Date.now()
+            const total = estimateSpeechMs(text)
+            setTimeout(() => {
+              if (cancelled || sawBoundary || timeline) return
+              timeline = setInterval(() => announcement.set({ segment: segmentAtTime(segments, Date.now() - startedAt, total) }), 250)
+            }, FALLBACK_AFTER_MS)
+          },
+          onBoundary: (ev: { charIndex: number }) => {
+            if (cancelled) return
+            sawBoundary = true
+            stopTimeline()
+            announcement.set({ segment: segmentAt(segments, ev.charIndex) })
+          },
+          onDone: finish,
+          onStopped: finish,
+          onError: finish,
+        })
       }, RING_BEFORE_SPEECH_MS)
     }
     // Cleanup covers unmount mid-ring (e.g. fast navigation away) so the alarm
@@ -97,6 +133,8 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
       cancelled = true
       clearTimeout(timer)
       clearTimeout(watchdog)
+      stopTimeline()
+      useAnnouncementStore.getState().reset()
       if (spoke) Promise.resolve(Speech.stop()).catch(() => {}) // only what this hook started: other speech in the app is left alone
       safePause(player)
       Vibration.cancel()

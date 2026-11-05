@@ -26,6 +26,9 @@ import { GlassChip } from '@/features/go-online/components/ModeHero'
 import { acceptRideRequest, declineRideRequest } from './api'
 import { computeRemainingSeconds } from './countdown'
 import { useRideAlertSound } from './useRideAlertSound'
+import { ReadAlong, SpeakerBadge } from './ReadAlong'
+import { useAnnouncementStore } from '@/store/useAnnouncementStore'
+import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle)
 
@@ -87,6 +90,9 @@ export function RideRequestOverlay() {
 
   // Repeating alert while the request is live and unanswered.
   useRideAlertSound(!!pending && !resolved, pending)
+  const voiceOn = useAlertPrefsStore((s) => s.voiceEnabled)
+  const speaking = useAnnouncementStore((s) => s.speaking)
+  const reading = useAnnouncementStore((s) => s.segment)
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach(clearTimeout)
@@ -332,16 +338,23 @@ export function RideRequestOverlay() {
             {/* Hero band: type, payment and the fare, the three things the accept decision hangs on. */}
             <LinearGradient colors={['#0B4A50', '#0E8FA3']} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={styles.band}>
               <View style={styles.handle} />
+              {voiceOn ? <SpeakerBadge speaking={speaking} /> : null}
               <Animated.View entering={entrances[0]} style={styles.bandInner}>
-                <View style={styles.chipRow}>
-                  <GlassChip icon={isRental ? 'clock' : isReturn ? 'corner-up-left' : 'arrow-right'} label={typeLabel} />
-                  {stopCount > 0 ? <GlassChip label={stopCount === 1 ? '1 stop' : `${stopCount} stops`} /> : null}
+                <View style={styles.chipBlock}>
+                  <ReadAlong active={reading === 'type'} tone="dark">
+                    <View style={styles.chipRow}>
+                      <GlassChip icon={isRental ? 'clock' : isReturn ? 'corner-up-left' : 'arrow-right'} label={typeLabel} />
+                      {stopCount > 0 ? <GlassChip label={stopCount === 1 ? '1 stop' : `${stopCount} stops`} /> : null}
+                    </View>
+                  </ReadAlong>
                 </View>
-                <View style={styles.fareRow} accessible accessibilityLabel={`Estimated fare ${Math.round(pending.estimatedFare)} rupees${payLabel ? `, ${payLabel}` : ''}`}>
-                  <Text style={styles.fare} maxFontSizeMultiplier={1.15}>₹{Math.round(pending.estimatedFare).toLocaleString('en-IN')}</Text>
-                  {payLabel ? <Text style={styles.pay}>{payLabel}</Text> : null}
-                </View>
-                <Text style={styles.fareNote}>Estimated fare</Text>
+                <ReadAlong active={reading === 'fare'} tone="dark">
+                  <View style={styles.fareRow} accessible accessibilityLabel={`Estimated fare ${Math.round(pending.estimatedFare)} rupees${payLabel ? `, ${payLabel}` : ''}`}>
+                    <Text style={styles.fare} maxFontSizeMultiplier={1.15}>₹{Math.round(pending.estimatedFare).toLocaleString('en-IN')}</Text>
+                    {payLabel ? <Text style={styles.pay}>{payLabel}</Text> : null}
+                  </View>
+                  <Text style={styles.fareNote}>Estimated fare</Text>
+                </ReadAlong>
               </Animated.View>
             </LinearGradient>
 
@@ -353,6 +366,7 @@ export function RideRequestOverlay() {
                   <View style={styles.dotDrop} />
                 </View>
                 <View style={styles.legs}>
+                  <ReadAlong active={reading === 'pickup'} tone="light">
                   <View style={styles.leg}>
                     <View style={styles.legHeader}>
                       <Text style={styles.legLabel}>Pickup</Text>
@@ -361,7 +375,9 @@ export function RideRequestOverlay() {
                     <Text style={styles.place} numberOfLines={1}>{pickup.name}</Text>
                     {pickup.rest ? <Text style={styles.placeRest} numberOfLines={2}>{pickup.rest}</Text> : null}
                   </View>
+                  </ReadAlong>
                   <View style={styles.legDivider} />
+                  <ReadAlong active={reading === 'drop'} tone="light">
                   <View style={styles.leg}>
                     <View style={styles.legHeader}>
                       <Text style={styles.legLabel}>{dropLabel}</Text>
@@ -370,6 +386,7 @@ export function RideRequestOverlay() {
                     <Text style={styles.place} numberOfLines={1}>{dropName}</Text>
                     {dropRest ? <Text style={styles.placeRest} numberOfLines={2}>{dropRest}</Text> : null}
                   </View>
+                  </ReadAlong>
                 </View>
               </Animated.View>
 
@@ -467,7 +484,8 @@ const styles = StyleSheet.create({
   band: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg - 2 },
   handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, marginTop: spacing.sm + 2, marginBottom: spacing.md, backgroundColor: 'rgba(255,255,255,0.4)' },
   bandInner: { gap: 2 },
-  chipRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap', marginBottom: spacing.sm },
+  chipBlock: { alignSelf: 'flex-start', marginBottom: spacing.sm },
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   fareRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
   fare: { fontFamily: fonts.bold, fontSize: 48, lineHeight: 56, letterSpacing: -1.2, color: colors.inkInverse, fontVariant: ['tabular-nums'] },
   pay: { fontFamily: fonts.semibold, fontSize: 18, lineHeight: 24, color: 'rgba(255,255,255,0.92)' },
