@@ -136,13 +136,14 @@ export interface DriverListFilters {
   cityIds?: number[];
   includeNoCity?: boolean;
   categoryIds?: number[];
-  /** Active/suspended drivers with a required document waiting for review (e.g. a newly required RC back). */
+  /** Active/suspended/docs_rejected drivers with a required document waiting for review (a newly required RC back, or a rejected document re-uploaded). */
   docsToReview?: boolean;
 }
 
 // A required document (identity, or any vehicle of the driver) waiting for an admin. Drivers who were approved
 // before a document became required (RC back) stay `active`, so they never enter the pending_approval queue;
-// this is what surfaces them. Constants only, safe to inline.
+// likewise a `docs_rejected` driver who re-uploads stays `docs_rejected` (re-upload only resets the document to
+// pending; the driver never passes through the submit step). This is what surfaces them. Constants only, safe to inline.
 const PENDING_REQUIRED_DOCS_SQL = `(
   EXISTS (SELECT 1 FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'pending'
           AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)}))
@@ -150,7 +151,9 @@ const PENDING_REQUIRED_DOCS_SQL = `(
              WHERE dv.driver_id = d.id AND dvd.status = 'pending'
              AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)}))
 )`;
-const DOCS_TO_REVIEW_SQL = `(d.status IN ('active', 'suspended') AND ${PENDING_REQUIRED_DOCS_SQL})`;
+// The one list of statuses the review queue covers: used by the filter, the card count and the per-row badge.
+const DOCS_REVIEW_STATUSES_SQL = `('active', 'suspended', 'docs_rejected')`;
+const DOCS_TO_REVIEW_SQL = `(d.status IN ${DOCS_REVIEW_STATUSES_SQL} AND ${PENDING_REQUIRED_DOCS_SQL})`;
 
 // A driver's current vehicle = the primary, non-blacklisted one (same predicate as
 // driver_vehicles_one_primary_idx), so a driver never appears twice.
@@ -235,7 +238,7 @@ export async function listDrivers(
          vc.display_name AS vehicle_category,
          (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id) AS docs_submitted,
          (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'approved') AS docs_approved,
-         CASE WHEN d.status IN ('active', 'suspended') THEN
+         CASE WHEN d.status IN ${DOCS_REVIEW_STATUSES_SQL} THEN
            (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'pending'
               AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)}))
            + (SELECT COUNT(*) FROM driver_vehicle_documents dvd JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
