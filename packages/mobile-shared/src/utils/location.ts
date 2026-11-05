@@ -43,12 +43,11 @@ export async function getCurrentOrLastKnownPosition(): Promise<Location.Location
 // Rider "instant location" helpers (eng review D2). Deliberately separate from getCurrentOrLastKnownPosition above:
 // driver go-online sends that function's result to the server as the driver's position, so its behaviour must not change.
 
-const toFix = (l: Location.LocationObject, source: Fix['source']): Fix => ({
-  lat: l.coords.latitude,
-  lng: l.coords.longitude,
-  fixedAt: l.timestamp,
-  source,
-})
+export const toFix = (l: Location.LocationObject, source: Fix['source']): Fix => {
+  const fix: Fix = { lat: l.coords.latitude, lng: l.coords.longitude, fixedAt: l.timestamp, source }
+  if (typeof l.coords.accuracy === 'number') fix.accuracy = l.coords.accuracy
+  return fix
+}
 
 /** OS last-known position (instant, may be old). Null when the OS has none or it is too coarse. Never throws. */
 export async function getLastKnownFix(): Promise<Fix | null> {

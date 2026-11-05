@@ -445,6 +445,26 @@ aws autoscaling start-instance-refresh \
   --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'
 ```
 
+## Database password rotation (managed RDS master password)
+
+The RDS master password (`ocar_admin`) is created and rotated every 7 days by AWS (`manage_master_user_password` in `rds.tf`;
+secret `rds!db-...` in Secrets Manager). A rotation changes the password in place: open connections keep working, **new**
+connections that present the old one are refused with Postgres `28P01`. The first rotation on prd (5 Nov 2026, 04:09 UTC) did
+exactly that: the API's cached password was the old one and every call that needed a new connection
+returned 500 until the cache expired. Same class as `docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md`.
+
+**Setup (already in place on prd):** `/ocar/prd/api-env` has `DB_AUTH_MODE=secrets-manager` and no `DATABASE_URL`. `user_data.sh.tpl`
+derives `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_SECRET_ARN` from RDS at boot, so there is no copied password to go stale. The instance role
+can read the secret (`rds_secret_read`, `iam.tf`). A new environment must set `DB_AUTH_MODE=secrets-manager` in its api-env the same way.
+
+**How the API survives a rotation:** it reads the secret on each new connection with a 15 s cache (it was 5 min, which left up to 5 minutes
+of refused new connections after each rotation) and, on `28P01`, forgets the cache and retries once, so callers see nothing. Test on
+**stg first**: `aws secretsmanager rotate-secret --secret-id <stg secret arn>` (changes stg only), then confirm no 5xx and no `28P01`.
+Never `rds_iam` on `ocar_admin`.
+
+**If "Database password rejected" (alert) or `28P01` persists past a minute:** check `DB_AUTH_MODE` in api-env. If the env still uses a
+copied `DATABASE_URL`, put the current secret's password in it (`pnpm env:edit <env>`) and roll the active color.
+
 ## PayU collections
 
 PayU collects ride fares, driver wallet top-ups and package purchases

@@ -1,31 +1,27 @@
 import { useEffect, useState } from 'react'
 import * as Location from 'expo-location'
+import { useFreshness, useLocationStore, useLocationTracking } from '@/store/useLocationStore'
 
 export type LatLng = { lat: number; lng: number }
 
-/** Live GPS position and compass heading (degrees clockwise from north) for the rider's blue dot.
- *  Stays idle until `enabled` (permission granted) and tears both subscriptions down on unmount. */
+/** Live position and compass heading (degrees clockwise from north) for the rider's blue dot.
+ *  The position is the location store's own fix (one GPS watcher for the whole app), shown only while it is live: a
+ *  saved or minute-old fix would draw a real-looking blue dot at a stale spot. Only the compass is subscribed here. */
 export function useLiveLocation(enabled: boolean, opts: { heading?: boolean } = {}) {
   const wantHeading = opts.heading ?? true
-  const [coords, setCoords] = useState<LatLng | null>(null)
+  useLocationTracking(enabled) // the watcher runs only while a screen that shows the dot is on show
+  const lat = useLocationStore((s) => s.lat)
+  const lng = useLocationStore((s) => s.lng)
+  const live = useFreshness() === 'live'
+  const coords: LatLng | null = enabled && live && lat !== null && lng !== null ? { lat, lng } : null
   const [heading, setHeading] = useState(0)
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !wantHeading) return
     let cancelled = false
-    let pos: Location.LocationSubscription | undefined
     let head: Location.LocationSubscription | undefined
     void (async () => {
       try {
-        const p = await Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.Balanced, distanceInterval: 5, timeInterval: 3000 },
-          (l) => setCoords({ lat: l.coords.latitude, lng: l.coords.longitude })
-        )
-        // Hold the subscription before the next await, so a throw in watchHeadingAsync
-        // can't leave this one running with nobody to remove it.
-        if (cancelled) p.remove()
-        else pos = p
-        if (!wantHeading) return
         const hd = await Location.watchHeadingAsync((h) => {
           const v = h.trueHeading >= 0 ? h.trueHeading : h.magHeading
           // ignore compass jitter under 5 degrees so the marker doesn't re-render on every sensor tick
@@ -34,12 +30,11 @@ export function useLiveLocation(enabled: boolean, opts: { heading?: boolean } = 
         if (cancelled) hd.remove()
         else head = hd
       } catch {
-        // no fix / sensor: the dot simply stays where the last known position put it
+        // no compass sensor: the dot just keeps its last heading
       }
     })()
     return () => {
       cancelled = true
-      pos?.remove()
       head?.remove()
     }
   }, [enabled, wantHeading])

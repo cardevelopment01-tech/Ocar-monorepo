@@ -3,7 +3,7 @@ import { Image, StyleSheet, View } from 'react-native'
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
-import { colors, fonts, radii, spacing, Text } from '@ocar/mobile-shared'
+import { colors, fonts, PLATE_YELLOW, radii, spacing, Text } from '@ocar/mobile-shared'
 import loginHeroImage from '../../../../assets/brand/login-hero.webp'
 
 // Brand pink from the logo's teal + pink duo (see RideRequestOverlay's palette note).
@@ -66,7 +66,7 @@ export function GlassChip({ icon, label }: { icon?: keyof typeof Feather.glyphMa
   )
 }
 
-// A number plate drawn like one: light plate, dark rim, one line, tabular figures.
+// A number plate drawn like one: yellow commercial plate, dark rim, one line, tabular figures.
 export function PlateTile({ plate }: { plate: string }) {
   return (
     <View style={styles.plate} accessible accessibilityLabel={`Number plate ${plate}`}>
@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
   photo: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: spacing.sm + 4, height: 30, borderRadius: radii.full, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.36)' },
   chipText: { fontSize: 13, lineHeight: 18, fontFamily: fonts.semibold, color: colors.inkInverse },
-  plate: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', maxWidth: '100%', backgroundColor: '#FAFBFB', borderRadius: 10, borderWidth: 2, borderColor: '#14171A', overflow: 'hidden' },
+  plate: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', maxWidth: '100%', backgroundColor: PLATE_YELLOW, borderRadius: 10, borderWidth: 2, borderColor: '#14171A', overflow: 'hidden' },
   plateStripe: { alignSelf: 'stretch', width: 30, backgroundColor: '#1D3F8F', alignItems: 'center', justifyContent: 'center' },
   plateStripeText: { fontSize: 9, lineHeight: 12, fontFamily: fonts.bold, color: '#FFFFFF' },
   plateText: { flexShrink: 1, paddingHorizontal: spacing.sm + 4, paddingVertical: 8, fontSize: 24, lineHeight: 30, fontFamily: fonts.bold, color: '#14171A', letterSpacing: 2, fontVariant: ['tabular-nums'] },

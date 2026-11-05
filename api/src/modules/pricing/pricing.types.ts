@@ -7,6 +7,7 @@ export interface RateCard {
   rate_per_km: number
   rate_per_min: number
   min_fare: number
+  base_fare: number
   return_rate_per_km: number | null
   hour_rate: number | null
   km_per_day: number | null

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather, FontAwesome } from '@expo/vector-icons'
-import { colors, fonts, spacing, typography } from '@ocar/mobile-shared'
+import { colors, fonts, PLATE_YELLOW, spacing, typography } from '@ocar/mobile-shared'
 import { driverIdentity, type DriverIdentityView } from '@ocar/shared'
 import type { RideDetail } from '@ocar/mobile-shared'
 
@@ -57,7 +57,7 @@ export function DriverAvatar({ view, photo, size = 'md', chip = false }: {
 export function PlateBadge({ plate, large = false }: { plate: string | null; large?: boolean }) {
   if (!plate) return null
   return (
-    // Drawn like a plate (same as the driver app): IND stripe, light plate, dark rim, one line.
+    // Drawn like a plate (same as the driver app): IND stripe, yellow commercial plate, dark rim, one line.
     <View style={[styles.plate, large && styles.plateLg]} accessible accessibilityLabel={`Number plate ${plate}`}>
       <View style={[styles.plateStripe, large && styles.plateStripeLg]}><Text style={styles.plateStripeText}>IND</Text></View>
       <Text style={[styles.plateText, large && styles.plateTextLg]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{plate}</Text>
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   avatarInitials: { fontFamily: fonts.bold, color: colors.primary },
   chip: { position: 'absolute', bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   chipText: { fontFamily: fonts.bold, fontSize: 11, color: colors.ink900 },
-  plate: { flexShrink: 0, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', backgroundColor: '#FAFBFB', borderRadius: 8, borderWidth: 1.5, borderColor: colors.ink900, overflow: 'hidden' },
+  plate: { flexShrink: 0, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', backgroundColor: PLATE_YELLOW, borderRadius: 8, borderWidth: 1.5, borderColor: colors.ink900, overflow: 'hidden' },
   plateLg: { borderRadius: 10, borderWidth: 2 },
   plateStripeLg: { width: 26 },
   plateTextLg: { paddingHorizontal: 14, paddingVertical: 8, fontSize: 21, lineHeight: 28, letterSpacing: 1.4 },

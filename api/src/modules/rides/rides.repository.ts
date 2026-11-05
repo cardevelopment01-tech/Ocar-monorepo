@@ -763,6 +763,8 @@ const RIDE_SELECT_SQL = `SELECT
        fs.hour_surcharge, fs.overage_fare, fs.surge_fare, fs.surge_multiplier,
        fs.actual_km, fs.actual_min, fs.estimated_km::float8 AS estimated_km, fs.estimated_min::float8 AS estimated_min,
        (SELECT rp.km_limit FROM rental_packages rp WHERE rp.id = r.rental_package_id) AS rental_km_limit,
+       -- Rental extras, so a client can show package price / extra km / extra time as their own lines.
+       fs.overage_km, fs.overage_min, fs.rental_extra_per_km, fs.rental_extra_per_min, fs.rental_duration_minutes,
        fs.pricing_version, fs.waiting_fare, fs.overtime_min, fs.overtime_fare,
        hrc.hour_rate  AS round_trip_hour_rate,
        rc.reason      AS cancellation_reason,
