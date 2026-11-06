@@ -21,6 +21,7 @@ import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
 import { enqueueBreadcrumb } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
+import { publishNearbyCar } from '@/websocket/nearby-bus'
 import { generateOtp, hashOtp, deriveRideEndOtp, checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
 import {
   RIDE_OTP_LENGTH,
@@ -330,6 +331,10 @@ const TRAIL_MAX_POINTS = 40 // well under the Roads API's 100-point limit
 // The admin live map doesn't need every 3 s ping: one update per driver per interval keeps it smooth while
 // cutting the fan-out to every connected admin socket.
 const ADMIN_BROADCAST_MIN_INTERVAL_MS = 5_000
+// Live "cars near you" feed (websocket/nearby-bus.ts): at most one position per driver per this long, so a driver whose phone
+// pings over both the socket and the HTTP fallback is not published twice.
+const NEARBY_MIN_INTERVAL_MS = 1_500
+const lastNearbyAt = new Map<string, number>()
 // recorded_at is the gps_tracks partition key and the snapshot ordering key, and comes from the device clock.
 const MAX_PING_CLOCK_SKEW_MS = 10 * 60 * 1000
 
@@ -436,6 +441,22 @@ export async function updateLocation(driverId: bigint, data: {
   // Emit live location to the user's tracking page (rideId resolved above).
   if (!rideId) {
     trailByDriver.delete(driverKey)
+    // An online driver with no ride is an available car: show it, moving, to riders searching near it. Only an online
+    // session (not paused / on a trip) with a known category, and never the driver's real id.
+    if (upserted.sessionStatus === 'online' && upserted.categoryId != null && now - (lastNearbyAt.get(driverKey) ?? 0) >= NEARBY_MIN_INTERVAL_MS) {
+      lastNearbyAt.set(driverKey, now)
+      if (lastNearbyAt.size > 10_000) {
+        for (const [k, t] of lastNearbyAt) if (now - t > 60_000) lastNearbyAt.delete(k)
+      }
+      const car: Parameters<typeof publishNearbyCar>[0] = {
+        id: publicDriverRef(driverKey),
+        lat: Math.round(data.lat * 1e6) / 1e6,
+        lng: Math.round(data.lng * 1e6) / 1e6,
+        categoryId: upserted.categoryId,
+      }
+      if (heading !== undefined) car.heading = Math.round(heading)
+      publishNearbyCar(car)
+    }
     return
   }
 

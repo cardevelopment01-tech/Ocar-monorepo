@@ -29,6 +29,7 @@ vi.mock('@/lib/logger', () => ({
 import { pool } from '@/db/client'
 import { updateLocation } from '@/modules/rides/rides.service'
 import { initSocketServer } from '@/websocket/socket.server'
+import { roomsAround } from '@/websocket/nearby-cells'
 
 type Handler = (...args: unknown[]) => unknown
 
@@ -117,4 +118,97 @@ describe('socket handlers survive hostile payloads', () => {
     handlers.get('location:update')!({ sessionId: '5', lat: 20.3, lng: 85.8, recordedAt: new Date().toISOString(), ...patch })
     expect(updateLocation).not.toHaveBeenCalled()
   })
+})
+
+// A searching rider listens to the map cells around THEIR pickup. They never name coordinates, so the feed cannot be pointed
+// at an area they are not in, or kept after the ride is no longer searching.
+describe('nearby:subscribe (live cars for a searching rider)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    connectionHandlers.length = 0
+    vi.mocked(pool.query).mockResolvedValue({ rows: [] } as never)
+    initSocketServer({} as never)
+  })
+
+  const subscribe = (handlers: Map<string, Handler>, payload: unknown) => { handlers.get('nearby:subscribe')!(payload) }
+  const PICKUP = { lat: 20.2961, lng: 85.8245 }
+  // The socket also joins its private user: room on connect; only the nearby cells matter here.
+  const nearbyJoins = (socket: { join: unknown }) => vi.mocked(socket.join as never as (r: string) => void).mock.calls.map((c) => c[0] as string).filter((r) => r.startsWith('nearby:'))
+
+  it('is only offered to riders: a driver cannot subscribe to the cars around anywhere', () => {
+    const { handlers } = connect('driver')
+    expect(handlers.has('nearby:subscribe')).toBe(false)
+    expect(handlers.has('nearby:unsubscribe')).toBe(false)
+  })
+
+  it('reads the pickup from the rider\'s OWN searching ride and joins the 25 cells around it', async () => {
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [PICKUP] } as never)
+    const { socket, handlers } = connect('user')
+    subscribe(handlers, { rideId: '55' })
+    await vi.waitFor(() => expect(nearbyJoins(socket)).toHaveLength(25))
+    const [sql, args] = vi.mocked(pool.query).mock.calls[0]!
+    expect(String(sql)).toContain('user_id = $2')
+    expect(String(sql)).toContain("status = 'requested'")
+    expect(args).toEqual([55n, 9n]) // the ride, and the socket's own user id -- never one the client supplied
+    expect(nearbyJoins(socket).sort()).toEqual(roomsAround(PICKUP.lat, PICKUP.lng).sort())
+  })
+
+  it('joins nothing for a ride that is not theirs or is no longer searching (the query finds no row)', async () => {
+    const { socket, handlers } = connect('user')
+    subscribe(handlers, { rideId: '55' })
+    await vi.waitFor(() => expect(pool.query).toHaveBeenCalled())
+    await Promise.resolve()
+    expect(nearbyJoins(socket)).toEqual([])
+  })
+
+  it('leaves the cells it listened to once the ride is no longer searching, and on unsubscribe', async () => {
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [PICKUP] } as never)
+    const { socket, handlers } = connect('user')
+    subscribe(handlers, { rideId: '55' })
+    await vi.waitFor(() => expect(nearbyJoins(socket)).toHaveLength(25))
+    subscribe(handlers, { rideId: '55' }) // asked again after it was accepted: no row now
+    await vi.waitFor(() => expect(socket.leave).toHaveBeenCalledTimes(25))
+
+    vi.clearAllMocks()
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [PICKUP] } as never)
+    subscribe(handlers, { rideId: '56' })
+    await vi.waitFor(() => expect(nearbyJoins(socket)).toHaveLength(25))
+    handlers.get('nearby:unsubscribe')!()
+    expect(socket.leave).toHaveBeenCalledTimes(25)
+  })
+
+  it('moving the pickup leaves the cells it no longer covers and joins the new ones', async () => {
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [PICKUP] } as never)
+    const { socket, handlers } = connect('user')
+    subscribe(handlers, { rideId: '55' })
+    await vi.waitFor(() => expect(nearbyJoins(socket)).toHaveLength(25))
+    vi.clearAllMocks()
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [{ lat: PICKUP.lat + 0.04, lng: PICKUP.lng }] } as never) // two cells north
+    subscribe(handlers, { rideId: '55' })
+    await vi.waitFor(() => expect(socket.leave).toHaveBeenCalled())
+    const before = new Set(roomsAround(PICKUP.lat, PICKUP.lng))
+    const after = new Set(roomsAround(PICKUP.lat + 0.04, PICKUP.lng))
+    const left = vi.mocked(socket.leave).mock.calls.map((c) => c[0] as string)
+    expect(left.every((r) => before.has(r) && !after.has(r))).toBe(true)
+    expect(left).toHaveLength([...before].filter((r) => !after.has(r)).length)
+  })
+
+  it('answers at most 12 subscribe requests a minute per socket (a reconnect loop or a scraper is cut off)', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [PICKUP] } as never)
+    const { handlers } = connect('user')
+    for (let i = 0; i < 20; i++) subscribe(handlers, { rideId: '55' })
+    await vi.waitFor(() => expect(pool.query).toHaveBeenCalledTimes(12))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(pool.query).toHaveBeenCalledTimes(12)
+  })
+
+  it.each([undefined, null, 0, '', 'abc', '1; DROP TABLE rides', {}, [], { rideId: {} }, { rideId: 'x'.repeat(5000) }, { rideId: 1e30 }, { rideId: NaN }])(
+    'never throws or touches the database for a hostile payload: %j',
+    (payload) => {
+      const { handlers } = connect('user')
+      expect(() => subscribe(handlers, payload)).not.toThrow()
+      expect(() => handlers.get('nearby:unsubscribe')!(payload)).not.toThrow()
+      expect(pool.query).not.toHaveBeenCalled()
+    }
+  )
 })

@@ -115,7 +115,7 @@ export async function upsertDriverLocation(data: {
   speed?: number
   recordedAt: string
   isAvailable: boolean
-}): Promise<{ owned: boolean; ended: boolean }> {
+}): Promise<{ owned: boolean; ended: boolean; categoryId: number | null; sessionStatus: string | null }> {
   // The session id comes from the client, so it is only honoured when that session really belongs to this
   // driver: the INSERT reads from driver_sessions filtered by (id, driver_id). Without that, a driver could point
   // their location snapshot at ANOTHER driver's session (category, wallet join) and be matched as them.
@@ -123,9 +123,9 @@ export async function upsertDriverLocation(data: {
   // ended=true when it is theirs but the server already ended it (e.g. the stale-heartbeat sweep). Nothing is
   // written for an ended session: it would only repoint the driver's snapshot at a dead session, which hides
   // them from matching if they have since gone online again.
-  const res = await pool.query<{ owned: string; ended: boolean }>(
+  const res = await pool.query<{ owned: string; ended: boolean; category_id: number | null; session_status: string | null }>(
     `WITH mine AS (
-       SELECT id, status::text AS status FROM driver_sessions WHERE id = $2 AND driver_id = $1
+       SELECT id, status::text AS status, category_id FROM driver_sessions WHERE id = $2 AND driver_id = $1
      ), upsert AS (
        INSERT INTO driver_location_snapshots
          (driver_id, session_id, location,
@@ -147,7 +147,9 @@ export async function upsertDriverLocation(data: {
        RETURNING 1
      )
      SELECT (SELECT count(*) FROM mine)::text AS owned,
-            COALESCE((SELECT bool_or(status = 'offline') FROM mine), false) AS ended`,
+            COALESCE((SELECT bool_or(status = 'offline') FROM mine), false) AS ended,
+            (SELECT category_id::int FROM mine) AS category_id,
+            (SELECT status FROM mine) AS session_status`,
     [
       data.driverId, data.sessionId,
       data.lat, data.lng,
@@ -158,7 +160,12 @@ export async function upsertDriverLocation(data: {
     ]
   )
   const row = res.rows[0]
-  return { owned: Number(row?.owned ?? 0) > 0, ended: row?.ended === true }
+  return {
+    owned: Number(row?.owned ?? 0) > 0,
+    ended: row?.ended === true,
+    categoryId: row?.category_id ?? null,
+    sessionStatus: row?.session_status ?? null,
+  }
 }
 
 export async function findNearbyDrivers(params: {
