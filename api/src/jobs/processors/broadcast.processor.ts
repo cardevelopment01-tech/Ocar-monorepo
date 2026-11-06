@@ -231,7 +231,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       const details: RideRequestPushDetails = {
         rideType: data.rideType,
         isReturnCab: data.isReturnCab,
-        estimatedFare: ride.total_estimated != null ? parseFloat(ride.total_estimated) : 0,
+        // The same fare the request card shows (the payable when a rider offer lowered it), not the gross estimate.
+        estimatedFare: driverFare(ride),
         distanceToPickup: Math.round(driver.distance_metres),
       }
       if (ride.payment_channel) details.paymentChannel = ride.payment_channel

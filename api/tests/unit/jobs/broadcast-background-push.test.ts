@@ -56,6 +56,33 @@ describe('processBroadcast — immediate push for a backgrounded match', () => {
     expect(sendRideRequestPushOnce).toHaveBeenCalledWith('354', '8', 'A', 'B', expect.any(Number), expect.objectContaining({ rideType: expect.any(String), distanceToPickup: expect.any(Number) }))
   })
 
+  it('the immediate push carries the fare the driver will collect: the discounted payable, not the gross estimate', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({
+      status: 'requested', origin_address: 'A', destination_address: 'B', total_estimated: '454.00', cash_due: '363.20', discount_amount: '90.80',
+    } as never)
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValue([
+      { driver_id: 8n, session_id: 1n, mode: 'standard', lat: 20.3, lng: 85.8, distance_metres: 500, is_available: false },
+    ] as never)
+
+    await processBroadcast(baseData)
+
+    expect(sendRideRequestPushOnce).toHaveBeenCalledWith('354', '8', 'A', 'B', expect.any(Number), expect.objectContaining({ estimatedFare: 363.2 }))
+    expect(socketEvents.sendRideRequest).toHaveBeenCalledWith('8', expect.objectContaining({ estimatedFare: 363.2 }))
+  })
+
+  it('without an offer the push still carries the estimate', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({
+      status: 'requested', origin_address: 'A', destination_address: 'B', total_estimated: '454.00',
+    } as never)
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValue([
+      { driver_id: 8n, session_id: 1n, mode: 'standard', lat: 20.3, lng: 85.8, distance_metres: 500, is_available: false },
+    ] as never)
+
+    await processBroadcast(baseData)
+
+    expect(sendRideRequestPushOnce).toHaveBeenCalledWith('354', '8', 'A', 'B', expect.any(Number), expect.objectContaining({ estimatedFare: 454 }))
+  })
+
   it('does not immediately push a live (is_available=true) match', async () => {
     vi.mocked(repo.findNearbyDrivers).mockResolvedValue([
       { driver_id: 9n, session_id: 2n, mode: 'standard', lat: 20.3, lng: 85.8, distance_metres: 500, is_available: true },
