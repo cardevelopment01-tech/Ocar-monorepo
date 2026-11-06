@@ -30,6 +30,11 @@ import { ASSIGNED_STATUSES, IN_PROGRESS_STATUSES, SEARCHING_STATUSES } from '@/f
 import type { StatusKey } from '@/features/ride-tracking/statusConfig'
 import { resolveBookingError } from '@/features/booking/api'
 import { PickupUpdatedToast } from '@/features/ride-tracking/components/Toasts'
+import { canShareRide } from '@/features/trip-share/model'
+import { useTripShare } from '@/features/trip-share/useTripShare'
+import { ShareTripSheet } from '@/features/trip-share/components/ShareTripSheet'
+import { ManageSharesSheet, confirmStopAll } from '@/features/trip-share/components/ManageSharesSheet'
+import { SharingBanner } from '@/features/trip-share/components/SharingBanner'
 
 // Mirrors api/src/modules/rides/rides.service.ts's PICKUP_EDITABLE_STATUSES --
 // once the driver has arrived, "where do I pick you up" no longer applies.
@@ -63,6 +68,8 @@ export default function RideTrackingScreen() {
     driverPos, driverHeading, driverHeadingKnown, pickup, drop, routePoints, eta, driverLocated, unreadChatCount,
     fareDrift, dismissFareDrift, upgradeCategory, retry,
   } = useRideTracking(rideId)
+  const canShare = ride ? canShareRide(ride) : false
+  const tripShare = useTripShare(rideId, canShare)
 
   // "Driver's location hasn't updated" must appear when updates STOP, so it needs a timer: a memo on
   // lastLocationAt only recomputed when a new update arrived, i.e. exactly when it was never true.
@@ -88,6 +95,9 @@ export default function RideTrackingScreen() {
   const [cancelling, setCancelling] = useState(false)
   const [showCancelSheet, setShowCancelSheet] = useState(false)
   const [addStopOpen, setAddStopOpen] = useState(false)
+  // Live trip sharing: the links for this trip. Called here (before any early return) so the hook order never changes.
+  const [shareOpen, setShareOpen] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
   const [addStopError, setAddStopError] = useState<string | null>(null)
   const [editPickupOpen, setEditPickupOpen] = useState(false)
   const live = useLiveLocation(locationGranted && editPickupOpen, { heading: false }).coords
@@ -381,9 +391,11 @@ export default function RideTrackingScreen() {
               onSkip={handleSkipStop}
             />
           ) : null}
+          {canShare ? <SharingBanner count={tripShare.shares.length} onManage={() => setManageOpen(true)} onStop={() => confirmStopAll(() => void tripShare.stopAll())} /> : null}
           {hasDriver ? (
             <RideActions
               actions={[
+                ...(canShare ? [{ key: 'share', label: 'Share trip', icon: 'share-2' as const, onPress: () => setShareOpen(true) }] : []),
                 { key: 'details', label: detailsExpanded ? 'Hide details' : 'Trip details', icon: detailsExpanded ? 'chevron-up' : 'file-text', onPress: () => setDetailsExpanded((v) => !v) },
                 ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
                 ...(canAddStop ? [{ key: 'stop', label: 'Add stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),
@@ -401,6 +413,8 @@ export default function RideTrackingScreen() {
         </ScrollView>
       </Animated.View>
 
+      <ShareTripSheet visible={shareOpen} onClose={() => setShareOpen(false)} share={tripShare} />
+      <ManageSharesSheet visible={manageOpen} onClose={() => setManageOpen(false)} share={tripShare} />
       <CancelSheet
         visible={showCancelSheet}
         feeWarning={ride.status === 'driver_arrived'}
