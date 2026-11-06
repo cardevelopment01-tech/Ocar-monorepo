@@ -27,10 +27,13 @@ const SNAPSHOT_MS = 700
 
 function CarMarker({ position, heading = 0, headingKnown = true, opacity }: CarMarkerProps) {
   const [track, setTrack] = useState(true)
+  // The picture is frozen after SNAPSHOT_MS, so re-open the window when what it shows changes (the car starts dimmed, with no
+  // heading yet, and turns solid): otherwise it stayed washed-out for the whole session.
   useEffect(() => {
+    setTrack(true)
     const t = setTimeout(() => setTrack(false), SNAPSHOT_MS)
     return () => clearTimeout(t)
-  }, [])
+  }, [headingKnown, opacity])
   return (
     <Marker
       coordinate={{ latitude: position[0], longitude: position[1] }}
