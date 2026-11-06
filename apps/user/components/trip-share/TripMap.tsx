@@ -137,10 +137,16 @@ function Camera({ points, phaseKey, bottomPad }: { points: [number, number][]; p
     return () => l.remove()
   }, [map])
 
+  // Follow the trip in. A car 40 km/h along a 12 km frame moves about a pixel a second and looks frozen, so each time the
+  // distance still to go halves the camera re-fits (about six times over a 12 km trip, each a handful of new tiles) and the car's
+  // movement becomes visible as it nears. Never after the viewer has moved the map themselves.
+  const left = points.length > 1 ? haversineMetres(points[0]!, points[points.length - 1]!) : 0
+  const closeness = left > 0 ? Math.floor(Math.log2(Math.max(left, 150) / 150)) : 0
+
   useEffect(() => {
     const pts = pointsRef.current
     if (!map || !core || pts.length < 1 || moved.current) return
-    const key = `${phaseKey}:${Math.round(bottomPad / 40)}`
+    const key = `${phaseKey}:${Math.round(bottomPad / 40)}:${closeness}`
     if (fitted.current === key) return
     fitted.current = key
     try {
@@ -149,7 +155,7 @@ function Camera({ points, phaseKey, bottomPad }: { points: [number, number][]; p
       pts.forEach(([lat, lng]) => bounds.extend({ lat, lng }))
       map.fitBounds(bounds, { top: 96, right: 40, left: 40, bottom: bottomPad + 24 })
     } catch { /* a map that cannot frame itself is shown as-is */ }
-  }, [map, core, phaseKey, bottomPad])
+  }, [map, core, phaseKey, bottomPad, closeness])
 
   return null
 }
