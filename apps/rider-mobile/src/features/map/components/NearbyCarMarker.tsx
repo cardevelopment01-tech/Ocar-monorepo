@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import { Marker, type MapMarker } from 'react-native-maps'
 import { carStep } from '@/features/ride-tracking/nearbyCars'
 import { CarGlyph } from './CarGlyph'
+import { useMarkerSettled } from './useMarkerSettled'
 
 // One available car near the rider's pickup while a ride is being matched. Positions arrive about every 3 s (live push) or 8 s
 // (polling fallback); instead of jumping, the marker glides to each new position over as long as it took that update to arrive,
@@ -13,15 +14,17 @@ const MIN_GLIDE_MS = 1000
 const MAX_GLIDE_MS = 8000
 const SNAPSHOT_MS = 700
 
-type Props = { position: [number, number]; heading?: number; opacity?: number }
+/** `ready`: the map is ready, so the native marker exists and may animate (see useMarkerSettled). */
+type Props = { position: [number, number]; ready: boolean; heading?: number; opacity?: number }
 
-function NearbyCarMarker({ position, heading: reported, opacity = 1 }: Props) {
+function NearbyCarMarker({ position, ready, heading: reported, opacity = 1 }: Props) {
   const ref = useRef<MapMarker>(null)
   const [start] = useState(position)
   const last = useRef(position)
   const lastAt = useRef(0)
   const [moved, setMoved] = useState(0)
   const [track, setTrack] = useState(true)
+  const settled = useMarkerSettled(ready)
 
   useEffect(() => {
     const t = setTimeout(() => setTrack(false), SNAPSHOT_MS)
@@ -29,6 +32,7 @@ function NearbyCarMarker({ position, heading: reported, opacity = 1 }: Props) {
   }, [])
 
   useEffect(() => {
+    if (!settled) return // the native marker may not exist yet: animating it now would crash the app
     const prev = last.current
     const step = carStep(prev, position)
     if (step.kind === 'stay') return
@@ -43,7 +47,7 @@ function NearbyCarMarker({ position, heading: reported, opacity = 1 }: Props) {
     }
     if (step.heading !== null) setMoved(step.heading)
     ref.current?.animateMarkerToCoordinate(to, Math.min(Math.max(gap, MIN_GLIDE_MS), MAX_GLIDE_MS))
-  }, [position])
+  }, [position, settled])
 
   return (
     <Marker
@@ -63,5 +67,5 @@ function NearbyCarMarker({ position, heading: reported, opacity = 1 }: Props) {
 
 export default memo(
   NearbyCarMarker,
-  (a, b) => a.position[0] === b.position[0] && a.position[1] === b.position[1] && (a.opacity ?? 1) === (b.opacity ?? 1) && a.heading === b.heading,
+  (a, b) => a.position[0] === b.position[0] && a.position[1] === b.position[1] && (a.opacity ?? 1) === (b.opacity ?? 1) && a.heading === b.heading && a.ready === b.ready,
 )

@@ -99,8 +99,9 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
   // Re-fit when the SET of things on the map changes (status/leg, stops, driver first appearing),
   // not on every driver location tick -- that animated the camera every few seconds, snapped the
   // rider back whenever they panned, and kept the GPU at full frame rate for the whole trip.
-  // Re-frame when cars first appear near the pickup (or all leave), not on every poll: cars drifting about must not move the camera.
-  const framesCars = !driverPos && carsToFrame(pickup, nearbyDrivers).length > 0 ? 1 : 0
+  // Re-frame when the number of cars to frame changes (the first one often arrives alone, before the rest of the list: framing
+  // just that one left the others off screen), not on every position update: cars drifting about must not move the camera.
+  const framesCars = driverPos ? 0 : carsToFrame(pickup, nearbyDrivers).length
   const fitKey = `${pickup[0]},${pickup[1]}|${drop ? `${drop[0]},${drop[1]}` : ''}|${stopsKey}|${showDrop}|${driverPos ? 1 : 0}|${sheetHeightBucket(coveredBottom)}|${framesCars}|${frameDrop ? 1 : 0}`
   useEffect(() => {
     if (mapReady && !holdActive()) fit()
@@ -163,9 +164,9 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
           <LocationPin key={`stop-${i}-${lat}-${lng}`} position={[lat, lng]} variant="stop" />
         ))}
         {showDrop && drop ? <LocationPin position={drop} variant="drop" /> : null}
-        {fleet.map((e) => <NearbyCarMarker key={e.car.driverId} position={[e.car.lat, e.car.lng]} {...(e.car.heading !== undefined ? { heading: e.car.heading } : {})} opacity={fleetOpacity(e, Date.now())} />)}
+        {fleet.map((e) => <NearbyCarMarker key={e.car.driverId} position={[e.car.lat, e.car.lng]} ready={mapReady} {...(e.car.heading !== undefined ? { heading: e.car.heading } : {})} opacity={fleetOpacity(e, Date.now())} />)}
         {driverPos ? (
-          <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} animate={driverLocated} />
+          <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} animate={driverLocated} ready={mapReady} />
         ) : null}
         {routePoints.length >= 2 ? (
           <>
