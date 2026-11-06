@@ -1,9 +1,12 @@
 import { useEffect } from 'react'
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
+import { SlideModal, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
 import { shareTitle, viewedText } from '../model'
 import type { TripShareState } from '../useTripShare'
+import { PressScale } from './PressScale'
 
 /** Confirms before stopping every link (one tap on a single link stops just that link, no confirmation). */
 export function confirmStopAll(onConfirm: () => void): void {
@@ -14,6 +17,8 @@ export function confirmStopAll(onConfirm: () => void): void {
 }
 
 export function ManageSharesSheet({ visible, onClose, share }: { visible: boolean; onClose: () => void; share: TripShareState }) {
+  const insets = useSafeAreaInsets()
+
   useEffect(() => {
     if (visible) { share.clearError(); void share.refresh() }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run on open only
@@ -27,55 +32,62 @@ export function ManageSharesSheet({ visible, onClose, share }: { visible: boolea
 
   const busy = share.busy !== null
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <View style={styles.headerRow}>
-            <Text style={styles.title} accessibilityRole="header">Who can see your trip</Text>
-            <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
-              <Feather name="x" size={16} color={colors.ink600} />
-            </Pressable>
-          </View>
-
-          <ScrollView style={styles.scroll} contentContainerStyle={styles.body}>
-            {share.shares.map((s) => (
-              <View key={s.id} style={styles.row}>
-                <View style={styles.rowText}>
-                  <Text style={styles.rowTitle}>{shareTitle(s)}</Text>
-                  <Text style={styles.rowMeta}>{viewedText(s.viewCount)}</Text>
-                </View>
-                <Pressable
-                  onPress={() => void share.stop(s.id)}
-                  disabled={busy}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Stop sharing with ${shareTitle(s)}`}
-                  style={({ pressed }) => [styles.stopBtn, pressed ? styles.pressed : null, busy ? styles.disabled : null]}
-                >
-                  <Text style={styles.stopText}>Stop</Text>
-                </Pressable>
-              </View>
-            ))}
-            {share.error ? <Text style={styles.error} accessibilityRole="alert">{share.error}</Text> : null}
-            <Pressable
-              onPress={() => confirmStopAll(() => void share.stopAll())}
-              disabled={busy || share.shares.length === 0}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.stopAll, pressed ? styles.pressed : null, busy ? styles.disabled : null]}
-            >
-              <Text style={styles.stopAllText}>Stop all</Text>
-            </Pressable>
-          </ScrollView>
+    <SlideModal visible={visible} onRequestClose={onClose}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]} accessibilityViewIsModal>
+        <View style={styles.handle} />
+        <View style={styles.headerRow}>
+          <Text style={styles.title} accessibilityRole="header">Who can see your trip</Text>
+          <PressScale onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close" scaleTo={0.9} style={styles.closeBtn}>
+            <Feather name="x" size={16} color={colors.ink600} />
+          </PressScale>
         </View>
+
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+          {share.shares.map((s) => (
+            <Animated.View key={s.id} entering={FadeIn.duration(220)} exiting={FadeOut.duration(160)} layout={LinearTransition.duration(220)} style={styles.row}>
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>{shareTitle(s)}</Text>
+                <Text style={styles.rowMeta}>{viewedText(s.viewCount)}</Text>
+              </View>
+              <PressScale
+                onPress={() => void share.stop(s.id)}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel={`Stop sharing with ${shareTitle(s)}`}
+                scaleTo={0.94}
+                hit={busy ? styles.disabled : null}
+                style={styles.stopBtn}
+              >
+                <Text style={styles.stopText}>Stop</Text>
+              </PressScale>
+            </Animated.View>
+          ))}
+          {share.error ? <Text style={styles.error} accessibilityRole="alert">{share.error}</Text> : null}
+          <PressScale
+            onPress={() => confirmStopAll(() => void share.stopAll())}
+            disabled={busy || share.shares.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel="Stop all"
+            scaleTo={0.98}
+            hit={[styles.stopAllHit, busy ? styles.disabled : null]}
+            style={styles.stopAll}
+          >
+            <Text style={styles.stopAllText}>Stop all</Text>
+          </PressScale>
+        </ScrollView>
       </View>
-    </Modal>
+    </SlideModal>
   )
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, maxHeight: '80%' },
+  sheet: {
+    position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '80%',
+    backgroundColor: colors.surface, borderTopLeftRadius: radii['3xl'], borderTopRightRadius: radii['3xl'],
+    paddingHorizontal: spacing.lg, paddingTop: spacing.sm,
+    boxShadow: '0 -6px 32px rgba(14,143,163,0.10)', // DESIGN.md sheet shadow: teal-tinted, directional
+  },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(14,143,163,0.15)', alignSelf: 'center', marginBottom: spacing.md }, // DESIGN.md: teal-tinted 40x4 handle
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
   title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
@@ -88,9 +100,9 @@ const styles = StyleSheet.create({
   rowMeta: { ...typography.caption, color: colors.ink600 },
   stopBtn: { minWidth: 64, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md },
   stopText: { ...typography.label, color: colors.error, fontFamily: fonts.bold },
-  stopAll: { marginTop: spacing.sm, minHeight: 48, borderRadius: radii.full, backgroundColor: colors.errorLight, alignItems: 'center', justifyContent: 'center' },
+  stopAllHit: { marginTop: spacing.sm },
+  stopAll: { minHeight: 48, borderRadius: radii.full, backgroundColor: colors.errorLight, alignItems: 'center', justifyContent: 'center' },
   stopAllText: { ...typography.body, color: colors.error, fontFamily: fonts.bold },
   error: { ...typography.body, color: colors.error, lineHeight: 22 },
-  pressed: { opacity: 0.85 },
   disabled: { opacity: 0.5 },
 })
