@@ -13,7 +13,8 @@ import type { PublicTrip } from '@/lib/trip-share/types'
 import TripPlate from './TripPlate'
 
 // The public live-trip page (/t/<token>). Opened by a relative from a chat message: no app, no login. Map first, with a fixed sheet
-// whose reading order is: status, number plate (the hero), vehicle and driver, route. See docs/superpowers/plans/2026-11-06-live-trip-sharing.md.
+// whose reading order is one glance: status, headline, number plate (the hero), driver and vehicle, route. See
+// docs/superpowers/plans/2026-11-06-live-trip-sharing.md.
 //
 // The map is loaded as its own chunk: the sheet (status, plate, route) is what a worried relative needs first, and it must not wait
 // for the Google Maps code to download on a slow connection.
@@ -23,28 +24,32 @@ const FONT = 'var(--font-sans), var(--font-deva), var(--font-orya), sans-serif'
 const DISPLAY_FONT = 'var(--font-display), var(--font-deva), var(--font-orya), sans-serif'
 const FOCUS = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
 
-// Pill colours chosen for 4.5:1 text contrast on their own background (DESIGN.md's chip text colours are lighter than that).
-const TONE: Record<PillTone, string> = {
-  info: 'bg-[#E0F2FE] text-[#0369A1]',
-  success: 'bg-[#D1FAE5] text-[#047857]',
-  warning: 'bg-[#FEF3C7] text-[#92400E]',
-  muted: 'bg-[#F1F5F9] text-[#475569]',
+// Chip colours chosen for 4.5:1 text contrast on their own background (DESIGN.md's chip text colours are lighter than that).
+const TONE: Record<PillTone, { chip: string; dot: string }> = {
+  info: { chip: 'bg-[#E8F6FD] text-[#0369A1]', dot: 'bg-[#0EA5E9]' },
+  success: { chip: 'bg-[#E3F7EE] text-[#047857]', dot: 'bg-[#10B981]' },
+  warning: { chip: 'bg-[#FEF3C7] text-[#92400E]', dot: 'bg-[#F59E0B]' },
+  muted: { chip: 'bg-[#F1F5F9] text-[#475569]', dot: 'bg-[#94A3B8]' },
 }
 
-// Each row of the sheet rises in a beat after the one above it (first load only; reduced-motion viewers get none of it).
-const rise = (i: number): { className: string; style: CSSProperties } => ({ className: 'motion-safe:animate-row-in', style: { animationDelay: `${120 + i * 55}ms` } })
-
-function ToneIcon({ phase, stale }: { phase: PublicTrip['phase']; stale: boolean }) {
-  if (stale) return <Clock aria-hidden size={16} />
-  if (phase === 'finding_driver') return <Search aria-hidden size={16} />
-  if (phase === 'completed') return <CheckCircle2 aria-hidden size={16} />
-  if (phase === 'cancelled') return <XCircle aria-hidden size={16} />
-  return <Navigation aria-hidden size={16} />
+/** A pulsing dot while the trip is live (the one motion that says "this is moving now"); an icon for states with nothing moving. */
+function StateMark({ tone, phase, stale }: { tone: PillTone; phase: PublicTrip['phase']; stale: boolean }) {
+  if (stale) return <Clock aria-hidden size={14} />
+  if (phase === 'finding_driver') return <Search aria-hidden size={14} />
+  if (phase === 'completed') return <CheckCircle2 aria-hidden size={14} />
+  if (phase === 'cancelled') return <XCircle aria-hidden size={14} />
+  if (phase === 'inactive') return <Navigation aria-hidden size={14} />
+  return (
+    <span aria-hidden className="relative flex h-2.5 w-2.5">
+      <span className={`absolute inline-flex h-full w-full rounded-full opacity-60 motion-safe:animate-ping ${TONE[tone].dot}`} />
+      <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${TONE[tone].dot}`} />
+    </span>
+  )
 }
 
 function LanguageSwitcher({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
   return (
-    <nav aria-label={t(lang, 'lang.label')} className="flex items-center">
+    <nav aria-label={t(lang, 'lang.label')} className="flex items-center gap-0.5 rounded-full bg-surface-2 p-1 ring-1 ring-border">
       {LANGS.map((l) => (
         <button
           key={l.code}
@@ -52,7 +57,8 @@ function LanguageSwitcher({ lang, onChange }: { lang: Lang; onChange: (l: Lang) 
           onClick={() => onChange(l.code)}
           aria-current={l.code === lang ? 'true' : undefined}
           lang={l.code}
-          className={`min-h-[44px] min-w-[44px] rounded-full px-3 text-[13px] transition-colors duration-200 ${l.code === lang ? 'bg-primary-subtle font-bold text-primary-dark' : 'font-medium text-text-secondary'} ${FOCUS}`}
+          // 32 px to look at, 44 px to touch: the ::before grows the hit area without growing the control.
+          className={`relative h-8 min-w-[52px] rounded-full px-3 text-[13px] leading-none transition-colors duration-200 before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-[''] ${l.code === lang ? 'bg-white font-semibold text-primary-dark shadow-ambient' : 'font-medium text-text-secondary'} ${FOCUS}`}
         >
           {l.label}
         </button>
@@ -61,9 +67,9 @@ function LanguageSwitcher({ lang, onChange }: { lang: Lang; onChange: (l: Lang) 
   )
 }
 
-function Footer({ lang, onLang, style, className = '' }: { lang: Lang; onLang: (l: Lang) => void; style?: CSSProperties; className?: string }) {
+function Footer({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
   return (
-    <footer style={style} className={`mt-4 flex items-center justify-between gap-2 border-t border-border pt-2 ${className}`}>
+    <footer className="mt-6 flex items-center justify-between gap-3 border-t border-border pt-4">
       <span className="text-[12px] font-medium text-text-muted">{t(lang, 'footer.shared')}</span>
       <LanguageSwitcher lang={lang} onChange={onLang} />
     </footer>
@@ -72,7 +78,7 @@ function Footer({ lang, onLang, style, className = '' }: { lang: Lang; onLang: (
 
 function Reconnecting({ lang }: { lang: Lang }) {
   return (
-    <p role="status" className="pointer-events-auto flex items-center gap-2 self-center rounded-full bg-[#FEF3C7] px-4 py-2 text-[13px] font-semibold text-[#92400E] shadow-card motion-safe:animate-fade-in">
+    <p role="status" className="pointer-events-auto flex items-center gap-2 self-center rounded-full bg-[#FEF3C7] px-4 py-2 text-[13px] font-semibold text-[#92400E] shadow-float ring-1 ring-[#F59E0B]/30 motion-safe:animate-fade-in">
       <WifiOff aria-hidden size={16} />
       {t(lang, 'banner.reconnecting')}
     </p>
@@ -90,17 +96,19 @@ function SosBanner({ trip, lang }: { trip: PublicTrip; lang: Lang }) {
   }
   const text = trip.riderFirstName ? t(lang, 'sos.banner', { name: trip.riderFirstName }) : t(lang, 'sos.bannerAnon')
   return (
-    <div role="alert" className="pointer-events-auto rounded-2xl bg-[#FEE2E2] p-3 text-[#991B1B] shadow-card motion-safe:animate-fade-up">
-      <p className="flex items-start gap-2 text-[15px] font-bold leading-snug">
-        <TriangleAlert aria-hidden size={20} className="mt-0.5 flex-shrink-0" />
-        <span>{text}</span>
-      </p>
-      <div className="mt-3 flex gap-2">
-        <a href="tel:112" className={`flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-full bg-status-error px-4 text-[15px] font-bold text-white transition-transform active:scale-[0.98] ${FOCUS}`}>
+    <div role="alert" className="pointer-events-auto rounded-3xl bg-gradient-to-br from-[#E11D48] to-[#B91C1C] p-4 text-white shadow-[0_10px_32px_rgba(185,28,28,0.38)] motion-safe:animate-fade-up">
+      <div className="flex items-start gap-3">
+        <span aria-hidden className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white/20">
+          <TriangleAlert size={20} />
+        </span>
+        <p className="pt-0.5 text-[15px] font-semibold leading-snug">{text}</p>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2.5">
+        <a href="tel:112" className={`flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-white px-4 text-[15px] font-bold text-[#B91C1C] transition-transform active:scale-[0.97] ${FOCUS}`}>
           <Phone aria-hidden size={18} />
           {t(lang, 'sos.call112')}
         </a>
-        <button type="button" onClick={() => void share()} className={`flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-full bg-white px-4 text-[15px] font-bold text-[#991B1B] transition-transform active:scale-[0.98] ${FOCUS}`}>
+        <button type="button" onClick={() => void share()} className={`flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-white/15 px-4 text-[15px] font-semibold text-white ring-1 ring-inset ring-white/40 transition-transform active:scale-[0.97] ${FOCUS}`}>
           <Share2 aria-hidden size={18} />
           {copied ? t(lang, 'sos.copied') : t(lang, 'sos.share')}
         </button>
@@ -112,10 +120,10 @@ function SosBanner({ trip, lang }: { trip: PublicTrip; lang: Lang }) {
 function Inactive({ lang, onLang }: { lang: Lang; onLang: (l: Lang) => void }) {
   return (
     <div className="flex h-full flex-col items-center justify-center px-8 text-center motion-safe:animate-fade-up">
-      <XCircle aria-hidden size={40} className="text-text-muted" />
-      <h1 className="mt-4 text-[22px] font-bold leading-tight text-text-primary" style={{ fontFamily: DISPLAY_FONT }}>{t(lang, 'screen.inactiveTitle')}</h1>
+      <span aria-hidden className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-2 text-text-muted ring-1 ring-border"><XCircle size={30} /></span>
+      <h1 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.02em] text-text-primary" style={{ fontFamily: DISPLAY_FONT }}>{t(lang, 'screen.inactiveTitle')}</h1>
       <p className="mt-2 max-w-xs text-[16px] leading-relaxed text-text-secondary">{t(lang, 'screen.inactiveBody')}</p>
-      <div className="mt-8"><Footer lang={lang} onLang={onLang} /></div>
+      <div className="mt-8 w-full max-w-xs"><Footer lang={lang} onLang={onLang} /></div>
     </div>
   )
 }
@@ -126,18 +134,18 @@ function Loading({ lang, offline }: { lang: Lang; offline: boolean }) {
     <div className="flex h-full flex-col justify-end" aria-busy="true">
       <p className="sr-only" role="status">{t(lang, 'screen.loading')}</p>
       {offline && <div className="absolute inset-x-0 top-0 flex justify-center p-3"><Reconnecting lang={lang} /></div>}
-      <div className="mx-auto w-full rounded-t-3xl bg-surface px-5 pb-8 pt-5 shadow-sheet md:max-w-[430px]">
-        <div className={`h-8 w-56 rounded-full ${bar}`} />
-        <div className={`mt-4 h-6 w-40 ${bar}`} />
-        <div className={`mt-4 h-14 w-60 rounded-xl ${bar}`} />
-        <div className={`mt-4 h-5 w-48 ${bar}`} />
+      <div className="mx-auto w-full rounded-t-[32px] bg-surface px-5 pb-8 pt-6 shadow-sheet md:max-w-[430px]">
+        <div className={`h-7 w-40 rounded-full ${bar}`} />
+        <div className={`mt-4 h-8 w-64 ${bar}`} />
+        <div className={`mt-5 h-16 w-full rounded-2xl ${bar}`} />
+        <div className={`mt-5 h-5 w-52 ${bar}`} />
       </div>
     </div>
   )
 }
 
 /**
- * The status pill and its freshness line. This is the ONLY part of the page that follows the one-second clock, so the map and the
+ * The status chip and its freshness line. This is the ONLY part of the page that follows the one-second clock, so the map and the
  * rest of the sheet are not re-rendered every second just to count "Updated 5 sec ago" upwards.
  */
 function StatusRegion({ trip, lang, receivedAtMs, formatTime }: { trip: PublicTrip; lang: Lang; receivedAtMs: number; formatTime: (d: Date) => string }) {
@@ -149,14 +157,40 @@ function StatusRegion({ trip, lang, receivedAtMs, formatTime }: { trip: PublicTr
   return (
     <>
       <p className="sr-only" aria-live="polite" aria-atomic="true">{announce}</p>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[14px] font-semibold leading-snug transition-colors duration-300 ${TONE[view.tone]}`}>
-          <ToneIcon phase={trip.phase} stale={view.stale} />
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+        <span className={`inline-flex items-center gap-2 rounded-full py-2 pl-3 pr-4 text-[13px] font-semibold leading-none transition-colors duration-300 ${TONE[view.tone].chip}`}>
+          <StateMark tone={view.tone} phase={trip.phase} stale={view.stale} />
           {view.text}
         </span>
-        {view.freshness && <span className="text-[13px] tabular-nums text-text-muted">{view.freshness}</span>}
+        {view.freshness && <span className="text-[12px] font-medium tabular-nums text-text-muted">{view.freshness}</span>}
       </div>
     </>
+  )
+}
+
+/** From, any stops and To as one vertical line: a teal dot where it started, a dark square where it ends. */
+function Route({ trip, lang, pendingStops }: { trip: PublicTrip; lang: Lang; pendingStops: PublicTrip['stops'] }) {
+  const rows: { key: string; label: string; text: string; marker: 'from' | 'stop' | 'to' }[] = [
+    { key: 'from', label: t(lang, 'label.from'), text: trip.pickup.label ?? '—', marker: 'from' },
+    ...pendingStops.map((s, i) => ({ key: `s${i}`, label: t(lang, 'label.stops'), text: s.label ?? '—', marker: 'stop' as const })),
+    ...(trip.drop ? [{ key: 'to', label: t(lang, 'label.to'), text: trip.drop.label ?? '—', marker: 'to' as const }] : []),
+  ]
+  const marker = { from: 'h-3 w-3 rounded-full bg-primary ring-4 ring-primary-subtle', stop: 'h-2.5 w-2.5 rounded-full border-2 border-primary bg-white', to: 'h-3 w-3 rounded-[3px] bg-text-primary ring-4 ring-border' }
+  return (
+    <ol className="mt-6">
+      {rows.map((r, i) => (
+        <li key={r.key} className="grid grid-cols-[20px_1fr] gap-x-3">
+          <div className="flex flex-col items-center">
+            <span aria-hidden className={`mt-[5px] flex-shrink-0 ${marker[r.marker]}`} />
+            {i < rows.length - 1 && <span aria-hidden className="my-1.5 w-0 flex-1 border-l-2 border-dotted border-primary-light" />}
+          </div>
+          <div className={i < rows.length - 1 ? 'pb-4' : ''}>
+            <p className="text-[12px] font-medium leading-none text-text-muted">{r.label}</p>
+            <p className="mt-1.5 line-clamp-2 text-[15px] font-medium leading-snug text-text-primary">{r.text}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
   )
 }
 
@@ -182,6 +216,7 @@ function LiveTrip({ trip, lang, receivedAtMs, offline, onLang }: { trip: PublicT
   const km = trip.driver ? haversineMetres([trip.driver.lat, trip.driver.lng], [target.lat, target.lng]) / 1000 : null
   const vehicle = vehicleLine(trip.vehicle)
   const pendingStops = trip.stops.filter((s) => s.status === 'pending')
+  const initial = trip.driverFirstName ? Array.from(trip.driverFirstName)[0]?.toUpperCase() : null
 
   return (
     <>
@@ -189,49 +224,36 @@ function LiveTrip({ trip, lang, receivedAtMs, offline, onLang }: { trip: PublicT
         <TripMap trip={trip} lang={lang} bottomPad={sheetH} label={mapLabel(lang, km)} />
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 mx-auto flex max-w-[430px] flex-col gap-2 p-3">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 mx-auto flex max-w-[430px] flex-col gap-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         {offline && <Reconnecting lang={lang} />}
         {trip.isSos && <SosBanner trip={trip} lang={lang} />}
       </div>
 
       <section
         ref={sheetRef}
-        className="absolute bottom-0 z-10 max-h-[50dvh] min-h-[36dvh] w-full overflow-y-auto rounded-t-3xl bg-surface px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-5 shadow-sheet motion-safe:animate-sheet-in md:left-1/2 md:max-w-[430px] md:-translate-x-1/2"
+        className="absolute bottom-0 z-10 max-h-[64dvh] min-h-[36dvh] w-full overflow-y-auto overscroll-contain rounded-t-[32px] bg-surface px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-3 shadow-sheet motion-safe:animate-sheet-in md:left-1/2 md:max-w-[430px] md:-translate-x-1/2"
       >
-        <div {...rise(0)}>
-          <StatusRegion trip={trip} lang={lang} receivedAtMs={receivedAtMs} formatTime={formatTime} />
-        </div>
+        <div aria-hidden className="mx-auto mb-4 h-1 w-10 rounded-full bg-primary/20" />
 
-        <h1 className={`mt-3 text-[22px] font-bold leading-tight tracking-[-0.02em] ${rise(1).className}`} style={{ fontFamily: DISPLAY_FONT, ...rise(1).style }}>{headline(trip, lang)}</h1>
+        <StatusRegion trip={trip} lang={lang} receivedAtMs={receivedAtMs} formatTime={formatTime} />
 
-        {trip.vehicle.plate && <div className={`mt-3 ${rise(2).className}`} style={rise(2).style}><TripPlate plate={trip.vehicle.plate} /></div>}
+        <h1 className="mt-4 text-[26px] font-semibold leading-[1.15] tracking-[-0.025em] text-text-primary" style={{ fontFamily: DISPLAY_FONT }}>{headline(trip, lang)}</h1>
+
+        {trip.vehicle.plate && <div className="mt-5 flex justify-center"><TripPlate plate={trip.vehicle.plate} /></div>}
 
         {(vehicle || trip.driverFirstName) && (
-          <p className={`mt-3 text-[16px] leading-relaxed text-text-primary ${rise(3).className}`} style={rise(3).style}>
-            {vehicle}
-            {vehicle && trip.driverFirstName ? ' · ' : ''}
-            {trip.driverFirstName ? `${t(lang, 'label.driver')}: ${trip.driverFirstName}` : ''}
-          </p>
+          <div className="mt-4 flex items-center gap-3">
+            {initial && <span aria-hidden className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-primary-subtle text-[17px] font-semibold text-primary-dark">{initial}</span>}
+            <div className="min-w-0">
+              {trip.driverFirstName && <p className="truncate text-[16px] font-semibold leading-tight text-text-primary"><span className="sr-only">{t(lang, 'label.driver')}: </span>{trip.driverFirstName}</p>}
+              {vehicle && <p className="mt-0.5 text-[14px] font-medium leading-snug text-text-secondary">{vehicle}</p>}
+            </div>
+          </div>
         )}
 
-        <dl className={`mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[16px] leading-relaxed ${rise(4).className}`} style={rise(4).style}>
-          <dt className="font-semibold text-text-secondary">{t(lang, 'label.from')}</dt>
-          <dd>{trip.pickup.label ?? '—'}</dd>
-          {pendingStops.length > 0 && (
-            <>
-              <dt className="font-semibold text-text-secondary">{t(lang, 'label.stops')}</dt>
-              <dd>{pendingStops.map((s) => s.label ?? '—').join(', ')}</dd>
-            </>
-          )}
-          {trip.drop && (
-            <>
-              <dt className="font-semibold text-text-secondary">{t(lang, 'label.to')}</dt>
-              <dd>{trip.drop.label ?? '—'}</dd>
-            </>
-          )}
-        </dl>
+        <Route trip={trip} lang={lang} pendingStops={pendingStops} />
 
-        <Footer lang={lang} onLang={onLang} className={rise(5).className} style={rise(5).style} />
+        <Footer lang={lang} onLang={onLang} />
       </section>
     </>
   )

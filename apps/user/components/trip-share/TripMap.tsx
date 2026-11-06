@@ -26,9 +26,9 @@ const GLIDE_FRAME_MS = 33 // ~30 fps is plenty for a car that moves a few metres
 
 function MapUnavailable({ lang }: { lang: Lang }) {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-surface-2 px-8 pb-[45dvh] pt-24 text-center">
-      <MapPinOff aria-hidden size={28} className="text-text-muted" />
-      <p className="max-w-xs text-[15px] font-medium leading-relaxed text-text-secondary">{t(lang, 'map.unavailable')}</p>
+    <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-b from-[#EAF2FF] to-surface-2 px-10 pb-[48dvh] pt-24 text-center">
+      <span aria-hidden className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-text-muted shadow-float"><MapPinOff size={24} /></span>
+      <p className="max-w-[260px] text-[14px] font-medium leading-relaxed text-text-secondary">{t(lang, 'map.unavailable')}</p>
     </div>
   )
 }
