@@ -1,4 +1,4 @@
-import { t, type Lang } from './i18n'
+import { t, type Lang, type StringKey } from './i18n'
 import type { PublicTrip } from './types'
 
 // What the status pill and the freshness line say. Pure, so the wording rules are tested without a browser.
@@ -15,6 +15,8 @@ export interface StatusView {
   /** "Updated 5 sec ago" while live, "Last seen 2 min ago" when stale, null when there is no driver position to talk about. */
   freshness: string | null
   stale: boolean
+  /** The one line a relative came for: "Arriving 12:10 am" / "Reaches pickup in 6 min". Null when there is no trustworthy ETA. */
+  eta: string | null
 }
 
 export function driverAgeSec(trip: PublicTrip, receivedAtMs: number, nowMs: number): number | null {
@@ -37,12 +39,12 @@ export function statusView(input: {
   formatTime: (d: Date) => string
 }): StatusView {
   const { trip, lang } = input
-  if (trip.phase === 'cancelled') return { tone: 'muted', text: t(lang, 'status.cancelled'), freshness: null, stale: false }
+  if (trip.phase === 'cancelled') return { tone: 'muted', text: t(lang, 'status.cancelled'), freshness: null, stale: false, eta: null }
   // The driver cancelled and dispatch is looking again: the link is alive and comes back to a live trip when someone accepts.
-  if (trip.phase === 'finding_driver') return { tone: 'info', text: t(lang, 'status.finding'), freshness: null, stale: false }
+  if (trip.phase === 'finding_driver') return { tone: 'info', text: t(lang, 'status.finding'), freshness: null, stale: false, eta: null }
   if (trip.phase === 'completed') {
     const text = trip.completedAt ? t(lang, 'status.completedAt', { time: input.formatTime(new Date(trip.completedAt)) }) : t(lang, 'status.completed')
-    return { tone: 'muted', text, freshness: null, stale: false }
+    return { tone: 'muted', text, freshness: null, stale: false, eta: null }
   }
 
   const onWay = trip.phase === 'driver_on_way'
@@ -50,7 +52,7 @@ export function statusView(input: {
   const stale = age !== null && age > STALE_AFTER_SEC
   const base = onWay ? t(lang, 'status.onWay') : t(lang, 'status.inTrip')
 
-  if (stale) return { tone: 'warning', text: base, freshness: t(lang, 'status.stale', { ago: formatAgo(lang, age) }), stale: true }
+  if (stale) return { tone: 'warning', text: base, freshness: t(lang, 'status.stale', { ago: formatAgo(lang, age) }), stale: true, eta: null }
 
   let text = base
   if (trip.etaMin != null) {
@@ -60,11 +62,24 @@ export function statusView(input: {
       // the arrival time creep later every second until the next response.
       : t(lang, 'status.inTripEta', { time: input.formatTime(new Date(Date.parse(trip.serverTime) + trip.etaMin * 60_000)) })
   }
-  return { tone: onWay ? 'info' : 'success', text, freshness: age === null ? null : t(lang, 'status.updated', { ago: formatAgo(lang, age) }), stale: false }
+  let eta: string | null = null
+  if (trip.etaMin != null) {
+    eta = onWay
+      ? t(lang, 'eta.onWay', { min: trip.etaMin })
+      : t(lang, 'eta.inTrip', { time: input.formatTime(new Date(Date.parse(trip.serverTime) + trip.etaMin * 60_000)) })
+  }
+  return { tone: onWay ? 'info' : 'success', text, freshness: age === null ? null : t(lang, 'status.updated', { ago: formatAgo(lang, age) }), stale: false, eta }
 }
 
 export function headline(trip: PublicTrip, lang: Lang): string {
-  return trip.riderFirstName ? t(lang, 'headline.named', { name: trip.riderFirstName }) : t(lang, 'headline.anon')
+  // The sentence follows the phase, so it never contradicts the status chip above it ("is on a trip" under "Trip was cancelled").
+  const key = trip.phase === 'completed' ? 'headline.completed'
+    : trip.phase === 'cancelled' ? 'headline.cancelled'
+    : trip.phase === 'finding_driver' ? 'headline.finding'
+    : trip.phase === 'driver_on_way' ? 'headline.onWay'
+    : 'headline.named'
+  if (!trip.riderFirstName) return t(lang, key === 'headline.named' ? 'headline.anon' : (`${key}Anon` as StringKey))
+  return t(lang, key, { name: trip.riderFirstName })
 }
 
 export function vehicleLine(v: PublicTrip['vehicle']): string {

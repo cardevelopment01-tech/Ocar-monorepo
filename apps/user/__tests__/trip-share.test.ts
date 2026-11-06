@@ -22,6 +22,16 @@ const trip = (over: Partial<PublicTrip> = {}): PublicTrip => ({
 })
 const view = (p: PublicTrip, nowMs = T0, lang: 'en' | 'hi' | 'or' = 'en') => statusView({ trip: p, lang, receivedAtMs: T0, nowMs, formatTime: fmt })
 
+describe('arrival line', () => {
+  it('is the ETA a relative came for: a clock time in a trip, minutes to pickup on the way, nothing when stale or unknown', () => {
+    expect(view(trip()).eta).toBe('Arriving T10:12')
+    expect(view(trip({ phase: 'driver_on_way', etaMin: 6 })).eta).toBe('Reaches pickup in 6 min')
+    expect(view(trip({ etaMin: null })).eta).toBeNull()
+    expect(view(trip(), T0 + 130_000).eta).toBeNull() // stale: do not promise a time off an old position
+    expect(view(trip({ phase: 'completed', driver: null })).eta).toBeNull()
+  })
+})
+
 describe('languages', () => {
   const keys = Object.keys(STRINGS.en) as StringKey[]
   it.each(LANGS.map((l) => l.code))('%s has every string', (lang) => {
@@ -96,6 +106,14 @@ describe('statusView', () => {
   it('headline names the rider when known and stays kind when not; the vehicle line skips missing parts', () => {
     expect(headline(trip(), 'en')).toBe('Rahul is on a trip')
     expect(headline(trip({ riderFirstName: null }), 'en')).toBe('A trip has been shared with you')
+    // The sentence follows the phase, so it never contradicts the status chip ("is on a trip" under "Trip was cancelled").
+    expect(headline(trip({ phase: 'cancelled', driver: null }), 'en')).toBe("Rahul's trip was cancelled")
+    expect(headline(trip({ phase: 'completed', driver: null }), 'en')).toBe('Rahul has reached safely')
+    expect(headline(trip({ phase: 'finding_driver', driver: null }), 'en')).toBe('Finding a new driver for Rahul')
+    expect(headline(trip({ phase: 'driver_on_way' }), 'en')).toBe("Rahul's cab is on the way")
+    for (const phase of ['cancelled', 'completed', 'finding_driver', 'driver_on_way'] as const) {
+      for (const lang of ['en', 'hi', 'or'] as const) expect(headline(trip({ phase, riderFirstName: null }), lang)).not.toContain('{')
+    }
     expect(vehicleLine({ color: 'White', brand: null, model: 'Dzire', plate: null })).toBe('White Dzire')
     expect(mapLabel('en', 2.04)).toContain('2.0 km')
     expect(mapLabel('en', null)).toBe(STRINGS.en['map.label'])

@@ -2,10 +2,10 @@
 // so every visible word has all three. Hindi and Odia are first drafts: have a native speaker read them before launch.
 
 export type Lang = 'en' | 'hi' | 'or'
-export const LANGS: ReadonlyArray<{ code: Lang; label: string }> = [
-  { code: 'en', label: 'English' },
-  { code: 'hi', label: 'हिन्दी' },
-  { code: 'or', label: 'ଓଡ଼ିଆ' },
+export const LANGS: ReadonlyArray<{ code: Lang; label: string; short: string }> = [
+  { code: 'en', label: 'English', short: 'EN' },
+  { code: 'hi', label: 'हिन्दी', short: 'हि' },
+  { code: 'or', label: 'ଓଡ଼ିଆ', short: 'ଓ' },
 ]
 export const LOCALE_TAG: Record<Lang, string> = { en: 'en-IN', hi: 'hi-IN', or: 'or-IN' }
 
@@ -23,6 +23,16 @@ const en = {
   'status.staleAnnounce': 'The driver location is not updating',
   'headline.named': '{name} is on a trip',
   'headline.anon': 'A trip has been shared with you',
+  'headline.completed': '{name} has reached safely',
+  'headline.completedAnon': 'The trip ended safely',
+  'headline.cancelled': "{name}'s trip was cancelled",
+  'headline.cancelledAnon': 'This trip was cancelled',
+  'headline.finding': 'Finding a new driver for {name}',
+  'headline.findingAnon': 'Finding a new driver',
+  'headline.onWay': "{name}'s cab is on the way",
+  'headline.onWayAnon': 'The cab is on the way to pickup',
+  'eta.onWay': 'Reaches pickup in {min} min',
+  'eta.inTrip': 'Arriving {time}',
   'label.driver': 'Driver',
   'label.from': 'From',
   'label.to': 'To',
@@ -41,6 +51,8 @@ const en = {
   'sos.call112': 'Call 112',
   'sos.share': 'Share this link',
   'sos.copied': 'Link copied',
+  'sheet.expand': 'Show trip details',
+  'sheet.collapse': 'Hide trip details',
   'lang.label': 'Language',
 } as const
 
@@ -60,6 +72,16 @@ const hi: Record<StringKey, string> = {
   'status.staleAnnounce': 'ड्राइवर की लोकेशन अपडेट नहीं हो रही',
   'headline.named': '{name} यात्रा पर हैं',
   'headline.anon': 'आपके साथ एक यात्रा साझा की गई है',
+  'headline.completed': '{name} सुरक्षित पहुँच गए',
+  'headline.completedAnon': 'यात्रा सुरक्षित पूरी हुई',
+  'headline.cancelled': '{name} की यात्रा रद्द हो गई',
+  'headline.cancelledAnon': 'यह यात्रा रद्द हो गई',
+  'headline.finding': '{name} के लिए नया ड्राइवर ढूँढा जा रहा है',
+  'headline.findingAnon': 'नया ड्राइवर ढूँढा जा रहा है',
+  'headline.onWay': '{name} की कैब आ रही है',
+  'headline.onWayAnon': 'कैब पिकअप की ओर आ रही है',
+  'eta.onWay': '{min} मिनट में पिकअप पर पहुँचेंगे',
+  'eta.inTrip': '{time} तक पहुँचेंगे',
   'label.driver': 'ड्राइवर',
   'label.from': 'पिकअप',
   'label.to': 'मंज़िल',
@@ -78,6 +100,8 @@ const hi: Record<StringKey, string> = {
   'sos.call112': '112 पर कॉल करें',
   'sos.share': 'यह लिंक साझा करें',
   'sos.copied': 'लिंक कॉपी हो गया',
+  'sheet.expand': 'यात्रा का विवरण दिखाएँ',
+  'sheet.collapse': 'विवरण छिपाएँ',
   'lang.label': 'भाषा',
 }
 
@@ -95,6 +119,16 @@ const or: Record<StringKey, string> = {
   'status.staleAnnounce': 'ଡ୍ରାଇଭରଙ୍କ ଲୋକେସନ୍ ଅପଡେଟ୍ ହେଉନାହିଁ',
   'headline.named': '{name} ଯାତ୍ରାରେ ଅଛନ୍ତି',
   'headline.anon': 'ଆପଣଙ୍କ ସହିତ ଏକ ଯାତ୍ରା ସେୟାର୍ କରାଯାଇଛି',
+  'headline.completed': '{name} ସୁରକ୍ଷିତ ଭାବେ ପହଞ୍ଚିଛନ୍ତି',
+  'headline.completedAnon': 'ଯାତ୍ରା ସୁରକ୍ଷିତ ଭାବେ ଶେଷ ହେଲା',
+  'headline.cancelled': '{name}ଙ୍କ ଯାତ୍ରା ବାତିଲ୍ ହୋଇଛି',
+  'headline.cancelledAnon': 'ଏହି ଯାତ୍ରା ବାତିଲ୍ ହୋଇଛି',
+  'headline.finding': '{name}ଙ୍କ ପାଇଁ ନୂଆ ଡ୍ରାଇଭର ଖୋଜା ଯାଉଛି',
+  'headline.findingAnon': 'ନୂଆ ଡ୍ରାଇଭର ଖୋଜା ଯାଉଛି',
+  'headline.onWay': '{name}ଙ୍କ କ୍ୟାବ୍ ଆସୁଛି',
+  'headline.onWayAnon': 'କ୍ୟାବ୍ ପିକଅପ୍ ଆଡ଼କୁ ଆସୁଛି',
+  'eta.onWay': '{min} ମିନିଟରେ ପିକଅପ୍‌ରେ ପହଞ୍ଚିବ',
+  'eta.inTrip': '{time} ବେଳକୁ ପହଞ୍ଚିବେ',
   'label.driver': 'ଡ୍ରାଇଭର',
   'label.from': 'ପିକଅପ୍',
   'label.to': 'ଗନ୍ତବ୍ୟ',
@@ -113,6 +147,8 @@ const or: Record<StringKey, string> = {
   'sos.call112': '112 କୁ କଲ୍ କରନ୍ତୁ',
   'sos.share': 'ଏହି ଲିଙ୍କ୍ ସେୟାର୍ କରନ୍ତୁ',
   'sos.copied': 'ଲିଙ୍କ୍ କପି ହୋଇଛି',
+  'sheet.expand': 'ଯାତ୍ରା ବିବରଣୀ ଦେଖାନ୍ତୁ',
+  'sheet.collapse': 'ବିବରଣୀ ଲୁଚାନ୍ତୁ',
   'lang.label': 'ଭାଷା',
 }
 
