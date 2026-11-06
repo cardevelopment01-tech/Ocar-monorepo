@@ -268,6 +268,7 @@ export default function RideTrackingScreen() {
         stops={ride.stops.filter((s) => s.status === 'pending').map((s): [number, number] => [s.lat, s.lng])}
         coveredBottom={sheetHeight}
         nearbyDrivers={nearbyCars}
+        driverLocated={driverLocated}
       />
 
       <View style={[styles.mapOverlayTop, { paddingTop: insets.top + spacing.sm }]} pointerEvents="box-none">

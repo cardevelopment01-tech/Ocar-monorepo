@@ -6,7 +6,7 @@ import CarMarker from '@/features/map/components/CarMarker'
 import NearbyCarMarker from '@/features/map/components/NearbyCarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { framingPadding, isInVisibleBand, sheetHeightBucket } from '../mapFraming'
-import { carsToFrame, type NearbyCar } from '../nearbyCars'
+import { FADE_STEPS, FADE_STEP_MS, carsToFrame, fadeOpacity, type NearbyCar } from '../nearbyCars'
 
 const USER_MOVE_HOLD_MS = 15_000
 const DRIVER_REFIT_MIN_MS = 5_000
@@ -32,6 +32,8 @@ export type RideMapViewProps = {
   // Available cars around the pickup, shown while a ride is being matched (before any driver is assigned). Ignored once
   // `driverPos` is set: from then on the assigned car is the only car.
   nearbyDrivers?: readonly NearbyCar[]
+  // True once `driverPos` is a real driver fix (not the pickup stand-in): only then does the assigned car glide.
+  driverLocated?: boolean
 }
 
 // Real map replacing the earlier placeholder progress-bar "track" (LiveMarker) --
@@ -41,7 +43,7 @@ export type RideMapViewProps = {
 // drop/driver now use the same custom SVG markers as web (CarMarker/LocationPin)
 // instead of react-native-maps' default OS pin -- see the input-consistency +
 // premiumness pass this replaced.
-function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS }: RideMapViewProps) {
+function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS, driverLocated = true }: RideMapViewProps) {
   const mapRef = useRef<MapView>(null)
   // Same react-native-maps gotcha as SelectRideMap: fitToCoordinates called
   // before the native view's onMapReady fires silently no-ops, leaving the
@@ -49,6 +51,26 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
   // outside that tiny visible area, reading as "the route isn't there".
   const [mapReady, setMapReady] = useState(false)
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 })
+  // Hand-over: when a driver is assigned the nearby cars fade out (the same markers, so nothing flickers) as the assigned
+  // car takes over, instead of vanishing the instant the list is cleared.
+  const lastCars = useRef<readonly NearbyCar[]>(NO_CARS)
+  const [fadeStep, setFadeStep] = useState(0)
+  const assigned = driverPos !== null
+  if (!assigned && nearbyDrivers.length > 0) lastCars.current = nearbyDrivers
+  const fading = assigned && fadeStep < FADE_STEPS && lastCars.current.length > 0
+  useEffect(() => {
+    if (!assigned) { setFadeStep(0); return }
+    if (lastCars.current.length === 0) return
+    const id = setInterval(() => {
+      setFadeStep((s) => {
+        if (s + 1 >= FADE_STEPS) clearInterval(id)
+        return s + 1
+      })
+    }, FADE_STEP_MS)
+    return () => clearInterval(id)
+  }, [assigned])
+  const shownCars = !assigned ? nearbyDrivers : fading ? lastCars.current : NO_CARS
+  const carOpacity = fading ? fadeOpacity(fadeStep) : 1
   const stopsKey = stops.map(([lat, lng]) => `${lat},${lng}`).join('|')
   // Bumped whenever the rider drags/zooms the map, so the camera stops fighting them.
   const userMovedAt = useRef(0)
@@ -141,9 +163,9 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
           <LocationPin key={`stop-${i}-${lat}-${lng}`} position={[lat, lng]} variant="stop" />
         ))}
         {showDrop && drop ? <LocationPin position={drop} variant="drop" /> : null}
-        {!driverPos ? nearbyDrivers.map((d) => <NearbyCarMarker key={d.driverId} position={[d.lat, d.lng]} />) : null}
+        {shownCars.map((d) => <NearbyCarMarker key={d.driverId} position={[d.lat, d.lng]} opacity={carOpacity} />)}
         {driverPos ? (
-          <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} />
+          <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} animate={driverLocated} />
         ) : null}
         {routePoints.length >= 2 ? (
           <>

@@ -10,9 +10,9 @@ import { CarGlyph } from './CarGlyph'
 const GLIDE_MS = 6000
 const SNAPSHOT_MS = 700
 
-type Props = { position: [number, number] }
+type Props = { position: [number, number]; opacity?: number }
 
-function NearbyCarMarker({ position }: Props) {
+function NearbyCarMarker({ position, opacity = 1 }: Props) {
   const ref = useRef<MapMarker>(null)
   const [start] = useState(position)
   const last = useRef(position)
@@ -46,6 +46,7 @@ function NearbyCarMarker({ position }: Props) {
       rotation={heading}
       flat
       tracksViewChanges={track}
+      opacity={opacity}
       zIndex={5}
     >
       <CarGlyph />
@@ -53,4 +54,7 @@ function NearbyCarMarker({ position }: Props) {
   )
 }
 
-export default memo(NearbyCarMarker, (a, b) => a.position[0] === b.position[0] && a.position[1] === b.position[1])
+export default memo(
+  NearbyCarMarker,
+  (a, b) => a.position[0] === b.position[0] && a.position[1] === b.position[1] && (a.opacity ?? 1) === (b.opacity ?? 1),
+)
