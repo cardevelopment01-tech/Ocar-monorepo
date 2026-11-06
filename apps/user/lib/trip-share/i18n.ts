@@ -1,0 +1,130 @@
+// Strings for the public trip page: English, Hindi, Odia. The page is opened by relatives, often on a modest Android phone,
+// so every visible word has all three. Hindi and Odia are first drafts: have a native speaker read them before launch.
+
+export type Lang = 'en' | 'hi' | 'or'
+export const LANGS: ReadonlyArray<{ code: Lang; label: string }> = [
+  { code: 'en', label: 'English' },
+  { code: 'hi', label: 'हिन्दी' },
+  { code: 'or', label: 'ଓଡ଼ିଆ' },
+]
+export const LOCALE_TAG: Record<Lang, string> = { en: 'en-IN', hi: 'hi-IN', or: 'or-IN' }
+
+const en = {
+  'status.onWay': 'On the way to pickup',
+  'status.onWayEta': 'On the way to pickup · {min} min',
+  'status.inTrip': 'In trip',
+  'status.inTripEta': 'In trip · Arriving {time}',
+  'status.completed': 'Reached destination safely',
+  'status.completedAt': 'Reached destination safely · {time}',
+  'status.cancelled': 'Trip was cancelled',
+  'status.stale': 'Last seen {ago} ago',
+  'status.updated': 'Updated {ago} ago',
+  'status.staleAnnounce': 'The driver location is not updating',
+  'headline.named': '{name} is on a trip',
+  'headline.anon': 'A trip has been shared with you',
+  'label.driver': 'Driver',
+  'label.from': 'From',
+  'label.to': 'To',
+  'label.stops': 'Stops',
+  'footer.shared': 'Shared via Ocar',
+  'time.sec': '{n} sec',
+  'time.min': '{n} min',
+  'banner.reconnecting': 'Reconnecting…',
+  'screen.loading': 'Loading trip…',
+  'screen.inactiveTitle': 'This link is no longer active',
+  'screen.inactiveBody': 'The trip has ended or the link was stopped.',
+  'map.unavailable': 'Map unavailable. Status and location text below keep updating.',
+  'map.label': 'Map showing the car on its route',
+  'sos.banner': '{name} pressed SOS. Call them now, then call 112 if you cannot reach them.',
+  'sos.bannerAnon': 'SOS was pressed on this trip. Call the rider now, then call 112 if you cannot reach them.',
+  'sos.call112': 'Call 112',
+  'sos.share': 'Share this link',
+  'lang.label': 'Language',
+} as const
+
+export type StringKey = keyof typeof en
+
+const hi: Record<StringKey, string> = {
+  'status.onWay': 'पिकअप की ओर आ रहे हैं',
+  'status.onWayEta': 'पिकअप की ओर · {min} मिनट',
+  'status.inTrip': 'यात्रा जारी है',
+  'status.inTripEta': 'यात्रा जारी · {time} तक पहुँचेंगे',
+  'status.completed': 'सुरक्षित मंज़िल पर पहुँच गए',
+  'status.completedAt': 'सुरक्षित मंज़िल पर पहुँचे · {time}',
+  'status.cancelled': 'यात्रा रद्द हो गई',
+  'status.stale': 'आख़िरी बार {ago} पहले देखा गया',
+  'status.updated': '{ago} पहले अपडेट हुआ',
+  'status.staleAnnounce': 'ड्राइवर की लोकेशन अपडेट नहीं हो रही',
+  'headline.named': '{name} यात्रा पर हैं',
+  'headline.anon': 'आपके साथ एक यात्रा साझा की गई है',
+  'label.driver': 'ड्राइवर',
+  'label.from': 'कहाँ से',
+  'label.to': 'कहाँ तक',
+  'label.stops': 'रुकने की जगहें',
+  'footer.shared': 'Ocar के ज़रिए साझा',
+  'time.sec': '{n} सेकंड',
+  'time.min': '{n} मिनट',
+  'banner.reconnecting': 'दोबारा जुड़ रहे हैं…',
+  'screen.loading': 'यात्रा लोड हो रही है…',
+  'screen.inactiveTitle': 'यह लिंक अब सक्रिय नहीं है',
+  'screen.inactiveBody': 'यात्रा समाप्त हो गई है या लिंक बंद कर दिया गया है।',
+  'map.unavailable': 'मानचित्र उपलब्ध नहीं है। नीचे दी गई स्थिति और लोकेशन की जानकारी अपडेट होती रहेगी।',
+  'map.label': 'रास्ते पर गाड़ी दिखाने वाला मानचित्र',
+  'sos.banner': '{name} ने SOS दबाया है। अभी उन्हें फ़ोन करें, और संपर्क न हो पाए तो 112 पर कॉल करें।',
+  'sos.bannerAnon': 'इस यात्रा में SOS दबाया गया है। अभी यात्री को फ़ोन करें, और संपर्क न हो पाए तो 112 पर कॉल करें।',
+  'sos.call112': '112 पर कॉल करें',
+  'sos.share': 'यह लिंक साझा करें',
+  'lang.label': 'भाषा',
+}
+
+const or: Record<StringKey, string> = {
+  'status.onWay': 'ପିକଅପ୍ ଆଡ଼କୁ ଆସୁଛନ୍ତି',
+  'status.onWayEta': 'ପିକଅପ୍ ଆଡ଼କୁ · {min} ମିନିଟ୍',
+  'status.inTrip': 'ଯାତ୍ରା ଚାଲିଛି',
+  'status.inTripEta': 'ଯାତ୍ରା ଚାଲିଛି · {time} ବେଳକୁ ପହଞ୍ଚିବେ',
+  'status.completed': 'ନିରାପଦରେ ଗନ୍ତବ୍ୟସ୍ଥଳରେ ପହଞ୍ଚିଲେ',
+  'status.completedAt': 'ନିରାପଦରେ ପହଞ୍ଚିଲେ · {time}',
+  'status.cancelled': 'ଯାତ୍ରା ବାତିଲ୍ ହୋଇଛି',
+  'status.stale': 'ଶେଷ ଥର {ago} ପୂର୍ବେ ଦେଖାଯାଇଥିଲା',
+  'status.updated': '{ago} ପୂର୍ବେ ଅପଡେଟ୍ ହୋଇଛି',
+  'status.staleAnnounce': 'ଡ୍ରାଇଭରଙ୍କ ଲୋକେସନ୍ ଅପଡେଟ୍ ହେଉନାହିଁ',
+  'headline.named': '{name} ଯାତ୍ରାରେ ଅଛନ୍ତି',
+  'headline.anon': 'ଆପଣଙ୍କ ସହିତ ଏକ ଯାତ୍ରା ସେୟାର୍ କରାଯାଇଛି',
+  'label.driver': 'ଡ୍ରାଇଭର',
+  'label.from': 'କେଉଁଠାରୁ',
+  'label.to': 'କେଉଁଠାକୁ',
+  'label.stops': 'ବିରତି ସ୍ଥାନ',
+  'footer.shared': 'Ocar ମାଧ୍ୟମରେ ସେୟାର୍',
+  'time.sec': '{n} ସେକେଣ୍ଡ',
+  'time.min': '{n} ମିନିଟ୍',
+  'banner.reconnecting': 'ପୁଣି ସଂଯୋଗ ହେଉଛି…',
+  'screen.loading': 'ଯାତ୍ରା ଲୋଡ୍ ହେଉଛି…',
+  'screen.inactiveTitle': 'ଏହି ଲିଙ୍କ୍ ଆଉ ସକ୍ରିୟ ନାହିଁ',
+  'screen.inactiveBody': 'ଯାତ୍ରା ସମାପ୍ତ ହୋଇଛି କିମ୍ବା ଲିଙ୍କ୍ ବନ୍ଦ କରାଯାଇଛି।',
+  'map.unavailable': 'ମାନଚିତ୍ର ଉପଲବ୍ଧ ନାହିଁ। ତଳେ ଥିବା ସ୍ଥିତି ଓ ଲୋକେସନ୍ ସୂଚନା ଅପଡେଟ୍ ହେଉଥିବ।',
+  'map.label': 'ରାସ୍ତାରେ ଗାଡ଼ି ଦେଖାଉଥିବା ମାନଚିତ୍ର',
+  'sos.banner': '{name} SOS ଦବାଇଛନ୍ତି। ଏବେ ସେମାନଙ୍କୁ ଫୋନ୍ କରନ୍ତୁ, ଯୋଗାଯୋଗ ନ ହେଲେ 112 କୁ କଲ୍ କରନ୍ତୁ।',
+  'sos.bannerAnon': 'ଏହି ଯାତ୍ରାରେ SOS ଦବାଯାଇଛି। ଏବେ ଯାତ୍ରୀଙ୍କୁ ଫୋନ୍ କରନ୍ତୁ, ଯୋଗାଯୋଗ ନ ହେଲେ 112 କୁ କଲ୍ କରନ୍ତୁ।',
+  'sos.call112': '112 କୁ କଲ୍ କରନ୍ତୁ',
+  'sos.share': 'ଏହି ଲିଙ୍କ୍ ସେୟାର୍ କରନ୍ତୁ',
+  'lang.label': 'ଭାଷା',
+}
+
+export const STRINGS: Record<Lang, Record<StringKey, string>> = { en, hi, or }
+
+export function t(lang: Lang, key: StringKey, vars: Record<string, string | number> = {}): string {
+  return STRINGS[lang][key].replace(/\{(\w+)\}/g, (m, name: string) => (name in vars ? String(vars[name]) : m))
+}
+
+const isLang = (v: unknown): v is Lang => v === 'en' || v === 'hi' || v === 'or'
+
+/** First language: `?lang=` on the link, then the viewer's saved choice, then the browser's languages, then English. */
+export function pickLanguage(input: { queryLang?: string | null; stored?: string | null; browserLanguages?: readonly string[] }): Lang {
+  if (isLang(input.queryLang)) return input.queryLang
+  if (isLang(input.stored)) return input.stored
+  for (const tag of input.browserLanguages ?? []) {
+    const base = tag.toLowerCase().split('-')[0]
+    if (isLang(base)) return base
+  }
+  return 'en'
+}

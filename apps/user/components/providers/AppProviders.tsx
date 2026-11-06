@@ -14,7 +14,8 @@ import MaintenanceProvider from '@/components/providers/MaintenanceProvider'
 // visitor sees) is a normal responsive website: no 430px phone shell, no splash,
 // and no geolocation prompt or auth/socket providers spinning up on load. Only
 // the actual ride app keeps the mobile shell.
-const SITE_PATHS = ['/about', '/pricing', '/contact', '/legal']
+// '/t' is the public live-trip page: opened by relatives with no account, it must not start auth, location or notification providers.
+const SITE_PATHS = ['/about', '/pricing', '/contact', '/legal', '/t']
 
 export function isSitePath(pathname: string): boolean {
   return pathname === '/' || SITE_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
