@@ -335,6 +335,8 @@ const ADMIN_BROADCAST_MIN_INTERVAL_MS = 5_000
 // pings over both the socket and the HTTP fallback is not published twice.
 const NEARBY_MIN_INTERVAL_MS = 1_500
 const lastNearbyAt = new Map<string, number>()
+const NEARBY_SWEEP_MS = 60_000
+let lastNearbySweepAt = 0
 // recorded_at is the gps_tracks partition key and the snapshot ordering key, and comes from the device clock.
 const MAX_PING_CLOCK_SKEW_MS = 10 * 60 * 1000
 
@@ -444,10 +446,6 @@ export async function updateLocation(driverId: bigint, data: {
     // An online driver with no ride is an available car: show it, moving, to riders searching near it. Only an online
     // session (not paused / on a trip) with a known category, and never the driver's real id.
     if (upserted.sessionStatus === 'online' && upserted.categoryId != null && now - (lastNearbyAt.get(driverKey) ?? 0) >= NEARBY_MIN_INTERVAL_MS) {
-      lastNearbyAt.set(driverKey, now)
-      if (lastNearbyAt.size > 10_000) {
-        for (const [k, t] of lastNearbyAt) if (now - t > 60_000) lastNearbyAt.delete(k)
-      }
       const car: Parameters<typeof publishNearbyCar>[0] = {
         id: publicDriverRef(driverKey),
         lat: Math.round(data.lat * 1e6) / 1e6,
@@ -455,7 +453,15 @@ export async function updateLocation(driverId: bigint, data: {
         categoryId: upserted.categoryId,
       }
       if (heading !== undefined) car.heading = Math.round(heading)
-      publishNearbyCar(car)
+      // Count it only if it went out (Redis not ready = skipped), so the next ping is not suppressed for nothing.
+      if (publishNearbyCar(car)) {
+        lastNearbyAt.set(driverKey, now)
+        // Forget drivers not heard from for a minute, but sweep at most once a minute: an every-ping scan of a big map is O(n^2).
+        if (lastNearbyAt.size > 10_000 && now - lastNearbySweepAt > NEARBY_SWEEP_MS) {
+          lastNearbySweepAt = now
+          for (const [k, t] of lastNearbyAt) if (now - t > 60_000) lastNearbyAt.delete(k)
+        }
+      }
     }
     return
   }

@@ -26,14 +26,19 @@ export type NearbyCarPayload = {
   categoryId: number
 }
 
-/** Publish one available driver's position to the cell it is in. Fire and forget; never throws. */
-export function publishNearbyCar(p: NearbyCarPayload): void {
+/** Publish one available driver's position to the cell it is in. Fire and forget; never throws. Returns false when it was
+ *  skipped (Redis not ready), so the caller does not count a publish that never happened. */
+export function publishNearbyCar(p: NearbyCarPayload): boolean {
   // A disconnected client would queue every publish in memory until it came back: skip instead, the next ping replaces it.
-  if (redis.status !== 'ready') return
+  if (redis.status !== 'ready') return false
   redis.publish(roomOfPoint(p.lat, p.lng), JSON.stringify(p)).catch((err: unknown) => {
     log.warn({ err }, 'nearby publish failed')
   })
+  return true
 }
+
+const SUBSCRIBE_RETRY_MS = 2_000
+const SUBSCRIBE_MAX_ATTEMPTS = 5
 
 /** Start forwarding cell channels to this server's sockets. Never throws: live nearby cars are optional. */
 export function initNearbyBus(io: Server): void {
@@ -50,12 +55,29 @@ export function initNearbyBus(io: Server): void {
     })
     // The adapter emits these as the first socket joins / the last leaves a room on this server: subscribe and unsubscribe
     // the matching Redis channel then, so an idle cell costs nothing.
+    // The cells some local socket is in. The adapter announces a room once, so a subscribe that fails would leave the cell silent
+    // for everyone until the room emptied: retry it while the room is still wanted, and re-subscribe everything whenever the
+    // subscriber (re)connects, so the Redis channels always match the rooms.
+    const wanted = new Set<string>()
+    const subscribe = (room: string, attempt = 1): void => {
+      sub.subscribe(room).catch((err: unknown) => {
+        log.warn({ err, room, attempt }, 'nearby subscribe failed')
+        if (attempt < SUBSCRIBE_MAX_ATTEMPTS) {
+          setTimeout(() => { if (wanted.has(room)) subscribe(room, attempt + 1) }, SUBSCRIBE_RETRY_MS * attempt)
+        }
+      })
+    }
+    sub.on('ready', () => { for (const room of wanted) subscribe(room) })
     const adapter = io.of('/').adapter
     adapter.on('create-room', (room: string) => {
-      if (room.startsWith(NEARBY_ROOM_PREFIX)) sub.subscribe(room).catch((err: unknown) => log.warn({ err, room }, 'nearby subscribe failed'))
+      if (!room.startsWith(NEARBY_ROOM_PREFIX)) return
+      wanted.add(room)
+      subscribe(room)
     })
     adapter.on('delete-room', (room: string) => {
-      if (room.startsWith(NEARBY_ROOM_PREFIX)) sub.unsubscribe(room).catch((err: unknown) => log.warn({ err, room }, 'nearby unsubscribe failed'))
+      if (!room.startsWith(NEARBY_ROOM_PREFIX)) return
+      wanted.delete(room)
+      sub.unsubscribe(room).catch((err: unknown) => log.warn({ err, room }, 'nearby unsubscribe failed'))
     })
   } catch (err) {
     log.error({ err }, 'nearby bus not started: live nearby cars are off, the app falls back to polling')

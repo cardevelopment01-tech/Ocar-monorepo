@@ -26,14 +26,14 @@ const car = { id: 'abc123def456', lat: 20.3, lng: 85.8, heading: 90, categoryId:
 describe('publishNearbyCar', () => {
   beforeEach(() => { vi.clearAllMocks(); redisMock.status = 'ready'; redisMock.publish.mockResolvedValue(1) })
 
-  it('publishes the car as JSON on the channel of the cell it is in', () => {
-    publishNearbyCar(car)
+  it('publishes the car as JSON on the channel of the cell it is in, and says it went out', () => {
+    expect(publishNearbyCar(car)).toBe(true)
     expect(redisMock.publish).toHaveBeenCalledWith(roomOfPoint(20.3, 85.8), JSON.stringify(car))
   })
 
   it('skips the publish while Redis is not ready, instead of queueing every ping in memory', () => {
     redisMock.status = 'reconnecting'
-    publishNearbyCar(car)
+    expect(publishNearbyCar(car)).toBe(false) // the caller must not count it
     expect(redisMock.publish).not.toHaveBeenCalled()
   })
 
@@ -87,6 +87,48 @@ describe('initNearbyBus', () => {
     expect(() => onMessage('nearby:1:1', '{not json')).not.toThrow()
     expect(() => onMessage('ride:5', JSON.stringify(car))).not.toThrow()
     expect(emitted).toEqual([])
+  })
+
+  it('retries a subscribe that failed while the room is still wanted (the adapter announces a room only once)', async () => {
+    vi.useFakeTimers()
+    subMock.subscribe.mockRejectedValueOnce(new Error('blip')).mockResolvedValue(1)
+    adapterHandlers.get('create-room')!('nearby:5:5')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(subMock.subscribe).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(2_100)
+    expect(subMock.subscribe).toHaveBeenCalledTimes(2) // retried
+    vi.useRealTimers()
+  })
+
+  it('does not retry a room that emptied meanwhile', async () => {
+    vi.useFakeTimers()
+    subMock.subscribe.mockRejectedValue(new Error('blip'))
+    adapterHandlers.get('create-room')!('nearby:6:6')
+    await vi.advanceTimersByTimeAsync(0)
+    adapterHandlers.get('delete-room')!('nearby:6:6') // the last socket left
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(subMock.subscribe).toHaveBeenCalledTimes(1)
+    subMock.subscribe.mockResolvedValue(1)
+    vi.useRealTimers()
+  })
+
+  it('stops retrying after a few attempts instead of looping forever', async () => {
+    vi.useFakeTimers()
+    subMock.subscribe.mockRejectedValue(new Error('down'))
+    adapterHandlers.get('create-room')!('nearby:7:7')
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(subMock.subscribe.mock.calls.length).toBeLessThanOrEqual(5)
+    subMock.subscribe.mockResolvedValue(1)
+    vi.useRealTimers()
+  })
+
+  it('re-subscribes every wanted cell when the subscriber (re)connects, so channels always match rooms', () => {
+    adapterHandlers.get('create-room')!('nearby:1:1')
+    adapterHandlers.get('create-room')!('nearby:1:2')
+    adapterHandlers.get('delete-room')!('nearby:1:2')
+    subMock.subscribe.mockClear()
+    subMock.handlers.get('ready')!()
+    expect(subMock.subscribe.mock.calls.map((c) => c[0])).toEqual(['nearby:1:1'])
   })
 
   it('never throws at start-up, even if the server or Redis cannot be set up (live cars are optional)', () => {

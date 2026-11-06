@@ -10,7 +10,7 @@ vi.mock('@/websocket/socket.server', () => ({
   socketEvents: { sendAdminDriverUpdate: vi.fn(), sendDriverLocation: vi.fn(), sendTrailSegment: vi.fn(), sendRideStatusUpdate: vi.fn() },
   getIO: vi.fn(() => ({ to: vi.fn(() => ({ emit: vi.fn() })) })),
 }))
-vi.mock('@/websocket/nearby-bus', () => ({ publishNearbyCar: vi.fn() }))
+vi.mock('@/websocket/nearby-bus', () => ({ publishNearbyCar: vi.fn(() => true) }))
 vi.mock('@/jobs/queues', () => ({
   queues: { notifications: { add: vi.fn() }, dispatch: { add: vi.fn() }, scheduler: { add: vi.fn() } },
   QUEUE_NAMES: { NOTIFICATIONS: 'notifications', DISPATCH: 'dispatch', SCHEDULER: 'scheduler' },
@@ -29,7 +29,7 @@ import * as repo from '@/modules/rides/rides.repository'
 import { publishNearbyCar } from '@/websocket/nearby-bus'
 import { updateLocation } from '@/modules/rides/rides.service'
 
-const ping = (driver: bigint, over: Record<string, unknown> = {}) => ({
+const ping = (over: Record<string, unknown> = {}) => ({
   sessionId: BigInt(5), lat: 20.3, lng: 85.8, recordedAt: new Date().toISOString(), ...over,
 })
 const online = { owned: true, ended: false, categoryId: 2, sessionStatus: 'online' }
@@ -41,11 +41,12 @@ describe('updateLocation: live nearby cars', () => {
     vi.mocked(repo.upsertDriverLocation).mockResolvedValue(online)
     vi.mocked(redis.get).mockResolvedValue('') // no active ride cached
     vi.mocked(pool.query).mockResolvedValue({ rows: [] } as never)
+    vi.mocked(publishNearbyCar).mockReturnValue(true)
   })
   afterEach(() => vi.useRealTimers())
 
   it('publishes an online driver with no ride: an opaque id, a rounded position, the heading and the vehicle category', async () => {
-    await updateLocation(1001n, ping(1001n, { lat: 20.29612345678, lng: 85.82456789, heading: 91.6 }))
+    await updateLocation(1001n, ping({ lat: 20.29612345678, lng: 85.82456789, heading: 91.6 }))
     expect(publishNearbyCar).toHaveBeenCalledTimes(1)
     const sent = vi.mocked(publishNearbyCar).mock.calls[0]![0]
     expect(sent).toEqual({ id: expect.stringMatching(/^[0-9a-f]{12}$/), lat: 20.296123, lng: 85.824568, heading: 92, categoryId: 2 })
@@ -53,13 +54,13 @@ describe('updateLocation: live nearby cars', () => {
   })
 
   it('leaves the heading out when the phone did not report one', async () => {
-    await updateLocation(1002n, ping(1002n))
+    await updateLocation(1002n, ping())
     expect(vi.mocked(publishNearbyCar).mock.calls[0]![0]).not.toHaveProperty('heading')
   })
 
   it('does not publish a driver who is on a ride (they are not an available car)', async () => {
     vi.mocked(redis.get).mockResolvedValue('777')
-    await updateLocation(1003n, ping(1003n))
+    await updateLocation(1003n, ping())
     expect(publishNearbyCar).not.toHaveBeenCalled()
   })
 
@@ -70,24 +71,31 @@ describe('updateLocation: live nearby cars', () => {
     ['an unknown category', { ...online, categoryId: null }],
   ])('does not publish %s', async (_n, upserted) => {
     vi.mocked(repo.upsertDriverLocation).mockResolvedValue(upserted as never)
-    await updateLocation(1004n, ping(1004n))
+    await updateLocation(1004n, ping())
     expect(publishNearbyCar).not.toHaveBeenCalled()
   })
 
   it('publishes a driver at most once per 1.5 s (one phone pinging over the socket and the HTTP fallback)', async () => {
     const t0 = Date.now()
-    await updateLocation(1005n, ping(1005n))
+    await updateLocation(1005n, ping())
     vi.setSystemTime(t0 + 800)
-    await updateLocation(1005n, ping(1005n, { lat: 20.3001 }))
+    await updateLocation(1005n, ping({ lat: 20.3001 }))
     expect(publishNearbyCar).toHaveBeenCalledTimes(1)
     vi.setSystemTime(t0 + 1600)
-    await updateLocation(1005n, ping(1005n, { lat: 20.3002 }))
+    await updateLocation(1005n, ping({ lat: 20.3002 }))
+    expect(publishNearbyCar).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not use up a driver\'s throttle slot when the publish was skipped (Redis not ready): the next ping goes out at once', async () => {
+    vi.mocked(publishNearbyCar).mockReturnValueOnce(false)
+    await updateLocation(1008n, ping())
+    await updateLocation(1008n, ping({ lat: 20.3001 }))
     expect(publishNearbyCar).toHaveBeenCalledTimes(2)
   })
 
   it('throttles each driver separately', async () => {
-    await updateLocation(1006n, ping(1006n))
-    await updateLocation(1007n, ping(1007n))
+    await updateLocation(1006n, ping())
+    await updateLocation(1007n, ping())
     expect(publishNearbyCar).toHaveBeenCalledTimes(2)
     const ids = vi.mocked(publishNearbyCar).mock.calls.map((c) => c[0].id)
     expect(new Set(ids).size).toBe(2) // different drivers, different opaque ids

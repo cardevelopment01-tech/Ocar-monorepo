@@ -193,6 +193,52 @@ describe('nearby:subscribe (live cars for a searching rider)', () => {
     expect(left).toHaveLength([...before].filter((r) => !after.has(r)).length)
   })
 
+  it('an unsubscribe that arrives while the subscribe lookup is still in flight wins: nothing is joined afterwards', async () => {
+    let finish!: (v: unknown) => void
+    vi.mocked(pool.query).mockReturnValueOnce(new Promise((r) => { finish = r }) as never)
+    const { socket, handlers } = connect('user')
+    subscribe(handlers, { rideId: '55' })
+    handlers.get('nearby:unsubscribe')!() // the rider left before the database answered
+    finish({ rows: [PICKUP] })
+    await new Promise((r) => setTimeout(r, 10))
+    expect(nearbyJoins(socket)).toEqual([])
+  })
+
+  it('a second subscribe supersedes one still in flight (only the latest answer joins rooms)', async () => {
+    let first!: (v: unknown) => void
+    vi.mocked(pool.query)
+      .mockReturnValueOnce(new Promise((r) => { first = r }) as never)
+      .mockResolvedValueOnce({ rows: [{ lat: PICKUP.lat + 0.04, lng: PICKUP.lng }] } as never)
+    const { socket, handlers } = connect('user')
+    subscribe(handlers, { rideId: '55' })
+    subscribe(handlers, { rideId: '56' })
+    await vi.waitFor(() => expect(nearbyJoins(socket)).toHaveLength(25))
+    first({ rows: [PICKUP] }) // the slow, older answer arrives last and must be ignored
+    await new Promise((r) => setTimeout(r, 10))
+    expect(nearbyJoins(socket).sort()).toEqual(roomsAround(PICKUP.lat + 0.04, PICKUP.lng).sort())
+  })
+
+  it('re-checks the ride while subscribed and leaves the cells once it stops searching (a client that never unsubscribes)', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    try {
+      vi.mocked(pool.query).mockResolvedValueOnce({ rows: [PICKUP] } as never) // the subscribe
+      const { socket, handlers } = connect('user')
+      subscribe(handlers, { rideId: '55' })
+      await vi.waitFor(() => expect(nearbyJoins(socket)).toHaveLength(25))
+      vi.mocked(pool.query).mockResolvedValueOnce({ rows: [PICKUP] } as never) // first recheck: still searching
+      await vi.advanceTimersByTimeAsync(20_100)
+      expect(socket.leave).not.toHaveBeenCalled()
+      vi.mocked(pool.query).mockResolvedValueOnce({ rows: [] } as never) // second recheck: a driver was assigned
+      await vi.advanceTimersByTimeAsync(20_100)
+      expect(socket.leave).toHaveBeenCalledTimes(25)
+      vi.mocked(pool.query).mockClear()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(pool.query).not.toHaveBeenCalled() // and it stops checking
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('answers at most 12 subscribe requests a minute per socket (a reconnect loop or a scraper is cut off)', async () => {
     vi.mocked(pool.query).mockResolvedValue({ rows: [PICKUP] } as never)
     const { handlers } = connect('user')

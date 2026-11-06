@@ -1,0 +1,72 @@
+[
+ {
+  "phone": "+919700001001",
+  "driverId": "267",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb2RlIjoiRFJWMDAwMjY3Iiwicm9sZSI6ImRyaXZlciIsInN0YXR1cyI6ImFjdGl2ZSIsInNpZCI6ImU3YjNiMjViLTM0OWUtNGMxMS1hMGMxLTAzZDcyZmI3YjM1MSIsImlhdCI6MTc5Mzk2OTIxNCwiZXhwIjoxNzk0MDU1NjE0LCJzdWIiOiIyNjcifQ.Mv33wc944MICxst-Bx3oTETT-JLzoxMeNPNUlWHcL7I",
+  "sessionId": "223",
+  "categoryId": 2,
+  "lat": 20.29821034095577,
+  "lng": 85.8253189476663,
+  "bearing": 20
+ },
+ {
+  "phone": "+919700001002",
+  "driverId": "268",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb2RlIjoiRFJWMDAwMjY4Iiwicm9sZSI6ImRyaXZlciIsInN0YXR1cyI6ImFjdGl2ZSIsInNpZCI6ImQ2ZTQ4ODZjLTFlOTItNDE5ZS04MzUzLWIwODRhNmZlYzQ0YSIsImlhdCI6MTc5Mzk2OTIxNCwiZXhwIjoxNzk0MDU1NjE0LCJzdWIiOiIyNjgifQ.dtajVKO7VUmfBXX3EK_B5z6wTAbyRztWI5zLPBZQIkk",
+  "sessionId": "224",
+  "categoryId": 1,
+  "lat": 20.29480958982935,
+  "lng": 85.82828006757109,
+  "bearing": 110
+ },
+ {
+  "phone": "+919700001003",
+  "driverId": "269",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb2RlIjoiRFJWMDAwMjY5Iiwicm9sZSI6ImRyaXZlciIsInN0YXR1cyI6ImFjdGl2ZSIsInNpZCI6IjA2NjczZGZiLWJhOWYtNGZmYS1iY2JmLWFkOTQ4YWQxZWE5ZCIsImlhdCI6MTc5Mzk2OTIxNCwiZXhwIjoxNzk0MDU1NjE0LCJzdWIiOiIyNjkifQ.xC7q7_bjXKn_ONUq82625sBTiLR0euyiL7S-ZCFm-aM",
+  "sessionId": "225",
+  "categoryId": 2,
+  "lat": 20.29019104532384,
+  "lng": 85.82220694653435,
+  "bearing": 200
+ },
+ {
+  "phone": "+919700001004",
+  "driverId": "270",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb2RlIjoiRFJWMDAwMjcwIiwicm9sZSI6ImRyaXZlciIsInN0YXR1cyI6ImFjdGl2ZSIsInNpZCI6Ijg4ZDg4MTY2LWE3YmItNDA1MS05OGVmLTUyMzQ0NWIzZGYxZiIsImlhdCI6MTc5Mzk2OTIxNCwiZXhwIjoxNzk0MDU1NjE0LCJzdWIiOiIyNzAifQ.NpRrDWWxQeR2txoJRA-tItHqMn9G1nMcfdS6cDW1YgQ",
+  "sessionId": "226",
+  "categoryId": 1,
+  "lat": 20.298865164651392,
+  "lng": 85.81639985520482,
+  "bearing": 290
+ },
+ {
+  "phone": "+919700001005",
+  "driverId": "271",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb2RlIjoiRFJWMDAwMjcxIiwicm9sZSI6ImRyaXZlciIsInN0YXR1cyI6ImFjdGl2ZSIsInNpZCI6ImQ0ZjQ2YmM3LTkyZDUtNGYwMi04YjgwLWFmODA3YzhkMzBhNyIsImlhdCI6MTc5Mzk2OTIxNCwiZXhwIjoxNzk0MDU1NjE0LCJzdWIiOiIyNzEifQ.2KxC48lwKqY7Ijw18zPUfepgEdBzqafucX6zBryhvU8",
+  "sessionId": "227",
+  "categoryId": 2,
+  "lat": 20.30193902263744,
+  "lng": 85.83528297107814,
+  "bearing": 60
+ },
+ {
+  "phone": "+919700001006",
+  "driverId": "272",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb2RlIjoiRFJWMDAwMjcyIiwicm9sZSI6ImRyaXZlciIsInN0YXR1cyI6ImFjdGl2ZSIsInNpZCI6ImE4YzNmYzgwLWFmNzAtNGM4ZS1hZTIwLWIyZDM3NTllMmU5NiIsImlhdCI6MTc5Mzk2OTIxNCwiZXhwIjoxNzk0MDU1NjE0LCJzdWIiOiIyNzIifQ.8_--84j8uFVjmn7LEcp7nDV-Gk7jvTU2ChzkZoNutTg",
+  "sessionId": "228",
+  "categoryId": 1,
+  "lat": 20.280905545118443,
+  "lng": 85.83039642319739,
+  "bearing": 160
+ },
+ {
+  "phone": "+919700001007",
+  "driverId": "273",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb2RlIjoiRFJWMDAwMjczIiwicm9sZSI6ImRyaXZlciIsInN0YXR1cyI6ImFjdGl2ZSIsInNpZCI6IjdmNjUyZTBiLTYzZjUtNGQzOC1iZmRjLTE4Y2ExOWNiOWE5YSIsImlhdCI6MTc5Mzk2OTIxNSwiZXhwIjoxNzk0MDU1NjE1LCJzdWIiOiIyNzMifQ.2Zsh5gcMbvTgkFoms5QR4g3p9WorXaru34pdCKTLBqo",
+  "sessionId": "229",
+  "categoryId": 2,
+  "lat": 20.288726227596285,
+  "lng": 85.80289961387952,
+  "bearing": 250
+ }
+]
