@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bearingDegrees, carStep, carsToFrame, fadeOpacity, FADE_STEPS, metresBetween, MAX_GLIDE_METRES, type LatLng } from './nearbyCars'
+import { bearingDegrees, carStep, carsToFrame, metresBetween, MAX_GLIDE_METRES, type LatLng } from './nearbyCars'
 
 // Value: protects=the "cars near you" layer on the searching map: the camera frames only the closest few cars, each car
 // turns the way it drives, and a teleport never glides across the city; fails_when=a bearing is off by a quadrant, far cars
@@ -50,19 +50,5 @@ describe('carStep', () => {
   })
   it('snaps a jump that is not driving', () => {
     expect(carStep(P, north(MAX_GLIDE_METRES + 500))).toEqual({ kind: 'snap' })
-  })
-})
-
-describe('fadeOpacity', () => {
-  it('starts dim, fades steadily and is gone at the last step', () => {
-    expect(fadeOpacity(0)).toBeGreaterThan(0)
-    expect(fadeOpacity(1)).toBeLessThan(fadeOpacity(0))
-    expect(fadeOpacity(FADE_STEPS - 1)).toBeGreaterThan(0)
-    expect(fadeOpacity(FADE_STEPS)).toBe(0)
-    expect(fadeOpacity(FADE_STEPS + 3)).toBe(0)
-  })
-  it('never goes negative or above the starting opacity', () => {
-    expect(fadeOpacity(-2)).toBe(fadeOpacity(0))
-    expect(fadeOpacity(0, 0)).toBe(0)
   })
 })

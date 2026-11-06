@@ -26,6 +26,32 @@ export function framingPadding(base: Padding, coveredBottom: number, mapHeight: 
   return { ...base, bottom }
 }
 
+type Pt = [number, number]
+
+/**
+ * What the camera should frame. Three situations, each about what the rider is waiting for:
+ *  - searching, with cars near the pickup: the pickup and those cars (the far drop squeezed them into a clump on the pin);
+ *  - a driver is on the way to the pickup (`frameDrop` false): the pickup and the driver, so the car is seen approaching
+ *    (framing the far drop put a car 1 km away on top of the pickup pin);
+ *  - otherwise (no cars, or the trip is under way): the whole trip -- pickup, stops, drop and the driver.
+ */
+export function framePoints(a: {
+  pickup: Pt
+  stops: readonly Pt[]
+  drop: Pt | null
+  showDrop: boolean
+  driverPos: Pt | null
+  cars: readonly Pt[]
+  frameDrop: boolean
+}): Pt[] {
+  if (!a.driverPos && a.cars.length > 0) return [a.pickup, ...a.cars]
+  if (a.driverPos && !a.frameDrop) return [a.pickup, a.driverPos]
+  const points: Pt[] = [a.pickup, ...a.stops]
+  if (a.showDrop && a.drop) points.push(a.drop)
+  if (a.driverPos) points.push(a.driverPos)
+  return points
+}
+
 /** A point (screen px inside the map view) that the rider can actually see: on the map and not under the sheet. */
 export function isInVisibleBand(
   point: { x: number; y: number },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SHEET_BREATHING_PX, framingPadding, isInVisibleBand, sheetHeightBucket } from './mapFraming'
+import { SHEET_BREATHING_PX, framePoints, framingPadding, isInVisibleBand, sheetHeightBucket } from './mapFraming'
 
 // Value: protects=the rider's live map never frames the car under the bottom sheet (the reported "only the pickup pin, no
 // car"); fails_when=the camera padding ignores the sheet or the in-view check counts the covered strip as visible;
@@ -53,5 +53,29 @@ describe('sheetHeightBucket', () => {
     expect(sheetHeightBucket(480)).toBe(sheetHeightBucket(486))
     expect(sheetHeightBucket(480)).not.toBe(sheetHeightBucket(300))
     expect(sheetHeightBucket(-10)).toBe(0)
+  })
+})
+
+describe('framePoints', () => {
+  const pickup: [number, number] = [20.2961, 85.8245]
+  const drop: [number, number] = [20.4625, 85.883]
+  const driver: [number, number] = [20.3, 85.83]
+  const car: [number, number] = [20.298, 85.826]
+  const base = { pickup, stops: [] as [number, number][], drop, showDrop: true, driverPos: null, cars: [] as [number, number][], frameDrop: true }
+
+  it('searching with cars near: frames the pickup and the cars, not the far drop', () => {
+    expect(framePoints({ ...base, cars: [car] })).toEqual([pickup, car])
+  })
+  it('a driver on the way: frames the pickup and the driver, not the far drop', () => {
+    expect(framePoints({ ...base, driverPos: driver, frameDrop: false })).toEqual([pickup, driver])
+  })
+  it('the trip under way (or nothing near): frames the whole trip including stops, drop and driver', () => {
+    const stop: [number, number] = [20.35, 85.85]
+    expect(framePoints({ ...base, stops: [stop], driverPos: driver })).toEqual([pickup, stop, drop, driver])
+    expect(framePoints(base)).toEqual([pickup, drop])
+    expect(framePoints({ ...base, showDrop: false })).toEqual([pickup])
+  })
+  it('an assigned driver wins over any leftover nearby cars', () => {
+    expect(framePoints({ ...base, driverPos: driver, cars: [car], frameDrop: false })).toEqual([pickup, driver])
   })
 })

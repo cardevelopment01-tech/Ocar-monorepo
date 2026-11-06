@@ -1,12 +1,13 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
 import { OCAR_MAP_PROPS, ROUTE } from '@/theme/mapStyle'
 import CarMarker from '@/features/map/components/CarMarker'
 import NearbyCarMarker from '@/features/map/components/NearbyCarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
-import { framingPadding, isInVisibleBand, sheetHeightBucket } from '../mapFraming'
-import { FADE_STEPS, FADE_STEP_MS, carsToFrame, fadeOpacity, type NearbyCar } from '../nearbyCars'
+import { framePoints, framingPadding, isInVisibleBand, sheetHeightBucket } from '../mapFraming'
+import { carsToFrame, type NearbyCar } from '../nearbyCars'
+import { fleetOpacity, hasRetired, pruneFleet, reconcileFleet, retireAll, type FleetEntry } from '../nearbyFleet'
 
 const USER_MOVE_HOLD_MS = 15_000
 const DRIVER_REFIT_MIN_MS = 5_000
@@ -34,6 +35,8 @@ export type RideMapViewProps = {
   nearbyDrivers?: readonly NearbyCar[]
   // True once `driverPos` is a real driver fix (not the pickup stand-in): only then does the assigned car glide.
   driverLocated?: boolean
+  // False while a driver is on the way to the pickup: frame the pickup and the car, not the far-away drop.
+  frameDrop?: boolean
 }
 
 // Real map replacing the earlier placeholder progress-bar "track" (LiveMarker) --
@@ -43,7 +46,7 @@ export type RideMapViewProps = {
 // drop/driver now use the same custom SVG markers as web (CarMarker/LocationPin)
 // instead of react-native-maps' default OS pin -- see the input-consistency +
 // premiumness pass this replaced.
-function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS, driverLocated = true }: RideMapViewProps) {
+function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS, driverLocated = true, frameDrop = true }: RideMapViewProps) {
   const mapRef = useRef<MapView>(null)
   // Same react-native-maps gotcha as SelectRideMap: fitToCoordinates called
   // before the native view's onMapReady fires silently no-ops, leaving the
@@ -51,26 +54,25 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
   // outside that tiny visible area, reading as "the route isn't there".
   const [mapReady, setMapReady] = useState(false)
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 })
-  // Hand-over: when a driver is assigned the nearby cars fade out (the same markers, so nothing flickers) as the assigned
-  // car takes over, instead of vanishing the instant the list is cleared.
-  const lastCars = useRef<readonly NearbyCar[]>(NO_CARS)
-  const [fadeStep, setFadeStep] = useState(0)
+  // The nearby cars on the map. A car is never removed while it may be gliding (that can leave a stray copy on Android): one
+  // that leaves the feed, or every car once a driver is assigned, is retired -- faded to invisible, kept mounted until no glide
+  // can still be running, then removed (see nearbyFleet.ts). `tick` re-renders while any car is retiring so the fade shows.
   const assigned = driverPos !== null
-  if (!assigned && nearbyDrivers.length > 0) lastCars.current = nearbyDrivers
-  const fading = assigned && fadeStep < FADE_STEPS && lastCars.current.length > 0
+  const [fleet, setFleet] = useState<FleetEntry[]>([])
+  const [, tick] = useReducer((n: number) => n + 1, 0)
   useEffect(() => {
-    if (!assigned) { setFadeStep(0); return }
-    if (lastCars.current.length === 0) return
+    const now = Date.now()
+    setFleet((prev) => (assigned ? pruneFleet(retireAll(prev, now), now) : reconcileFleet(prev, nearbyDrivers, now)))
+  }, [assigned, nearbyDrivers])
+  const anyRetired = hasRetired(fleet)
+  useEffect(() => {
+    if (!anyRetired) return
     const id = setInterval(() => {
-      setFadeStep((s) => {
-        if (s + 1 >= FADE_STEPS) clearInterval(id)
-        return s + 1
-      })
-    }, FADE_STEP_MS)
+      setFleet((prev) => pruneFleet(prev, Date.now()))
+      tick()
+    }, 100)
     return () => clearInterval(id)
-  }, [assigned])
-  const shownCars = !assigned ? nearbyDrivers : fading ? lastCars.current : NO_CARS
-  const carOpacity = fading ? fadeOpacity(fadeStep) : 1
+  }, [anyRetired])
   const stopsKey = stops.map(([lat, lng]) => `${lat},${lng}`).join('|')
   // Bumped whenever the rider drags/zooms the map, so the camera stops fighting them.
   const userMovedAt = useRef(0)
@@ -84,24 +86,22 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
   )
 
   const fit = useCallback(() => {
-    const points: [number, number][] = [pickup, ...stops]
-    if (showDrop && drop) points.push(drop)
-    if (driverPos) points.push(driverPos)
-    else points.push(...carsToFrame(pickup, nearbyDrivers))
+    const cars = driverPos ? [] : carsToFrame(pickup, nearbyDrivers)
+    const points = framePoints({ pickup, stops, drop, showDrop, driverPos, cars, frameDrop })
     if (points.length < 2) return
     mapRef.current?.fitToCoordinates(
       points.map(([latitude, longitude]) => ({ latitude, longitude })),
       { edgePadding: padding, animated: true }
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by fitKey below, not array identities
-  }, [pickup, drop, driverPos, showDrop, stopsKey, padding, nearbyDrivers])
+  }, [pickup, drop, driverPos, showDrop, stopsKey, padding, nearbyDrivers, frameDrop])
 
   // Re-fit when the SET of things on the map changes (status/leg, stops, driver first appearing),
   // not on every driver location tick -- that animated the camera every few seconds, snapped the
   // rider back whenever they panned, and kept the GPU at full frame rate for the whole trip.
   // Re-frame when cars first appear near the pickup (or all leave), not on every poll: cars drifting about must not move the camera.
   const framesCars = !driverPos && carsToFrame(pickup, nearbyDrivers).length > 0 ? 1 : 0
-  const fitKey = `${pickup[0]},${pickup[1]}|${drop ? `${drop[0]},${drop[1]}` : ''}|${stopsKey}|${showDrop}|${driverPos ? 1 : 0}|${sheetHeightBucket(coveredBottom)}|${framesCars}`
+  const fitKey = `${pickup[0]},${pickup[1]}|${drop ? `${drop[0]},${drop[1]}` : ''}|${stopsKey}|${showDrop}|${driverPos ? 1 : 0}|${sheetHeightBucket(coveredBottom)}|${framesCars}|${frameDrop ? 1 : 0}`
   useEffect(() => {
     if (mapReady && !holdActive()) fit()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fitKey captures every input that should trigger a re-fit
@@ -163,7 +163,7 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
           <LocationPin key={`stop-${i}-${lat}-${lng}`} position={[lat, lng]} variant="stop" />
         ))}
         {showDrop && drop ? <LocationPin position={drop} variant="drop" /> : null}
-        {shownCars.map((d) => <NearbyCarMarker key={d.driverId} position={[d.lat, d.lng]} opacity={carOpacity} />)}
+        {fleet.map((e) => <NearbyCarMarker key={e.car.driverId} position={[e.car.lat, e.car.lng]} opacity={fleetOpacity(e, Date.now())} />)}
         {driverPos ? (
           <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} animate={driverLocated} />
         ) : null}

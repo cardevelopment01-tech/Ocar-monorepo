@@ -44,17 +44,6 @@ export function carsToFrame(pickup: LatLng, cars: readonly NearbyCar[], max = FR
     .map((c) => c.at)
 }
 
-/** The nearby cars fade out over this many steps when a driver is assigned (the assigned car takes over). */
-export const FADE_STEPS = 5
-export const FADE_STEP_MS = 100
-const FADE_FROM = 0.55
-
-/** Opacity of a fading nearby car at `step` of `steps` (0 = just started, `steps` = gone). */
-export function fadeOpacity(step: number, steps = FADE_STEPS): number {
-  if (steps <= 0 || step >= steps) return 0
-  return FADE_FROM * (1 - Math.max(step, 0) / steps)
-}
-
 export type CarStep =
   | { kind: 'stay' }
   | { kind: 'glide'; heading: number | null }
