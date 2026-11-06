@@ -7,7 +7,7 @@ import NearbyCarMarker from '@/features/map/components/NearbyCarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { framePoints, framingPadding, isInVisibleBand, sheetHeightBucket } from '../mapFraming'
 import { carsToFrame, type NearbyCar } from '../nearbyCars'
-import { fleetOpacity, hasRetired, pruneFleet, reconcileFleet, retireAll, type FleetEntry } from '../nearbyFleet'
+import { fleetOpacity, nextFleetWake, pruneFleet, reconcileFleet, retireAll, type FleetEntry } from '../nearbyFleet'
 
 const USER_MOVE_HOLD_MS = 15_000
 const DRIVER_REFIT_MIN_MS = 5_000
@@ -35,6 +35,9 @@ export type RideMapViewProps = {
   nearbyDrivers?: readonly NearbyCar[]
   // True once `driverPos` is a real driver fix (not the pickup stand-in): only then does the assigned car glide.
   driverLocated?: boolean
+  // A sheet docks over the map but has not reported its height yet: hold the first camera fit until it does (so the map does not
+  // animate once for the full screen and again for the visible part), but never for more than a moment.
+  sheetPending?: boolean
   // False while a driver is on the way to the pickup: frame the pickup and the car, not the far-away drop.
   frameDrop?: boolean
 }
@@ -46,7 +49,7 @@ export type RideMapViewProps = {
 // drop/driver now use the same custom SVG markers as web (CarMarker/LocationPin)
 // instead of react-native-maps' default OS pin -- see the input-consistency +
 // premiumness pass this replaced.
-function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS, driverLocated = true, frameDrop = true }: RideMapViewProps) {
+function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS, driverLocated = true, frameDrop = true, sheetPending = false }: RideMapViewProps) {
   const mapRef = useRef<MapView>(null)
   // Same react-native-maps gotcha as SelectRideMap: fitToCoordinates called
   // before the native view's onMapReady fires silently no-ops, leaving the
@@ -54,6 +57,13 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
   // outside that tiny visible area, reading as "the route isn't there".
   const [mapReady, setMapReady] = useState(false)
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 })
+  const [sheetWaitOver, setSheetWaitOver] = useState(false)
+  useEffect(() => {
+    if (!sheetPending) return
+    const t = setTimeout(() => setSheetWaitOver(true), 1500)
+    return () => clearTimeout(t)
+  }, [sheetPending])
+  const waitForSheet = sheetPending && !sheetWaitOver
   // The nearby cars on the map. A car is never removed while it may be gliding (that can leave a stray copy on Android): one
   // that leaves the feed, or every car once a driver is assigned, is retired -- faded to invisible, kept mounted until no glide
   // can still be running, then removed (see nearbyFleet.ts). `tick` re-renders while any car is retiring so the fade shows.
@@ -64,15 +74,15 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
     const now = Date.now()
     setFleet((prev) => (assigned ? pruneFleet(retireAll(prev, now), now) : reconcileFleet(prev, nearbyDrivers, now)))
   }, [assigned, nearbyDrivers])
-  const anyRetired = hasRetired(fleet)
   useEffect(() => {
-    if (!anyRetired) return
-    const id = setInterval(() => {
+    const wake = nextFleetWake(fleet, Date.now())
+    if (wake === null) return
+    const id = setTimeout(() => {
       setFleet((prev) => pruneFleet(prev, Date.now()))
       tick()
-    }, 100)
-    return () => clearInterval(id)
-  }, [anyRetired])
+    }, wake)
+    return () => clearTimeout(id)
+  }, [fleet])
   const stopsKey = stops.map(([lat, lng]) => `${lat},${lng}`).join('|')
   // Bumped whenever the rider drags/zooms the map, so the camera stops fighting them.
   const userMovedAt = useRef(0)
@@ -104,9 +114,9 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
   const framesCars = driverPos ? 0 : carsToFrame(pickup, nearbyDrivers).length
   const fitKey = `${pickup[0]},${pickup[1]}|${drop ? `${drop[0]},${drop[1]}` : ''}|${stopsKey}|${showDrop}|${driverPos ? 1 : 0}|${sheetHeightBucket(coveredBottom)}|${framesCars}|${frameDrop ? 1 : 0}`
   useEffect(() => {
-    if (mapReady && !holdActive()) fit()
+    if (mapReady && !waitForSheet && !holdActive()) fit()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fitKey captures every input that should trigger a re-fit
-  }, [mapReady, fitKey])
+  }, [mapReady, fitKey, waitForSheet])
 
   // The driver drove out of frame: bring everything back, at most every 5s, never while the rider is exploring.
   useEffect(() => {

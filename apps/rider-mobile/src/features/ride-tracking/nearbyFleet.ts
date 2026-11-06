@@ -49,3 +49,22 @@ export function fleetOpacity(e: FleetEntry, now: number): number {
 }
 
 export const hasRetired = (fleet: readonly FleetEntry[]): boolean => fleet.some((e) => e.retiredAt !== null)
+
+/** Fade is redrawn this often while a car is still fading. */
+export const FADE_TICK_MS = 100
+
+/**
+ * When the fleet next needs attention, in ms from `now`, or null when it never does: while a retired car is still fading, every
+ * FADE_TICK_MS (so the fade is drawn); once every retired car is invisible, a single wake-up for the first removal. Without this
+ * the map was redrawn every 100 ms for the whole 9 s the invisible cars wait to be removed.
+ */
+export function nextFleetWake(fleet: readonly FleetEntry[], now: number): number | null {
+  let earliestRemoval: number | null = null
+  for (const e of fleet) {
+    if (e.retiredAt === null) continue
+    if (now - e.retiredAt < FADE_MS) return FADE_TICK_MS
+    const at = e.retiredAt + REMOVE_AFTER_MS
+    if (earliestRemoval === null || at < earliestRemoval) earliestRemoval = at
+  }
+  return earliestRemoval === null ? null : Math.max(earliestRemoval - now, 0)
+}

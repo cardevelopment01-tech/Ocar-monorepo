@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FADE_FROM, FADE_MS, REMOVE_AFTER_MS, fleetOpacity, hasRetired, pruneFleet, reconcileFleet, retireAll, type FleetEntry } from './nearbyFleet'
+import { FADE_FROM, FADE_MS, FADE_TICK_MS, REMOVE_AFTER_MS, fleetOpacity, hasRetired, nextFleetWake, pruneFleet, reconcileFleet, retireAll, type FleetEntry } from './nearbyFleet'
 
 // Value: protects=a nearby car is never removed from the map while it may still be gliding (the stray cars left behind after a
 // driver was assigned), and is invisible long before it is removed; fails_when=a car that left the feed is removed at once,
@@ -64,5 +64,24 @@ describe('fleetOpacity and pruneFleet', () => {
   it('opacity is zero before removal, so a marker that fails to unmount cleanly is still not seen', () => {
     expect(fleetOpacity(retired, T0 + FADE_MS + 1)).toBe(0)
     expect(pruneFleet([live, retired], T0 + REMOVE_AFTER_MS)).toEqual([live])
+  })
+})
+
+describe('nextFleetWake', () => {
+  const live: FleetEntry = { car: car('a'), retiredAt: null }
+  it('never needs waking while every car is live', () => {
+    expect(nextFleetWake([live], T0)).toBeNull()
+    expect(nextFleetWake([], T0)).toBeNull()
+  })
+  it('ticks every FADE_TICK_MS while a retired car is still fading, so the fade is drawn', () => {
+    const fading: FleetEntry = { car: car('b'), retiredAt: T0 }
+    expect(nextFleetWake([live, fading], T0 + 100)).toBe(FADE_TICK_MS)
+  })
+  it('once everything retired is invisible, sleeps until the first removal instead of redrawing for 9 s', () => {
+    const early: FleetEntry = { car: car('b'), retiredAt: T0 }
+    const late: FleetEntry = { car: car('c'), retiredAt: T0 + 2000 }
+    const now = T0 + FADE_MS + 3000 // both invisible by now
+    expect(nextFleetWake([early, late], now)).toBe(T0 + REMOVE_AFTER_MS - now)
+    expect(nextFleetWake([early, late], T0 + REMOVE_AFTER_MS + 5)).toBe(0) // overdue: wake at once
   })
 })

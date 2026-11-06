@@ -270,6 +270,7 @@ export default function RideTrackingScreen() {
         nearbyDrivers={nearbyCars}
         driverLocated={driverLocated}
         frameDrop={!isAssigned}
+        sheetPending={sheetHeight === 0}
       />
 
       <View style={[styles.mapOverlayTop, { paddingTop: insets.top + spacing.sm }]} pointerEvents="box-none">
