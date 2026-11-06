@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIVE_FRESH_MS, LIVE_TTL_MS, SNAPSHOT_TTL_MS, applyLive, applySnapshot, carsNear, expireCars, liveIsFlowing, parseCarEvent, sameCars, type LiveCars } from './liveCars'
+import { LIVE_FRESH_MS, LIVE_TTL_MS, MAX_SHOWN, SNAPSHOT_TTL_MS, applyLive, applySnapshot, carsNear, chooseCars, expireCars, liveIsFlowing, parseCarEvent, sameCars, showWithinMetres, type LiveCars } from './liveCars'
 
 // Value: protects=the cars on a searching rider's map are the freshest word on each driver: live positions win, the REST
 // snapshot fills in and takes over when the push is not arriving, silent cars drop out, and a hostile or malformed socket
@@ -14,7 +14,7 @@ const empty: LiveCars = new Map()
 
 describe('parseCarEvent (untrusted socket payload)', () => {
   it('accepts a well-formed position, with or without a heading', () => {
-    expect(parseCarEvent({ id: 'abc123def456', lat: 20.3, lng: 85.8, heading: 90, categoryId: 2 })).toEqual({ id: 'abc123def456', lat: 20.3, lng: 85.8, heading: 90 })
+    expect(parseCarEvent({ id: 'abc123def456', lat: 20.3, lng: 85.8, heading: 90, categoryId: 2 })).toEqual({ id: 'abc123def456', lat: 20.3, lng: 85.8, heading: 90, categoryId: 2 })
     expect(parseCarEvent({ id: 'abc123def456', lat: 20.3, lng: 85.8 })).toEqual({ id: 'abc123def456', lat: 20.3, lng: 85.8 })
   })
   it('drops a heading that is not a compass bearing but keeps the position', () => {
@@ -93,5 +93,50 @@ describe('carsNear / sameCars', () => {
     expect(sameCars(a, [{ driverId: 'a', lat: 1, lng: 2, heading: 3 }])).toBe(true)
     expect(sameCars(a, [{ driverId: 'a', lat: 1.0001, lng: 2, heading: 3 }])).toBe(false)
     expect(sameCars(a, [])).toBe(false)
+  })
+})
+
+describe('vehicle category on the live feed', () => {
+  it('parseCarEvent keeps a valid category and drops a bad one without rejecting the position', () => {
+    expect(parseCarEvent({ id: 'a', lat: 1, lng: 2, categoryId: 6 })).toEqual({ id: 'a', lat: 1, lng: 2, categoryId: 6 })
+    for (const bad of [0, -1, 1.5, '6', NaN, 1e9, null]) expect(parseCarEvent({ id: 'a', lat: 1, lng: 2, categoryId: bad })).toEqual({ id: 'a', lat: 1, lng: 2 })
+  })
+  it('the category survives from the feed (live and snapshot) through to the cars drawn', () => {
+    let cars = applyLive(empty, { id: 'live', lat: P[0] + 100 * DEG_PER_M, lng: P[1], categoryId: 6 }, T0)
+    cars = applySnapshot(cars, [{ ...snap('snap'), categoryId: 2 }], T0)
+    expect(carsNear(cars, P).map((c) => [c.driverId, c.categoryId])).toEqual([['live', 6], ['snap', 2]])
+  })
+})
+
+describe('chooseCars (which cars this ride could actually be offered to)', () => {
+  const c = (id: string, categoryId: number | undefined) => ({ driverId: id, lat: 1, lng: 2, ...(categoryId !== undefined ? { categoryId } : {}) })
+  it('shows only the booked category when there are cars of it near (the first round goes to that category alone)', () => {
+    expect(chooseCars([c('a', 2), c('b', 6), c('c', 2), c('d', 1)], 2).map((x) => x.driverId)).toEqual(['a', 'c'])
+  })
+  it('shows every car, each with its own category, when none of the booked category is near (later rounds widen)', () => {
+    expect(chooseCars([c('a', 6), c('b', 1)], 2).map((x) => x.driverId)).toEqual(['a', 'b'])
+  })
+  it('shows every car when the booked category is unknown (the category list has not loaded)', () => {
+    expect(chooseCars([c('a', 6), c('b', undefined)], null)).toHaveLength(2)
+  })
+  it('never draws more than MAX_SHOWN, keeping the nearest (the input is nearest first)', () => {
+    const many = Array.from({ length: 20 }, (_, i) => c(`d${i}`, 2))
+    const shown = chooseCars(many, 2)
+    expect(shown).toHaveLength(MAX_SHOWN)
+    expect(shown.map((x) => x.driverId)).toEqual(many.slice(0, MAX_SHOWN).map((x) => x.driverId))
+  })
+})
+
+describe('showWithinMetres (how far out a car could really be offered the ride)', () => {
+  it('a city rental reaches only 2 km for an auto rickshaw and 2.5 km for a car, so no car beyond that is shown', () => {
+    expect(showWithinMetres('rental', 'auto')).toBe(2_000)
+    expect(showWithinMetres('rental', 'auto_rickshaw')).toBe(2_000)
+    expect(showWithinMetres('rental', 'sedan')).toBe(2_500)
+    expect(showWithinMetres('rental', null)).toBe(2_500)
+  })
+  it('other trips reach much further, but the map only shows the near ones (3 km)', () => {
+    expect(showWithinMetres('one_way', 'sedan')).toBe(3_000)
+    expect(showWithinMetres('round_trip', 'auto')).toBe(3_000)
+    expect(showWithinMetres(undefined, undefined)).toBe(3_000)
   })
 })

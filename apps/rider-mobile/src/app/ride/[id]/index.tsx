@@ -28,6 +28,8 @@ import { useRideTracking } from '@/features/ride-tracking/useRideTracking'
 import { cancelRide, addStop, skipStop, updatePickup, type StopInput } from '@/features/ride-tracking/api'
 import { ASSIGNED_STATUSES, IN_PROGRESS_STATUSES, SEARCHING_STATUSES } from '@/features/ride-tracking/types'
 import { useNearbyDrivers } from '@/features/booking/useNearbyDrivers'
+import { useVehicleKinds } from '@/features/booking/useVehicleKinds'
+import { showWithinMetres } from '@/features/booking/liveCars'
 import type { StatusKey } from '@/features/ride-tracking/statusConfig'
 import { resolveBookingError } from '@/features/booking/api'
 import { PickupUpdatedToast } from '@/features/ride-tracking/components/Toasts'
@@ -67,7 +69,12 @@ export default function RideTrackingScreen() {
 
   // While a ride is being matched ('requested' only: a scheduled ride is not matched yet) show the available cars around
   // the pickup, like the fare screen does, so the rider sees that drivers are close. They go away once a driver is assigned.
-  const nearbyCars = useNearbyDrivers(ride ? rideId : null, ride?.originLat ?? null, ride?.originLng ?? null, ride?.status === 'requested')
+  const { kinds: vehicleKinds, slugs: vehicleSlugs } = useVehicleKinds()
+  const bookedCategoryId = ride?.categoryId != null && Number.isFinite(Number(ride.categoryId)) ? Number(ride.categoryId) : null
+  const nearbyCars = useNearbyDrivers(
+    ride ? rideId : null, ride?.originLat ?? null, ride?.originLng ?? null, ride?.status === 'requested',
+    showWithinMetres(ride?.rideType, bookedCategoryId === null ? null : vehicleSlugs.get(bookedCategoryId)), bookedCategoryId,
+  )
 
   // "Driver's location hasn't updated" must appear when updates STOP, so it needs a timer: a memo on
   // lastLocationAt only recomputed when a new update arrived, i.e. exactly when it was never true.
@@ -271,6 +278,8 @@ export default function RideTrackingScreen() {
         driverLocated={driverLocated}
         frameDrop={!isAssigned}
         sheetPending={sheetHeight === 0}
+        vehicleKinds={vehicleKinds}
+        driverKind={(bookedCategoryId === null ? undefined : vehicleKinds.get(bookedCategoryId)) ?? 'sedan'}
       />
 
       <View style={[styles.mapOverlayTop, { paddingTop: insets.top + spacing.sm }]} pointerEvents="box-none">

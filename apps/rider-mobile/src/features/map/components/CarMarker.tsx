@@ -1,7 +1,8 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { Marker, type MapMarker } from 'react-native-maps'
 import { carStep } from '@/features/ride-tracking/nearbyCars'
-import { CarGlyph } from './CarGlyph'
+import { VehicleGlyph } from './VehicleGlyph'
+import type { VehicleKind } from '../vehicleKind'
 import { useMarkerSettled } from './useMarkerSettled'
 
 export type CarMarkerProps = {
@@ -13,6 +14,8 @@ export type CarMarkerProps = {
   /** True once `position` is a real driver fix. Before that the car is only a stand-in (parked at the pickup), and the
    *  first real fix must snap there: gliding would look like a car driving out of the pickup pin. */
   animate?: boolean
+  /** The vehicle drawn (a sedan unless told otherwise). */
+  kind?: VehicleKind
   /** Pass it (the map is ready) to let the car GLIDE between positions; leave it out and the car simply moves with `position`
    *  (the fare screen's cars). Gliding waits until the native marker exists (see useMarkerSettled). */
   ready?: boolean
@@ -34,7 +37,7 @@ const GLIDE_MS = 2600
 // frozen at that moment keeps a blank picture on some phones (the pickup/drop pins already avoid this the same way).
 // So it is tracked just long enough to paint once, then frozen: moving or turning the marker is native and needs no
 // re-capture, so there is no steady CPU/battery cost.
-function CarMarker({ position, heading = 0, headingKnown = true, animate = true, ready }: CarMarkerProps) {
+function CarMarker({ position, heading = 0, headingKnown = true, animate = true, kind = 'sedan', ready }: CarMarkerProps) {
   const glide = ready !== undefined
   const settled = useMarkerSettled(ready === true)
   const ref = useRef<MapMarker>(null)
@@ -80,7 +83,7 @@ function CarMarker({ position, heading = 0, headingKnown = true, animate = true,
       tracksViewChanges={track}
       zIndex={10}
     >
-      <CarGlyph dim={!headingKnown} />
+      <VehicleGlyph kind={kind} dim={!headingKnown} />
     </Marker>
   )
 }
@@ -91,5 +94,6 @@ export default memo(CarMarker, (a, b) =>
   (a.heading ?? 0) === (b.heading ?? 0) &&
   (a.headingKnown ?? true) === (b.headingKnown ?? true) &&
   (a.animate ?? true) === (b.animate ?? true) &&
-  a.ready === b.ready
+  a.ready === b.ready &&
+  a.kind === b.kind
 )

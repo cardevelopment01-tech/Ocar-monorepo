@@ -40,7 +40,7 @@ describe('attachNearbyCars', () => {
     s.fire('nearby:car', null)
     s.fire('nearby:car', 'x')
     expect(onCar).toHaveBeenCalledTimes(1)
-    expect(onCar).toHaveBeenCalledWith({ id: 'abc', lat: 20.3, lng: 85.8, heading: 90 })
+    expect(onCar).toHaveBeenCalledWith({ id: 'abc', lat: 20.3, lng: 85.8, heading: 90, categoryId: 2 })
   })
 
   it('detaching unsubscribes and leaves no listener behind, so a closed screen hears nothing more', () => {

@@ -7,6 +7,7 @@ import NearbyCarMarker from '@/features/map/components/NearbyCarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { framePoints, framingPadding, isInVisibleBand, sheetHeightBucket } from '../mapFraming'
 import { carsToFrame, type NearbyCar } from '../nearbyCars'
+import type { VehicleKind } from '@/features/map/vehicleKind'
 import { fleetOpacity, nextFleetWake, pruneFleet, reconcileFleet, retireAll, type FleetEntry } from '../nearbyFleet'
 
 const USER_MOVE_HOLD_MS = 15_000
@@ -40,6 +41,9 @@ export type RideMapViewProps = {
   sheetPending?: boolean
   // False while a driver is on the way to the pickup: frame the pickup and the car, not the far-away drop.
   frameDrop?: boolean
+  // Which icon each category draws as (the nearby cars), and the assigned driver's vehicle; a sedan when not known.
+  vehicleKinds?: ReadonlyMap<number, VehicleKind>
+  driverKind?: VehicleKind
 }
 
 // Real map replacing the earlier placeholder progress-bar "track" (LiveMarker) --
@@ -49,7 +53,7 @@ export type RideMapViewProps = {
 // drop/driver now use the same custom SVG markers as web (CarMarker/LocationPin)
 // instead of react-native-maps' default OS pin -- see the input-consistency +
 // premiumness pass this replaced.
-function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS, driverLocated = true, frameDrop = true, sheetPending = false }: RideMapViewProps) {
+function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS, driverLocated = true, frameDrop = true, sheetPending = false, vehicleKinds, driverKind = 'sedan' }: RideMapViewProps) {
   const mapRef = useRef<MapView>(null)
   // Same react-native-maps gotcha as SelectRideMap: fitToCoordinates called
   // before the native view's onMapReady fires silently no-ops, leaving the
@@ -174,9 +178,9 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
           <LocationPin key={`stop-${i}-${lat}-${lng}`} position={[lat, lng]} variant="stop" />
         ))}
         {showDrop && drop ? <LocationPin position={drop} variant="drop" /> : null}
-        {fleet.map((e) => <NearbyCarMarker key={e.car.driverId} position={[e.car.lat, e.car.lng]} ready={mapReady} {...(e.car.heading !== undefined ? { heading: e.car.heading } : {})} opacity={fleetOpacity(e, Date.now())} />)}
+        {fleet.map((e) => <NearbyCarMarker key={e.car.driverId} position={[e.car.lat, e.car.lng]} ready={mapReady} kind={(e.car.categoryId !== undefined ? vehicleKinds?.get(e.car.categoryId) : undefined) ?? 'sedan'} {...(e.car.heading !== undefined ? { heading: e.car.heading } : {})} opacity={fleetOpacity(e, Date.now())} />)}
         {driverPos ? (
-          <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} animate={driverLocated} ready={mapReady} />
+          <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} animate={driverLocated} ready={mapReady} kind={driverKind} />
         ) : null}
         {routePoints.length >= 2 ? (
           <>

@@ -4,7 +4,7 @@ import { socket } from '@/services/socket'
 import type { NearbyCar } from '@/features/ride-tracking/nearbyCars'
 import { fetchNearbyDrivers } from './api'
 import { attachNearbyCars } from './nearbySocket'
-import { applyLive, applySnapshot, carsNear, expireCars, liveIsFlowing, sameCars, type LiveCars } from './liveCars'
+import { applyLive, applySnapshot, carsNear, chooseCars, expireCars, liveIsFlowing, sameCars, type LiveCars } from './liveCars'
 
 export type { NearbyCar }
 
@@ -18,10 +18,18 @@ const FLUSH_MS = 600
  * The available cars around a searching ride's pickup, moving in real time.
  *
  * Live positions come over the socket (`nearby:car`, see attachNearbyCars); a REST snapshot fills the map the moment the screen
- * opens and takes over if the push is not reaching the phone. Empty when disabled. A failed fetch keeps the cars already shown:
+ * opens and takes over if the push is not reaching the phone. `within` is how far from the pickup to show cars and `categoryId`
+ * the booked category (its cars are shown, or every car when there are none near: see chooseCars). Empty when disabled. A failed fetch keeps the cars already shown:
  * this is a reassurance layer, not booking data, so it must never throw into the screen or blank the map.
  */
-export function useNearbyDrivers(rideId: string | null, lat: number | null, lng: number | null, enabled: boolean): NearbyCar[] {
+export function useNearbyDrivers(
+  rideId: string | null,
+  lat: number | null,
+  lng: number | null,
+  enabled: boolean,
+  within: number,
+  categoryId: number | null,
+): NearbyCar[] {
   const [cars, setCars] = useState<NearbyCar[]>([])
   const focused = useIsFocused()
 
@@ -49,7 +57,7 @@ export function useNearbyDrivers(rideId: string | null, lat: number | null, lng:
 
     const flush = setInterval(() => {
       known = expireCars(known, Date.now())
-      const next = carsNear(known, pickup)
+      const next = chooseCars(carsNear(known, pickup, within), categoryId)
       if (!sameCars(shown, next)) {
         shown = next
         setCars(next)
@@ -62,7 +70,7 @@ export function useNearbyDrivers(rideId: string | null, lat: number | null, lng:
       clearInterval(flush)
       detach()
     }
-  }, [enabled, focused, rideId, lat, lng])
+  }, [enabled, focused, rideId, lat, lng, within, categoryId])
 
   // Searching ended (a driver was assigned, the ride was cancelled): clear the cars so they do not linger or reappear.
   useEffect(() => {

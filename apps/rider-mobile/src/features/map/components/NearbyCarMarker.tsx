@@ -1,7 +1,8 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { Marker, type MapMarker } from 'react-native-maps'
 import { carStep } from '@/features/ride-tracking/nearbyCars'
-import { CarGlyph } from './CarGlyph'
+import { VehicleGlyph } from './VehicleGlyph'
+import type { VehicleKind } from '../vehicleKind'
 import { useMarkerSettled } from './useMarkerSettled'
 
 // One available car near the rider's pickup while a ride is being matched. Positions arrive about every 3 s (live push) or 8 s
@@ -15,9 +16,9 @@ const MAX_GLIDE_MS = 8000
 const SNAPSHOT_MS = 700
 
 /** `ready`: the map is ready, so the native marker exists and may animate (see useMarkerSettled). */
-type Props = { position: [number, number]; ready: boolean; heading?: number; opacity?: number }
+type Props = { position: [number, number]; ready: boolean; kind?: VehicleKind; heading?: number; opacity?: number }
 
-function NearbyCarMarker({ position, ready, heading: reported, opacity = 1 }: Props) {
+function NearbyCarMarker({ position, ready, kind = 'sedan', heading: reported, opacity = 1 }: Props) {
   const ref = useRef<MapMarker>(null)
   const [start] = useState(position)
   const last = useRef(position)
@@ -60,12 +61,12 @@ function NearbyCarMarker({ position, ready, heading: reported, opacity = 1 }: Pr
       opacity={opacity}
       zIndex={5}
     >
-      <CarGlyph />
+      <VehicleGlyph kind={kind} />
     </Marker>
   )
 }
 
 export default memo(
   NearbyCarMarker,
-  (a, b) => a.position[0] === b.position[0] && a.position[1] === b.position[1] && (a.opacity ?? 1) === (b.opacity ?? 1) && a.heading === b.heading && a.ready === b.ready,
+  (a, b) => a.position[0] === b.position[0] && a.position[1] === b.position[1] && (a.opacity ?? 1) === (b.opacity ?? 1) && a.heading === b.heading && a.ready === b.ready && a.kind === b.kind,
 )
