@@ -38,6 +38,8 @@ export function statusView(input: {
 }): StatusView {
   const { trip, lang } = input
   if (trip.phase === 'cancelled') return { tone: 'muted', text: t(lang, 'status.cancelled'), freshness: null, stale: false }
+  // The driver cancelled and dispatch is looking again: the link is alive and comes back to a live trip when someone accepts.
+  if (trip.phase === 'finding_driver') return { tone: 'info', text: t(lang, 'status.finding'), freshness: null, stale: false }
   if (trip.phase === 'completed') {
     const text = trip.completedAt ? t(lang, 'status.completedAt', { time: input.formatTime(new Date(trip.completedAt)) }) : t(lang, 'status.completed')
     return { tone: 'muted', text, freshness: null, stale: false }
@@ -54,7 +56,9 @@ export function statusView(input: {
   if (trip.etaMin != null) {
     text = onWay
       ? t(lang, 'status.onWayEta', { min: trip.etaMin })
-      : t(lang, 'status.inTripEta', { time: input.formatTime(new Date(input.nowMs + trip.etaMin * 60_000)) })
+      // Arrival is anchored to the moment the server worked the ETA out (serverTime), never to the ticking clock: anchoring it to "now" made
+      // the arrival time creep later every second until the next response.
+      : t(lang, 'status.inTripEta', { time: input.formatTime(new Date(Date.parse(trip.serverTime) + trip.etaMin * 60_000)) })
   }
   return { tone: onWay ? 'info' : 'success', text, freshness: age === null ? null : t(lang, 'status.updated', { ago: formatAgo(lang, age) }), stale: false }
 }

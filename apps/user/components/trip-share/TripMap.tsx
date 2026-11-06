@@ -1,29 +1,105 @@
 'use client'
 
-import { Component, useEffect, useRef, useState, type ReactNode } from 'react'
-import { AdvancedMarker, AdvancedMarkerAnchorPoint, APILoadingStatus, useApiLoadingStatus, useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
+import { Component, memo, useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  AdvancedMarker, AdvancedMarkerAnchorPoint, APILoadingStatus, Map, useAdvancedMarkerRef, useApiLoadingStatus, useMap, useMapsLibrary,
+} from '@vis.gl/react-google-maps'
+import { MapPinOff } from 'lucide-react'
 
-import MapView from '@/components/ui/MapView'
 import RoutePolyline from '@/components/map/RoutePolyline'
 import StopPin from '@/components/map/StopPin'
-import { useGlidedCar } from '@/lib/trip-share/hooks'
+import { bearingDeg, haversineMetres } from '@/lib/geo'
+import { lerpPosition, planGlide } from '@/lib/trip-share/glide'
 import { t, type Lang } from '@/lib/trip-share/i18n'
 import type { PublicTrip } from '@/lib/trip-share/types'
 
-// The map half of the page. It frames the car and the places it is going inside the area ABOVE the sheet (bottom padding =
-// the measured sheet height), glides the car between positions, and if the map cannot load at all it says so in words while the
-// rest of the page keeps working (the viewer must never be left with an unexplained grey box).
+// The map half of the page. It frames the car and the places it is going inside the area ABOVE the sheet (bottom padding = the
+// measured sheet height), and if the map cannot load at all it says so in words while the rest of the page keeps working.
+//
+// Performance notes (this page is opened on modest Android phones):
+// - The car is moved by writing the marker's position straight to the Maps API from a requestAnimationFrame loop. It never goes
+//   through React state, so a glide does not re-render the map and its children 60 times a second.
+// - The map is drawn plainly. The rest of the app puts a CSS `filter` over the whole map to mute it; a filter forces the browser to
+//   re-composite every tile on every frame of a pan or glide, which is exactly the cost a cheap GPU cannot pay.
 
-function LiveCar({ position, heading, stale }: { position: [number, number]; heading: number | null; stale: boolean }) {
+const GLIDE_FRAME_MS = 33 // ~30 fps is plenty for a car that moves a few metres a second
+
+function MapUnavailable({ lang }: { lang: Lang }) {
   return (
-    <AdvancedMarker position={{ lat: position[0], lng: position[1] }} anchorPoint={AdvancedMarkerAnchorPoint.CENTER}>
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-surface-2 px-8 pb-[45dvh] pt-24 text-center">
+      <MapPinOff aria-hidden size={28} className="text-text-muted" />
+      <p className="max-w-xs text-[15px] font-medium leading-relaxed text-text-secondary">{t(lang, 'map.unavailable')}</p>
+    </div>
+  )
+}
+
+/** Anything the Google Maps script throws while drawing must never take the page down: the status, plate and route text matter more. */
+class MapBoundary extends Component<{ lang: Lang; children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  override render() { return this.state.failed ? <MapUnavailable lang={this.props.lang} /> : this.props.children }
+}
+
+const prefersReducedMotion = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/**
+ * The car. Its marker is created once at the first reported position and never re-positioned by React; every later position is
+ * glided (or snapped) imperatively. Heading turns the car through a CSS transition on the inner element.
+ */
+function LiveCar({ lat, lng, heading, stale }: { lat: number; lng: number; heading: number | null; stale: boolean }) {
+  const [markerRef, marker] = useAdvancedMarkerRef()
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  // A stable prop: if it followed the latest report, React would snap the marker at the start of every glide.
+  const [initial] = useState({ lat, lng })
+  const motion = useRef<{ pos: [number, number]; at: number; raf: number; lastFrame: number; heading: number }>({
+    pos: [lat, lng], at: 0, raf: 0, lastFrame: 0, heading: heading ?? 0,
+  })
+
+  useEffect(() => {
+    if (!marker) return
+    const m = motion.current
+    const to: [number, number] = [lat, lng]
+    const now = Date.now()
+    cancelAnimationFrame(m.raf)
+
+    // Heading: the reported one, else the direction of travel (when it moved far enough to mean something).
+    if (heading !== null) m.heading = heading
+    else if (haversineMetres(m.pos, to) > 4) m.heading = bearingDeg(m.pos, to)
+    if (bodyRef.current) bodyRef.current.style.transform = `rotate(${m.heading % 360}deg)`
+
+    const plan = planGlide({ from: m.at === 0 ? null : m.pos, to, sinceLastMs: m.at === 0 ? 0 : now - m.at, hidden: document.hidden, reducedMotion: prefersReducedMotion() })
+    m.at = now
+    if (plan.snap) {
+      m.pos = to
+      marker.position = { lat: to[0], lng: to[1] }
+      return
+    }
+    const from = m.pos
+    const t0 = performance.now()
+    const step = (ts: number) => {
+      if (ts - m.lastFrame >= GLIDE_FRAME_MS) {
+        m.lastFrame = ts
+        const k = (ts - t0) / plan.durationMs
+        m.pos = lerpPosition(from, to, k)
+        marker.position = { lat: m.pos[0], lng: m.pos[1] }
+        if (k >= 1) return
+      }
+      m.raf = requestAnimationFrame(step)
+    }
+    m.raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(m.raf)
+  }, [marker, lat, lng, heading])
+
+  return (
+    <AdvancedMarker ref={markerRef} position={initial} anchorPoint={AdvancedMarkerAnchorPoint.CENTER}>
       <div
+        ref={bodyRef}
+        className="motion-safe:transition-[opacity,filter] motion-safe:duration-300"
         style={{
           width: 22,
           height: 36,
-          transform: `rotate(${(heading ?? 0) % 360}deg)`,
-          opacity: stale ? 0.55 : heading === null ? 0.85 : 1,
-          filter: stale ? 'grayscale(1) drop-shadow(0 3px 6px rgba(14,143,163,0.25))' : 'drop-shadow(0 3px 6px rgba(14,143,163,0.35))',
+          opacity: stale ? 0.55 : 1,
+          filter: stale ? 'grayscale(1)' : 'drop-shadow(0 3px 6px rgba(14,143,163,0.35))',
         }}
       >
         <svg viewBox="0 0 32 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
@@ -78,22 +154,7 @@ function Camera({ points, phaseKey, bottomPad }: { points: [number, number][]; p
   return null
 }
 
-function MapUnavailable({ lang }: { lang: Lang }) {
-  return (
-    <div className="flex h-full w-full items-center justify-center bg-surface-2 px-6 pb-[45dvh] pt-24 text-center">
-      <p className="max-w-xs text-[15px] font-medium leading-relaxed text-text-secondary">{t(lang, 'map.unavailable')}</p>
-    </div>
-  )
-}
-
-/** Anything the Google Maps script throws while drawing must never take the page down: the status, plate and route text matter more. */
-class MapBoundary extends Component<{ lang: Lang; children: ReactNode }, { failed: boolean }> {
-  override state = { failed: false }
-  static getDerivedStateFromError() { return { failed: true } }
-  override render() { return this.state.failed ? <MapUnavailable lang={this.props.lang} /> : this.props.children }
-}
-
-export default function TripMap({ trip, lang, bottomPad, label }: { trip: PublicTrip; lang: Lang; bottomPad: number; label: string }) {
+function TripMap({ trip, lang, bottomPad, label }: { trip: PublicTrip; lang: Lang; bottomPad: number; label: string }) {
   const status = useApiLoadingStatus()
   const [authFailed, setAuthFailed] = useState(false)
   useEffect(() => {
@@ -102,29 +163,37 @@ export default function TripMap({ trip, lang, bottomPad, label }: { trip: Public
     return () => { delete w.gm_authFailure }
   }, [])
 
-  const live = trip.phase === 'driver_on_way' || trip.phase === 'in_trip'
-  const car = useGlidedCar(live ? trip.driver : null)
-
   if (status === APILoadingStatus.FAILED || status === APILoadingStatus.AUTH_FAILURE || authFailed) return <MapUnavailable lang={lang} />
 
+  const live = trip.phase === 'driver_on_way' || trip.phase === 'in_trip'
   const target = trip.phase === 'driver_on_way' ? trip.pickup : trip.drop ?? trip.pickup
-  const framed: [number, number][] =
-    trip.phase === 'completed' || trip.phase === 'cancelled'
-      ? [[trip.pickup.lat, trip.pickup.lng], ...(trip.drop ? ([[trip.drop.lat, trip.drop.lng]] as [number, number][]) : [])]
-      : [...(trip.driver ? ([[trip.driver.lat, trip.driver.lng]] as [number, number][]) : []), [target.lat, target.lng]]
+  const framed: [number, number][] = live
+    ? [...(trip.driver ? ([[trip.driver.lat, trip.driver.lng]] as [number, number][]) : []), [target.lat, target.lng]]
+    : [[trip.pickup.lat, trip.pickup.lng], ...(trip.drop ? ([[trip.drop.lat, trip.drop.lng]] as [number, number][]) : [])]
 
   return (
     <MapBoundary lang={lang}>
-    <div role="img" aria-label={label} className="h-full w-full">
-    <MapView center={[trip.pickup.lat, trip.pickup.lng]} zoom={14} className="h-full w-full">
-      <Camera points={framed} phaseKey={`${trip.phase}:${trip.driver ? 'car' : 'nocar'}`} bottomPad={bottomPad} />
-      {live && trip.route && <RoutePolyline encoded={trip.route} />}
-      <Dot position={[trip.pickup.lat, trip.pickup.lng]} color="#16A34A" label={trip.pickup.label ?? ''} />
-      {trip.stops.map((s, i) => (s.status === 'pending' ? <StopPin key={i} position={[s.lat, s.lng]} index={i + 1} /> : null))}
-      {trip.drop && <Dot position={[trip.drop.lat, trip.drop.lng]} color="#DC2626" label={trip.drop.label ?? ''} />}
-      {car && trip.driver && <LiveCar position={car.position} heading={car.heading} stale={trip.driver.stale} />}
-    </MapView>
-    </div>
+      <div role="img" aria-label={label} className="h-full w-full">
+        <Map
+          defaultCenter={{ lat: trip.pickup.lat, lng: trip.pickup.lng }}
+          defaultZoom={14}
+          mapId={process.env.NEXT_PUBLIC_GOOGLE_MAPS_ID}
+          gestureHandling="greedy"
+          disableDefaultUI
+          clickableIcons={false}
+          style={{ height: '100%', width: '100%' }}
+        >
+          <Camera points={framed} phaseKey={`${trip.phase}:${trip.driver ? 'car' : 'nocar'}`} bottomPad={bottomPad} />
+          {live && trip.route && <RoutePolyline encoded={trip.route} />}
+          <Dot position={[trip.pickup.lat, trip.pickup.lng]} color="#16A34A" label={trip.pickup.label ?? ''} />
+          {trip.stops.map((s, i) => (s.status === 'pending' ? <StopPin key={i} position={[s.lat, s.lng]} index={i + 1} /> : null))}
+          {trip.drop && <Dot position={[trip.drop.lat, trip.drop.lng]} color="#DC2626" label={trip.drop.label ?? ''} />}
+          {live && trip.driver && <LiveCar lat={trip.driver.lat} lng={trip.driver.lng} heading={trip.driver.heading} stale={trip.driver.stale} />}
+        </Map>
+      </div>
     </MapBoundary>
   )
 }
+
+// Re-renders only when a new response arrives (a new `trip` object), never for the page's own clock.
+export default memo(TripMap)

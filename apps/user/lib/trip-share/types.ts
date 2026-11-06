@@ -1,7 +1,7 @@
 // The public live-trip response (GET /api/v1/public/trips/:token). Mirrors api/src/modules/ride-shares/public-trip.ts.
 // Everything here is already allow-listed by the server: no phones, fares or OTPs ever arrive.
 
-export type TripPhase = 'driver_on_way' | 'in_trip' | 'completed' | 'cancelled' | 'inactive'
+export type TripPhase = 'driver_on_way' | 'in_trip' | 'completed' | 'cancelled' | 'finding_driver' | 'inactive'
 
 export interface PublicTrip {
   phase: TripPhase

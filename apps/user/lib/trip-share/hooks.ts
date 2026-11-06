@@ -1,15 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { bearingDeg } from '../geo'
 import { fetchPublicTrip } from './fetch-trip'
 import { LOCALE_TAG, pickLanguage, type Lang } from './i18n'
-import { lerpPosition, planGlide } from './glide'
 import { nextDelayMs } from './polling'
 import type { PublicTrip } from './types'
 
 export type TripState =
-  | { status: 'loading' }
+  /** `offline`: the first answer has failed at least once (the page says it is retrying instead of looking frozen). */
+  | { status: 'loading'; offline: boolean }
   | { status: 'inactive' }
   | { status: 'live'; trip: PublicTrip; receivedAtMs: number; offline: boolean }
 
@@ -18,7 +17,7 @@ export type TripState =
  * a failing network keeps the last trip on screen with an "offline" flag and backs off.
  */
 export function useTripPolling(token: string): TripState {
-  const [state, setState] = useState<TripState>({ status: 'loading' })
+  const [state, setState] = useState<TripState>({ status: 'loading', offline: false })
   const failures = useRef(0)
   const startedAt = useRef(0)
 
@@ -42,7 +41,7 @@ export function useTripPolling(token: string): TripState {
         setState({ status: 'live', trip: res.trip, receivedAtMs: Date.now(), offline: false })
       } else {
         failures.current += 1
-        setState((s) => (s.status === 'live' ? { ...s, offline: true } : s))
+        setState((s) => (s.status === 'live' || s.status === 'loading' ? { ...s, offline: true } : s))
       }
       schedule(ended)
     }
@@ -92,51 +91,4 @@ export function useLang(): [Lang, (l: Lang) => void] {
     try { window.localStorage.setItem(LANG_KEY, l) } catch { /* private mode: fine */ }
   }, [])
   return [lang, setLang]
-}
-
-/**
- * The car position to draw: glides between reported positions over the polling interval, or snaps (first position, a jump over
- * 300 m, a hidden tab, reduced motion). Heading comes from the report, else from the direction of travel.
- */
-export function useGlidedCar(report: { lat: number; lng: number; heading: number | null } | null): { position: [number, number]; heading: number | null } | null {
-  const [shown, setShown] = useState<{ position: [number, number]; heading: number | null } | null>(null)
-  const current = useRef<[number, number] | null>(null)
-  const lastReportAt = useRef(0)
-  const lastTarget = useRef<[number, number] | null>(null)
-  const raf = useRef<number | undefined>(undefined)
-
-  const lat = report?.lat
-  const lng = report?.lng
-  const reportedHeading = report?.heading ?? null
-
-  useEffect(() => {
-    if (lat === undefined || lng === undefined) { setShown(null); current.current = null; lastTarget.current = null; return }
-    const to: [number, number] = [lat, lng]
-    const now = Date.now()
-    const heading = reportedHeading ?? (lastTarget.current ? bearingDeg(lastTarget.current, to) : null)
-    const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const plan = planGlide({ from: current.current, to, sinceLastMs: lastReportAt.current ? now - lastReportAt.current : 0, hidden: document.hidden, reducedMotion: reduced })
-    lastReportAt.current = now
-    lastTarget.current = to
-    if (raf.current !== undefined) cancelAnimationFrame(raf.current)
-
-    if (plan.snap) {
-      current.current = to
-      setShown({ position: to, heading })
-      return
-    }
-    const from = current.current!
-    const t0 = performance.now()
-    const step = (t: number) => {
-      const k = (t - t0) / plan.durationMs
-      const p = lerpPosition(from, to, k)
-      current.current = p
-      setShown({ position: p, heading })
-      if (k < 1) raf.current = requestAnimationFrame(step)
-    }
-    raf.current = requestAnimationFrame(step)
-    return () => { if (raf.current !== undefined) cancelAnimationFrame(raf.current) }
-  }, [lat, lng, reportedHeading])
-
-  return shown
 }

@@ -54,6 +54,15 @@ describe('statusView', () => {
     const v = view(trip())
     expect(v).toMatchObject({ tone: 'success', text: `In trip · Arriving ${fmt(new Date(T0 + 12 * 60_000))}` })
   })
+  it('the arrival time does not creep later as the page sits there (it is anchored to the server time, not the ticking clock)', () => {
+    const first = view(trip()).text
+    expect(view(trip(), T0 + 30_000).text).toBe(first)
+    expect(view(trip(), T0 + 50_000).text).toBe(first)
+  })
+  it('a ride being re-dispatched says a new driver is being found, and is not a dead link', () => {
+    expect(view(trip({ phase: 'finding_driver', driver: null, etaMin: null }))).toMatchObject({ tone: 'info', text: 'Finding a new driver…', freshness: null, stale: false })
+    expect(view(trip({ phase: 'finding_driver', driver: null, etaMin: null }), T0, 'hi').text).toBe('नया ड्राइवर ढूँढा जा रहा है…')
+  })
   it('without an ETA it just names the phase', () => {
     expect(view(trip({ etaMin: null })).text).toBe('In trip')
     expect(view(trip({ phase: 'driver_on_way', etaMin: null })).text).toBe('On the way to pickup')
