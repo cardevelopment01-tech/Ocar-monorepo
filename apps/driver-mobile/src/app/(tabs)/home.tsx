@@ -22,6 +22,7 @@ import CarMarker from '@/features/map/components/CarMarker'
 import AddressCallout from '@/features/map/components/AddressCallout'
 import { fetchReverseGeocode } from '@/features/map/api'
 import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosition'
+import { INITIAL_RECENTER, nextRecenter, type RecenterState } from '@/features/map/recenter'
 
 // Same fallback center as the web driver app's Home.tsx (Bhubaneswar) -- shown
 // until a real fix comes in, or forever if location is denied.
@@ -107,7 +108,8 @@ export default function HomeScreen() {
         // the map is a real pannable/zoomable surface now (per this session's
         // decision to enable that), and a controlled `region` would fight the
         // driver's own gestures on every re-render after this.
-        mapRef.current?.animateToRegion(fixRegion, 600)
+        // (The camera move itself is the re-center effect below: a call made here can run before the native map is ready
+        // and is then silently lost, leaving the camera on the default region and the driver's car off screen.)
         // One-shot on the initial fix, matching the pill's purpose (where am I
         // right now) rather than live-updating on every GPS tick -- this screen
         // doesn't track the driver's position continuously the way an active
@@ -124,6 +126,19 @@ export default function HomeScreen() {
   }, [])
 
   const carPosition: [number, number] | null = live?.position ?? (hasFix ? [region.latitude, region.longitude] : null)
+
+  // Bring the camera onto the driver once the native map is ready and a position exists, and again once per online session
+  // when live GPS arrives (see features/map/recenter.ts). Never on every GPS tick, so a driver who pans is not dragged back.
+  const recenter = useRef<RecenterState>(INITIAL_RECENTER)
+  const livePosition = live?.position ?? null
+  useEffect(() => {
+    const out = nextRecenter(recenter.current, { mapReady, position: carPosition, livePosition, isOnline })
+    recenter.current = out.state
+    if (out.target) {
+      mapRef.current?.animateToRegion({ latitude: out.target[0], longitude: out.target[1], latitudeDelta: 0.03, longitudeDelta: 0.03 }, 600)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- carPosition/livePosition are fresh arrays each render; the rules are idempotent
+  }, [mapReady, isOnline, carPosition?.[0], carPosition?.[1], livePosition?.[0], livePosition?.[1]])
 
   // Actionable, not just informational, tapping goes straight to the screen that fixes it, matching
   // the rule every driver-app rejection writeup agrees on: never leave a driver guessing what to do next.
