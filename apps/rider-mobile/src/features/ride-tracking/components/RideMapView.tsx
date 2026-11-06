@@ -3,11 +3,14 @@ import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
 import { OCAR_MAP_PROPS, ROUTE } from '@/theme/mapStyle'
 import CarMarker from '@/features/map/components/CarMarker'
+import NearbyCarMarker from '@/features/map/components/NearbyCarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { framingPadding, isInVisibleBand, sheetHeightBucket } from '../mapFraming'
+import { carsToFrame, type NearbyCar } from '../nearbyCars'
 
 const USER_MOVE_HOLD_MS = 15_000
 const DRIVER_REFIT_MIN_MS = 5_000
+const NO_CARS: readonly NearbyCar[] = []
 
 export type RideMapViewProps = {
   pickup: [number, number]
@@ -26,6 +29,9 @@ export type RideMapViewProps = {
   // Height (px) of a sheet docked over the bottom of the map. The camera frames the trip in the part that is NOT under
   // it, and "is the car in view" is judged the same way. 0 = nothing covers the map.
   coveredBottom?: number
+  // Available cars around the pickup, shown while a ride is being matched (before any driver is assigned). Ignored once
+  // `driverPos` is set: from then on the assigned car is the only car.
+  nearbyDrivers?: readonly NearbyCar[]
 }
 
 // Real map replacing the earlier placeholder progress-bar "track" (LiveMarker) --
@@ -35,7 +41,7 @@ export type RideMapViewProps = {
 // drop/driver now use the same custom SVG markers as web (CarMarker/LocationPin)
 // instead of react-native-maps' default OS pin -- see the input-consistency +
 // premiumness pass this replaced.
-function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0 }: RideMapViewProps) {
+function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS }: RideMapViewProps) {
   const mapRef = useRef<MapView>(null)
   // Same react-native-maps gotcha as SelectRideMap: fitToCoordinates called
   // before the native view's onMapReady fires silently no-ops, leaving the
@@ -59,18 +65,21 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
     const points: [number, number][] = [pickup, ...stops]
     if (showDrop && drop) points.push(drop)
     if (driverPos) points.push(driverPos)
+    else points.push(...carsToFrame(pickup, nearbyDrivers))
     if (points.length < 2) return
     mapRef.current?.fitToCoordinates(
       points.map(([latitude, longitude]) => ({ latitude, longitude })),
       { edgePadding: padding, animated: true }
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by fitKey below, not array identities
-  }, [pickup, drop, driverPos, showDrop, stopsKey, padding])
+  }, [pickup, drop, driverPos, showDrop, stopsKey, padding, nearbyDrivers])
 
   // Re-fit when the SET of things on the map changes (status/leg, stops, driver first appearing),
   // not on every driver location tick -- that animated the camera every few seconds, snapped the
   // rider back whenever they panned, and kept the GPU at full frame rate for the whole trip.
-  const fitKey = `${pickup[0]},${pickup[1]}|${drop ? `${drop[0]},${drop[1]}` : ''}|${stopsKey}|${showDrop}|${driverPos ? 1 : 0}|${sheetHeightBucket(coveredBottom)}`
+  // Re-frame when cars first appear near the pickup (or all leave), not on every poll: cars drifting about must not move the camera.
+  const framesCars = !driverPos && carsToFrame(pickup, nearbyDrivers).length > 0 ? 1 : 0
+  const fitKey = `${pickup[0]},${pickup[1]}|${drop ? `${drop[0]},${drop[1]}` : ''}|${stopsKey}|${showDrop}|${driverPos ? 1 : 0}|${sheetHeightBucket(coveredBottom)}|${framesCars}`
   useEffect(() => {
     if (mapReady && !holdActive()) fit()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fitKey captures every input that should trigger a re-fit
@@ -132,6 +141,7 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
           <LocationPin key={`stop-${i}-${lat}-${lng}`} position={[lat, lng]} variant="stop" />
         ))}
         {showDrop && drop ? <LocationPin position={drop} variant="drop" /> : null}
+        {!driverPos ? nearbyDrivers.map((d) => <NearbyCarMarker key={d.driverId} position={[d.lat, d.lng]} />) : null}
         {driverPos ? (
           <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} />
         ) : null}
