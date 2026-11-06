@@ -2,7 +2,8 @@
 // and whether a new position should glide or snap. No React Native imports, so every rule is unit-tested.
 
 export type LatLng = [number, number]
-export type NearbyCar = { driverId: string; lat: number; lng: number }
+/** `heading` is the compass bearing the driver's phone reported, when the live feed carried one. */
+export type NearbyCar = { driverId: string; lat: number; lng: number; heading?: number }
 
 /** The nearest cars are framed with the pickup; the rest stay on the map but never stretch the camera out. */
 export const FRAME_MAX_CARS = 5

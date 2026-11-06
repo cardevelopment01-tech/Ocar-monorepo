@@ -163,7 +163,7 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
           <LocationPin key={`stop-${i}-${lat}-${lng}`} position={[lat, lng]} variant="stop" />
         ))}
         {showDrop && drop ? <LocationPin position={drop} variant="drop" /> : null}
-        {fleet.map((e) => <NearbyCarMarker key={e.car.driverId} position={[e.car.lat, e.car.lng]} opacity={fleetOpacity(e, Date.now())} />)}
+        {fleet.map((e) => <NearbyCarMarker key={e.car.driverId} position={[e.car.lat, e.car.lng]} {...(e.car.heading !== undefined ? { heading: e.car.heading } : {})} opacity={fleetOpacity(e, Date.now())} />)}
         {driverPos ? (
           <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} animate={driverLocated} />
         ) : null}

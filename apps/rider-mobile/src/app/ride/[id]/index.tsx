@@ -67,7 +67,7 @@ export default function RideTrackingScreen() {
 
   // While a ride is being matched ('requested' only: a scheduled ride is not matched yet) show the available cars around
   // the pickup, like the fare screen does, so the rider sees that drivers are close. They go away once a driver is assigned.
-  const nearbyCars = useNearbyDrivers(ride?.originLat ?? null, ride?.originLng ?? null, ride?.status === 'requested')
+  const nearbyCars = useNearbyDrivers(ride ? rideId : null, ride?.originLat ?? null, ride?.originLng ?? null, ride?.status === 'requested')
 
   // "Driver's location hasn't updated" must appear when updates STOP, so it needs a timer: a memo on
   // lastLocationAt only recomputed when a new update arrived, i.e. exactly when it was never true.

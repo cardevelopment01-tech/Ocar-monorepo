@@ -13,8 +13,9 @@ export type FleetEntry = { car: NearbyCar; /** null = live (in the latest feed);
 /** A retired car fades from this opacity to nothing over FADE_MS. */
 export const FADE_FROM = 0.55
 export const FADE_MS = 500
-/** Longer than the longest glide (6 s), so nothing is animating when the marker is finally removed. */
-export const REMOVE_AFTER_MS = 7000
+/** Longer than the longest glide (a car glides for as long as the gap between its updates, at most 8 s), so nothing is
+ *  animating when the marker is finally removed. */
+export const REMOVE_AFTER_MS = 9000
 
 /** Merge a new feed into the fleet: cars in the feed are live (positions refreshed, a retired car that reappears is revived),
  *  cars that dropped out are retired (once), and cars retired for longer than REMOVE_AFTER_MS are dropped. */
