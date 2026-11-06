@@ -71,20 +71,25 @@ export async function createShares(userId: bigint, rideId: bigint, contactIds: s
   const targets: Array<{ label: string | null; phone: string | null }> =
     chosen.length > 0 ? chosen.map((c) => ({ label: c!.name, phone: c!.phone })) : [{ label: null, phone: null }]
 
-  const riderName = targets.some((t) => t.phone) ? await repo.getRiderFirstName(userId) : null
-  const created: CreatedShare[] = []
-  for (const t of targets) {
-    const token = newToken()
-    const res = await repo.insertShare({ rideId, userId, tokenHash: sha256(token), label: t.label, phone: t.phone, isSos: false }, SHARE_CAPS)
-    if (res.result !== 'created') {
-      throw httpError(429, res.result === 'limit_ride' ? 'This trip already has the most links allowed. Stop one first' : 'Too many links created. Try again later', 'TRIP_SHARE_LIMIT')
-    }
-    const url = urlFor(token)
-    const item: CreatedShare = { id: res.id, url, label: t.label }
-    if (t.phone) item.sms = await textContact(userId, riderName, t.phone, url)
-    created.push(item)
+  const tokens = targets.map(() => newToken())
+  const res = await repo.insertShares(
+    targets.map((t, i) => ({ rideId, userId, tokenHash: sha256(tokens[i]!), label: t.label, phone: t.phone, isSos: false })),
+    SHARE_CAPS,
+  )
+  if (res.result !== 'created') {
+    throw httpError(429, res.result === 'limit_ride' ? 'This trip already has the most links allowed. Stop one first' : 'Too many links created. Try again later', 'TRIP_SHARE_LIMIT')
   }
-  return created
+
+  // The texts go out together, not one after another: a slow SMS vendor must not make the rider wait for the sum of them all.
+  const riderName = targets.some((t) => t.phone) ? await repo.getRiderFirstName(userId) : null
+  return Promise.all(
+    targets.map(async (t, i): Promise<CreatedShare> => {
+      const url = urlFor(tokens[i]!)
+      const item: CreatedShare = { id: res.ids[i]!, url, label: t.label }
+      if (t.phone) item.sms = await textContact(userId, riderName, t.phone, url)
+      return item
+    }),
+  )
 }
 
 /**
@@ -121,24 +126,36 @@ export const stopAllShares = (userId: bigint, rideId: bigint) => repo.revokeAll(
 
 export type PublicTripResult = { kind: 'ok'; trip: PublicTripDto & { isSos: boolean } } | { kind: 'missing' } | { kind: 'expired' }
 
+/** An ETA as it was routed, with the moment it was worked out. */
+interface CachedEta extends TripEta { at: number }
+
+/**
+ * A cached ETA is up to a minute old. Counting it down by the minutes that have passed keeps "arriving at" (which the page works out as
+ * serverTime + etaMin) steady instead of sliding later with every poll.
+ */
+function agedEta(eta: CachedEta, now: Date): TripEta {
+  const elapsedMin = (now.getTime() - eta.at) / 60_000
+  return { etaMin: Math.max(1, Math.round(eta.etaMin - elapsedMin)), route: eta.route }
+}
+
 /** The ETA and planned route for a ride: one routed call per ride per minute, whoever is watching. Cached on the ride, not on coordinates. */
-async function etaFor(rideId: bigint, row: Awaited<ReturnType<typeof repo.getPublicTripRow>>): Promise<TripEta | null> {
+async function etaFor(rideId: bigint, row: Awaited<ReturnType<typeof repo.getPublicTripRow>>, now: Date): Promise<TripEta | null> {
   if (!row || row.driver_lat == null || row.driver_lng == null) return null
   const phase = phaseForStatus(row.status)
   if (phase !== 'driver_on_way' && phase !== 'in_trip') return null
   const key = `share:eta:${rideId}:${phase}`
   try {
     const cached = await redis.get(key)
-    if (cached) return JSON.parse(cached) as TripEta
+    if (cached) return agedEta(JSON.parse(cached) as CachedEta, now)
   } catch { /* a cache miss is fine */ }
   const to = phase === 'driver_on_way' ? { lat: row.origin_lat, lng: row.origin_lng } : row.destination_lat != null && row.destination_lng != null ? { lat: row.destination_lat, lng: row.destination_lng } : null
   if (!to) return null
   try {
     const route = await getRoute(row.driver_lat, row.driver_lng, to.lat, to.lng)
     if (route.source === 'fallback') return null
-    const eta: TripEta = { etaMin: Math.max(1, Math.round(route.trafficDurationMin ?? route.durationMin)), route: route.polyline }
+    const eta: CachedEta = { etaMin: Math.max(1, Math.round(route.trafficDurationMin ?? route.durationMin)), route: route.polyline, at: now.getTime() }
     await redis.set(key, JSON.stringify(eta), 'EX', ETA_CACHE_SECONDS).catch(() => undefined)
-    return eta
+    return agedEta(eta, now)
   } catch (err) {
     log.warn({ err, rideId: String(rideId) }, 'public trip ETA unavailable')
     return null
@@ -153,7 +170,7 @@ async function buildTrip(rideId: bigint, now: Date): Promise<PublicTripDto | nul
   } catch { /* fall through to the database */ }
   const [row, stops] = await Promise.all([repo.getPublicTripRow(rideId), repo.getPublicStops(rideId)])
   if (!row) return null
-  const trip = toPublicTrip(row, stops, await etaFor(rideId, row), now)
+  const trip = toPublicTrip(row, stops, await etaFor(rideId, row, now), now)
   await redis.set(key, JSON.stringify(trip), 'EX', TRIP_CACHE_SECONDS).catch(() => undefined)
   return trip
 }

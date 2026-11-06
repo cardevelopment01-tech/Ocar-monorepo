@@ -36,6 +36,7 @@ export interface NewShare {
 }
 
 export type InsertResult = { result: 'created'; id: string } | { result: 'limit_ride' | 'limit_hour' }
+export type InsertManyResult = { result: 'created'; ids: string[] } | { result: 'limit_ride' | 'limit_hour' }
 
 const SHARE_COLUMNS = `id, recipient_label AS label, is_sos AS "isSos", view_count AS "viewCount",
   last_viewed_at AS "lastViewedAt", created_at AS "createdAt"`
@@ -46,31 +47,44 @@ export async function getRideForShare(rideId: bigint): Promise<ShareRideRow | nu
 }
 
 /**
- * Creates one share. The ride row is locked (FOR UPDATE) so two simultaneous creates cannot both pass the per-ride count, and
- * the hourly count is read in the same transaction. `caps` is omitted for an SOS share: an emergency is never refused.
+ * Creates the given shares ALL OR NONE, in one transaction: a contact list that does not fit is refused whole instead of leaving the
+ * first links created (and texted) before a later one hits a cap. The ride row is locked (FOR UPDATE) so two simultaneous creates
+ * cannot both pass the per-ride count, and the hourly count is read in the same transaction. `caps` is omitted for an SOS share:
+ * an emergency is never refused.
  */
-export function insertShare(input: NewShare, caps?: { perRide: number; perHour: number }): Promise<InsertResult> {
+export function insertShares(inputs: NewShare[], caps?: { perRide: number; perHour: number }): Promise<InsertManyResult> {
+  if (inputs.length === 0) return Promise.resolve({ result: 'created', ids: [] })
+  const { rideId, userId } = inputs[0]!
   return withTransaction(async (client) => {
-    await client.query('SELECT id FROM rides WHERE id = $1 FOR UPDATE', [input.rideId.toString()])
+    await client.query('SELECT id FROM rides WHERE id = $1 FOR UPDATE', [rideId.toString()])
     if (caps) {
       const active = await client.query<{ n: string }>(
         'SELECT count(*)::text AS n FROM ride_shares WHERE ride_id = $1 AND revoked_at IS NULL',
-        [input.rideId.toString()],
+        [rideId.toString()],
       )
-      if (Number(active.rows[0]!.n) >= caps.perRide) return { result: 'limit_ride' as const }
+      if (Number(active.rows[0]!.n) + inputs.length > caps.perRide) return { result: 'limit_ride' as const }
       const recent = await client.query<{ n: string }>(
         `SELECT count(*)::text AS n FROM ride_shares WHERE user_id = $1 AND created_at > now() - interval '1 hour'`,
-        [input.userId.toString()],
+        [userId.toString()],
       )
-      if (Number(recent.rows[0]!.n) >= caps.perHour) return { result: 'limit_hour' as const }
+      if (Number(recent.rows[0]!.n) + inputs.length > caps.perHour) return { result: 'limit_hour' as const }
     }
-    const ins = await client.query<{ id: string }>(
-      `INSERT INTO ride_shares (ride_id, user_id, token_hash, recipient_label, recipient_phone, is_sos)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [input.rideId.toString(), input.userId.toString(), input.tokenHash, input.label, input.phone, input.isSos],
-    )
-    return { result: 'created' as const, id: ins.rows[0]!.id }
+    const ids: string[] = []
+    for (const input of inputs) {
+      const ins = await client.query<{ id: string }>(
+        `INSERT INTO ride_shares (ride_id, user_id, token_hash, recipient_label, recipient_phone, is_sos)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [input.rideId.toString(), input.userId.toString(), input.tokenHash, input.label, input.phone, input.isSos],
+      )
+      ids.push(ins.rows[0]!.id)
+    }
+    return { result: 'created' as const, ids }
   })
+}
+
+export async function insertShare(input: NewShare, caps?: { perRide: number; perHour: number }): Promise<InsertResult> {
+  const res = await insertShares([input], caps)
+  return res.result === 'created' ? { result: 'created', id: res.ids[0]! } : res
 }
 
 export const listActive = (rideId: bigint, userId: bigint) =>

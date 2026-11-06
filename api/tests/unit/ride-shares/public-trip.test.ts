@@ -25,7 +25,7 @@ describe('phaseForStatus (every ride_status value)', () => {
     ['accepted', 'driver_on_way'], ['driver_arrived', 'driver_on_way'],
     ['in_progress', 'in_trip'], ['returning', 'in_trip'],
     ['completed', 'completed'], ['cancelled', 'cancelled'], ['no_drivers', 'cancelled'],
-    ['requested', 'inactive'],
+    ['requested', 'finding_driver'],
   ])('%s -> %s', (status, phase) => expect(phaseForStatus(status)).toBe(phase))
 
   it('a status added later (or hostile text) reads as inactive, never as live', () => {
@@ -51,8 +51,11 @@ describe('isShareExpired', () => {
   it('a link never outlives 7 days from creation, even for a trip still running', () => {
     expect(isShareExpired({ ...base, created_at: new Date(T0.getTime() - MAX_LINK_AGE_MS - 1_000) }, T0)).toBe(true)
   })
-  it('a ride that never got a driver (requested) is inactive', () => {
-    expect(isShareExpired({ ...base, status: 'requested' }, T0)).toBe(true)
+  it('a ride sent back to dispatch (its driver cancelled) is NOT a dead link: the page says a new driver is being found', () => {
+    expect(isShareExpired({ ...base, status: 'requested' }, T0)).toBe(false)
+  })
+  it('a status nobody described yet is treated as dead rather than guessed', () => {
+    expect(isShareExpired({ ...base, status: 'teleporting' }, T0)).toBe(true)
   })
 })
 
@@ -70,6 +73,12 @@ describe('toPublicTrip (the allow-list)', () => {
     const dirty = { ...row(), driver_phone: '+919876543210', total_estimated: 449.5, start_otp_hash: 'abc123', user_phone: '+919811111111' }
     const json = JSON.stringify(toPublicTrip(dirty as never, [], { etaMin: 7, route: 'poly' }, T0))
     for (const secret of ['+919876543210', '449.5', 'abc123', '+919811111111', 'phone', 'otp', 'fare']) expect(json.toLowerCase()).not.toContain(secret.toLowerCase())
+  })
+
+  it('while a new driver is being found there is no car, ETA or route, and the page keeps its places', () => {
+    const dto = toPublicTrip(row({ status: 'requested', driver_lat: null, driver_lng: null, driver_updated_at: null, vehicle_plate: null }), [], { etaMin: 7, route: 'poly' }, T0)
+    expect(dto).toMatchObject({ phase: 'finding_driver', driver: null, etaMin: null, route: null })
+    expect(dto.pickup.label).toBe('Patia Square')
   })
 
   it('shows the car, ETA and route only while the trip is live', () => {

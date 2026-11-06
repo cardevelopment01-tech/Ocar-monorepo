@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 // as a viewer; why_new=new feature; seam=mocked repository, Redis, SMS and routing; no_claim=the SQL (see the integration test).
 const h = vi.hoisted(() => ({
   repo: {
-    getRideForShare: vi.fn(), insertShare: vi.fn(), listActive: vi.fn(), revokeOne: vi.fn(), revokeAll: vi.fn(),
+    getRideForShare: vi.fn(), insertShare: vi.fn(), insertShares: vi.fn(), listActive: vi.fn(), revokeOne: vi.fn(), revokeAll: vi.fn(),
     findByTokenHash: vi.fn(), recordView: vi.fn(), getRiderFirstName: vi.fn(), getPublicTripRow: vi.fn(), getPublicStops: vi.fn(),
   },
   redis: { get: vi.fn(), set: vi.fn() },
@@ -50,6 +50,7 @@ beforeEach(() => {
   h.getConfigValue.mockResolvedValue('true')
   h.repo.getRideForShare.mockResolvedValue({ id: '16', user_id: '4', status: 'in_progress' })
   h.repo.insertShare.mockResolvedValue({ result: 'created', id: '5' })
+  h.repo.insertShares.mockImplementation(async (inputs: unknown[]) => ({ result: 'created', ids: inputs.map((_, i) => String(5 + i)) }))
   h.repo.getRiderFirstName.mockResolvedValue('Asha')
   h.contacts.list.mockResolvedValue([{ id: '1', name: 'Mum', phone: '+919811111111' }, { id: '2', name: 'Dad', phone: '+919822222222' }])
   h.notif.logNotification.mockResolvedValue(9)
@@ -86,26 +87,26 @@ describe('createShares', () => {
     const [created] = await createShares(4n, 16n)
     expect(created!.url).toMatch(/^https:\/\/ocarindia\.com\/t\/[A-Za-z0-9_-]{22}$/)
     const token = tokenOf(created!.url)
-    const input = h.repo.insertShare.mock.calls[0]![0]
+    const input = h.repo.insertShares.mock.calls[0]![0][0]
     expect(input.tokenHash).toBe(sha(token))
     expect(JSON.stringify(input, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))).not.toContain(token)
     expect(input).toMatchObject({ label: null, phone: null, isSos: false })
-    expect(h.repo.insertShare.mock.calls[0]![1]).toEqual(SHARE_CAPS)
+    expect(h.repo.insertShares.mock.calls[0]![1]).toEqual(SHARE_CAPS)
     expect(h.sendSms).not.toHaveBeenCalled()
   })
 
   it('maps a cap refusal to 429', async () => {
-    h.repo.insertShare.mockResolvedValueOnce({ result: 'limit_ride' })
+    h.repo.insertShares.mockResolvedValueOnce({ result: 'limit_ride' })
     await expect(createShares(4n, 16n)).rejects.toMatchObject({ httpStatus: 429, appCode: 'TRIP_SHARE_LIMIT' })
-    h.repo.insertShare.mockResolvedValueOnce({ result: 'limit_hour' })
+    h.repo.insertShares.mockResolvedValueOnce({ result: 'limit_hour' })
     await expect(createShares(4n, 16n)).rejects.toMatchObject({ httpStatus: 429, appCode: 'TRIP_SHARE_LIMIT' })
   })
 
   it('creates one link per chosen contact and texts each; a contact that is not the rider\'s is refused', async () => {
-    h.repo.insertShare.mockResolvedValueOnce({ result: 'created', id: '5' }).mockResolvedValueOnce({ result: 'created', id: '6' })
     const out = await createShares(4n, 16n, ['1', '2'])
     expect(out.map((s) => [s.label, s.sms])).toEqual([['Mum', 'sent'], ['Dad', 'sent']])
-    expect(h.sendSms.mock.calls.map((c) => c[0])).toEqual(['+919811111111', '+919822222222'])
+    expect(h.sendSms.mock.calls.map((c) => c[0]).sort()).toEqual(['+919811111111', '+919822222222'])
+    expect(h.repo.insertShares).toHaveBeenCalledTimes(1) // both links in ONE all-or-none insert
     expect(h.renderTemplate).toHaveBeenCalledWith('trip_share', 'sms', { riderName: 'Asha', trackUrl: expect.stringContaining('/t/') })
     await expect(createShares(4n, 16n, ['1', '777'])).rejects.toMatchObject({ httpStatus: 422 })
   })
@@ -116,6 +117,22 @@ describe('createShares', () => {
     expect(created).toMatchObject({ label: 'Mum', sms: 'failed' })
     expect(created!.url).toContain('/t/')
     expect(h.notif.markFailed).toHaveBeenCalledWith(9, 'template inactive')
+  })
+})
+
+describe('createShares for several contacts', () => {
+  it('is all or none: if the list does not fit the caps nobody is texted', async () => {
+    h.repo.insertShares.mockResolvedValueOnce({ result: 'limit_ride' })
+    await expect(createShares(4n, 16n, ['1', '2'])).rejects.toMatchObject({ httpStatus: 429 })
+    expect(h.sendSms).not.toHaveBeenCalled()
+  })
+
+  it('texts the contacts together, so a slow SMS vendor costs the slowest text, not the sum', async () => {
+    let inFlight = 0
+    let peak = 0
+    h.sendSms.mockImplementation(async () => { inFlight++; peak = Math.max(peak, inFlight); await new Promise((r) => setTimeout(r, 5)); inFlight-- })
+    await createShares(4n, 16n, ['1', '2'])
+    expect(peak).toBe(2)
   })
 })
 
@@ -167,11 +184,20 @@ describe('getPublicTrip', () => {
     expect(h.getRoute).toHaveBeenCalledTimes(1)
     expect(h.redis.set).toHaveBeenCalledWith('share:eta:16:in_trip', expect.any(String), 'EX', 60)
     // a cached ETA means no second routed call
-    h.redis.get.mockImplementation(async (k: string) => (k.startsWith('share:eta:') ? JSON.stringify({ etaMin: 9, route: 'cached' }) : null))
+    h.redis.get.mockImplementation(async (k: string) => (k.startsWith('share:eta:') ? JSON.stringify({ etaMin: 9, route: 'cached', at: NOW.getTime() }) : null))
     h.getRoute.mockClear()
     const again = await getPublicTrip('x'.repeat(22), { now: NOW })
     expect(again).toMatchObject({ kind: 'ok', trip: { etaMin: 9, route: 'cached' } })
     expect(h.getRoute).not.toHaveBeenCalled()
+  })
+
+  it('counts a cached ETA down as it ages, so the arrival time the page works out stays steady', async () => {
+    const routedAt = NOW.getTime() - 3 * 60_000 // routed 3 minutes ago (the cache entry would normally have expired; the arithmetic is what matters)
+    h.redis.get.mockImplementation(async (k: string) => (k.startsWith('share:eta:') ? JSON.stringify({ etaMin: 12, route: 'cached', at: routedAt }) : null))
+    const res = await getPublicTrip('x'.repeat(22), { now: NOW })
+    expect(res).toMatchObject({ kind: 'ok', trip: { etaMin: 9, route: 'cached' } })
+    h.redis.get.mockImplementation(async (k: string) => (k.startsWith('share:eta:') ? JSON.stringify({ etaMin: 2, route: 'cached', at: routedAt }) : null))
+    expect(await getPublicTrip('x'.repeat(22), { now: NOW })).toMatchObject({ trip: { etaMin: 1 } }) // never below a minute
   })
 
   it('a revoked link is refused on the very next poll even while the trip itself is cached', async () => {

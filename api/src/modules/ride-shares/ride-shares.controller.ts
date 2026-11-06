@@ -60,6 +60,7 @@ export const isPreviewBot = (userAgent: string | undefined): boolean => PREVIEW_
 export async function publicTrip(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     res.setHeader('Cache-Control', 'no-store')
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow')
     const token = req.params['token']!
     if (!TOKEN_PATTERN.test(token)) { res.locals['tripMiss'] = true; res.status(404).json({ error: 'Not found', code: 'NOT_FOUND' }); return }
     const result = await service.getPublicTrip(token, { countView: !isPreviewBot(req.headers['user-agent']) })

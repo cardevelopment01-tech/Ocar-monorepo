@@ -6,7 +6,7 @@
 
 import type { PublicStopRow, PublicTripRow, ShareLookup } from './ride-shares.repository'
 
-export type TripPhase = 'driver_on_way' | 'in_trip' | 'completed' | 'cancelled' | 'inactive'
+export type TripPhase = 'driver_on_way' | 'in_trip' | 'completed' | 'cancelled' | 'finding_driver' | 'inactive'
 
 /** After the trip ends the page keeps saying so for this long, then the link is dead. */
 export const POST_TRIP_GRACE_MS = 30 * 60 * 1000
@@ -18,8 +18,10 @@ export const STALE_AFTER_MS = 60 * 1000
 /** Rides a rider may share: a driver is assigned and the trip has not ended. */
 export const SHAREABLE_STATUSES: ReadonlySet<string> = new Set(['accepted', 'driver_arrived', 'in_progress', 'returning'])
 
-// One place for the ride_status -> phase decision (002_enums.sql + 075_ride_status_returning.sql). Any status not listed
-// ('requested', or one added later) reads as inactive rather than guessing.
+// One place for the ride_status -> phase decision (002_enums.sql + 075_ride_status_returning.sql). A ride that goes back to
+// 'requested' (its driver cancelled and dispatch is looking again) is NOT a dead link: the link follows the ride, so the page says
+// a new driver is being found and comes back to life when one accepts. Any status not listed (one added later) reads as inactive
+// rather than guessing.
 const PHASE_BY_STATUS: Record<string, TripPhase> = {
   accepted: 'driver_on_way',
   driver_arrived: 'driver_on_way',
@@ -28,6 +30,7 @@ const PHASE_BY_STATUS: Record<string, TripPhase> = {
   completed: 'completed',
   cancelled: 'cancelled',
   no_drivers: 'cancelled',
+  requested: 'finding_driver',
 }
 
 export function phaseForStatus(status: string): TripPhase {
@@ -38,7 +41,7 @@ export function isShareExpired(share: Pick<ShareLookup, 'created_at' | 'complete
   if (now.getTime() - share.created_at.getTime() > MAX_LINK_AGE_MS) return true
   const ended = share.completed_at ?? share.cancelled_at
   if (ended && now.getTime() - ended.getTime() > POST_TRIP_GRACE_MS) return true
-  // A ride that never started and never got a driver has no end time; it is not shareable and the page would be empty.
+  // An unknown status (one added later) must not serve a page we cannot describe.
   return phaseForStatus(share.status) === 'inactive'
 }
 
