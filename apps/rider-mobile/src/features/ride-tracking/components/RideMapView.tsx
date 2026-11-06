@@ -4,6 +4,7 @@ import MapView, { Polyline } from 'react-native-maps'
 import { OCAR_MAP_PROPS, ROUTE } from '@/theme/mapStyle'
 import CarMarker from '@/features/map/components/CarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
+import { framingPadding, isInVisibleBand, sheetHeightBucket } from '../mapFraming'
 
 const USER_MOVE_HOLD_MS = 15_000
 const DRIVER_REFIT_MIN_MS = 5_000
@@ -22,6 +23,9 @@ export type RideMapViewProps = {
   stops?: [number, number][]
   // Default suits a full-screen map; a small preview passes less so the pins are not squeezed together.
   edgePadding?: { top: number; right: number; bottom: number; left: number }
+  // Height (px) of a sheet docked over the bottom of the map. The camera frames the trip in the part that is NOT under
+  // it, and "is the car in view" is judged the same way. 0 = nothing covers the map.
+  coveredBottom?: number
 }
 
 // Real map replacing the earlier placeholder progress-bar "track" (LiveMarker) --
@@ -31,18 +35,25 @@ export type RideMapViewProps = {
 // drop/driver now use the same custom SVG markers as web (CarMarker/LocationPin)
 // instead of react-native-maps' default OS pin -- see the input-consistency +
 // premiumness pass this replaced.
-function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 } }: RideMapViewProps) {
+function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0 }: RideMapViewProps) {
   const mapRef = useRef<MapView>(null)
   // Same react-native-maps gotcha as SelectRideMap: fitToCoordinates called
   // before the native view's onMapReady fires silently no-ops, leaving the
   // camera on initialRegion -- pickup/drop/driver pins get drawn but sit
   // outside that tiny visible area, reading as "the route isn't there".
   const [mapReady, setMapReady] = useState(false)
+  const [mapSize, setMapSize] = useState({ width: 0, height: 0 })
   const stopsKey = stops.map(([lat, lng]) => `${lat},${lng}`).join('|')
   // Bumped whenever the rider drags/zooms the map, so the camera stops fighting them.
   const userMovedAt = useRef(0)
   const lastDriverRefit = useRef(0)
   const holdActive = () => Date.now() - userMovedAt.current < USER_MOVE_HOLD_MS
+  // The sheet floats over the lower part of this map: pad the camera by its real height so the car is framed above it.
+  const padding = useMemo(
+    () => framingPadding(edgePadding, coveredBottom, mapSize.height),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the padding's numbers, not the object identity
+    [edgePadding.top, edgePadding.right, edgePadding.bottom, edgePadding.left, coveredBottom, mapSize.height],
+  )
 
   const fit = useCallback(() => {
     const points: [number, number][] = [pickup, ...stops]
@@ -51,15 +62,15 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
     if (points.length < 2) return
     mapRef.current?.fitToCoordinates(
       points.map(([latitude, longitude]) => ({ latitude, longitude })),
-      { edgePadding, animated: true }
+      { edgePadding: padding, animated: true }
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by fitKey below, not array identities
-  }, [pickup, drop, driverPos, showDrop, stopsKey, edgePadding.top, edgePadding.bottom, edgePadding.left, edgePadding.right])
+  }, [pickup, drop, driverPos, showDrop, stopsKey, padding])
 
   // Re-fit when the SET of things on the map changes (status/leg, stops, driver first appearing),
   // not on every driver location tick -- that animated the camera every few seconds, snapped the
   // rider back whenever they panned, and kept the GPU at full frame rate for the whole trip.
-  const fitKey = `${pickup[0]},${pickup[1]}|${drop ? `${drop[0]},${drop[1]}` : ''}|${stopsKey}|${showDrop}|${driverPos ? 1 : 0}`
+  const fitKey = `${pickup[0]},${pickup[1]}|${drop ? `${drop[0]},${drop[1]}` : ''}|${stopsKey}|${showDrop}|${driverPos ? 1 : 0}|${sheetHeightBucket(coveredBottom)}`
   useEffect(() => {
     if (mapReady && !holdActive()) fit()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fitKey captures every input that should trigger a re-fit
@@ -69,16 +80,28 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
   useEffect(() => {
     if (!mapReady || !driverPos || holdActive() || Date.now() - lastDriverRefit.current < DRIVER_REFIT_MIN_MS) return
     let cancelled = false
-    mapRef.current?.getMapBoundaries().then(({ northEast, southWest }) => {
-      if (cancelled) return
-      const inside =
-        driverPos[0] <= northEast.latitude && driverPos[0] >= southWest.latitude &&
-        driverPos[1] <= northEast.longitude && driverPos[1] >= southWest.longitude
-      if (!inside && !holdActive()) {
-        lastDriverRefit.current = Date.now()
-        fit()
-      }
-    }).catch(() => {})
+    const refit = (inside: boolean) => {
+      if (cancelled || inside || holdActive()) return
+      lastDriverRefit.current = Date.now()
+      fit()
+    }
+    // In view = on the map AND not under the sheet. The whole-map bounds count the strip behind the sheet as visible,
+    // which is how a car driving there was never brought back. Falls back to the bounds if the projection is missing.
+    const byBounds = () =>
+      mapRef.current?.getMapBoundaries().then(({ northEast, southWest }) => {
+        refit(
+          driverPos[0] <= northEast.latitude && driverPos[0] >= southWest.latitude &&
+          driverPos[1] <= northEast.longitude && driverPos[1] >= southWest.longitude,
+        )
+      }).catch(() => {})
+    if (mapSize.height > 0 && mapRef.current?.pointForCoordinate) {
+      mapRef.current
+        .pointForCoordinate({ latitude: driverPos[0], longitude: driverPos[1] })
+        .then((pt) => refit(isInVisibleBand(pt, mapSize, coveredBottom)))
+        .catch(() => { void byBounds() })
+    } else {
+      void byBounds()
+    }
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs per driver tick on purpose; fit is stable enough
   }, [mapReady, driverPos])
@@ -91,7 +114,10 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
   )
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      onLayout={(e) => setMapSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+    >
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}

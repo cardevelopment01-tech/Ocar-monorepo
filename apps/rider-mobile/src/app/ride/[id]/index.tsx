@@ -96,6 +96,8 @@ export default function RideTrackingScreen() {
   const [pickupToast, setPickupToast] = useState(false)
   // Open by default: pickup, drop and stops are the first thing a rider on a live trip looks for.
   const [detailsExpanded, setDetailsExpanded] = useState(true)
+  // Height of the docked sheet, so the map frames the trip (and the car) above it, not underneath.
+  const [sheetHeight, setSheetHeight] = useState(0)
   // Stops whose "driver can't reach this" prompt the rider chose to keep; the timeline Skip still works.
   const [keptStops, setKeptStops] = useState<number[]>([])
   const [skippingStop, setSkippingStop] = useState(false)
@@ -259,6 +261,7 @@ export default function RideTrackingScreen() {
         routePoints={routePoints}
         showDrop={drop != null}
         stops={ride.stops.filter((s) => s.status === 'pending').map((s): [number, number] => [s.lat, s.lng])}
+        coveredBottom={sheetHeight}
       />
 
       <View style={[styles.mapOverlayTop, { paddingTop: insets.top + spacing.sm }]} pointerEvents="box-none">
@@ -281,7 +284,13 @@ export default function RideTrackingScreen() {
         anchor="top-right"
       />
 
-      <Animated.View style={[styles.sheet, sheetEntranceStyle]}>
+      <Animated.View
+        style={[styles.sheet, sheetEntranceStyle]}
+        onLayout={(e) => {
+          const h = Math.round(e.nativeEvent.layout.height)
+          setSheetHeight((prev) => (Math.abs(prev - h) >= 4 ? h : prev))
+        }}
+      >
         <View style={styles.handle} />
         <ScrollView
           style={styles.sheetScroll}
