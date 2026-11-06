@@ -31,6 +31,7 @@ import safetyRouter     from '@/modules/safety/safety.routes'
 import usersRouter      from '@/modules/users/users.routes'
 import savedPlacesRouter from '@/modules/saved-places/saved-places.routes'
 import emergencyContactsRouter from '@/modules/emergency-contacts/emergency-contacts.routes'
+import rideSharesRouter, { publicRouter as publicTripsRouter } from '@/modules/ride-shares/ride-shares.routes'
 import analyticsRouter  from '@/modules/analytics/analytics.routes'
 import notificationsRouter from '@/modules/notifications/notifications.routes'
 import templatesRouter from '@/modules/notifications/templates.routes'
@@ -176,6 +177,8 @@ export function createApp(): Application {
   apiRouter.use('/pricing', pricingRouter)
   apiRouter.use('/rides', ridesRouter)
   apiRouter.use('/rides', rideChatRouter)   // ride-chat: POST/GET/PATCH /rides/:id/messages
+  apiRouter.use('/rides', rideSharesRouter) // live trip sharing: POST/GET/DELETE /rides/:id/shares
+  apiRouter.use('/public', publicTripsRouter) // no auth: GET /public/trips/:token (the share link's data)
   apiRouter.use('/payments', paymentsRouter)
 apiRouter.use('/payments/settlements', settlementsRouter)
   apiRouter.use('/safety',    safetyRouter)

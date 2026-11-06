@@ -4,6 +4,7 @@ import { processCreateNextPartition } from '@/jobs/processors/partition-creator.
 import { processPurgeOldPartitions } from '@/jobs/processors/partition-purge.processor'
 import { processPurgeOldNotifications } from '@/jobs/processors/notification-purge.processor'
 import { processPurgeAuthTables } from '@/jobs/processors/auth-tables-purge.processor'
+import { processPurgeRideShares } from '@/jobs/processors/ride-shares-purge.processor'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
 const log = createWorkerLogger('partition-maintenance')
@@ -30,6 +31,10 @@ export const partitionMaintenanceWorker = new Worker(
     }
     if (job.name === 'purge_auth_tables') {
       await processPurgeAuthTables()
+      return
+    }
+    if (job.name === 'purge_ride_shares') {
+      await processPurgeRideShares()
       return
     }
   },

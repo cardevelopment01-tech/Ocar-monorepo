@@ -151,6 +151,12 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '0 4 * * *' }, removeOnComplete: true, removeOnFail: true } // daily at 4 AM
   )
+  // Live trip links (and any contact phone numbers kept with them) are removed 30 days after the ride ends.
+  await partitionMaintenanceQueue.add(
+    'purge_ride_shares',
+    {},
+    { repeat: { pattern: '45 4 * * *' }, removeOnComplete: true, removeOnFail: true }
+  )
   // refresh_tokens / otp_requests grew forever; expired and long-revoked rows are purged daily.
   await partitionMaintenanceQueue.add(
     'purge_auth_tables',

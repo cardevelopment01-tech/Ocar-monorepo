@@ -101,3 +101,50 @@ describe('sos_alert: texting the rider\'s emergency contacts (existing behavior)
     expect(h.query).not.toHaveBeenCalled()
   })
 })
+
+describe('sos_alert: the live trip link in the contacts text (new behavior)', () => {
+  const URL = 'https://ocarindia.com/t/abcdefghijklmnopqrstuv'
+  const bodiesBySlug = () => h.renderTemplate.mock.calls.filter((c) => c[0].startsWith('sos_contact')).map((c) => c[0])
+
+  it('creates ONE share for the alert and puts the same URL in every contact text', async () => {
+    h.createSosShare.mockResolvedValue(URL)
+    await h.processor!(job())
+    expect(h.createSosShare).toHaveBeenCalledTimes(1)
+    expect(h.createSosShare).toHaveBeenCalledWith(16n, 4n)
+    expect(bodiesBySlug()).toEqual(['sos_contact_live', 'sos_contact_live', 'sos_contact_live'])
+    expect(h.renderTemplate).toHaveBeenCalledWith('sos_contact_live', 'sms', { riderName: 'Asha', trackUrl: URL })
+    expect(smsTo()).toEqual(expect.arrayContaining(['+919811111111', '+919822222222', '+919833333333', '+919999999999']))
+  })
+
+  it('falls back to the existing static-pin text for every contact when no link could be made (switch off, ride gone, error)', async () => {
+    h.createSosShare.mockResolvedValue(null)
+    await h.processor!(job())
+    expect(bodiesBySlug()).toEqual(['sos_contact', 'sos_contact', 'sos_contact'])
+    expect(h.renderTemplate).toHaveBeenCalledWith('sos_contact', 'sms', { riderName: 'Asha', lat: '20.29', lng: '85.82' })
+  })
+
+  it('falls back to the static pin when creating the link throws, and still texts everyone', async () => {
+    h.createSosShare.mockRejectedValue(new Error('db down'))
+    await h.processor!(job())
+    expect(bodiesBySlug()).toEqual(['sos_contact', 'sos_contact', 'sos_contact'])
+    expect(smsTo()).toEqual(expect.arrayContaining(['+919811111111', '+919822222222', '+919833333333']))
+  })
+
+  it('falls back per contact when the live wording is not approved/active yet (template inactive)', async () => {
+    h.createSosShare.mockResolvedValue(URL)
+    h.renderTemplate.mockImplementation(async (slug: string) => {
+      if (slug === 'sos_contact_live') throw new Error('template inactive')
+      return { subject: 'SOS', body: `body:${slug}` }
+    })
+    await h.processor!(job())
+    expect(smsTo()).toEqual(expect.arrayContaining(['+919811111111', '+919822222222', '+919833333333']))
+    expect(h.sendSms.mock.calls.filter((c) => c[1] === 'body:sos_contact')).toHaveLength(3)
+  })
+
+  it('makes no share for a driver-triggered alert or when there are no contacts', async () => {
+    await h.processor!(job({ triggeredByRole: 'driver' }))
+    h.query.mockResolvedValue({ rows: [] })
+    await h.processor!(job())
+    expect(h.createSosShare).not.toHaveBeenCalled()
+  })
+})

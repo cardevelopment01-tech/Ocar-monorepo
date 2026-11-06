@@ -149,12 +149,33 @@ export const notificationsWorker = new Worker(
                 WHERE c.user_id = $1`,
               [data.userId]
             )
+            // The live trip link: one share per alert, the same URL in every contact's text. null = the feature is off, the ride is
+            // gone or anything went wrong; every contact then gets exactly today's static-pin text.
+            let trackUrl: string | null = null
+            if (rows.length > 0) {
+              try {
+                const { createSosShare } = await import('@/modules/ride-shares/ride-shares.service')
+                trackUrl = await createSosShare(BigInt(data.rideId), BigInt(data.userId))
+              } catch (err) {
+                log.error({ err }, 'sos live link failed, using the static pin')
+              }
+            }
             for (const c of rows) {
               const logId = await notifService.logNotification({ jobName: 'sos_contact', recipientPhone: c.phone, payload: { rideId: data.rideId } })
               try {
-                const { body } = await renderTemplate('sos_contact', 'sms', {
-                  riderName: c.rider_name ?? 'Your contact', lat: String(data.lat), lng: String(data.lng),
-                })
+                const riderName = c.rider_name ?? 'Your contact'
+                let body: string | null = null
+                if (trackUrl) {
+                  try {
+                    body = (await renderTemplate('sos_contact_live', 'sms', { riderName, trackUrl })).body
+                  } catch (err) {
+                    // Not approved/activated yet (ships inactive until its DLT template is approved): fall back to the static pin.
+                    log.warn({ err }, 'sos_contact_live unavailable, using the static pin')
+                  }
+                }
+                if (body === null) {
+                  body = (await renderTemplate('sos_contact', 'sms', { riderName, lat: String(data.lat), lng: String(data.lng) })).body
+                }
                 await sendSms(c.phone, body)
                 await notifService.markSent(logId)
               } catch (err) {
