@@ -1,4 +1,5 @@
 'use client'
+import DriverProfileSkeleton from './DriverProfileSkeleton'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -464,7 +465,7 @@ export default function DriverDetailPage() {
   }
 
   if (loading && !detail) {
-    return <div className="p-6 space-y-4">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-6 bg-surface-2 rounded animate-pulse" />)}</div>
+    return <DriverProfileSkeleton />
   }
   if (error || !detail) {
     return (
