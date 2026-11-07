@@ -19,6 +19,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useRideRequestListener } from '@/features/ride-requests/useRideRequestListener'
+import { useFloatingIcon } from '@/features/floating-icon/useFloatingIcon'
 import { RideRequestOverlay } from '@/features/ride-requests/RideRequestOverlay'
 import { useSessionSyncListener } from '@/features/go-online/useSessionSyncListener'
 import { useSessionResync } from '@/features/go-online/useSessionResync'
@@ -55,6 +56,7 @@ function RootLayout() {
   // decision -- mounted once, same place the socket connect lifecycle lives,
   // never per-screen.
   useRideRequestListener()
+  useFloatingIcon()
   useSessionSyncListener()
   useSessionResync()
   usePushNotificationRouting()
