@@ -41,10 +41,13 @@ beforeEach(() => {
 })
 
 describe('resolveMode', () => {
-  it('is off by default and for any value other than shadow', async () => {
+  it('is off by default and for any unknown value', async () => {
     expect(await resolveMode(null)).toBe('off')
-    expect(await resolveMode('flag')).toBe('off')
-    expect(await resolveMode('block')).toBe('off')
+    expect(await resolveMode('nonsense')).toBe('off')
+  })
+  it('maps block to flag until block mode ships', async () => {
+    expect(await resolveMode('flag')).toBe('flag')
+    expect(await resolveMode('block')).toBe('flag')
   })
   it('a driver override beats the global switch in both directions', async () => {
     cfg.mockResolvedValue('shadow')
@@ -77,6 +80,21 @@ describe('scoreSelfie', () => {
     const r = await scoreSelfie(SELFIE, REF, T)
     expect(r).toMatchObject({ decision: 'pass', reason: 'MATCH', similarity: 96 })
     expect(compareFaces).toHaveBeenCalledWith('drivers/1/profile/ref.jpg', 'drivers/1/daily-verification/selfie/new.jpg', 65)
+  })
+
+  it('tries admin-confirmed references only when the first result is not conclusive, and keeps the best', async () => {
+    const X1 = 'https://b.s3.ap-south-1.amazonaws.com/drivers/1/refs/a.jpg'
+    const X2 = 'https://b.s3.ap-south-1.amazonaws.com/drivers/1/refs/b.jpg'
+    detectFaces.mockResolvedValue({ faceCount: 1, quality: GOOD_Q })
+    compareFaces.mockResolvedValueOnce(80).mockResolvedValueOnce(93).mockResolvedValueOnce(70)
+    const r = await scoreSelfie(SELFIE, REF, T, [X1, X2])
+    expect(r).toMatchObject({ decision: 'pass', similarity: 93 })
+    expect(compareFaces).toHaveBeenCalledTimes(3)
+
+    compareFaces.mockClear()
+    compareFaces.mockResolvedValueOnce(96)
+    await scoreSelfie(SELFIE, REF, T, [X1, X2])
+    expect(compareFaces).toHaveBeenCalledTimes(1) // already conclusive: no extra Rekognition calls
   })
 
   it('does not compare when the photo needs a retake', async () => {
@@ -130,7 +148,7 @@ describe('scorePlate', () => {
 })
 
 describe('scoreSubmission', () => {
-  const args = { selfieUrl: SELFIE, plateUrl: PLATE, referenceUrl: REF, registeredPlate: 'OD33AW5615' }
+  const args = { mode: 'shadow' as const, selfieUrl: SELFIE, plateUrl: PLATE, referenceUrl: REF, registeredPlate: 'OD33AW5615' }
 
   afterEach(() => { vi.useRealTimers() })
 
