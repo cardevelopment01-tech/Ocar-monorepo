@@ -8,10 +8,13 @@ interface AlertPrefsState {
   /** Read the request aloud (type, pickup, drop, distance, fare) after the first ring. */
   voiceEnabled: boolean
   language: AnnouncementLang
+  /** The spoken turn-by-turn directions on the guided map are muted. */
+  guidanceMuted: boolean
   /** The saved values have loaded from storage: until then the defaults must not drive a live request. */
   hasHydrated: boolean
   setVoiceEnabled: (on: boolean) => void
   setLanguage: (lang: AnnouncementLang) => void
+  setGuidanceMuted: (muted: boolean) => void
 }
 
 export const useAlertPrefsStore = create<AlertPrefsState>()(
@@ -19,14 +22,16 @@ export const useAlertPrefsStore = create<AlertPrefsState>()(
     (set) => ({
       voiceEnabled: true,
       language: 'en',
+      guidanceMuted: false,
       hasHydrated: false,
       setVoiceEnabled: (voiceEnabled) => set({ voiceEnabled }),
       setLanguage: (language) => set({ language }),
+      setGuidanceMuted: (guidanceMuted) => set({ guidanceMuted }),
     }),
     {
       name: 'ocar_driver_alert_prefs',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (s) => ({ voiceEnabled: s.voiceEnabled, language: s.language }),
+      partialize: (s) => ({ voiceEnabled: s.voiceEnabled, language: s.language, guidanceMuted: s.guidanceMuted }),
       onRehydrateStorage: () => () => useAlertPrefsStore.setState({ hasHydrated: true }),
     }
   )

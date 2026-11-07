@@ -11,9 +11,12 @@ import {
   TaskRemovedBehavior,
   TravelMode,
   type ArrivalEvent,
+  type AudioGuidance,
 } from '@googlemaps/react-native-navigation-sdk'
 import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { markStopArrived, markStopStatus } from '../api'
+import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
+import { guidanceAudioFlags } from '../guidanceAudio'
 
 export type GuidedStop = { sequence: number; lat: number; lng: number }
 
@@ -52,6 +55,8 @@ function GuidedMapInner({ rideId, destination, stops = [], meterWait = false, on
   const stopsRef = useRef(stops)
   stopsRef.current = stops
   const navReady = useRef(false)
+  const muted = useAlertPrefsStore((s) => s.guidanceMuted)
+  const setMuted = useAlertPrefsStore((s) => s.setGuidanceMuted)
   const knownSeqs = useRef(new Set(stops.map((s) => s.sequence)))
 
   const handleClose = useCallback(() => {
@@ -140,6 +145,12 @@ function GuidedMapInner({ rideId, destination, stops = [], meterWait = false, on
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-init only on ride/destination identity, not stops array reference
   }, [rideId, destination?.[0], destination?.[1]])
 
+  // The driver's mute choice, applied once guidance is running and again whenever it changes.
+  useEffect(() => {
+    if (status !== 'ready') return
+    navigationController.setAudioGuidanceType(guidanceAudioFlags(muted) as AudioGuidance)
+  }, [status, muted, navigationController])
+
   // A stop the rider adds while guidance is running: re-route through it. Only a
   // never-seen sequence triggers this -- a stop resolving (removed from `stops`)
   // is already handled by the arrival handler's continueToNextDestination.
@@ -184,6 +195,15 @@ function GuidedMapInner({ rideId, destination, stops = [], meterWait = false, on
           <Feather name="x" size={16} color={colors.inkInverse} />
           <Text style={styles.closeLabel}>Close guidance</Text>
         </Pressable>
+        <Pressable
+          onPress={() => setMuted(!muted)}
+          style={styles.muteButton}
+          accessibilityRole="button"
+          accessibilityState={{ selected: muted }}
+          accessibilityLabel={muted ? 'Unmute voice directions' : 'Mute voice directions'}
+        >
+          <Feather name={muted ? 'volume-x' : 'volume-2'} size={20} color={colors.inkInverse} />
+        </Pressable>
       </View>
     </View>
   )
@@ -210,12 +230,21 @@ const styles = StyleSheet.create({
   root: { backgroundColor: colors.surface ?? '#fff' },
   nav: { flex: 1 },
   controls: {
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     paddingHorizontal: spacing.md,
     backgroundColor: colors.surface ?? '#fff',
   },
+  muteButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.full,
+    backgroundColor: 'rgba(20,23,26,0.85)',
+  },
   closeButton: {
-    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
