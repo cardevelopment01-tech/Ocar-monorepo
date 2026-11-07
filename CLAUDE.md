@@ -176,12 +176,16 @@ A rider shares a link (`<USER_APP_URL>/t/<token>`) that anyone can open without 
 - **The public response is an allow-list.** `GET /api/v1/public/trips/:token` is built by `toPublicTrip()` from the narrow `getPublicTripRow()` query,
   never from the full ride row; a test pins the exact key set. Never add fare, phone, OTP or payment data to it.
 - **The token lookup is never cached** (a revoke must work on the next poll); only the per-ride trip (2 s) and ETA (60 s, ride-keyed) are cached.
-- **Unknown, revoked and malformed tokens are one 404**; a link past ride end + 30 min or 7 days after creation is 410. Only misses use the strict
-  per-IP limiter (20/min); valid links are capped per token (180/min).
-- **The request log redacts the token** (`redactShareToken` in `observability/http-log.ts`); keep the token out of every log, metric label and Redis key.
+- **Unknown, revoked and malformed tokens are one 404**; a link past ride end + 30 min or 7 days after creation is 410. Only unknown/malformed
+  tokens (404) use the strict per-IP limiter (20/min), never an expired or stopped link; valid links are capped per token (180/min). The
+  `no-store`/`noindex` headers are set by a middleware before the limiters, so a 429 is never cached.
+- **The request log and the trace redact the token** (`redactShareToken` in `observability/http-log.ts`; `httpInstrumentationConfig` in
+  `observability/tracing.ts` rewrites the http span attributes); keep the token out of every log, span attribute, metric label and Redis key. ALB
+  access logs, if ever enabled, record the raw path: exclude or redact `/api/v1/public/trips/` there.
 - **Account deletion keeps the users row**, so `ride_shares` cascades never fire: `deleteAccount` deletes the user's shares explicitly, and
   `purge_ride_shares` (daily) is the backstop.
-- **SOS** texts carry a live link (`sos_contact_live`) only when a share could be created; otherwise the old static-pin `sos_contact` SMS goes out
+- **SOS** links never count toward a rider's per-ride or hourly caps, and one is created only when `sos_contact_live` can render (it ships inactive)
+  and none was made for that ride in the last 10 minutes. The public page shows the ride's own vehicle (`rides.vehicle_id`). SOS texts carry a live link (`sos_contact_live`) only when a share could be created; otherwise the old static-pin `sos_contact` SMS goes out
   unchanged (pinned by `tests/unit/notifications/sos-contacts-worker.test.ts`). The new SMS wordings (`trip_share`, `sos_contact_live`) ship
   INACTIVE until their DLT templates are approved; activate them in admin then.
 
