@@ -11,6 +11,8 @@ import { getPendingAssignmentsForDriver } from '@/modules/rides/rides.repository
 import { updateLocation } from '@/modules/rides/rides.service'
 import { logger } from '@/lib/logger'
 import { isDriverSessionReplaced } from '@/middleware/auth.middleware'
+import { initNearbyBus } from './nearby-bus'
+import { roomsAround } from './nearby-cells'
 
 // Room naming conventions:
 //   ride:{rideId}   user + driver tracking a ride
@@ -38,6 +40,12 @@ function safeHandler<A extends unknown[]>(
     }
   }
 }
+
+// A rider's app subscribes once per searching ride (and again after a reconnect); more than this per window is a loop or abuse.
+const NEARBY_ASK_WINDOW_MS = 60_000
+const NEARBY_ASKS_MAX = 12
+// While a rider is subscribed, how often the server re-checks that the ride is still theirs and still searching.
+const NEARBY_RECHECK_MS = 20_000
 
 const ID_RE = /^\d{1,18}$/
 function parseId(v: unknown): bigint | null {
@@ -90,6 +98,8 @@ export function initSocketServer(httpServer: HttpServer): Server {
   // per server than the pub/sub adapter's two (the adapter opens an extra internal
   // connection); Redis memory 4.10% -> 4.2-4.3%, CPU unchanged.
   io.adapter(createAdapter(redis.duplicate()))
+  // Live positions of available drivers for searching riders: own Redis channels, not the adapter's stream (nearby-bus.ts).
+  initNearbyBus(io)
 
   io.use((socket, next) => {
     const token =
@@ -224,6 +234,69 @@ export function initSocketServer(httpServer: HttpServer): Server {
 
     if (user?.role === 'admin') {
       void socket.join('admin:ops')
+    }
+
+    // A searching rider listens to the map cells around THEIR pickup and gets the moving cars of available drivers there
+    // (`nearby:car`). The rider never names coordinates: the server reads the pickup from the rider's own ride and only while it
+    // is still searching, so this cannot be used to watch drivers anywhere else. Rooms vanish with the socket on disconnect, and
+    // while subscribed the ride is re-checked every NEARBY_RECHECK_MS: a client that crashed, lost the network or is modified and
+    // never unsubscribes stops hearing cars once its ride is no longer searching.
+    if (user?.role === 'user') {
+      let nearbyRooms: string[] = []
+      let nearbyRideId: bigint | null = null
+      let nearbyTimer: ReturnType<typeof setInterval> | undefined
+      // Bumped by every subscribe and by leaving: a subscribe whose database lookup is still in flight must not join rooms
+      // after the rider has unsubscribed (or asked again), or the socket would listen to cells nobody asked for.
+      let nearbyGen = 0
+      const nearbyAsks: number[] = []
+      const searchingPickup = async (rideId: bigint) => {
+        const res = await pool.query<{ lat: number; lng: number }>(
+          `SELECT ST_Y(origin::geometry)::float8 AS lat, ST_X(origin::geometry)::float8 AS lng
+             FROM rides WHERE id = $1 AND user_id = $2 AND status = 'requested'`,
+          [rideId, BigInt(user.sub)]
+        )
+        return res.rows[0]
+      }
+      const leaveNearby = () => {
+        nearbyGen++
+        clearInterval(nearbyTimer)
+        nearbyTimer = undefined
+        nearbyRideId = null
+        for (const room of nearbyRooms) void socket.leave(room)
+        nearbyRooms = []
+      }
+      const recheckNearby = () => {
+        clearInterval(nearbyTimer)
+        nearbyTimer = setInterval(() => {
+          const rideId = nearbyRideId
+          if (rideId === null) return
+          const gen = nearbyGen
+          searchingPickup(rideId)
+            .then((row) => { if (gen === nearbyGen && !row) leaveNearby() })
+            .catch((err: unknown) => log.warn({ err }, 'nearby recheck failed'))
+        }, NEARBY_RECHECK_MS)
+      }
+      socket.on('nearby:subscribe', safeHandler(log, 'nearby:subscribe', async (payload?: { rideId?: unknown }) => {
+        const rideId = parseId(payload?.rideId)
+        if (rideId === null) return
+        const now = Date.now()
+        while (nearbyAsks.length > 0 && now - nearbyAsks[0]! > NEARBY_ASK_WINDOW_MS) nearbyAsks.shift()
+        if (nearbyAsks.length >= NEARBY_ASKS_MAX) return
+        nearbyAsks.push(now)
+        const gen = ++nearbyGen
+        const row = await searchingPickup(rideId)
+        if (gen !== nearbyGen) return // unsubscribed, or asked again, while the lookup was in flight
+        if (!row) { leaveNearby(); return } // not theirs, or no longer searching
+        const next = roomsAround(row.lat, row.lng)
+        const keep = new Set(next)
+        for (const room of nearbyRooms) if (!keep.has(room)) void socket.leave(room)
+        for (const room of next) void socket.join(room)
+        nearbyRooms = next
+        nearbyRideId = rideId
+        recheckNearby()
+      }))
+      socket.on('nearby:unsubscribe', safeHandler(log, 'nearby:unsubscribe', () => { leaveNearby() }))
+      socket.on('disconnect', () => { clearInterval(nearbyTimer) })
     }
 
     socket.on('join:ride', safeHandler(log, 'join:ride', (rawRideId?: unknown) => {
