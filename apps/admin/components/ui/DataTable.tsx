@@ -26,7 +26,7 @@ function SkeletonRow({ cols }: { cols: number }) {
     <tr>
       {Array.from({ length: cols }).map((_, i) => (
         <td key={i} className="px-4 py-3.5 border-b border-border-light">
-          <div className={cn('skeleton h-4 rounded', i === 0 ? 'w-32' : i === 1 ? 'w-24' : 'w-16')} />
+          <div className={cn('skeleton motion-reduce:animate-none h-4 rounded', i === 0 ? 'w-32' : i === 1 ? 'w-24' : 'w-16')} />
         </td>
       ))}
     </tr>
