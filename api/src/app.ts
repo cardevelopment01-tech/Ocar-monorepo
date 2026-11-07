@@ -113,6 +113,9 @@ export function createApp(): Application {
       // CORS-safelisted response header; the web driver and rider apps read it to correct a skewed
       // phone clock for the booked-time clock (native apps already can).
       exposedHeaders: ['Content-Disposition', 'Date'],
+      // Without this browsers cache a preflight for ~5 s, so the admin's 30 s polls and every new request shape paid an extra
+      // OPTIONS round trip (~60-80 ms). Chrome caps the value at 2 h, Firefox at 24 h.
+      maxAge: 7200,
     })
   )
 
