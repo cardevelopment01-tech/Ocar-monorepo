@@ -59,6 +59,23 @@ function PackageTierScroller({
   const arrowOpacity = useSharedValue(0)
   const [canScrollRight, setCanScrollRight] = useState(false)
 
+  // Bring the selected package (the best fit, unless the rider chose another) to the middle of the visible window. It needs three
+  // measurements (the chip, the window, the content), which arrive in any order, so each one asks to settle and it scrolls once all are in.
+  const chipLayouts = useRef<Record<number, { x: number; w: number }>>({})
+  const pendingCentre = useRef<number | null>(null)
+  const hasCentred = useRef(false)
+  const settle = useCallback(() => {
+    const id = pendingCentre.current
+    const chip = id === null ? undefined : chipLayouts.current[id]
+    if (!chip || layoutWidthRef.current === 0 || contentWidthRef.current === 0) return
+    const max = Math.max(0, contentWidthRef.current - layoutWidthRef.current)
+    const x = Math.min(max, Math.max(0, chip.x + chip.w / 2 - layoutWidthRef.current / 2))
+    pendingCentre.current = null
+    scrollRef.current?.scrollTo({ x, animated: hasCentred.current })
+    hasCentred.current = true
+  }, [])
+  useEffect(() => { pendingCentre.current = selectedPkgId; settle() }, [selectedPkgId, settle])
+
   const lastCanScroll = useRef<boolean | null>(null)
   const evaluate = useCallback(() => {
     const canScroll = contentWidthRef.current - offsetRef.current - layoutWidthRef.current > 4
@@ -88,8 +105,8 @@ function PackageTierScroller({
         contentContainerStyle={styles.tierRowContent}
         scrollEventThrottle={16}
         onScroll={onScroll}
-        onContentSizeChange={(w) => { contentWidthRef.current = w; evaluate() }}
-        onLayout={(e) => { layoutWidthRef.current = e.nativeEvent.layout.width; evaluate() }}
+        onContentSizeChange={(w) => { contentWidthRef.current = w; evaluate(); settle() }}
+        onLayout={(e) => { layoutWidthRef.current = e.nativeEvent.layout.width; evaluate(); settle() }}
       >
         {pkgs.map((pkg) => {
           const active = pkg.id === selectedPkgId
@@ -98,6 +115,7 @@ function PackageTierScroller({
             <Pressable
               key={pkg.id}
               onPress={() => onSelect(pkg.id)}
+              onLayout={(e) => { chipLayouts.current[pkg.id] = { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width }; settle() }}
               style={[styles.tierChip, active ? styles.tierChipActive : null]}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
