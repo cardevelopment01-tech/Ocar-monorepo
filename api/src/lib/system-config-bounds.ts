@@ -31,7 +31,7 @@ const BOUNDS: Record<string, ConfigBounds> = {
   exotel_daily_budget_inr:          { min: 0, max: 100_000 },
   // The largest share of the eligible fare an offer may take off; driver-funded, so keep it at or under the normal commission.
   offers_max_discount_percent:      { min: 0, max: 50 },
-  verification_face_pass_min:       { min: 0, max: 100 },
+  verification_face_pass_min:       { min: 1, max: 100 },
   verification_face_review_min:     { min: 0, max: 100 },
   verification_plate_max_edits:     { min: 0, max: 5 },
   verification_plate_review_edits:  { min: 0, max: 5 },

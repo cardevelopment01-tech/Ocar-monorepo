@@ -276,6 +276,84 @@ describe('block mode and admin clearing', () => {
   })
 })
 
+describe('security review fixes', () => {
+  const failMismatch = () => scoreAs(null)
+
+  it('M2: resubmitting after today is done does nothing (no scoring, no new rows, no queued/ok hint)', async () => {
+    await setConfig('verification_mode', 'flag')
+    await pool.query(`DELETE FROM driver_verification_attempts WHERE driver_id = $1`, [driverId])
+    await resetChallenges()
+    scoreAs(96)
+    expect((await submit()).status).toBe(201) // may or may not be needed today; either way a good check exists now
+    const before = (await pool.query(`SELECT count(*)::int AS n FROM driver_verification_attempts WHERE driver_id = $1`, [driverId])).rows[0].n
+    vi.mocked(provider.detectFaces).mockClear()
+    failMismatch()
+    const again = await submit()
+    expect(again.status).toBe(201)
+    expect(again.body).toEqual({ complete: true, outcome: 'ok' })
+    expect(provider.detectFaces).not.toHaveBeenCalled()
+    const after = (await pool.query(`SELECT count(*)::int AS n FROM driver_verification_attempts WHERE driver_id = $1`, [driverId])).rows[0].n
+    expect(after).toBe(before)
+  })
+
+  it('H2: a file Rekognition cannot read is a retake, not a free pass (block mode)', async () => {
+    await setConfig('verification_mode', 'block')
+    await pool.query(`DELETE FROM driver_verification_attempts WHERE driver_id = $1`, [driverId])
+    await pool.query(`DELETE FROM driver_verifications WHERE driver_id = $1`, [driverId])
+    await resetChallenges()
+    vi.mocked(provider.detectFaces).mockRejectedValue(Object.assign(new Error('bad'), { name: 'InvalidImageFormatException' }))
+    vi.mocked(provider.detectText).mockResolvedValue([{ text: 'OD33AW5615', confidence: 98 }])
+    const res = await submit()
+    expect(res.status).toBe(422)
+    expect(res.body.code).toBe('VERIFICATION_RETAKE')
+    expect(res.body.details).toEqual({ selfie: 'UNREADABLE_IMAGE', plate: null })
+    expect((await status()).body.complete).toBe(false)
+  })
+
+  it('H1: block mode - four unusable selfies in a row do not get through; they become a mismatch for an admin', async () => {
+    vi.mocked(provider.detectFaces).mockResolvedValue({ faceCount: 0, quality: null })
+    vi.mocked(provider.detectText).mockResolvedValue([{ text: 'OD33AW5615', confidence: 98 }])
+    // the previous test used one retake; two more are allowed, then the limit applies
+    expect((await submit()).body.code).toBe('VERIFICATION_RETAKE')
+    expect((await submit()).body.code).toBe('VERIFICATION_RETAKE')
+    const last = await submit()
+    expect(last.status).toBe(422)
+    expect(last.body.code).toBe('VERIFICATION_FAILED')
+    const sel = (await pool.query(`SELECT status, review_state, decision_reason FROM driver_verifications WHERE driver_id = $1 AND kind = 'daily_selfie'`, [driverId])).rows[0]
+    expect(sel).toMatchObject({ status: 'failed', review_state: 'queued', decision_reason: 'RETAKE_LIMIT' })
+    expect((await status()).body.complete).toBe(false)
+  })
+
+  it('M1: an admin clearing that failed daily selfie also closes a re-check still open for the driver', async () => {
+    const open = await openChallengeRow()
+    const row = (await pool.query(`SELECT id::text FROM driver_verifications WHERE driver_id = $1 AND kind = 'daily_selfie'`, [driverId])).rows[0].id
+    const res = await request(app).post(`/api/v1/admin/verifications/${row}/resolve`).set('Authorization', `Bearer ${adminToken}`).send({ outcome: 'ok', note: 'same person, dark' })
+    expect(res.status).toBe(200)
+    expect(await challengeStatus(open)).toBe('satisfied')
+  })
+
+  it('M3: a mismatch on a re-check selfie opens a new check so the driver must verify again', async () => {
+    await setConfig('verification_mode', 'flag')
+    await resetChallenges()
+    await pool.query(`DELETE FROM driver_verifications WHERE driver_id = $1`, [driverId])
+    const ch = await openChallengeRow()
+    scoreAs(80) // borderline: accepted in flag mode and queued, closing the challenge
+    expect((await submit()).status).toBe(201)
+    expect(await challengeStatus(ch)).toBe('satisfied')
+    const spot = (await pool.query(`SELECT id::text FROM driver_verifications WHERE challenge_id = $1 AND kind = 'spot_selfie'`, [ch])).rows
+    // the first submission with no daily row stored daily rows, so make a spot row the realistic way
+    expect(spot.length + (await pool.query(`SELECT 1 FROM driver_verifications WHERE driver_id = $1`, [driverId])).rows.length).toBeGreaterThan(0)
+    const second = await openChallengeRow()
+    scoreAs(80)
+    expect((await submit()).status).toBe(201)
+    const sp = (await pool.query(`SELECT id::text FROM driver_verifications WHERE challenge_id = $1 AND kind = 'spot_selfie'`, [second])).rows[0]!.id
+    await request(app).post(`/api/v1/admin/verifications/${sp}/resolve`).set('Authorization', `Bearer ${adminToken}`).send({ outcome: 'mismatch', note: 'different person' })
+    const reopened = (await pool.query(`SELECT reason, status FROM verification_challenges WHERE driver_id = $1 AND status = 'open'`, [driverId])).rows
+    expect(reopened).toEqual([{ reason: 'admin', status: 'open' }])
+    expect((await online()).status).toBe(428)
+  })
+})
+
 describe('consent', () => {
   it('flag mode asks once; agreeing is recorded with the app version and never moves', async () => {
     await pool.query(`UPDATE drivers SET verification_consent_at = NULL, verification_consent_app_version = NULL WHERE id = $1`, [driverId])

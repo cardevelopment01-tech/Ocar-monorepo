@@ -107,7 +107,10 @@ export async function loadThresholds(): Promise<Thresholds> {
     plateReviewEdits: num(reviewEdits, d.plateReviewEdits),
   }
   // A review band that sits above the pass line makes no sense; fall back to the defaults instead of mis-scoring.
-  if (t.faceReviewMin >= t.facePassMin || t.plateReviewEdits < t.plateMaxEdits) return d
+  if (t.faceReviewMin >= t.facePassMin || t.plateReviewEdits < t.plateMaxEdits) {
+    log.warn({ configured: t }, 'verification thresholds are inconsistent (review line not below pass line); using defaults')
+    return d
+  }
   return t
 }
 
@@ -185,6 +188,8 @@ export async function scorePlate(plateUrl: string, registeredPlate: string | nul
 }
 
 // Never throws and never takes longer than SCORING_TIMEOUT_MS: a provider problem must not stop a driver's check.
+const UNREADABLE_IMAGE_ERRORS = new Set(['InvalidImageFormatException', 'InvalidParameterException', 'ImageTooLargeException'])
+
 export async function scoreSubmission(args: {
   mode: VerificationMode
   selfieUrl: string
@@ -195,7 +200,13 @@ export async function scoreSubmission(args: {
 }): Promise<VerificationScoring> {
   const t = await loadThresholds()
   const settle = (p: Promise<ScoredCheck>, what: string): Promise<ScoredCheck> =>
-    p.catch((err: unknown) => {
+    p.catch((err: unknown): ScoredCheck => {
+      // A file Rekognition cannot read as an image is the driver's photo being unusable, not an outage. Treating it as an
+      // outage would let a corrupt upload pass the check (fail-open), so it becomes a retake instead.
+      const name = (err as { name?: string } | null)?.name
+      if (name && UNREADABLE_IMAGE_ERRORS.has(name)) {
+        return { decision: 'retake', reason: 'UNREADABLE_IMAGE', similarity: null, faceQuality: null, ocrText: null, ocrConfidence: null }
+      }
       log.warn({ err, what }, 'verification scoring failed')
       return errorCheck('PROVIDER_ERROR')
     })
@@ -211,7 +222,8 @@ export async function scoreSubmission(args: {
   return { mode: args.mode, thresholds: { ...t }, selfie, plate }
 }
 
-export type SubmitResult = { complete: true; outcome: 'ok' | 'queued' }
+// `outcome` is always 'ok': telling a driver whether their photo was queued would tell an impostor how close they got.
+export type SubmitResult = { complete: true; outcome: 'ok' }
 
 export async function submit(
   driverId: bigint,
@@ -240,6 +252,14 @@ export async function submit(
   const failsBefore = mode === 'block' ? await repo.countTodayFailedSelfies(driverId) : 0
   if (mode === 'block' && failsBefore >= retakeMax) {
     throw httpError(422, 'An admin will review your check.', 'VERIFICATION_UNDER_REVIEW')
+  }
+
+  // Nothing to do when today's check is already accepted and no re-check is open: no upload, no Rekognition call, no
+  // new attempt rows. Otherwise a finished driver could resubmit forever (cost) and read the result (a match oracle).
+  // A day's row an admin marked failed is not "done", so a redo still goes through.
+  if (mode !== 'off' && !challenge) {
+    const today = await repo.getTodayStatus(driverId)
+    if (today.selfieDone && today.plateDone) return { complete: true, outcome: 'ok' }
   }
 
   const folder = `drivers/${driverId}/daily-verification`
@@ -286,6 +306,12 @@ export async function submit(
     )
   }
 
+  // Block mode: a selfie that is still unusable after every allowed retake must not pass by wearing the driver out
+  // (four dark photos in a row). It counts as a mismatch, so the tries-left counter and the admin step apply.
+  if (scoring.mode === 'block' && scoring.selfie.decision === 'retake') {
+    scoring.selfie = { ...scoring.selfie, decision: 'fail', reason: 'RETAKE_LIMIT' }
+  }
+
   const outcome = {
     selfie: rowOutcome('selfie', scoring.mode, scoring.selfie.decision),
     plate: rowOutcome('plate', scoring.mode, scoring.plate.decision),
@@ -308,5 +334,5 @@ export async function submit(
       { details: { attemptsLeft: Math.max(0, retakeMax - (failsBefore + 1)) } }
     )
   }
-  return { complete: true, outcome: outcome.selfie.reviewState === 'queued' || outcome.plate.reviewState === 'queued' ? 'queued' : 'ok' }
+  return { complete: true, outcome: 'ok' }
 }

@@ -22,6 +22,8 @@ const REASONS: Record<string, string> = {
   PLATE_NEAR_MATCH: 'Number plate is nearly the registered one (one or two characters differ)',
   NO_PLATE_TEXT: 'No number plate could be read; the driver used up the retakes',
   NO_FACE: 'No face found; the driver used up the retakes',
+  UNREADABLE_IMAGE: 'The file could not be read as a photo; the driver used up the retakes',
+  RETAKE_LIMIT: 'The selfie was unusable after every retake; check it by eye',
   MULTIPLE_FACES: 'More than one face; the driver used up the retakes',
   POOR_QUALITY: 'Photo too dark or blurry; the driver used up the retakes',
   FACE_ANGLE: 'Face turned away; the driver used up the retakes',

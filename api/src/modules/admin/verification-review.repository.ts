@@ -160,6 +160,23 @@ export async function resolve(params: {
         [row.challenge_id]
       )
     }
+    // Clearing a driver's selfie also clears any re-check still open for them. A daily row carries no challenge id, so
+    // without this an admin could restore the row and the driver would still be refused at go-online.
+    if (ok && row.kind.endsWith('selfie')) {
+      await client.query(
+        `UPDATE verification_challenges SET status = 'satisfied', satisfied_at = now() WHERE driver_id = $1 AND status = 'open'`,
+        [row.driver_id]
+      )
+    }
+    // A mismatch on a re-check selfie: that challenge was already closed when the photo was accepted, so the driver would
+    // otherwise carry on untouched. Open a new one so they must verify again at their next go-online.
+    if (!ok && row.kind === 'spot_selfie') {
+      await client.query(
+        `INSERT INTO verification_challenges (driver_id, reason, trigger_data) VALUES ($1, 'admin', $2::jsonb)
+         ON CONFLICT (driver_id) WHERE status = 'open' DO NOTHING`,
+        [row.driver_id, JSON.stringify({ fromVerificationId: String(params.id) })]
+      )
+    }
 
     if (ok && params.addReference && (row.kind === 'daily_selfie' || row.kind === 'spot_selfie')) {
       await client.query(
