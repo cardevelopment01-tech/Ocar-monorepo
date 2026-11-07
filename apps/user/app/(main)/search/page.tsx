@@ -16,6 +16,7 @@ import { geoApi, type PlaceSuggestion } from '@/lib/geo-api'
 import { savedPlacesApi, type SavedPlace } from '@/lib/saved-places-api'
 import { useLocation } from '@/lib/location-context'
 import { haversineMetres } from '@/lib/geo'
+import { formatEstimatedRoadKm } from '@ocar/shared'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
@@ -44,9 +45,10 @@ const POPULAR = [
   { Icon: Building2,      label: 'Infocity, Bhubaneswar',  address: 'Infocity, Patia, Bhubaneswar',     lat: 20.3474, lng: 85.8197 },
 ]
 
-// Matches the `${km.toFixed(1)} km` convention used elsewhere (receipt, ride tracking).
+// A road-distance ESTIMATE (the straight line scaled up, written "~10.4 km"): Google's place search only knows the straight line, and
+// riders compare this with the road distance other apps show. The real road distance is on the fare screen once a place is picked.
 function formatDistance(metres: number): string {
-  return `${(metres / 1000).toFixed(1)} km`
+  return formatEstimatedRoadKm(metres)
 }
 
 type EditMode = 'destination' | 'origin'
