@@ -108,7 +108,7 @@ describe('createShares', () => {
     expect(out.map((s) => [s.label, s.sms])).toEqual([['Mum', 'sent'], ['Dad', 'sent']])
     expect(h.sendSms.mock.calls.map((c) => c[0]).sort()).toEqual(['+919811111111', '+919822222222'])
     expect(h.repo.insertShares).toHaveBeenCalledTimes(1) // both links in ONE all-or-none insert
-    expect(h.renderTemplate).toHaveBeenCalledWith('trip_share', 'sms', { riderName: 'Asha', trackUrl: expect.stringContaining('/t/') })
+    expect(h.renderTemplate).toHaveBeenCalledWith('trip_share', 'sms', { riderName: 'Asha', trackToken: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/) })
     await expect(createShares(4n, 16n, ['1', '777'])).rejects.toMatchObject({ httpStatus: 422 })
   })
 

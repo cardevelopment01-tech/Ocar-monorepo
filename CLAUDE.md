@@ -187,7 +187,9 @@ A rider shares a link (`<USER_APP_URL>/t/<token>`) that anyone can open without 
 - **SOS** links never count toward a rider's per-ride or hourly caps, and one is created only when `sos_contact_live` can render (it ships inactive)
   and none was made for that ride in the last 10 minutes. The public page shows the ride's own vehicle (`rides.vehicle_id`). SOS texts carry a live link (`sos_contact_live`) only when a share could be created; otherwise the old static-pin `sos_contact` SMS goes out
   unchanged (pinned by `tests/unit/notifications/sos-contacts-worker.test.ts`). The new SMS wordings (`trip_share`, `sos_contact_live`) ship
-  INACTIVE until their DLT templates are approved; activate them in admin then.
+  INACTIVE until their DLT templates are approved; activate them in admin then. The wording is fixed DLT text with the domain and `/t/` in it
+  and only the rider's first name and the link's token as variables (`share-sms.ts`); `docs/DLT_TEMPLATES_TRIP_SHARE.md` is the text to register, and a test
+  fails if the migration drifts from it.
 
 ### S3 document storage
 - `uploadFile(file, folder)` — uploads to S3, returns public URL in prod / MinIO URL in dev

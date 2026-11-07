@@ -112,7 +112,7 @@ describe('sos_alert: the live trip link in the contacts text (new behavior)', ()
     expect(h.createSosShare).toHaveBeenCalledTimes(1)
     expect(h.createSosShare).toHaveBeenCalledWith(16n, 4n)
     expect(bodiesBySlug()).toEqual(['sos_contact_live', 'sos_contact_live', 'sos_contact_live'])
-    expect(h.renderTemplate).toHaveBeenCalledWith('sos_contact_live', 'sms', { riderName: 'Asha', trackUrl: URL })
+    expect(h.renderTemplate).toHaveBeenCalledWith('sos_contact_live', 'sms', { riderName: 'Asha', trackToken: 'abcdefghijklmnopqrstuv' })
     expect(smsTo()).toEqual(expect.arrayContaining(['+919811111111', '+919822222222', '+919833333333', '+919999999999']))
   })
 

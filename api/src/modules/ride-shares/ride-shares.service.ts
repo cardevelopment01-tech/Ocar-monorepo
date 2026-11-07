@@ -9,6 +9,7 @@ import { getRoute } from '@/modules/geo/geo.service'
 import * as contacts from '@/modules/emergency-contacts/emergency-contacts.repository'
 import * as notifService from '@/modules/notifications/notifications.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
+import { dltVariable } from './share-sms'
 import { sendSms } from '@/providers/sms.provider'
 import { isShareExpired, phaseForStatus, SHAREABLE_STATUSES, toPublicTrip, type PublicTripDto, type TripEta } from './public-trip'
 import * as repo from './ride-shares.repository'
@@ -42,13 +43,13 @@ async function requireOwnShareableRide(userId: bigint, rideId: bigint) {
   return ride
 }
 
-async function textContact(userId: bigint, riderName: string | null, phone: string, url: string): Promise<'sent' | 'failed'> {
+async function textContact(userId: bigint, riderName: string | null, phone: string, token: string): Promise<'sent' | 'failed'> {
   // Everything here, including the notification log, stays inside the try: the share rows are already committed and the URL exists
   // only in this response, so one contact's database or SMS error must never reject the whole create and lose every link.
   let logId: Awaited<ReturnType<typeof notifService.logNotification>> | undefined
   try {
     logId = await notifService.logNotification({ jobName: 'trip_share', recipientPhone: phone, payload: { userId: userId.toString() } })
-    const { body } = await renderTemplate('trip_share', 'sms', { riderName: riderName ?? 'Your contact', trackUrl: url })
+    const { body } = await renderTemplate('trip_share', 'sms', { riderName: dltVariable(riderName ?? 'Your contact'), trackToken: token })
     await sendSms(phone, body)
     await notifService.markSent(logId)
     return 'sent'
@@ -92,7 +93,7 @@ export async function createShares(userId: bigint, rideId: bigint, rawContactIds
     targets.map(async (t, i): Promise<CreatedShare> => {
       const url = urlFor(tokens[i]!)
       const item: CreatedShare = { id: res.ids[i]!, url, label: t.label }
-      if (t.phone) item.sms = await textContact(userId, riderName, t.phone, url)
+      if (t.phone) item.sms = await textContact(userId, riderName, t.phone, tokens[i]!)
       return item
     }),
   )
@@ -109,7 +110,7 @@ export async function createSosShare(rideId: bigint, userId: bigint): Promise<st
     if (!ride || ride.user_id !== userId.toString()) return null
     // A link nobody is texted is a publicly readable live location for up to 7 days and nothing else: the live SMS template ships
     // inactive until its DLT approval, so check that it can render before creating the link.
-    try { await renderTemplate('sos_contact_live', 'sms', { riderName: 'Rider', trackUrl: urlFor('x') }) } catch { return null }
+    try { await renderTemplate('sos_contact_live', 'sms', { riderName: 'Rider', trackToken: 'x' }) } catch { return null }
     // The first press already texted a live link; a second one (or a retried job) falls back to the static pin instead of stacking links.
     if (await repo.hasRecentSosShare(rideId)) return null
     const token = newToken()

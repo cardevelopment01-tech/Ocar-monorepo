@@ -26,12 +26,13 @@ INSERT INTO system_config (key, value, value_type, is_public, description) VALUE
 ON CONFLICT (key) DO NOTHING;
 
 -- SMS wordings. Both need DLT registration with this exact text before the SMS vendor delivers them in production, so they
--- ship INACTIVE: a render of an inactive template fails, which is the signal for the callers to fall back (trip_share: "SMS not
+-- ship INACTIVE. The domain and the /t/ path are fixed text (DLT only accepts a whitelisted domain); the link's token is the only
+-- variable, next to the rider's first name. Register them as written in docs/DLT_TEMPLATES_TRIP_SHARE.md, with {{x}} as {#var#}: a render of an inactive template fails, which is the signal for the callers to fall back (trip_share: "SMS not
 -- sent, share the link instead"; SOS: the old static-pin sos_contact SMS). Activate each in admin once its DLT template is approved.
 INSERT INTO notification_templates (slug, name, channel, subject, body, variables_schema, is_active) VALUES
   ('trip_share', 'Live trip link (SMS to a saved contact)', 'sms', NULL,
-   'Ocar: {{riderName}} is sharing a live ride with you. Track it here: {{trackUrl}}',
-   '{"required": ["riderName", "trackUrl"], "optional": []}', false),
+   'Ocar: {{riderName}} is sharing a live ride with you. Track it here: https://ocarindia.com/t/{{trackToken}}',
+   '{"required": ["riderName", "trackToken"], "optional": []}', false),
   ('sos_contact_live', 'SOS alert with live link (SMS to rider''s emergency contact)', 'sms', NULL,
-   'Ocar SAFETY ALERT: {{riderName}} pressed the SOS button during an Ocar ride and may need help. Track live: {{trackUrl}} Please call them now.',
-   '{"required": ["riderName", "trackUrl"], "optional": []}', false);
+   'Ocar SAFETY ALERT: {{riderName}} pressed the SOS button during an Ocar ride and may need help. Live location: https://ocarindia.com/t/{{trackToken}} Please call them now.',
+   '{"required": ["riderName", "trackToken"], "optional": []}', false);

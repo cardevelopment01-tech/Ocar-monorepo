@@ -5,6 +5,7 @@ import { sendSms } from '@/providers/sms.provider'
 import { sendEmail } from '@/lib/email'
 import * as notifService from '@/modules/notifications/notifications.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
+import { dltVariable, shareTokenFromUrl } from '@/modules/ride-shares/share-sms'
 import { workerPool as pool } from '@/db/client'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
@@ -167,7 +168,7 @@ export const notificationsWorker = new Worker(
                 let body: string | null = null
                 if (trackUrl) {
                   try {
-                    body = (await renderTemplate('sos_contact_live', 'sms', { riderName, trackUrl })).body
+                    body = (await renderTemplate('sos_contact_live', 'sms', { riderName: dltVariable(riderName), trackToken: shareTokenFromUrl(trackUrl) })).body
                   } catch (err) {
                     // Not approved/activated yet (ships inactive until its DLT template is approved): fall back to the static pin.
                     log.warn({ err }, 'sos_contact_live unavailable, using the static pin')
