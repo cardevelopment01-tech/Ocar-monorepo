@@ -633,6 +633,52 @@ ends offers past their end date. If an offer's budget looks too low, check for `
 **Changing an offer mid-flight:** edit through Admin > Offers (creates a new version; riders with the old price get a 409
 `PRICE_CHANGED` and see the new price, nothing is re-booked automatically).
 
+## Driver identity verification (selfie + number plate)
+
+Design: `docs/superpowers/specs/2026-11-02-driver-identity-verification-design.md`. Goal: stop one account being driven by
+several people. The daily selfie is matched to the onboarding selfie and the plate photo is read and compared with the
+registered plate, using AWS Rekognition. Everything ships **off**: deploying changes nothing for drivers.
+
+**Switches** (`system_config`, Admin > Config):
+
+| Key | Effect |
+|---|---|
+| `verification_mode` | `off` (today's behaviour), `shadow` (score and record only, drivers see nothing), `flag` (low scores queue for an admin, drivers keep working, an unusable photo is a retake), `block` (a selfie that does not match stops the driver until an admin clears it). |
+| `spot_check_enabled` | `'true'` turns on the re-check: after a random 2-3 rides, or a long one-way/round-trip ride, the driver is taken offline and must redo selfie + plate to go online. Only acts while `verification_mode` is not `off`. |
+| `spot_check_rides_min` / `_max` | The random "after N rides" range (default 2-3). |
+| `spot_check_long_ride_km` / `_minutes` | A completed one-way or round-trip ride at or above either always triggers a re-check (60 km / 90 min). |
+| `verification_face_pass_min` / `_review_min` | Similarity at or above pass = pass; between = admin review; below = mismatch. Start 90 / 75; **calibrate in shadow first**. |
+| `verification_retake_max` | Retakes of an unusable photo per day before it goes to an admin (3). In block mode also the number of mismatches before "An admin will review this". |
+
+`drivers.verification_mode_override` (`off|shadow|flag|block`) beats the global mode for one driver: use it to pilot on a
+single phone, or to exempt the seeded load-test drivers (`+918888%`), without touching everyone.
+
+**Go-live order (do not skip steps):**
+
+1. **IAM first.** The API's AWS identity needs `rekognition:DetectFaces`, `CompareFaces`, `DetectText` and read on the photo
+   bucket. Via the prd process only; any change here needs ops approval. Check with `aws rekognition detect-faces` against a
+   test object. Rekognition must be in the bucket's region (`S3_REGION`, ap-south-1).
+2. **Raise the driver app minimum version** (`app_update_driver_android_min`) to a build that has the consent card, the
+   "Quick safety check" screen and the retake messages, **before** `flag`, `block` or `spot_check_enabled`. An older build cannot
+   show the consent card or read the retake reasons and would see a generic error.
+3. **Shadow for at least 7 days.** Scores are stored but nothing is enforced. Read the similarity histogram in Admin >
+   Verifications > stats (`GET /api/v1/admin/verifications/stats`), then set the two thresholds so the review band yields about
+   20-30 cases a day (the admin budget).
+4. **Legal sign-off** on the consent wording and photo retention (the consent card says photos are kept "only as long as
+   these checks need them"; there is **no automatic deletion job yet**, so decide retention before `flag`).
+5. **Flag for about 2 weeks**, then enable `spot_check_enabled`. Admins work the queue in Admin > Verifications (J/K move,
+   O looks fine, M mismatch).
+6. **Block** only when the confirmed-ok vs confirmed-mismatch rates look right.
+
+**Roll back:** set `verification_mode` to `off`. A driver with an open re-check is released at once (an open challenge is
+ignored while verification is off). Nothing else needs undoing.
+
+**A driver says "I'm offline and can't verify"** (broken camera, no light): Admin > Verifications > **Open checks** > Waive
+check. They can then go online; the waiver is in the audit log.
+
+**If Rekognition is down:** the daily check still completes (scoring fails open) and the case is queued for review at the
+lowest priority; no driver is stopped by an outage.
+
 ## Updating an observability secret (Grafana Cloud alerting/SLO/synthetics)
 
 `infra/terraform/observability/` (alert rules, SLOs, synthetic monitoring —

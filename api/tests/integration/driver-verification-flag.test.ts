@@ -132,7 +132,7 @@ describe('flag mode: daily submit', () => {
     scoreAs(80)
     const res = await submitDaily(driverToken)
     expect(res.status).toBe(201)
-    expect(res.body).toEqual({ complete: true, outcome: 'queued' })
+    expect(res.body).toEqual({ complete: true, outcome: 'ok' }) // never reveals that it was queued
     const sel = (await pool.query(`SELECT status, review_state, review_priority FROM driver_verifications WHERE driver_id = $1 AND kind = 'daily_selfie'`, [driverId])).rows[0]
     expect(sel).toMatchObject({ status: 'auto_passed', review_state: 'queued', review_priority: 1 })
     const st = await request(app).get('/api/v1/drivers/daily-verification/status').set('Authorization', `Bearer ${driverToken}`)
@@ -168,7 +168,7 @@ describe('flag mode: daily submit', () => {
     for (let i = 0; i < 2; i++) expect((await submitDaily(driverToken)).status).toBe(422)
     const res = await submitDaily(driverToken)
     expect(res.status).toBe(201)
-    expect(res.body.outcome).toBe('queued')
+    expect(res.body.outcome).toBe('ok')
     const sel = (await pool.query(`SELECT status, review_state FROM driver_verifications WHERE driver_id = $1 AND kind = 'daily_selfie'`, [driverId])).rows[0]
     expect(sel).toMatchObject({ status: 'auto_passed', review_state: 'queued' })
   })

@@ -60,3 +60,23 @@ export async function stats() {
   ])
   return { ...s, budget: Number(budget) || 30 }
 }
+
+export async function openChallenges() {
+  return { items: await repo.listOpenChallenges(LIST_LIMIT) }
+}
+
+// For a driver who cannot complete the check (broken camera, no light): lets them go online without it this time.
+export async function waiveChallenge(adminId: bigint, id: bigint, ip: string | null) {
+  const waived = await repo.waiveChallenge(id, adminId)
+  if (!waived) throw httpError(409, 'This check is no longer open.', 'ALREADY_RESOLVED')
+  await recordAuditLog({
+    adminId,
+    action: 'verification.waive_challenge',
+    targetTable: 'verification_challenges',
+    targetId: id,
+    beforeState: { status: 'open' },
+    afterState: { status: 'waived', driver_id: waived.driverId },
+    ipAddress: ip,
+  })
+  return { ok: true }
+}

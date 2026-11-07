@@ -22,6 +22,8 @@ const REASONS: Record<string, string> = {
   PLATE_NEAR_MATCH: 'Number plate is nearly the registered one (one or two characters differ)',
   NO_PLATE_TEXT: 'No number plate could be read; the driver used up the retakes',
   NO_FACE: 'No face found; the driver used up the retakes',
+  UNREADABLE_IMAGE: 'The file could not be read as a photo; the driver used up the retakes',
+  RETAKE_LIMIT: 'The selfie was unusable after every retake; check it by eye',
   MULTIPLE_FACES: 'More than one face; the driver used up the retakes',
   POOR_QUALITY: 'Photo too dark or blurry; the driver used up the retakes',
   FACE_ANGLE: 'Face turned away; the driver used up the retakes',
@@ -69,4 +71,16 @@ export function nextSelection(ids: string[], resolvedId: string): string | null 
 
 export function budgetTone(waiting: number, budget: number): 'ok' | 'over' {
   return waiting > budget ? 'over' : 'ok'
+}
+
+// Why a driver was taken offline for a re-check, in the admin's words (the driver is never told the trigger).
+export function challengeReasonText(reason: string): string {
+  return reason === 'long_ride' ? 'After a long ride' : reason === 'rides' ? 'After a few rides' : 'Set by an admin'
+}
+
+export function waitingText(openedAt: string, now = Date.now()): string {
+  const mins = Math.max(0, Math.floor((now - new Date(openedAt).getTime()) / 60000))
+  if (mins < 60) return `${mins} min`
+  const hours = Math.floor(mins / 60)
+  return hours < 24 ? `${hours} h` : `${Math.floor(hours / 24)} d`
 }

@@ -45,9 +45,9 @@ describe('resolveMode', () => {
     expect(await resolveMode(null)).toBe('off')
     expect(await resolveMode('nonsense')).toBe('off')
   })
-  it('maps block to flag until block mode ships', async () => {
+  it('passes flag and block through', async () => {
     expect(await resolveMode('flag')).toBe('flag')
-    expect(await resolveMode('block')).toBe('flag')
+    expect(await resolveMode('block')).toBe('block')
   })
   it('a driver override beats the global switch in both directions', async () => {
     cfg.mockResolvedValue('shadow')

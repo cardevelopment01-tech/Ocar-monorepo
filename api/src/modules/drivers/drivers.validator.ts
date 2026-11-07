@@ -118,3 +118,7 @@ export const verificationSubmitSchema = z.object({
   selfie_key: z.string().min(1),
   plate_key: z.string().min(1),
 })
+
+export const verificationConsentSchema = z.object({
+  app_version: z.string().max(32).optional(),
+})

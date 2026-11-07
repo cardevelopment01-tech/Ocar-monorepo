@@ -15,6 +15,7 @@ import {
   vehicleUploadCompleteSchema,
   verificationUploadInitSchema,
   verificationSubmitSchema,
+  verificationConsentSchema,
 } from './drivers.validator'
 
 const router: IRouter = Router()
@@ -53,6 +54,8 @@ router.post('/onboarding/submit', ...guard, controller.submitApplication)
 router.get('/daily-verification/status', ...activeGuard, verificationController.getVerificationStatus)
 router.post('/daily-verification/upload-init',
   ...activeGuard, validate(verificationUploadInitSchema), verificationController.initVerificationUpload)
+router.post('/daily-verification/consent',
+  ...activeGuard, validate(verificationConsentSchema), verificationController.acceptVerificationConsent)
 router.post('/daily-verification',
   ...activeGuard, validate(verificationSubmitSchema), verificationController.submitVerification)
 
