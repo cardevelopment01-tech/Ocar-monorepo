@@ -76,6 +76,9 @@ const config: Config = {
         'scale-in': 'scaleIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
         'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
         'fade-up': 'fadeUp 0.22s cubic-bezier(0.22, 1, 0.36, 1)',
+        // The public trip page: the sheet settles into place, then its rows rise in one after another (set animationDelay per row).
+        'sheet-in': 'sheetIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both',
+        'row-in': 'rowIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both',
         shimmer: 'shimmer 1.6s infinite linear',
         marquee: 'marquee 40s linear infinite',
         dash: 'dash 1.4s linear infinite',
@@ -95,6 +98,14 @@ const config: Config = {
         },
         fadeUp: {
           from: { opacity: '0', transform: 'translateY(10px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        sheetIn: {
+          from: { opacity: '0', transform: 'translateY(32px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        rowIn: {
+          from: { opacity: '0', transform: 'translateY(8px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
         scaleIn: {
