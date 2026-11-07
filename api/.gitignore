@@ -1,0 +1,3 @@
+
+# written by the maptest-* scripts: holds short-lived test access tokens
+scripts/maptest-state.json
