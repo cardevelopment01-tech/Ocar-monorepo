@@ -7,9 +7,10 @@ import DriverProfileLoading from '../loading'
 // fails_when=loading.tsx is removed or stops rendering a placeholder; why_new=new loading boundary for the dynamic route;
 // seam=none; no_claim=Next's navigation itself (checked on the deployed site).
 describe('driver profile loading state', () => {
-  it('renders the placeholder bars and says it is busy', () => {
+  it('renders a profile-shaped shimmer skeleton and says it is busy', () => {
     const { container } = render(<DriverProfileLoading />)
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
-    expect(container.querySelectorAll('.animate-pulse')).toHaveLength(6)
+    expect(container.querySelector('.admin-card')).not.toBeNull() // the header card the real page opens with
+    expect(container.querySelectorAll('.skeleton').length).toBeGreaterThan(10)
   })
 })
