@@ -2,7 +2,9 @@
 
 Two new SMS wordings need DLT approval before live trip sharing can text anyone. They ship **inactive** (migration 126) and the feature stays off (`system_config.trip_share_enabled = false`) until both are approved and activated.
 
-Same entity and sender as the login OTP (template 193042):
+Same entity and sender as the login OTP (template 193042, "OTP SMS", approved 2026-06-18). Variables are written `{#var1#}`, `{#var2#}` (numbered), as BulkSMSPlans accepts; if its form prefers plain `{#var#}`, use that in the same order.
+
+The older SOS text below uses plain `{#var#}` because it is already written that way in the app.
 
 | | |
 |---|---|
@@ -15,13 +17,13 @@ Same entity and sender as the login OTP (template 193042):
 Sent when a rider picks a saved contact in "Share live trip". The rider chose to send it.
 
 ```
-Ocar: {#var#} is sharing a live ride with you. Track it here: https://ocarindia.com/t/{#var#}
+Ocar: {#var1#} is sharing a live ride with you. Track it here: https://ocarindia.com/t/{#var2#}
 ```
 
 | Variable | Is | Max length |
 |---|---|---|
-| 1st `{#var#}` | the rider's first name (cut to 30 characters in code) | 30 |
-| 2nd `{#var#}` | the link's token, always 22 characters, letters/digits/`-`/`_` | 30 |
+| `{#var1#}` | the rider's first name (cut to 30 characters in code) | 30 |
+| `{#var2#}` | the link's token, always 22 characters, letters/digits/`-`/`_` | 30 |
 
 Sample for the form: `Ocar: Asha is sharing a live ride with you. Track it here: https://ocarindia.com/t/kP3xQ9mZ2vL8nR4tY7wB1c`
 
@@ -32,13 +34,13 @@ Fits one SMS (about 132 characters with both variables at their maximum).
 Sent to the rider's emergency contacts when they press SOS on a trip.
 
 ```
-Ocar SAFETY ALERT: {#var#} pressed the SOS button during an Ocar ride and may need help. Live location: https://ocarindia.com/t/{#var#} Please call them now.
+Ocar SAFETY ALERT: {#var1#} pressed the SOS button during an Ocar ride and may need help. Live location: https://ocarindia.com/t/{#var2#} Please call them now.
 ```
 
 | Variable | Is | Max length |
 |---|---|---|
-| 1st `{#var#}` | the rider's first name (cut to 30 characters in code) | 30 |
-| 2nd `{#var#}` | the link's token, 22 characters | 30 |
+| `{#var1#}` | the rider's first name (cut to 30 characters in code) | 30 |
+| `{#var2#}` | the link's token, 22 characters | 30 |
 
 Sample for the form: `Ocar SAFETY ALERT: Asha pressed the SOS button during an Ocar ride and may need help. Live location: https://ocarindia.com/t/kP3xQ9mZ2vL8nR4tY7wB1c Please call them now.`
 

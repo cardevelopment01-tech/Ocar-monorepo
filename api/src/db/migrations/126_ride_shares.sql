@@ -27,7 +27,7 @@ ON CONFLICT (key) DO NOTHING;
 
 -- SMS wordings. Both need DLT registration with this exact text before the SMS vendor delivers them in production, so they
 -- ship INACTIVE. The domain and the /t/ path are fixed text (DLT only accepts a whitelisted domain); the link's token is the only
--- variable, next to the rider's first name. Register them as written in docs/DLT_TEMPLATES_TRIP_SHARE.md, with {{x}} as {#var#}: a render of an inactive template fails, which is the signal for the callers to fall back (trip_share: "SMS not
+-- variable, next to the rider's first name. Register them as written in docs/DLT_TEMPLATES_TRIP_SHARE.md, with {{riderName}} as {#var1#} and {{trackToken}} as {#var2#}: a render of an inactive template fails, which is the signal for the callers to fall back (trip_share: "SMS not
 -- sent, share the link instead"; SOS: the old static-pin sos_contact SMS). Activate each in admin once its DLT template is approved.
 INSERT INTO notification_templates (slug, name, channel, subject, body, variables_schema, is_active) VALUES
   ('trip_share', 'Live trip link (SMS to a saved contact)', 'sms', NULL,
