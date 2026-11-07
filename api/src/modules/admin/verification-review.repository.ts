@@ -129,8 +129,9 @@ export async function resolve(params: {
   addReference: boolean
 }): Promise<ResolveResult> {
   return withTransaction(async (client) => {
-    const cur = await client.query<{ status: string; kind: string; driver_id: string; image_url: string; review_state: string }>(
-      `SELECT status::text, kind::text, driver_id::text, image_url, review_state FROM driver_verifications WHERE id = $1 FOR UPDATE`,
+    const cur = await client.query<{ status: string; kind: string; driver_id: string; image_url: string; review_state: string; challenge_id: string | null }>(
+      `SELECT status::text, kind::text, driver_id::text, image_url, review_state, challenge_id::text
+         FROM driver_verifications WHERE id = $1 FOR UPDATE`,
       [params.id]
     )
     const row = cur.rows[0]
@@ -151,6 +152,14 @@ export async function resolve(params: {
         WHERE id = $1`,
       [params.id, ok ? 'confirmed_ok' : 'confirmed_mismatch', newStatus, params.adminId, overriding, params.note]
     )
+
+    // A re-check an admin clears is done: the driver can go online (a mismatch leaves it open).
+    if (ok && row.challenge_id) {
+      await client.query(
+        `UPDATE verification_challenges SET status = 'satisfied', satisfied_at = now() WHERE id = $1 AND status = 'open'`,
+        [row.challenge_id]
+      )
+    }
 
     if (ok && params.addReference && (row.kind === 'daily_selfie' || row.kind === 'spot_selfie')) {
       await client.query(
@@ -199,4 +208,34 @@ export async function getStats(): Promise<ReviewStats> {
     resolvedToday: Number(c?.resolved_today ?? 0),
     histogram: hist.map((h) => ({ day: h.day, decision: h.decision, count: Number(h.n) })),
   }
+}
+
+// ── Open re-checks ────────────────────────────────────────────────────────────
+
+export interface OpenChallengeRow {
+  id: string
+  driverId: string
+  driverName: string | null
+  driverPhone: string
+  reason: string
+  openedAt: string
+}
+
+export async function listOpenChallenges(limit: number): Promise<OpenChallengeRow[]> {
+  const rows = await query<{ id: string; driver_id: string; full_name: string | null; phone: string; reason: string; opened_at: string }>(
+    `SELECT c.id::text, c.driver_id::text, d.full_name, d.phone, c.reason, c.opened_at::text
+       FROM verification_challenges c JOIN drivers d ON d.id = c.driver_id
+      WHERE c.status = 'open' ORDER BY c.opened_at ASC LIMIT $1`,
+    [limit]
+  )
+  return rows.map((r) => ({ id: r.id, driverId: r.driver_id, driverName: r.full_name, driverPhone: r.phone, reason: r.reason, openedAt: r.opened_at }))
+}
+
+export async function waiveChallenge(id: bigint, adminId: bigint): Promise<{ driverId: string } | null> {
+  const rows = await query<{ driver_id: string }>(
+    `UPDATE verification_challenges SET status = 'waived', waived_by = $2, waived_at = now()
+      WHERE id = $1 AND status = 'open' RETURNING driver_id::text`,
+    [id, adminId]
+  )
+  return rows[0] ? { driverId: rows[0].driver_id } : null
 }

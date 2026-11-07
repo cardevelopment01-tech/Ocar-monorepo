@@ -39,6 +39,10 @@ const BOUNDS: Record<string, ConfigBounds> = {
   verification_min_sharpness:       { min: 0, max: 100 },
   verification_retake_max:          { min: 1, max: 10 },
   verification_review_daily_budget: { min: 1, max: 1_000 },
+  spot_check_rides_min:             { min: 1, max: 20 },
+  spot_check_rides_max:             { min: 1, max: 20 },
+  spot_check_long_ride_km:          { min: 1, max: 2_000 },
+  spot_check_long_ride_minutes:     { min: 1, max: 1_440 },
 }
 
 // Typed `string` in the table but really booleans — free text here would silently break the reader.
@@ -55,8 +59,10 @@ const ALLOWED_VALUES: Record<string, readonly string[]> = {
   offers_cashback_enabled: ['true', 'false'],
   // Read as on only when exactly 'true': a typo must be refused, not left looking like an enabled kill switch.
   trip_share_enabled: ['true', 'false'],
-  // block is added when that mode ships; any other value would silently read as off.
-  verification_mode: ['off', 'shadow', 'flag'],
+  // Anything else would silently read as off.
+  verification_mode: ['off', 'shadow', 'flag', 'block'],
+  // Read as on only when exactly 'true'; a typo must be refused, not left looking like an enabled re-check.
+  spot_check_enabled: ['true', 'false'],
 }
 
 // Version rows (app_update_<app>_<platform>_min|recommended): the policy compares major.minor.patch,

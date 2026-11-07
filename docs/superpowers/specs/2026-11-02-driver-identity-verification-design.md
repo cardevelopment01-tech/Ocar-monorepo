@@ -906,6 +906,37 @@ Overall: 6/10 -> 7.5/10. Pass 7 (decision register): DD1-DD4 approved; P1-P5 pen
   on the selfie step; admin focus order list -> case -> buttons, band chips carry text not colour alone.
 - **P5** Submit copy: "Checking your photo" with the button disabled, and photos kept on a network failure.
 
+## As built (2026-11-07) and what is deliberately not in it
+
+Three stacked branches, none pushed: PR1 `feat/driver-identity-verification` (migrations 127, 128: shadow scoring), PR2
+`feat/verification-pr2-admin-queue` (129: flag mode, retakes, review queue API + admin page, extra references), PR3
+`feat/verification-pr3-recheck` (130: re-check after random rides or a long ride, forced offline, `SPOT_CHECK_REQUIRED` gate,
+block mode, consent, driver-app screens, open-checks tab with waive). Migrations were renumbered from 119/120 to 127+ after
+rebasing onto main. Rollout order and switches: `docs/OPS_RUNBOOK.md` > "Driver identity verification".
+
+Calls made while building (change if wrong):
+- **Re-check satisfied by the normal submit.** The app posts to the same `/daily-verification` route; the server sees the open
+  challenge and stores `spot_selfie`/`spot_plate` rows (or the daily rows if the daily check is not done yet). No `challenge_id`
+  from the client, so an older app build still works. `complete` is `false` while a challenge is open so every build walks
+  to the camera screen.
+- **Block mode** stops only a selfie mismatch. A plate fail always goes to review. After `verification_retake_max` mismatches in a
+  day the server answers `VERIFICATION_UNDER_REVIEW` without calling Rekognition; an admin clears it ("looks fine" also
+  closes the challenge) or waives the challenge.
+- **Advance bookings cannot be stranded:** a scheduled ride is dispatched to online drivers when it enters its buffer, it is
+  never pre-assigned, so taking a driver offline does not orphan one (closes the eng-review item). The trigger also never fires
+  while the driver has another ride accepted or under way.
+- **An open challenge is ignored while verification is `off`**, so switching the feature off releases everyone.
+- **Consent** is asked only in `flag`/`block` (shadow is invisible by design). The server does **not** refuse a submit without
+  consent; the app raises the card and ops raises the minimum app version first. Whether to enforce it server-side is a legal call (O2).
+
+Not built, on purpose or deferred:
+- **T1 IAM grant** (Terraform, ops approval) and **T7** (calibration script for the impostor sample, Prometheus counters, Grafana alerts).
+- **Photo retention job.** `verification_retention_days` is not implemented; the consent text avoids promising a number.
+- **9.4 reference-photo quality** (onboarding retake, backfill, `reference_quality`): drivers with a poor reference are scored
+  `REFERENCE_UNUSABLE` and skipped, never blocked. O4 (who retakes them) is still open.
+- **Verification history block on the driver detail page** (the case pane already shows the last 10 outcomes).
+- **Server-side check that `flag`/`block` is not enabled before the minimum app version is raised** (a runbook step, not code).
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |

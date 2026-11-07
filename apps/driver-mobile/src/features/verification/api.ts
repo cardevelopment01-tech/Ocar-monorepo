@@ -5,6 +5,9 @@ export type DailyVerificationStatus = {
   selfieDone: boolean
   plateDone: boolean
   complete: boolean
+  // Only present when true: the driver was taken offline for a re-check / has not yet agreed to the checks.
+  reverify?: boolean
+  consentRequired?: boolean
 }
 
 export type PickedPhoto = { uri: string; mimeType: string; fileSize: number; width?: number; height?: number }
@@ -45,12 +48,16 @@ async function uploadOne(file: PickedPhoto, kind: 'selfie' | 'plate'): Promise<s
   return key
 }
 
-export async function submitVerification(selfie: PickedPhoto, plate: PickedPhoto): Promise<{ complete: true }> {
+export async function submitVerification(selfie: PickedPhoto, plate: PickedPhoto): Promise<{ complete: true; outcome?: 'ok' | 'queued' }> {
   // Downscale one at a time (two concurrent full-res decodes can OOM low-end
   // Android), then upload the small results in parallel.
   const preparedSelfie = await prepareImageForUpload(selfie)
   const preparedPlate = await prepareImageForUpload(plate)
   const [selfieKey, plateKey] = await Promise.all([uploadOne(preparedSelfie, 'selfie'), uploadOne(preparedPlate, 'plate')])
   const res = await api.post('/api/v1/drivers/daily-verification', { selfie_key: selfieKey, plate_key: plateKey })
-  return res.data as { complete: true }
+  return res.data as { complete: true; outcome?: 'ok' | 'queued' }
+}
+
+export async function acceptVerificationConsent(appVersion: string): Promise<void> {
+  await api.post('/api/v1/drivers/daily-verification/consent', { app_version: appVersion })
 }

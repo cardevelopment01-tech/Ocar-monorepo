@@ -22,3 +22,10 @@ export async function submitVerification(req: Request, res: Response, next: Next
     res.status(201).json(result)
   } catch (err) { next(err) }
 }
+
+export async function acceptVerificationConsent(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { app_version } = req.body as { app_version?: string }
+    res.json(await service.acceptConsent(req.driver!.id, app_version ?? null))
+  } catch (err) { next(err) }
+}

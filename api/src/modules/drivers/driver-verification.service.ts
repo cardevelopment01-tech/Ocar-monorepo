@@ -21,9 +21,33 @@ const EXT_BY_MIME: Record<string, string> = {
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // matches the old multer limits.fileSize
 
-export async function getStatus(driverId: bigint): Promise<VerificationStatusToday & { complete: boolean }> {
-  const status = await repo.getTodayStatus(driverId)
-  return { ...status, complete: status.selfieDone && status.plateDone }
+// reverify / consentRequired are only present when true, so a driver the feature does not touch sees the same body as
+// before. An open re-check makes `complete` false so every app version (old ones included) walks to the camera screen.
+export type VerificationStatus = VerificationStatusToday & { complete: boolean; reverify?: true; consentRequired?: true }
+
+export async function getStatus(driverId: bigint): Promise<VerificationStatus> {
+  const [status, ctx] = await Promise.all([repo.getTodayStatus(driverId), repo.getVerificationContext(driverId)])
+  const out: VerificationStatus = { ...status, complete: status.selfieDone && status.plateDone }
+  const mode = await resolveMode(ctx.modeOverride)
+  if (mode === 'off') return out
+  const [challenge, consentAt] = await Promise.all([repo.getOpenChallenge(driverId), repo.getConsentAt(driverId)])
+  if (challenge) { out.complete = false; out.reverify = true }
+  // Shadow is invisible to drivers by design, so only flag and block ask for consent.
+  if (!consentAt && mode !== 'shadow') out.consentRequired = true
+  return out
+}
+
+// The open re-check that must stop this driver going online, or null. Ignored while verification is off, so switching
+// the feature off can never leave a driver stuck behind a challenge.
+export async function getBlockingChallenge(driverId: bigint): Promise<repo.OpenChallenge | null> {
+  const ctx = await repo.getVerificationContext(driverId)
+  if ((await resolveMode(ctx.modeOverride)) === 'off') return null
+  return repo.getOpenChallenge(driverId)
+}
+
+export async function acceptConsent(driverId: bigint, appVersion: string | null): Promise<{ ok: true }> {
+  await repo.recordConsent(driverId, appVersion)
+  return { ok: true }
 }
 
 export async function initUpload(
@@ -87,12 +111,10 @@ export async function loadThresholds(): Promise<Thresholds> {
   return t
 }
 
-// Per-driver override beats the global switch. 'block' is not implemented yet, so it behaves as 'flag' (the nearest
-// safe behaviour) rather than turning scoring off or half-enforcing.
+// Per-driver override beats the global switch; anything unrecognised reads as off.
 export async function resolveMode(modeOverride: string | null): Promise<'off' | VerificationMode> {
   const mode = modeOverride ?? (await getConfigValue('verification_mode', 'off'))
-  if (mode === 'shadow') return 'shadow'
-  if (mode === 'flag' || mode === 'block') return 'flag'
+  if (mode === 'shadow' || mode === 'flag' || mode === 'block') return mode
   return 'off'
 }
 
@@ -203,6 +225,23 @@ export async function submit(
     throw httpError(422, 'No registered vehicle found for this driver', 'NO_VEHICLE')
   }
 
+  // Mode, any open re-check and the driver's remaining tries are read first, so a driver who is out of tries costs no
+  // upload and no Rekognition call. A failure to read them falls back to today's behaviour (nothing scored).
+  let ctx: repo.VerificationContext | undefined
+  let mode: 'off' | VerificationMode = 'off'
+  try {
+    ctx = await repo.getVerificationContext(driverId)
+    mode = await resolveMode(ctx.modeOverride)
+  } catch (err) {
+    log.warn({ err, driverId: String(driverId) }, 'verification mode lookup failed, storing without a score')
+  }
+  const retakeMax = Math.max(1, Math.trunc(num(await getConfigValue('verification_retake_max', '3'), 3)))
+  const challenge = mode === 'off' ? null : await repo.getOpenChallenge(driverId)
+  const failsBefore = mode === 'block' ? await repo.countTodayFailedSelfies(driverId) : 0
+  if (mode === 'block' && failsBefore >= retakeMax) {
+    throw httpError(422, 'An admin will review your check.', 'VERIFICATION_UNDER_REVIEW')
+  }
+
   const folder = `drivers/${driverId}/daily-verification`
   const [selfieUrl, plateUrl] = await Promise.all([
     promotePendingUpload(keys.selfieKey, `${folder}/selfie`),
@@ -211,31 +250,35 @@ export async function submit(
 
   // Scoring runs before the insert transaction opens, so no DB connection is held while Rekognition is called.
   let scoring: VerificationScoring | undefined
-  try {
-    const ctx = await repo.getVerificationContext(driverId)
-    const mode = await resolveMode(ctx.modeOverride)
-    if (mode !== 'off') {
+  if (ctx && mode !== 'off') {
+    try {
       scoring = await scoreSubmission({
         mode, selfieUrl, plateUrl, referenceUrl: ctx.referenceSelfieUrl,
         extraReferenceUrls: ctx.extraReferenceUrls, registeredPlate: vehicle.number_plate,
       })
+    } catch (err) {
+      log.warn({ err, driverId: String(driverId) }, 'verification scoring setup failed, storing without a score')
     }
-  } catch (err) {
-    log.warn({ err, driverId: String(driverId) }, 'verification scoring setup failed, storing without a score')
   }
 
   const vehicleId = BigInt(vehicle.id)
   if (!scoring) {
     await repo.insertTodayVerification({ driverId, vehicleId, selfieUrl, plateUrl })
+    if (challenge) await repo.satisfyChallenge(challenge.id) // fail open: an outage must not strand a driver offline
     return { complete: true, outcome: 'ok' }
   }
 
+  // With an open re-check and today's daily check already done, this submission is the re-check: new spot rows. In any
+  // other case it is the daily check (an open re-check is closed by it too, since the photos are fresh).
+  const daily = challenge ? await repo.getTodayStatus(driverId) : null
+  const spotPath = !!challenge && !!daily && daily.selfieDone && daily.plateDone
+  const attemptKinds = spotPath ? ({ selfie: 'spot_selfie', plate: 'spot_plate' } as const) : undefined
+
   // An unusable photo (no face, too dark, plate not readable) is a retake, not a verdict: nothing is stored as the
-  // day's check, only the attempt, so the driver can try again. After retake_max it goes to an admin instead.
-  const retakeMax = Math.max(1, Math.trunc(num(await getConfigValue('verification_retake_max', '3'), 3)))
+  // check, only the attempt, so the driver can try again. After retake_max it goes to an admin instead.
   const retake = pendingRetake(scoring.mode, scoring, await repo.countTodayRetakes(driverId), retakeMax)
   if (retake) {
-    await repo.recordAttemptsOnly({ driverId, vehicleId, selfieUrl, plateUrl }, scoring)
+    await repo.recordAttemptsOnly({ driverId, vehicleId, selfieUrl, plateUrl }, scoring, attemptKinds)
     // Only the retake reasons reach the driver (how to fix the photo). Scores and match results never do.
     throw Object.assign(
       httpError(422, 'One of your photos could not be used. Please retake it.', 'VERIFICATION_RETAKE'),
@@ -247,6 +290,23 @@ export async function submit(
     selfie: rowOutcome('selfie', scoring.mode, scoring.selfie.decision),
     plate: rowOutcome('plate', scoring.mode, scoring.plate.decision),
   }
-  await repo.insertTodayVerification({ driverId, vehicleId, selfieUrl, plateUrl, scoring, outcome })
+  // Only a selfie that did not match in block mode keeps the re-check open; everything else closes it.
+  const selfieBlocked = outcome.selfie.status === 'failed'
+  if (spotPath && challenge) {
+    await repo.insertSpotVerification({
+      driverId, vehicleId, challengeId: challenge.id, selfieUrl, plateUrl, scoring, outcome, satisfy: !selfieBlocked,
+    })
+  } else {
+    await repo.insertTodayVerification({ driverId, vehicleId, selfieUrl, plateUrl, scoring, outcome })
+    if (challenge && !selfieBlocked) await repo.satisfyChallenge(challenge.id)
+  }
+
+  if (selfieBlocked) {
+    // The wording says retake, never why: scores and match reasons are not shown to drivers.
+    throw Object.assign(
+      httpError(422, "We couldn't verify this photo.", 'VERIFICATION_FAILED'),
+      { details: { attemptsLeft: Math.max(0, retakeMax - (failsBefore + 1)) } }
+    )
+  }
   return { complete: true, outcome: outcome.selfie.reviewState === 'queued' || outcome.plate.reviewState === 'queued' ? 'queued' : 'ok' }
 }

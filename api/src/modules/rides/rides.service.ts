@@ -11,6 +11,8 @@ import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
 import * as repo from './rides.repository'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
+import { getBlockingChallenge } from '@/modules/drivers/driver-verification.service'
+import { maybeOpenSpotCheck } from '@/modules/drivers/spot-check.engine'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import { resolveForBooking, type AppliedOffer, type PreviewInput } from '@/modules/offers/offers.service'
@@ -159,6 +161,10 @@ export async function goOnline(driverId: bigint, data: {
   if (!verification.selfieDone || !verification.plateDone) {
     throw httpError(428, "Today's selfie and plate verification is required before going online", 'DAILY_CHECK_REQUIRED')
   }
+  // A driver taken offline for a re-check (after a few rides or a long ride) redoes the selfie and plate to come back.
+  if (await getBlockingChallenge(driverId)) {
+    throw httpError(428, 'A quick safety check is needed before you go online', 'SPOT_CHECK_REQUIRED')
+  }
 
   if (!(await hasApprovedRequiredDocs(driverId))) {
     throw createHttpError(AppErrors.DRIVER_DOCS_REJECTED)
@@ -302,6 +308,32 @@ export async function goOffline(driverId: bigint, reason = 'driver_choice') {
   )
 
   return session
+}
+
+// After a ride completes: if the driver is due a re-check (a random 2-3 rides, or a long ride), open it, take them offline
+// and tell them calmly. It runs once the ride is completed and settled (never mid-ride) and can never fail the
+// completion: every error is logged and dropped. forceResolveRide does not call it (an admin or timeout says nothing
+// about the driver being present).
+export async function runSpotCheckAfterCompletion(driverId: bigint, rideId: bigint): Promise<void> {
+  try {
+    const challengeId = await maybeOpenSpotCheck(driverId, rideId)
+    if (!challengeId) return
+    await goOffline(driverId, 'spot_check')
+    let title = 'Quick safety check'
+    let body = 'Quick safety check to keep going. Take a selfie and a photo of your number plate to go online.'
+    try {
+      const rendered = await renderTemplate('verification_required', 'push', {})
+      title = rendered.subject ?? title
+      body = rendered.body
+    } catch {
+      // template missing/inactive -- the built-in copy above is used
+    }
+    await notifyOwner({
+      ownerType: 'driver', ownerId: driverId, type: 'verification_required', title, body, payload: { challengeId },
+    })
+  } catch (err) {
+    log.error({ err, rideId: rideId.toString(), driverId: driverId.toString() }, 'spot-check after completion failed')
+  }
 }
 
 export async function pauseAvailability(driverId: bigint): Promise<void> {
@@ -2160,6 +2192,7 @@ export async function endRideEarlyAsDriver(
   void settleRideCompletionPayment(rideId, driverId).catch((err: unknown) => {
     log.error({ err, rideId }, 'payment post-processing failed for early-ended ride')
   })
+  void runSpotCheckAfterCompletion(driverId, rideId)
 
   return { success: true, rideId: rideId.toString(), ...(finalFare !== null ? { finalFare } : {}) }
 }
@@ -2950,6 +2983,7 @@ export async function verifyEndOTP(
   void settleRideCompletionPayment(rideId, driverId).catch((err: unknown) => {
     log.error({ err, rideId }, 'payment post-processing failed for ride')
   })
+  void runSpotCheckAfterCompletion(driverId, rideId)
 
   return {
     success: true,

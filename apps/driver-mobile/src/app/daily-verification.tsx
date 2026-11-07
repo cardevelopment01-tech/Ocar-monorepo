@@ -1,18 +1,29 @@
-import { useRef, useState } from 'react'
-import { ActivityIndicator, Image, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
+import Constants from 'expo-constants'
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { getInfoAsync } from 'expo-file-system/legacy'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts, Text, getApiErrorMessage } from '@ocar/mobile-shared'
+import { colors, radii, spacing, typography, fonts, Text, getApiErrorMessage, PRIVACY_URL } from '@ocar/mobile-shared'
 import { OvalOverlay } from '@/components/camera/OvalOverlay'
 import { RectOverlay } from '@/components/camera/RectOverlay'
-import { submitVerification, type PickedPhoto } from '@/features/verification/api'
+import {
+  acceptVerificationConsent, fetchVerificationStatus, submitVerification, type PickedPhoto,
+} from '@/features/verification/api'
+import { parseVerificationFailure, retakeLine, retakePlan } from '@/features/verification/errors'
 
 type Step = 'selfie' | 'plate'
 type Stage = 'gate' | 'camera' | 'preview'
+
+const SUPPORT_EMAIL = 'grievance@ocarindia.com'
+const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=Ocar%20driver%20support`
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0'
+
+// Shown when the server refuses to go on: scores and match reasons are never shown, only what the driver can do next.
+type Blocked = { attemptsLeft: number; underReview: boolean }
 
 const STEP_CONFIG: Record<Step, { title: string; instruction: string; cameraHint: string; front: boolean }> = {
   selfie: {
@@ -45,6 +56,34 @@ export default function DailyVerificationScreen() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [permission, requestPermission] = useCameraPermissions()
+  // "Quick safety check" mode (offline after a few rides / a long ride) and the one-time consent card.
+  const [reverify, setReverify] = useState(false)
+  const [needsConsent, setNeedsConsent] = useState(false)
+  const [consentBusy, setConsentBusy] = useState(false)
+  const [retakeNotes, setRetakeNotes] = useState<Partial<Record<Step, string>>>({})
+  const [retakeOnly, setRetakeOnly] = useState<Step | null>(null)
+  const [blocked, setBlocked] = useState<Blocked | null>(null)
+
+  useEffect(() => {
+    // A failed lookup leaves both off: the screen then behaves exactly like the plain daily check.
+    fetchVerificationStatus()
+      .then((s) => { setReverify(!!s.reverify); setNeedsConsent(!!s.consentRequired) })
+      .catch(() => {})
+  }, [])
+
+  async function agree() {
+    setConsentBusy(true)
+    try {
+      await acceptVerificationConsent(APP_VERSION)
+      setNeedsConsent(false)
+    } catch (err) {
+      setSubmitError(getApiErrorMessage(err, "Couldn't save that. Please try again."))
+    } finally {
+      setConsentBusy(false)
+    }
+  }
+
+  const openSupport = () => void Linking.openURL(SUPPORT_MAILTO).catch(() => {})
 
   const cfg = STEP_CONFIG[step]
 
@@ -68,6 +107,7 @@ export default function DailyVerificationScreen() {
       const photo: PickedPhoto = { uri: shot.uri, mimeType: 'image/jpeg', fileSize: info.exists ? (info.size ?? 0) : 0, width: shot.width, height: shot.height }
       if (step === 'selfie') setSelfie(photo)
       else setPlate(photo)
+      setRetakeNotes((n) => { const next = { ...n }; delete next[step]; return next })
       setStage('preview')
     } finally {
       setCapturing(false)
@@ -80,10 +120,13 @@ export default function DailyVerificationScreen() {
     void openCamera()
   }
 
+  // The last step submits. So does a retaken selfie when the plate photo was kept from the first attempt.
+  const submitsNow = step === 'plate' || (retakeOnly === 'selfie' && !!plate)
+
   async function handleNext() {
-    if (step === 'selfie') {
+    if (!submitsNow) {
       setStep('plate')
-      setStage('gate')
+      setStage(plate ? 'preview' : 'gate')
       return
     }
     if (!selfie || !plate) return
@@ -93,8 +136,34 @@ export default function DailyVerificationScreen() {
       await submitVerification(selfie, plate)
       router.replace('/go-online/mode')
     } catch (err) {
-      setSubmitError(getApiErrorMessage(err, 'Something went wrong submitting your verification. Please try again.'))
       setSubmitting(false)
+      const failure = parseVerificationFailure(err)
+      if (failure?.kind === 'retake') {
+        // Only the unusable photo(s) are cleared and reopened; the other one is kept (design review DD2).
+        const plan = retakePlan(failure)
+        const notes: Partial<Record<Step, string>> = {}
+        if (failure.selfie) { notes.selfie = retakeLine(failure.selfie); setSelfie(null) }
+        if (failure.plate) { notes.plate = retakeLine(failure.plate); setPlate(null) }
+        setRetakeNotes(notes)
+        setRetakeOnly(plan.only)
+        setStep(plan.first)
+        setStage('gate')
+        return
+      }
+      if (failure?.kind === 'failed') {
+        // Neutral wording, tries left, and a way to reach support. Never why it failed.
+        setBlocked({ attemptsLeft: failure.attemptsLeft, underReview: failure.attemptsLeft === 0 })
+        setSelfie(null)
+        setRetakeOnly('selfie')
+        setStep('selfie')
+        setStage('gate')
+        return
+      }
+      if (failure?.kind === 'under_review') {
+        setBlocked({ attemptsLeft: 0, underReview: true })
+        return
+      }
+      setSubmitError(getApiErrorMessage(err, 'Something went wrong submitting your verification. Please try again.'))
     }
   }
 
@@ -150,6 +219,45 @@ export default function DailyVerificationScreen() {
     )
   }
 
+  // One-time consent card, shown before the first verification camera (design review DD4). Declining keeps the driver
+  // offline with a way to reach support. The legal wording is for the owner to confirm before flag mode goes live.
+  if (needsConsent) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <Pressable onPress={() => { if (router.canGoBack()) router.back() }} style={styles.backBtn} accessibilityLabel="Go back" hitSlop={8}>
+            <Feather name="arrow-left" size={20} color={colors.ink600} />
+          </Pressable>
+        </View>
+        <View style={styles.content}>
+          <Text style={styles.title}>Before we start</Text>
+          <Text style={styles.instruction}>To keep every account safe, Ocar checks that the person driving matches the account.</Text>
+          <View style={styles.consentCard}>
+            <ConsentLine icon="camera" text="We compare your selfie with your onboarding photo, and your number plate photo with your registered vehicle." />
+            <ConsentLine icon="shield" text="This is only used to keep your account and your passengers safe." />
+            <ConsentLine icon="clock" text="Your photos are kept only as long as these checks need them." />
+          </View>
+          <Text style={styles.linkText} onPress={() => void Linking.openURL(PRIVACY_URL)} accessibilityRole="link">
+            Read the Privacy Policy
+          </Text>
+          {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
+        </View>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+          <Pressable onPress={() => void agree()} disabled={consentBusy} style={[styles.primaryBtn, consentBusy ? styles.disabled : null]} accessibilityRole="button">
+            {consentBusy ? <ActivityIndicator color={colors.inkInverse} /> : <Text style={styles.primaryText}>Agree and continue</Text>}
+          </Pressable>
+          <Pressable onPress={openSupport} style={styles.secondaryBtn} accessibilityRole="button">
+            <Text style={styles.secondaryText}>Not now, contact support</Text>
+          </Pressable>
+        </View>
+      </View>
+    )
+  }
+
+  const noteForStep = retakeNotes[step]
+  // Out of tries: nothing more to capture, only a way to reach support.
+  const outOfTries = blocked?.underReview === true
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -160,8 +268,32 @@ export default function DailyVerificationScreen() {
       </View>
 
       <View style={styles.content}>
+        {reverify ? (
+          <View style={styles.reverifyCard}>
+            <Text style={styles.reverifyTitle}>Quick safety check</Text>
+            <Text style={styles.reverifyLine}>Take a selfie and a photo of your number plate to go online</Text>
+          </View>
+        ) : null}
         <Text style={styles.title}>{cfg.title}</Text>
         <Text style={styles.instruction}>{cfg.instruction}</Text>
+
+        {noteForStep ? (
+          <View style={styles.retakeNote} accessibilityRole="alert">
+            <Feather name="alert-circle" size={14} color={colors.error} />
+            <Text style={styles.retakeNoteText}>{noteForStep}</Text>
+          </View>
+        ) : null}
+
+        {blocked ? (
+          <View style={styles.retakeNote} accessibilityRole="alert">
+            <Feather name="alert-circle" size={14} color={colors.error} />
+            <Text style={styles.retakeNoteText}>
+              {blocked.underReview
+                ? 'An admin will review this. Contact support if you need help going online.'
+                : `We couldn't verify this photo. ${blocked.attemptsLeft} ${blocked.attemptsLeft === 1 ? 'try' : 'tries'} left.`}
+            </Text>
+          </View>
+        ) : null}
 
         {stage === 'preview' && currentPhoto ? (
           <Image source={{ uri: currentPhoto.uri }} style={styles.preview} />
@@ -185,25 +317,56 @@ export default function DailyVerificationScreen() {
       </View>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-        {stage === 'preview' ? (
+        {outOfTries ? (
+          <Pressable onPress={openSupport} style={styles.primaryBtn} accessibilityRole="button">
+            <Feather name="mail" size={16} color={colors.inkInverse} />
+            <Text style={styles.primaryText}>Contact support</Text>
+          </Pressable>
+        ) : stage === 'preview' ? (
           <>
             <Pressable onPress={() => void handleNext()} disabled={submitting} style={[styles.primaryBtn, submitting ? styles.disabled : null]}>
-              {submitting ? <ActivityIndicator color={colors.inkInverse} /> : (
-                <Text style={styles.primaryText}>{step === 'selfie' ? 'Continue' : 'Submit'}</Text>
+              {submitting ? (
+                <View style={styles.checkingRow}>
+                  <ActivityIndicator color={colors.inkInverse} />
+                  <Text style={styles.primaryText}>Checking your photo</Text>
+                </View>
+              ) : (
+                <Text style={styles.primaryText}>{submitsNow ? 'Submit' : 'Continue'}</Text>
               )}
             </Pressable>
             <Pressable onPress={retake} disabled={submitting} style={styles.secondaryBtn}>
               <Feather name="refresh-cw" size={14} color={colors.ink600} />
               <Text style={styles.secondaryText}>Retake</Text>
             </Pressable>
+            {blocked ? (
+              <Pressable onPress={openSupport} style={styles.secondaryBtn} accessibilityRole="button">
+                <Text style={styles.secondaryText}>Contact support</Text>
+              </Pressable>
+            ) : null}
           </>
         ) : (
-          <Pressable onPress={() => void openCamera()} style={styles.primaryBtn}>
-            <Feather name="camera" size={16} color={colors.inkInverse} />
-            <Text style={styles.primaryText}>Open Camera</Text>
-          </Pressable>
+          <>
+            <Pressable onPress={() => void openCamera()} style={styles.primaryBtn}>
+              <Feather name="camera" size={16} color={colors.inkInverse} />
+              <Text style={styles.primaryText}>Open Camera</Text>
+            </Pressable>
+            {blocked ? (
+              <Pressable onPress={openSupport} style={styles.secondaryBtn} accessibilityRole="button">
+                <Text style={styles.secondaryText}>Contact support</Text>
+              </Pressable>
+            ) : null}
+          </>
         )}
       </View>
+    </View>
+  )
+}
+
+function ConsentLine({ icon, text }: { icon: 'camera' | 'shield' | 'clock'; text: string }) {
+  return (
+    <View style={styles.consentLine}>
+      <Feather name={icon} size={16} color={colors.primary} />
+      <Text style={styles.consentText}>{text}</Text>
     </View>
   )
 }
@@ -222,6 +385,16 @@ const styles = StyleSheet.create({
   permissionText: { ...typography.caption, color: colors.error, flex: 1 },
   preview: { width: '100%', aspectRatio: 1, borderRadius: radii['2xl'] },
   errorText: { ...typography.caption, color: colors.error, textAlign: 'center' },
+  reverifyCard: { backgroundColor: colors.primarySubtle, borderRadius: radii.lg, padding: spacing.md, gap: spacing.xs / 2, marginBottom: spacing.xs },
+  reverifyTitle: { ...typography.body, color: colors.primary, fontFamily: fonts.bold },
+  reverifyLine: { ...typography.caption, color: colors.ink600 },
+  retakeNote: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.errorLight, borderRadius: radii.md, padding: spacing.sm },
+  retakeNoteText: { ...typography.caption, color: colors.error, flex: 1, fontFamily: fonts.semibold },
+  checkingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  consentCard: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: colors.border },
+  consentLine: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  consentText: { ...typography.body, color: colors.ink900, flex: 1 },
+  linkText: { ...typography.caption, color: colors.primary, fontFamily: fonts.semibold, textDecorationLine: 'underline', paddingVertical: spacing.sm },
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: spacing.sm + 8 },
   disabled: { opacity: 0.5 },

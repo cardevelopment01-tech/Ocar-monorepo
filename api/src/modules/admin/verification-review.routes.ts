@@ -20,6 +20,8 @@ const id = (req: Request) => {
 }
 
 router.get('/stats', wrap(() => service.stats()))
+router.get('/challenges', wrap(() => service.openChallenges()))
+router.post('/challenges/:id/waive', wrap((req) => service.waiveChallenge(req.admin!.id, id(req), req.ip ?? null)))
 router.get('/', wrap((req) => service.list(req.query['state'] === 'resolved_today' ? 'resolved_today' : 'queued')))
 router.get('/:id', wrap((req) => service.getCase(id(req))))
 router.post('/:id/resolve', wrap((req) => service.resolve(req.admin!.id, id(req), req.body, req.ip ?? null)))

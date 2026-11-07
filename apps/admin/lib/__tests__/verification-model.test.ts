@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bandFor, reasonText, reviewKey, nextSelection, budgetTone, similarityText, kindLabel } from '../verification-model'
+import { bandFor, reasonText, reviewKey, nextSelection, budgetTone, similarityText, kindLabel, challengeReasonText, waitingText } from '../verification-model'
 
 describe('bandFor', () => {
   it('always has a text label and maps tones', () => {
@@ -60,5 +60,20 @@ describe('small formatters', () => {
     expect(kindLabel('spot_selfie')).toBe('Selfie')
     expect(budgetTone(31, 30)).toBe('over')
     expect(budgetTone(30, 30)).toBe('ok')
+  })
+})
+
+describe('open check helpers', () => {
+  it('words the reason for the admin, never the driver', () => {
+    expect(challengeReasonText('long_ride')).toBe('After a long ride')
+    expect(challengeReasonText('rides')).toBe('After a few rides')
+    expect(challengeReasonText('admin')).toBe('Set by an admin')
+  })
+  it('shows how long a driver has been waiting', () => {
+    const now = Date.parse('2026-11-07T12:00:00Z')
+    expect(waitingText('2026-11-07T11:30:00Z', now)).toBe('30 min')
+    expect(waitingText('2026-11-07T09:00:00Z', now)).toBe('3 h')
+    expect(waitingText('2026-11-04T12:00:00Z', now)).toBe('3 d')
+    expect(waitingText('2026-11-07T13:00:00Z', now)).toBe('0 min')
   })
 })

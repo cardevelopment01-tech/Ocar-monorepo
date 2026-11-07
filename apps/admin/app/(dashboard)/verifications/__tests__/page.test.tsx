@@ -4,7 +4,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReviewCase, ReviewListItem } from '@/lib/verification-api'
 
-const api = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), resolve: vi.fn() }))
+const api = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), resolve: vi.fn(), challenges: vi.fn(), waive: vi.fn() }))
 vi.mock('@/lib/verification-api', () => ({ verificationApi: api }))
 
 import VerificationsPage from '../page'
@@ -26,6 +26,8 @@ beforeEach(() => {
   api.get.mockImplementation((id: string) => Promise.resolve(
     id === '2' ? detail('2', { decision: 'review', decisionReason: 'BORDERLINE_MATCH', similarity: 82, priority: 1 }) : detail(id)))
   api.resolve.mockResolvedValue({ ok: true })
+  api.challenges.mockResolvedValue([{ id: '77', driverId: 'd9', driverName: 'Open Driver', driverPhone: '+919900000009', reason: 'long_ride', openedAt: new Date(Date.now() - 2 * 3600_000).toISOString() }])
+  api.waive.mockResolvedValue({ ok: true })
 })
 
 describe('Verifications page', () => {
@@ -112,5 +114,29 @@ describe('Verifications page', () => {
     expect(await screen.findByText('OD33AW5616')).toBeTruthy()
     expect(screen.getByText('OD33AW5615')).toBeTruthy()
     expect(screen.queryByLabelText(/Use this photo as a reference/)).toBeNull()
+  })
+
+  it('Open checks lists drivers waiting on a re-check; waiving takes two clicks and removes the row', async () => {
+    const user = userEvent.setup()
+    render(<VerificationsPage />)
+    await screen.findByText('Driver 1')
+    await user.click(screen.getByRole('tab', { name: 'Open checks' }))
+    expect(await screen.findByText('Open Driver')).toBeTruthy()
+    expect(screen.getByText(/After a long ride/)).toBeTruthy()
+    expect(screen.getByText(/waiting 2 h/)).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Waive check' }))
+    expect(api.waive).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Confirm waive' }))
+    await waitFor(() => expect(api.waive).toHaveBeenCalledWith('77'))
+    await waitFor(() => expect(screen.queryByText('Open Driver')).toBeNull())
+  })
+
+  it('Open checks shows All caught up when nobody is waiting', async () => {
+    const user = userEvent.setup()
+    api.challenges.mockResolvedValueOnce([])
+    render(<VerificationsPage />)
+    await screen.findByText('Driver 1')
+    await user.click(screen.getByRole('tab', { name: 'Open checks' }))
+    expect(await screen.findByText(/No driver is waiting on a re-check/)).toBeTruthy()
   })
 })

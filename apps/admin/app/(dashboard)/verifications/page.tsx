@@ -8,7 +8,9 @@ import {
 } from '@/lib/verification-model'
 import { cn } from '@/lib/utils'
 
-type Tab = 'queued' | 'resolved_today'
+import OpenChecks from './OpenChecks'
+
+type Tab = 'queued' | 'resolved_today' | 'challenges'
 
 const TONE_CLASS = {
   success: 'pill-success',
@@ -45,6 +47,7 @@ export default function VerificationsPage() {
   const retriedImages = useRef(false)
 
   const loadList = useCallback(async (keep?: string | null) => {
+    if (tab === 'challenges') return // the Open checks tab loads its own list
     setLoading(true)
     setLoadError(false)
     try {
@@ -162,6 +165,10 @@ export default function VerificationsPage() {
             className={cn('btn-secondary', tab === 'resolved_today' && 'ring-2 ring-primary')}>
             Resolved today
           </button>
+          <button role="tab" aria-selected={tab === 'challenges'} onClick={() => setTab('challenges')}
+            className={cn('btn-secondary', tab === 'challenges' && 'ring-2 ring-primary')}>
+            Open checks
+          </button>
           {tab === 'queued' ? (
             <span className={cn('pill', over ? 'pill-warning' : 'pill-muted')} aria-live="polite">
               {waiting} waiting / budget {budget}
@@ -170,7 +177,9 @@ export default function VerificationsPage() {
         </div>
       </div>
 
-      <div className="flex min-h-[32rem] flex-col gap-4 lg:flex-row">
+      {tab === 'challenges' ? <OpenChecks /> : null}
+
+      <div className={cn('min-h-[32rem] flex-col gap-4 lg:flex-row', tab === 'challenges' ? 'hidden' : 'flex')}>
         {/* Queue list */}
         <section aria-label="Cases" className="panel w-full overflow-y-auto lg:w-80 lg:shrink-0">
           {loading ? (
