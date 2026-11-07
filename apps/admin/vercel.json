@@ -1,5 +1,6 @@
 {
   "framework": "nextjs",
+  "regions": ["bom1"],
   "git": {
     "deploymentEnabled": false
   }
