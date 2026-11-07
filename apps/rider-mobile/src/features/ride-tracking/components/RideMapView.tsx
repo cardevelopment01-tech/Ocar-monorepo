@@ -1,12 +1,18 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
 import { OCAR_MAP_PROPS, ROUTE } from '@/theme/mapStyle'
 import CarMarker from '@/features/map/components/CarMarker'
+import NearbyCarMarker from '@/features/map/components/NearbyCarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
+import { framePoints, framingPadding, isInVisibleBand, sheetHeightBucket } from '../mapFraming'
+import { carsToFrame, type NearbyCar } from '../nearbyCars'
+import type { VehicleKind } from '@/features/map/vehicleKind'
+import { fleetOpacity, nextFleetWake, pruneFleet, reconcileFleet, retireAll, type FleetEntry } from '../nearbyFleet'
 
 const USER_MOVE_HOLD_MS = 15_000
 const DRIVER_REFIT_MIN_MS = 5_000
+const NO_CARS: readonly NearbyCar[] = []
 
 export type RideMapViewProps = {
   pickup: [number, number]
@@ -22,6 +28,22 @@ export type RideMapViewProps = {
   stops?: [number, number][]
   // Default suits a full-screen map; a small preview passes less so the pins are not squeezed together.
   edgePadding?: { top: number; right: number; bottom: number; left: number }
+  // Height (px) of a sheet docked over the bottom of the map. The camera frames the trip in the part that is NOT under
+  // it, and "is the car in view" is judged the same way. 0 = nothing covers the map.
+  coveredBottom?: number
+  // Available cars around the pickup, shown while a ride is being matched (before any driver is assigned). Ignored once
+  // `driverPos` is set: from then on the assigned car is the only car.
+  nearbyDrivers?: readonly NearbyCar[]
+  // True once `driverPos` is a real driver fix (not the pickup stand-in): only then does the assigned car glide.
+  driverLocated?: boolean
+  // A sheet docks over the map but has not reported its height yet: hold the first camera fit until it does (so the map does not
+  // animate once for the full screen and again for the visible part), but never for more than a moment.
+  sheetPending?: boolean
+  // False while a driver is on the way to the pickup: frame the pickup and the car, not the far-away drop.
+  frameDrop?: boolean
+  // Which icon each category draws as (the nearby cars), and the assigned driver's vehicle; a sedan when not known.
+  vehicleKinds?: ReadonlyMap<number, VehicleKind>
+  driverKind?: VehicleKind
 }
 
 // Real map replacing the earlier placeholder progress-bar "track" (LiveMarker) --
@@ -31,54 +53,101 @@ export type RideMapViewProps = {
 // drop/driver now use the same custom SVG markers as web (CarMarker/LocationPin)
 // instead of react-native-maps' default OS pin -- see the input-consistency +
 // premiumness pass this replaced.
-function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 } }: RideMapViewProps) {
+function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS, driverLocated = true, frameDrop = true, sheetPending = false, vehicleKinds, driverKind = 'sedan' }: RideMapViewProps) {
   const mapRef = useRef<MapView>(null)
   // Same react-native-maps gotcha as SelectRideMap: fitToCoordinates called
   // before the native view's onMapReady fires silently no-ops, leaving the
   // camera on initialRegion -- pickup/drop/driver pins get drawn but sit
   // outside that tiny visible area, reading as "the route isn't there".
   const [mapReady, setMapReady] = useState(false)
+  const [mapSize, setMapSize] = useState({ width: 0, height: 0 })
+  const [sheetWaitOver, setSheetWaitOver] = useState(false)
+  useEffect(() => {
+    if (!sheetPending) return
+    const t = setTimeout(() => setSheetWaitOver(true), 1500)
+    return () => clearTimeout(t)
+  }, [sheetPending])
+  const waitForSheet = sheetPending && !sheetWaitOver
+  // The nearby cars on the map. A car is never removed while it may be gliding (that can leave a stray copy on Android): one
+  // that leaves the feed, or every car once a driver is assigned, is retired -- faded to invisible, kept mounted until no glide
+  // can still be running, then removed (see nearbyFleet.ts). `tick` re-renders while any car is retiring so the fade shows.
+  const assigned = driverPos !== null
+  const [fleet, setFleet] = useState<FleetEntry[]>([])
+  const [, tick] = useReducer((n: number) => n + 1, 0)
+  useEffect(() => {
+    const now = Date.now()
+    setFleet((prev) => (assigned ? pruneFleet(retireAll(prev, now), now) : reconcileFleet(prev, nearbyDrivers, now)))
+  }, [assigned, nearbyDrivers])
+  useEffect(() => {
+    const wake = nextFleetWake(fleet, Date.now())
+    if (wake === null) return
+    const id = setTimeout(() => {
+      setFleet((prev) => pruneFleet(prev, Date.now()))
+      tick()
+    }, wake)
+    return () => clearTimeout(id)
+  }, [fleet])
   const stopsKey = stops.map(([lat, lng]) => `${lat},${lng}`).join('|')
   // Bumped whenever the rider drags/zooms the map, so the camera stops fighting them.
   const userMovedAt = useRef(0)
   const lastDriverRefit = useRef(0)
   const holdActive = () => Date.now() - userMovedAt.current < USER_MOVE_HOLD_MS
+  // The sheet floats over the lower part of this map: pad the camera by its real height so the car is framed above it.
+  const padding = useMemo(
+    () => framingPadding(edgePadding, coveredBottom, mapSize.height),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the padding's numbers, not the object identity
+    [edgePadding.top, edgePadding.right, edgePadding.bottom, edgePadding.left, coveredBottom, mapSize.height],
+  )
 
   const fit = useCallback(() => {
-    const points: [number, number][] = [pickup, ...stops]
-    if (showDrop && drop) points.push(drop)
-    if (driverPos) points.push(driverPos)
+    const cars = driverPos ? [] : carsToFrame(pickup, nearbyDrivers)
+    const points = framePoints({ pickup, stops, drop, showDrop, driverPos, cars, frameDrop })
     if (points.length < 2) return
     mapRef.current?.fitToCoordinates(
       points.map(([latitude, longitude]) => ({ latitude, longitude })),
-      { edgePadding, animated: true }
+      { edgePadding: padding, animated: true }
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by fitKey below, not array identities
-  }, [pickup, drop, driverPos, showDrop, stopsKey, edgePadding.top, edgePadding.bottom, edgePadding.left, edgePadding.right])
+  }, [pickup, drop, driverPos, showDrop, stopsKey, padding, nearbyDrivers, frameDrop])
 
   // Re-fit when the SET of things on the map changes (status/leg, stops, driver first appearing),
   // not on every driver location tick -- that animated the camera every few seconds, snapped the
   // rider back whenever they panned, and kept the GPU at full frame rate for the whole trip.
-  const fitKey = `${pickup[0]},${pickup[1]}|${drop ? `${drop[0]},${drop[1]}` : ''}|${stopsKey}|${showDrop}|${driverPos ? 1 : 0}`
+  // Re-frame when the number of cars to frame changes (the first one often arrives alone, before the rest of the list: framing
+  // just that one left the others off screen), not on every position update: cars drifting about must not move the camera.
+  const framesCars = driverPos ? 0 : carsToFrame(pickup, nearbyDrivers).length
+  const fitKey = `${pickup[0]},${pickup[1]}|${drop ? `${drop[0]},${drop[1]}` : ''}|${stopsKey}|${showDrop}|${driverPos ? 1 : 0}|${sheetHeightBucket(coveredBottom)}|${framesCars}|${frameDrop ? 1 : 0}`
   useEffect(() => {
-    if (mapReady && !holdActive()) fit()
+    if (mapReady && !waitForSheet && !holdActive()) fit()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fitKey captures every input that should trigger a re-fit
-  }, [mapReady, fitKey])
+  }, [mapReady, fitKey, waitForSheet])
 
   // The driver drove out of frame: bring everything back, at most every 5s, never while the rider is exploring.
   useEffect(() => {
     if (!mapReady || !driverPos || holdActive() || Date.now() - lastDriverRefit.current < DRIVER_REFIT_MIN_MS) return
     let cancelled = false
-    mapRef.current?.getMapBoundaries().then(({ northEast, southWest }) => {
-      if (cancelled) return
-      const inside =
-        driverPos[0] <= northEast.latitude && driverPos[0] >= southWest.latitude &&
-        driverPos[1] <= northEast.longitude && driverPos[1] >= southWest.longitude
-      if (!inside && !holdActive()) {
-        lastDriverRefit.current = Date.now()
-        fit()
-      }
-    }).catch(() => {})
+    const refit = (inside: boolean) => {
+      if (cancelled || inside || holdActive()) return
+      lastDriverRefit.current = Date.now()
+      fit()
+    }
+    // In view = on the map AND not under the sheet. The whole-map bounds count the strip behind the sheet as visible,
+    // which is how a car driving there was never brought back. Falls back to the bounds if the projection is missing.
+    const byBounds = () =>
+      mapRef.current?.getMapBoundaries().then(({ northEast, southWest }) => {
+        refit(
+          driverPos[0] <= northEast.latitude && driverPos[0] >= southWest.latitude &&
+          driverPos[1] <= northEast.longitude && driverPos[1] >= southWest.longitude,
+        )
+      }).catch(() => {})
+    if (mapSize.height > 0 && mapRef.current?.pointForCoordinate) {
+      mapRef.current
+        .pointForCoordinate({ latitude: driverPos[0], longitude: driverPos[1] })
+        .then((pt) => refit(isInVisibleBand(pt, mapSize, coveredBottom)))
+        .catch(() => { void byBounds() })
+    } else {
+      void byBounds()
+    }
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs per driver tick on purpose; fit is stable enough
   }, [mapReady, driverPos])
@@ -91,7 +160,10 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
   )
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      onLayout={(e) => setMapSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+    >
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
@@ -106,8 +178,9 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
           <LocationPin key={`stop-${i}-${lat}-${lng}`} position={[lat, lng]} variant="stop" />
         ))}
         {showDrop && drop ? <LocationPin position={drop} variant="drop" /> : null}
+        {fleet.map((e) => <NearbyCarMarker key={e.car.driverId} position={[e.car.lat, e.car.lng]} ready={mapReady} kind={(e.car.categoryId !== undefined ? vehicleKinds?.get(e.car.categoryId) : undefined) ?? 'sedan'} {...(e.car.heading !== undefined ? { heading: e.car.heading } : {})} opacity={fleetOpacity(e, Date.now())} />)}
         {driverPos ? (
-          <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} />
+          <CarMarker position={driverPos} heading={driverHeading ?? 0} headingKnown={driverHeadingKnown ?? true} animate={driverLocated} ready={mapReady} kind={driverKind} />
         ) : null}
         {routePoints.length >= 2 ? (
           <>

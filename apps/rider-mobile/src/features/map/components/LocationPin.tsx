@@ -32,8 +32,9 @@ function LocationPin({ position, variant }: LocationPinProps) {
       coordinate={{ latitude: position[0], longitude: position[1] }}
       anchor={{ x: 0.5, y: 1 }}
       tracksViewChanges={track}
+      zIndex={variant === 'pickup' ? 8 : 6}
     >
-      <View style={styles.wrap}>
+      <View style={variant === 'pickup' ? styles.wrapPickup : styles.wrap}>
         {variant === 'pickup' ? <View style={styles.halo} /> : null}
         <PinGlyph variant={variant} />
       </View>
@@ -43,7 +44,10 @@ function LocationPin({ position, variant }: LocationPinProps) {
 
 const styles = StyleSheet.create({
   wrap: { width: 28, height: 38, alignItems: 'center', justifyContent: 'flex-end' },
-  halo: { position: 'absolute', top: -6, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(14,143,163,0.18)' },
+  // A marker is drawn from its own view's bounds, so the halo (40 px, centred on the pin's head) has to fit INSIDE them: at
+  // 28 px wide it was cut into a pale rectangle behind the pin. The pin keeps its size and its tip stays at the bottom centre.
+  wrapPickup: { width: 44, height: 45, alignItems: 'center', justifyContent: 'flex-end' },
+  halo: { position: 'absolute', top: 0, left: 2, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(14,143,163,0.18)' },
 })
 
 export default memo(LocationPin, (a, b) =>

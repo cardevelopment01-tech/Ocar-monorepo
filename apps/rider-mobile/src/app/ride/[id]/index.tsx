@@ -27,6 +27,9 @@ import { DriverCancelledBanner } from '@/features/ride-tracking/components/Drive
 import { useRideTracking } from '@/features/ride-tracking/useRideTracking'
 import { cancelRide, addStop, skipStop, updatePickup, type StopInput } from '@/features/ride-tracking/api'
 import { ASSIGNED_STATUSES, IN_PROGRESS_STATUSES, SEARCHING_STATUSES } from '@/features/ride-tracking/types'
+import { useNearbyDrivers } from '@/features/booking/useNearbyDrivers'
+import { useVehicleKinds } from '@/features/booking/useVehicleKinds'
+import { showWithinMetres } from '@/features/booking/liveCars'
 import type { StatusKey } from '@/features/ride-tracking/statusConfig'
 import { resolveBookingError } from '@/features/booking/api'
 import { PickupUpdatedToast } from '@/features/ride-tracking/components/Toasts'
@@ -71,6 +74,15 @@ export default function RideTrackingScreen() {
   const canShare = ride ? canShareRide(ride) : false
   const tripShare = useTripShare(rideId, canShare)
 
+  // While a ride is being matched ('requested' only: a scheduled ride is not matched yet) show the available cars around
+  // the pickup, like the fare screen does, so the rider sees that drivers are close. They go away once a driver is assigned.
+  const { kinds: vehicleKinds, slugs: vehicleSlugs } = useVehicleKinds()
+  const bookedCategoryId = ride?.categoryId != null && Number.isFinite(Number(ride.categoryId)) ? Number(ride.categoryId) : null
+  const nearbyCars = useNearbyDrivers(
+    ride ? rideId : null, ride?.originLat ?? null, ride?.originLng ?? null, ride?.status === 'requested',
+    showWithinMetres(ride?.rideType, bookedCategoryId === null ? null : vehicleSlugs.get(bookedCategoryId)), bookedCategoryId,
+  )
+
   // "Driver's location hasn't updated" must appear when updates STOP, so it needs a timer: a memo on
   // lastLocationAt only recomputed when a new update arrived, i.e. exactly when it was never true.
   const [stale, setStale] = useState(false)
@@ -106,6 +118,8 @@ export default function RideTrackingScreen() {
   const [pickupToast, setPickupToast] = useState(false)
   // Open by default: pickup, drop and stops are the first thing a rider on a live trip looks for.
   const [detailsExpanded, setDetailsExpanded] = useState(true)
+  // Height of the docked sheet, so the map frames the trip (and the car) above it, not underneath.
+  const [sheetHeight, setSheetHeight] = useState(0)
   // Stops whose "driver can't reach this" prompt the rider chose to keep; the timeline Skip still works.
   const [keptStops, setKeptStops] = useState<number[]>([])
   const [skippingStop, setSkippingStop] = useState(false)
@@ -269,6 +283,13 @@ export default function RideTrackingScreen() {
         routePoints={routePoints}
         showDrop={drop != null}
         stops={ride.stops.filter((s) => s.status === 'pending').map((s): [number, number] => [s.lat, s.lng])}
+        coveredBottom={sheetHeight}
+        nearbyDrivers={nearbyCars}
+        driverLocated={driverLocated}
+        frameDrop={!isAssigned}
+        sheetPending={sheetHeight === 0}
+        vehicleKinds={vehicleKinds}
+        driverKind={(bookedCategoryId === null ? undefined : vehicleKinds.get(bookedCategoryId)) ?? 'sedan'}
       />
 
       <View style={[styles.mapOverlayTop, { paddingTop: insets.top + spacing.sm }]} pointerEvents="box-none">
@@ -291,7 +312,13 @@ export default function RideTrackingScreen() {
         anchor="top-right"
       />
 
-      <Animated.View style={[styles.sheet, sheetEntranceStyle]}>
+      <Animated.View
+        style={[styles.sheet, sheetEntranceStyle]}
+        onLayout={(e) => {
+          const h = Math.round(e.nativeEvent.layout.height)
+          setSheetHeight((prev) => (Math.abs(prev - h) >= 4 ? h : prev))
+        }}
+      >
         <View style={styles.handle} />
         <ScrollView
           style={styles.sheetScroll}
