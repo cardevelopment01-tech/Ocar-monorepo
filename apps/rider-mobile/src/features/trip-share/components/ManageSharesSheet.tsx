@@ -1,16 +1,16 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { SlideModal, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Press, SlideModal, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
 import { shareTitle, viewedText } from '../model'
 import type { TripShareState } from '../useTripShare'
-import { PressScale } from './PressScale'
 
 /** Confirms before stopping every link (one tap on a single link stops just that link, no confirmation). */
-export function confirmStopAll(onConfirm: () => void): void {
-  Alert.alert('Stop sharing?', 'Everyone you shared this trip with will no longer be able to follow it.', [
+export function confirmStopAll(onConfirm: () => void, includesSos = false): void {
+  const sos = includesSos ? ' This includes the live link your emergency contacts received when you pressed SOS.' : ''
+  Alert.alert('Stop sharing?', `Everyone you shared this trip with will no longer be able to follow it.${sos}`, [
     { text: 'Keep sharing', style: 'cancel' },
     { text: 'Stop all', style: 'destructive', onPress: onConfirm },
   ])
@@ -19,16 +19,19 @@ export function confirmStopAll(onConfirm: () => void): void {
 export function ManageSharesSheet({ visible, onClose, share }: { visible: boolean; onClose: () => void; share: TripShareState }) {
   const insets = useSafeAreaInsets()
 
+  // 'loading' until the open-time read finishes: an empty list before that is only "not read yet", never "nothing to manage".
+  const [load, setLoad] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const read = () => { setLoad('loading'); void share.refresh().then((ok) => setLoad(ok ? 'ready' : 'failed')) }
   useEffect(() => {
-    if (visible) { share.clearError(); void share.refresh() }
+    if (visible) { share.clearError(); read() }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run on open only
   }, [visible])
 
   // Nothing left to manage: close by itself so the rider is not left on an empty list.
   useEffect(() => {
-    if (visible && share.shares.length === 0 && share.busy === null) onClose()
+    if (visible && load === 'ready' && share.shares.length === 0 && share.busy === null) onClose()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- react to the list emptying
-  }, [share.shares.length, share.busy])
+  }, [load, share.shares.length, share.busy])
 
   const busy = share.busy !== null
   return (
@@ -38,9 +41,9 @@ export function ManageSharesSheet({ visible, onClose, share }: { visible: boolea
         <View style={styles.handle} />
         <View style={styles.headerRow}>
           <Text style={styles.title} accessibilityRole="header">Who can see your trip</Text>
-          <PressScale onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close" scaleTo={0.9} style={styles.closeBtn}>
+          <Press onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close" scaleTo={0.9} style={styles.closeBtn}>
             <Feather name="x" size={16} color={colors.ink600} />
-          </PressScale>
+          </Press>
         </View>
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
@@ -50,7 +53,7 @@ export function ManageSharesSheet({ visible, onClose, share }: { visible: boolea
                 <Text style={styles.rowTitle}>{shareTitle(s)}</Text>
                 <Text style={styles.rowMeta}>{viewedText(s.viewCount)}</Text>
               </View>
-              <PressScale
+              <Press
                 onPress={() => void share.stop(s.id)}
                 disabled={busy}
                 accessibilityRole="button"
@@ -60,12 +63,18 @@ export function ManageSharesSheet({ visible, onClose, share }: { visible: boolea
                 style={styles.stopBtn}
               >
                 <Text style={styles.stopText}>Stop</Text>
-              </PressScale>
+              </Press>
             </Animated.View>
           ))}
+          {load === 'failed' ? (
+            <View style={styles.row}>
+              <Text style={[styles.rowTitle, styles.rowText]}>Could not load your links. Check your connection.</Text>
+              <Press onPress={read} accessibilityLabel="Try again" scaleTo={0.94} style={styles.stopBtn}><Text style={styles.retryText}>Retry</Text></Press>
+            </View>
+          ) : null}
           {share.error ? <Text style={styles.error} accessibilityRole="alert">{share.error}</Text> : null}
-          <PressScale
-            onPress={() => confirmStopAll(() => void share.stopAll())}
+          <Press
+            onPress={() => confirmStopAll(() => void share.stopAll(), share.shares.some((s) => s.isSos))}
             disabled={busy || share.shares.length === 0}
             accessibilityRole="button"
             accessibilityLabel="Stop all"
@@ -74,7 +83,7 @@ export function ManageSharesSheet({ visible, onClose, share }: { visible: boolea
             style={styles.stopAll}
           >
             <Text style={styles.stopAllText}>Stop all</Text>
-          </PressScale>
+          </Press>
         </ScrollView>
       </View>
     </SlideModal>
@@ -100,6 +109,7 @@ const styles = StyleSheet.create({
   rowMeta: { ...typography.caption, color: colors.ink600 },
   stopBtn: { minWidth: 64, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md },
   stopText: { ...typography.label, color: colors.error, fontFamily: fonts.bold },
+  retryText: { ...typography.label, color: colors.primaryDark, fontFamily: fonts.bold },
   stopAllHit: { marginTop: spacing.sm },
   stopAll: { minHeight: 48, borderRadius: radii.full, backgroundColor: colors.errorLight, alignItems: 'center', justifyContent: 'center' },
   stopAllText: { ...typography.body, color: colors.error, fontFamily: fonts.bold },

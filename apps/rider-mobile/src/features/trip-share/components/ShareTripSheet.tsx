@@ -4,11 +4,10 @@ import Animated, { FadeInDown, FadeOut, LinearTransition, ZoomIn } from 'react-n
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, SlideModal, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Press, Button, SlideModal, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
 import { fetchEmergencyContacts, type EmergencyContact } from '@/features/profile/api'
 import { SHARE_DISCLOSURE, maskPhone, shareMessage, summarizeSms, type CreatedShare } from '../model'
 import type { TripShareState } from '../useTripShare'
-import { PressScale } from './PressScale'
 
 // "Share live trip": the phone's own share sheet (WhatsApp, SMS, anything) is the main way; saved contacts can also be texted
 // by Ocar. Everything the sheet does goes through useTripShare, which keeps one request in flight at a time.
@@ -24,6 +23,7 @@ export function ShareTripSheet({ visible, onClose, share }: { visible: boolean; 
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const [contacts, setContacts] = useState<EmergencyContact[] | null>(null)
+  const [contactsFailed, setContactsFailed] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [sent, setSent] = useState<CreatedShare[] | null>(null)
 
@@ -34,9 +34,16 @@ export function ShareTripSheet({ visible, onClose, share }: { visible: boolean; 
     setSent(null)
     share.clearError()
     void share.refresh()
-    fetchEmergencyContacts().then(setContacts).catch(() => setContacts([]))
+    loadContacts()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run on open only
   }, [visible])
+
+  // A request that failed is shown as a failure with a retry: showing "no contacts" would send the rider to add one they already have.
+  function loadContacts() {
+    setContacts(null)
+    setContactsFailed(false)
+    fetchEmergencyContacts().then(setContacts).catch(() => { setContacts([]); setContactsFailed(true) })
+  }
 
   const busy = share.busy !== null
   const summary = sent ? summarizeSms(sent) : null
@@ -66,9 +73,9 @@ export function ShareTripSheet({ visible, onClose, share }: { visible: boolean; 
         <View style={styles.handle} />
         <View style={styles.headerRow}>
           <Text style={styles.title} accessibilityRole="header">Share live trip</Text>
-          <PressScale onPress={onClose} disabled={busy} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close" scaleTo={0.9} style={styles.closeBtn}>
+          <Press onPress={onClose} disabled={busy} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close" scaleTo={0.9} style={styles.closeBtn}>
             <Feather name="x" size={16} color={colors.ink600} />
-          </PressScale>
+          </Press>
         </View>
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -89,6 +96,11 @@ export function ShareTripSheet({ visible, onClose, share }: { visible: boolean; 
           <Text style={styles.section}>Send to my contacts</Text>
           {contacts === null ? (
             <ActivityIndicator color={colors.primary} style={styles.loader} />
+          ) : contactsFailed ? (
+            <Animated.View entering={FadeInDown.duration(240)} style={styles.emptyBox}>
+              <Text style={styles.emptyText}>Could not load your contacts. Check your connection.</Text>
+              <Button label="Try again" variant="secondary" icon="refresh-cw" disabled={busy} onPress={loadContacts} />
+            </Animated.View>
           ) : contacts.length === 0 ? (
             <Animated.View entering={FadeInDown.duration(240)} style={styles.emptyBox}>
               <Text style={styles.emptyText}>Add a trusted contact to text them the link from here.</Text>
@@ -100,7 +112,7 @@ export function ShareTripSheet({ visible, onClose, share }: { visible: boolean; 
                 {contacts.map((c) => {
                   const on = picked.has(c.id)
                   return (
-                    <PressScale
+                    <Press
                       key={c.id}
                       onPress={() => toggle(c.id)}
                       disabled={busy}
@@ -117,7 +129,7 @@ export function ShareTripSheet({ visible, onClose, share }: { visible: boolean; 
                         <Text style={styles.contactName}>{c.name}</Text>
                         <Text style={styles.contactPhone}>{maskPhone(c.phone)}</Text>
                       </View>
-                    </PressScale>
+                    </Press>
                   )
                 })}
               </View>

@@ -43,6 +43,8 @@ describe('words the rider sends and sees', () => {
   it('shows only the last four digits of a contact number', () => {
     expect(maskPhone('+919811111234')).toBe('+91 ••••• 1234')
     expect(maskPhone('12')).toBe('12')
+    expect(maskPhone('9811111234')).toBe('+91 ••••• 1234')
+    expect(maskPhone('+14155551234')).toBe('••••• 1234') // never a made-up +91 on another country's number
     expect(maskPhone('+919811111234')).not.toContain('98111')
   })
 })

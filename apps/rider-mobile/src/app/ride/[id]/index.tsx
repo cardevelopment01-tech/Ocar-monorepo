@@ -391,7 +391,7 @@ export default function RideTrackingScreen() {
               onSkip={handleSkipStop}
             />
           ) : null}
-          {canShare ? <SharingBanner count={tripShare.shares.length} onManage={() => setManageOpen(true)} onStop={() => confirmStopAll(() => void tripShare.stopAll())} /> : null}
+          {canShare ? <SharingBanner count={tripShare.shares.length} onManage={() => setManageOpen(true)} onStop={() => confirmStopAll(() => { void tripShare.stopAll().then((ok) => { if (!ok) Alert.alert('Could not stop sharing', 'Check your connection and try again. Your links are still active.') }) }, tripShare.shares.some((s) => s.isSos))} /> : null}
           {hasDriver ? (
             <RideActions
               actions={[

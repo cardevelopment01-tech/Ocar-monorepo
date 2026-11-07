@@ -88,6 +88,10 @@ export function summarizeSms(created: readonly CreatedShare[]): { sent: CreatedS
 
 /** "+91 ••••• 1111": enough to recognise the contact, never the whole number on screen. */
 export function maskPhone(phone: string): string {
-  const last4 = phone.replace(/\D/g, '').slice(-4)
-  return last4.length === 4 ? `+91 ••••• ${last4}` : phone
+  const digits = phone.replace(/\D/g, '')
+  const last4 = digits.slice(-4)
+  if (last4.length < 4) return phone
+  // Only claim +91 for a number that is one (10 digits, or 91 + 10); another country's number shows just its last digits.
+  const indian = digits.length === 10 || (digits.length === 12 && digits.startsWith('91'))
+  return indian ? `+91 ••••• ${last4}` : `••••• ${last4}`
 }

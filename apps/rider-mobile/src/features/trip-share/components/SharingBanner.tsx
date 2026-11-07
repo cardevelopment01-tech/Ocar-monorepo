@@ -1,9 +1,8 @@
 import { StyleSheet, Text } from 'react-native'
 import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-reanimated'
 import { Feather } from '@expo/vector-icons'
-import { colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Press, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
 import { bannerText } from '../model'
-import { PressScale } from './PressScale'
 
 /**
  * A slim line while the trip is being shared: tap it to see who can follow, or Stop to end every link (after a confirmation).
@@ -13,13 +12,13 @@ export function SharingBanner({ count, onManage, onStop }: { count: number; onMa
   if (count <= 0) return null
   return (
     <Animated.View entering={FadeInDown.duration(260)} exiting={FadeOutUp.duration(180)} layout={LinearTransition.duration(240)} style={styles.bar}>
-      <PressScale onPress={onManage} accessibilityRole="button" accessibilityLabel={`${bannerText(count)}. Manage`} scaleTo={0.985} hit={styles.mainHit} style={styles.main}>
+      <Press onPress={onManage} accessibilityRole="button" accessibilityLabel={`${bannerText(count)}. Manage`} scaleTo={0.985} hit={styles.mainHit} style={styles.main}>
         <Feather name="share-2" size={15} color={colors.primaryDark} />
         <Text style={styles.text} numberOfLines={1}>{bannerText(count)}</Text>
-      </PressScale>
-      <PressScale onPress={onStop} accessibilityRole="button" accessibilityLabel="Stop sharing" hitSlop={6} scaleTo={0.92} style={styles.stop}>
+      </Press>
+      <Press onPress={onStop} accessibilityRole="button" accessibilityLabel="Stop sharing" hitSlop={6} scaleTo={0.92} style={styles.stop}>
         <Text style={styles.stopText}>Stop</Text>
-      </PressScale>
+      </Press>
     </Animated.View>
   )
 }

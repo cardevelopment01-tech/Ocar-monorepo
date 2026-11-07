@@ -12,7 +12,8 @@ export interface TripShareState {
   busy: TripShareBusy
   /** Plain-words message for the last failed action, null when there is none. */
   error: string | null
-  refresh: () => Promise<void>
+  /** Reads the list again. True when the list was read, false when it could not be (what is shown is kept). */
+  refresh: () => Promise<boolean>
   /** Creates the anonymous link for the phone's share sheet. Returns its URL, or null on failure (error is set). */
   createLink: () => Promise<string | null>
   /** Creates one link per chosen contact and texts each. Returns the results, or null on failure. */
@@ -33,15 +34,22 @@ export function useTripShare(rideId: string, enabled: boolean): TripShareState {
   const [busy, setBusy] = useState<TripShareBusy>(null)
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
+  const latestRefresh = useRef(0)
 
-  const refresh = useCallback(async () => {
-    if (!enabled || !rideId) return
+  const refresh = useCallback(async (): Promise<boolean> => {
+    if (!enabled || !rideId) return false
+    // Two refreshes can overlap (the sheet opens, the rider creates a link): the one that started last wins, whatever order they land in.
+    const mine = ++latestRefresh.current
     try {
       const list = await listShares(rideId)
+      const stored = await loadShareUrls(list.map((s) => s.id))
+      if (mine !== latestRefresh.current) return true
       setShares(list)
-      setUrls(await loadShareUrls(list.map((s) => s.id)))
+      setUrls(stored)
+      return true
     } catch {
       // Reading the list is a convenience (the banner, the manage list): a failure keeps what is shown and never blocks sharing.
+      return false
     }
   }, [enabled, rideId])
 
