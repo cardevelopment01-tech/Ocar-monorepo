@@ -29,6 +29,11 @@ export interface PushMessage {
   // swaps the ringing notification for a quiet one, and Android stops the sound of a notification that is updated into a
   // silent one.
   silent?: boolean
+  // Android: stop Google Play services from showing this notification on the app's behalf without starting the app (FCM
+  // "proxy" delegation, Beta). For a ride request the app's own code must run when it arrives (the spoken summary, and the
+  // auto-open path planned in docs/superpowers/plans/2026-11-05-driver-app-closed-ride-alert-overlay.md), so it asks for
+  // `proxy: 'deny'`.
+  noProxy?: boolean
 }
 
 export interface SendPushResult {
@@ -90,6 +95,7 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
       channelId: msg.channelId ?? 'default_v2',
       defaultVibrateTimings: !msg.silent,
       ...(msg.silent ? {} : { sound: msg.sound?.android ?? 'default' }),
+      ...(msg.noProxy ? { proxy: 'deny' as const } : {}),
     }
     const android: NonNullable<MulticastMessage['android']> = { priority: 'high', notification: androidNotification }
     // ttl/collapseKey/tag were previously only written to the webpush block, so on Android a

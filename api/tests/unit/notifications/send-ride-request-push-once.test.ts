@@ -98,6 +98,9 @@ describe('sendRideRequestPushOnce — loud channel per device', () => {
     const loud = calls.find(([tokens]) => tokens.includes('new-device'))!
     expect(legacy[1]).toMatchObject({ channelId: 'ride_requests_v2', title: 'New ride request' })
     expect(legacy[1].sound).toBeUndefined()
+    // Both groups opt out of Google Play services showing the request on the app's behalf (the app must run to speak it).
+    expect(legacy[1].noProxy).toBe(true)
+    expect(loud[1].noProxy).toBe(true)
     expect(loud[1]).toMatchObject({
       channelId: 'ride_requests_v3',
       timeSensitive: true,
