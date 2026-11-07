@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useFocusEffect, useIsFocused, useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
+import { formatEstimatedRoadKm } from '@ocar/shared'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography, fonts, pillTextFor, getApiErrorMessage, haversineMetres, ageMs, track } from '@ocar/mobile-shared'
@@ -22,8 +23,8 @@ import { sectionLabel } from '@/theme/homeTokens'
 
 type ActiveField = 'pickup' | 'drop'
 
-// Straight-line distance from pickup, formatted like web's own ${km.toFixed(1)} km
-// convention (receipt, ride tracking) -- undefined pickup means nothing to show yet.
+// Road-distance ESTIMATE from pickup (straight line scaled up, shown as "~10.4 km"; see @ocar/shared roadEstimate) --
+// undefined pickup means nothing to show yet.
 function distanceFromPickup(pickup: { lat: number; lng: number } | null, lat: number, lng: number): string | undefined {
   if (!pickup) return undefined
   const R = 6_371_000
@@ -32,7 +33,7 @@ function distanceFromPickup(pickup: { lat: number; lng: number } | null, lat: nu
   const a = Math.sin(dLat / 2) ** 2
     + Math.cos(pickup.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2
   const metres = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return `${(metres / 1000).toFixed(1)} km`
+  return formatEstimatedRoadKm(metres)
 }
 
 const SAVED_ICON: Record<SavedPlace['kind'], React.ComponentProps<typeof Feather>['name']> = {
@@ -432,7 +433,7 @@ export default function BookingPickersScreen() {
                 address={r.description}
                 onPress={() => void handleSelectSuggestion(r.placeId, r.description)}
                 last={i === results.length - 1}
-                distance={editingField === 'drop' && r.distanceMetres !== undefined ? `${(r.distanceMetres / 1000).toFixed(1)} km` : undefined}
+                distance={editingField === 'drop' && r.distanceMetres !== undefined ? formatEstimatedRoadKm(r.distanceMetres) : undefined}
               />
             ))
           )
