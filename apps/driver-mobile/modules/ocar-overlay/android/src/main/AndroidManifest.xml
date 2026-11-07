@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Draw the floating Ocar icon over other apps. The driver grants it in system settings (Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
+       the app never shows the icon without it. See docs/superpowers/plans/2026-11-05-driver-app-closed-ride-alert-overlay.md. -->
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+</manifest>
