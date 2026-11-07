@@ -12,6 +12,15 @@ The older SOS text below uses plain `{#var#}` because it is already written that
 | Header (sender ID) | ODCARI |
 | Content type | Text (English, plain characters only: no emoji, no smart quotes) |
 
+## Where the Template ID comes from
+
+The DLT Template ID is issued by the **DLT portal** (the operator portal Ocar's entity is registered on: Jio, Airtel, Vi or BSNL), not by BulkSMSPlans. In the list of the OTP template the vendor's own number is `193042`; the DLT ID is the masked `*****4710` column. Order:
+
+1. On the DLT portal, whitelist `https://ocarindia.com` (if it is not already), then add each template under Templates: header `ODCARI`, the text below, the category the portal asks for (not Promotional). DLT portals normally write variables as plain `{#var#}`: if the portal rejects `{#var1#}`, use `{#var#}` in the same order.
+2. When the portal approves it, copy the DLT Template ID it shows.
+3. Add the template in BulkSMSPlans with that ID (the form asks for it).
+4. Send the IDs to the developer.
+
 ## Template 1: `trip_share`
 
 Sent when a rider picks a saved contact in "Share live trip". The rider chose to send it.
