@@ -185,9 +185,20 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       broadcastRound: data.broadcastRound,
       driverLat:      driver.lat,
       driverLng:      driver.lng,
-      offeredBackgrounded: driver.isBackgrounded,
     })
   ))
+
+  // Delivery tracking for the closed-app ride request work (docs/superpowers/plans/2026-11-05-driver-app-closed-ride-alert-overlay.md,
+  // phase 0). Structured log lines, not columns: join them to ride_assignments outcomes by rideId + driverId in Loki or Athena.
+  //   ride_offer         the offer was made; `backgrounded` is what the server believed about the app (it sets the accept window)
+  //   ride_offer_acked   the live app confirmed receipt over the socket (app open, socket alive)
+  //   ride_offer_pushed  the ride-request push was sent (no ack by then means only the notification could have reached the driver)
+  for (const driver of driversWithWindow) {
+    log.info({
+      event: 'ride_offer', rideId: data.rideId, driverId: driver.driver_id.toString(),
+      backgrounded: driver.isBackgrounded, windowSeconds: driver.windowSeconds, round: data.broadcastRound,
+    }, 'ride offer created')
+  }
 
   // Set ACK keys and queue retry jobs BEFORE emitting the socket.
   // If the key is set after the emit, a fast ACK from the driver deletes a

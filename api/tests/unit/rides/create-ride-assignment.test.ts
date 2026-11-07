@@ -41,15 +41,4 @@ describe('createRideAssignment - re-offering to a driver who already has a row',
   it('never reopens an ACCEPTED row', async () => {
     expect(await whereClause()).not.toContain("'accepted'")
   })
-
-  it('records whether the driver was backgrounded at offer time, and forgets the old receipt and push on a re-offer', async () => {
-    vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 1 } as never)
-    await createRideAssignment({ rideId: 1n, driverId: 2n, sessionId: 3n, expiresAt: new Date(), broadcastRound: 1, offeredBackgrounded: true })
-    await createRideAssignment({ rideId: 1n, driverId: 2n, sessionId: 3n, expiresAt: new Date(), broadcastRound: 1 })
-    const [sql, withFlag] = vi.mocked(pool.query).mock.calls[0]! as [string, unknown[]]
-    const [, withoutFlag] = vi.mocked(pool.query).mock.calls[1]! as [string, unknown[]]
-    expect(withFlag[7]).toBe(true)
-    expect(withoutFlag[7]).toBeNull() // unknown stays unknown, never guessed as foreground
-    expect(sql).toMatch(/offered_backgrounded = EXCLUDED\.offered_backgrounded, acked_at = NULL, pushed_at = NULL/)
-  })
 })

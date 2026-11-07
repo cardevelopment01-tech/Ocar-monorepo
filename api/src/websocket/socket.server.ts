@@ -150,11 +150,8 @@ export function initSocketServer(httpServer: HttpServer): Server {
         const rideId = parseId(payload?.rideId)
         if (rideId === null) return
         void redis.del(rideAckKey(rideId.toString(), user.sub)).catch(() => {})
-        // Delivery tracking (migration 131): the live app saw this request. Best effort, never blocks the ack.
-        void pool.query(
-          `UPDATE ride_assignments SET acked_at = now() WHERE ride_id = $1 AND driver_id = $2 AND acked_at IS NULL`,
-          [rideId, BigInt(user.sub)]
-        ).catch(() => {})
+        // Delivery tracking (see broadcast.processor.ts): the live app saw this request.
+        log.info({ event: 'ride_offer_acked', rideId: rideId.toString(), driverId: user.sub }, 'ride request acked')
       }))
 
       // GPS ping over the already-open connection instead of a fresh HTTP

@@ -9,8 +9,8 @@
 --                         Most are lost races; the ones that stayed open a full window are the likely missed requests.
 --   offered               still open or never closed.
 --
--- Sections 1-5 need no code change. Section 6 needs migration 131 (ride_offer_delivery) and only has data for offers made after
--- it was deployed; it splits offers by what the server knew about the app: backgrounded at offer time, live-socket ack, push sent.
+-- All sections here read existing tables. The split by app state (backgrounded at offer time, live-socket ack, push sent) is NOT in
+-- the database: the API logs it as structured lines (event = ride_offer, ride_offer_acked, ride_offer_pushed); see the end of this file.
 --
 -- Run: psql "$DATABASE_URL" -v days=14 -f api/scripts/ride-offer-baseline.sql   (prod only through the approved read-only tunnel)
 
@@ -72,12 +72,14 @@ SELECT 'ride:' || status::text, count(*)
  GROUP BY 1
  ORDER BY 1;
 
-\echo '== 6. After migration 131: delivery path vs outcome (only offers made after it was deployed)'
-SELECT CASE WHEN offered_backgrounded IS TRUE THEN 'app backgrounded' ELSE 'app live' END AS app_state_at_offer,
-       CASE WHEN acked_at IS NOT NULL THEN 'socket ack' WHEN pushed_at IS NOT NULL THEN 'push only' ELSE 'neither recorded' END AS delivery,
-       CASE WHEN responded_at IS NOT NULL THEN 'answered' ELSE 'no response' END AS answer,
-       count(*) AS offers
-  FROM ride_assignments
- WHERE offered_at > now() - (:'days' || ' days')::interval
-   AND offered_backgrounded IS NOT NULL
- GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+-- 6. App state split (from the API logs, not this database). Log fields on every line: event, rideId, driverId.
+--    ride_offer        backgrounded (bool), windowSeconds, round   -> what the server believed about the app at offer time
+--    ride_offer_acked                                              -> the live app confirmed receipt over the socket
+--    ride_offer_pushed loudDevices, legacyDevices                  -> a push was sent
+--    Per (rideId, driverId): backgrounded + acked or not + pushed or not. Join that to this table's outcome (status, responded_at,
+--    cancelled_at) on ride_id = rideId and driver_id = driverId. Example Loki query for the offers made in a window:
+--      {service="ocar", container="ocar_api"} | json | event=~"ride_offer|ride_offer_acked|ride_offer_pushed"
+--    These lines are level info and not "request completed", so the Alloy sampling and 404 filters do not touch them; the S3 archive
+--    keeps every API line (190 days).
+--    In Athena (app_logs table), filter the same `event` values and group by rideId + driverId.
+--    Reading it: acked = the app was open and saw it; pushed but not acked = only the notification could have reached the driver.

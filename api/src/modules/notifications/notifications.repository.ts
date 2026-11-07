@@ -226,15 +226,6 @@ export async function upsertDeviceToken(p: {
   )
 }
 
-/** The ride-request push for this offer was sent (delivery tracking, migration 131). First send wins. */
-export async function markRideOfferPushed(rideId: bigint, driverId: bigint): Promise<void> {
-  await pool.query(
-    `UPDATE ride_assignments SET pushed_at = now()
-      WHERE ride_id = $1 AND driver_id = $2 AND pushed_at IS NULL`,
-    [rideId, driverId]
-  )
-}
-
 /** A driver's device tokens split by whether the build has the loud ride-request channel. */
 export async function getDriverTokensByRideAlert(driverId: bigint): Promise<{ v3: string[]; legacy: string[] }> {
   const res = await pool.query<{ token: string; ride_alert_v3: boolean }>(
