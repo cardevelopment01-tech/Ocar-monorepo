@@ -1,12 +1,18 @@
 -- Phase 0 baseline for the closed-app ride request work (docs/superpowers/plans/2026-11-05-driver-app-closed-ride-alert-overlay.md).
--- READ ONLY: SELECT statements only. Counts only offers where the driver had to answer (accepted, declined, expired); "cancelled" means
--- another driver accepted first, so it says nothing about this driver. Window: last 14 days (change :days below).
+-- READ ONLY: SELECT statements only. Window: last N days (psql -v days=14, default 14).
 --
--- What this CAN answer today: how often offers expire unanswered ("missed"), by hour, by driver, and how long answers take.
--- What it CANNOT answer: app state (open, background, closed) and phone brand, because ride_assignments does not record them.
--- Those need the small instrumentation listed in the plan (phase 0); this file is the part that needs no code change.
+-- Reading the outcomes (the first version of this script got this wrong):
+--   accepted / declined   the driver answered.
+--   expired               the window lapsed; the server stamps responded_at, so it is NOT "unanswered" by that column.
+--   cancelled, responded_at NULL
+--                         the offer was closed before this driver answered, usually because another driver accepted first.
+--                         Most are lost races; the ones that stayed open a full window are the likely missed requests.
+--   offered               still open or never closed.
 --
--- Run: psql "$DATABASE_URL" -v days=14 -f api/scripts/ride-offer-baseline.sql   (against prod only through the approved read-only tunnel)
+-- Sections 1-5 need no code change. Section 6 needs migration 131 (ride_offer_delivery) and only has data for offers made after
+-- it was deployed; it splits offers by what the server knew about the app: backgrounded at offer time, live-socket ack, push sent.
+--
+-- Run: psql "$DATABASE_URL" -v days=14 -f api/scripts/ride-offer-baseline.sql   (prod only through the approved read-only tunnel)
 
 \set ON_ERROR_STOP on
 \if :{?days}
@@ -14,53 +20,64 @@
   \set days 14
 \endif
 
-\echo '== 1. Outcome of every offer that needed an answer'
-SELECT status::text AS outcome,
-       count(*) AS offers,
+\echo '== 1. Every offer by outcome and whether the driver ever responded'
+SELECT status::text AS status, (responded_at IS NOT NULL) AS responded, count(*) AS offers,
        round(100.0 * count(*) / sum(count(*)) OVER (), 1) AS pct
   FROM ride_assignments
  WHERE offered_at > now() - (:'days' || ' days')::interval
-   AND status IN ('accepted', 'declined', 'expired')
- GROUP BY 1 ORDER BY 2 DESC;
+ GROUP BY 1, 2 ORDER BY 3 DESC;
 
-\echo '== 2. Missed (expired) rate by hour of day, IST'
+\echo '== 2. Offers closed with no response, by how long they stayed open (seconds)'
+SELECT CASE WHEN extract(epoch FROM coalesce(cancelled_at, expires_at) - offered_at) < 5  THEN 'a. under 5 s (lost the race)'
+            WHEN extract(epoch FROM coalesce(cancelled_at, expires_at) - offered_at) < 15 THEN 'b. 5 to 15 s'
+            ELSE 'c. 15 s or more (likely not seen or ignored)' END AS open_for,
+       count(*) AS offers
+  FROM ride_assignments
+ WHERE offered_at > now() - (:'days' || ' days')::interval
+   AND responded_at IS NULL AND status = 'cancelled'
+ GROUP BY 1 ORDER BY 1;
+
+\echo '== 3. Likely-missed rate by hour of day, IST (no response and open 15 s or more, or expired)'
 SELECT extract(hour FROM offered_at AT TIME ZONE 'Asia/Kolkata')::int AS hour_ist,
-       count(*) FILTER (WHERE status IN ('accepted', 'declined', 'expired')) AS answerable,
-       count(*) FILTER (WHERE status = 'expired') AS missed,
-       round(100.0 * count(*) FILTER (WHERE status = 'expired')
-             / NULLIF(count(*) FILTER (WHERE status IN ('accepted', 'declined', 'expired')), 0), 1) AS missed_pct
+       count(*) AS offers,
+       count(*) FILTER (WHERE status = 'expired'
+                          OR (status = 'cancelled' AND responded_at IS NULL
+                              AND extract(epoch FROM coalesce(cancelled_at, expires_at) - offered_at) >= 15)) AS likely_missed,
+       round(100.0 * count(*) FILTER (WHERE status = 'expired'
+                          OR (status = 'cancelled' AND responded_at IS NULL
+                              AND extract(epoch FROM coalesce(cancelled_at, expires_at) - offered_at) >= 15)) / count(*), 1) AS likely_missed_pct
   FROM ride_assignments
  WHERE offered_at > now() - (:'days' || ' days')::interval
  GROUP BY 1 ORDER BY 1;
 
-\echo '== 3. Drivers with the highest missed rate (at least 10 answerable offers)'
-SELECT driver_id,
-       count(*) FILTER (WHERE status IN ('accepted', 'declined', 'expired')) AS answerable,
-       count(*) FILTER (WHERE status = 'expired') AS missed,
-       round(100.0 * count(*) FILTER (WHERE status = 'expired')
-             / NULLIF(count(*) FILTER (WHERE status IN ('accepted', 'declined', 'expired')), 0), 1) AS missed_pct
-  FROM ride_assignments
- WHERE offered_at > now() - (:'days' || ' days')::interval
- GROUP BY 1
-HAVING count(*) FILTER (WHERE status IN ('accepted', 'declined', 'expired')) >= 10
- ORDER BY missed_pct DESC, answerable DESC
- LIMIT 20;
-
 \echo '== 4. Seconds from offer to the driver answer (accepted or declined)'
-SELECT status::text AS outcome,
-       count(*) AS n,
+SELECT status::text AS outcome, count(*) AS n,
        round(percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM responded_at - offered_at))::numeric, 1) AS p50_s,
        round(percentile_cont(0.9) WITHIN GROUP (ORDER BY extract(epoch FROM responded_at - offered_at))::numeric, 1) AS p90_s,
        round(avg(extract(epoch FROM expires_at - offered_at))::numeric, 1) AS avg_window_s
   FROM ride_assignments
  WHERE offered_at > now() - (:'days' || ' days')::interval
-   AND status IN ('accepted', 'declined')
-   AND responded_at IS NOT NULL
+   AND status IN ('accepted', 'declined') AND responded_at IS NOT NULL
  GROUP BY 1;
 
-\echo '== 5. Android share of driver devices (the plan is Android only)'
-SELECT platform, count(DISTINCT owner_id) AS drivers
+\echo '== 5. Android share of driver devices, and rides by final status'
+SELECT 'device:' || platform AS what, count(DISTINCT owner_id) AS n
   FROM device_tokens
- WHERE owner_type = 'driver'
-   AND last_seen_at > now() - (:'days' || ' days')::interval
- GROUP BY 1 ORDER BY 2 DESC;
+ WHERE owner_type = 'driver' AND last_seen_at > now() - (:'days' || ' days')::interval
+ GROUP BY 1
+UNION ALL
+SELECT 'ride:' || status::text, count(*)
+  FROM rides
+ WHERE created_at > now() - (:'days' || ' days')::interval
+ GROUP BY 1
+ ORDER BY 1;
+
+\echo '== 6. After migration 131: delivery path vs outcome (only offers made after it was deployed)'
+SELECT CASE WHEN offered_backgrounded IS TRUE THEN 'app backgrounded' ELSE 'app live' END AS app_state_at_offer,
+       CASE WHEN acked_at IS NOT NULL THEN 'socket ack' WHEN pushed_at IS NOT NULL THEN 'push only' ELSE 'neither recorded' END AS delivery,
+       CASE WHEN responded_at IS NOT NULL THEN 'answered' ELSE 'no response' END AS answer,
+       count(*) AS offers
+  FROM ride_assignments
+ WHERE offered_at > now() - (:'days' || ' days')::interval
+   AND offered_backgrounded IS NOT NULL
+ GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;

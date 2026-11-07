@@ -1207,16 +1207,20 @@ export async function createRideAssignment(data: {
   broadcastRound: number
   driverLat?: number
   driverLng?: number
+  /** The server believed the driver's app was in the background when it made the offer (delivery tracking, migration 131). */
+  offeredBackgrounded?: boolean
 }) {
   await pool.query(
     `INSERT INTO ride_assignments
        (ride_id, driver_id, session_id, expires_at,
-        broadcast_round, driver_lat, driver_lng)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+        broadcast_round, driver_lat, driver_lng, offered_backgrounded)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      ON CONFLICT (ride_id, driver_id) DO UPDATE
        SET status = 'offered', expires_at = EXCLUDED.expires_at,
            session_id = EXCLUDED.session_id, broadcast_round = EXCLUDED.broadcast_round,
-           responded_at = NULL, cancelled_at = NULL
+           responded_at = NULL, cancelled_at = NULL,
+           -- a re-offer is a fresh delivery: forget the earlier round's receipt and push
+           offered_backgrounded = EXCLUDED.offered_backgrounded, acked_at = NULL, pushed_at = NULL
        -- Re-offer in a later broadcast round: reopen a declined/expired/cancelled row, else
        -- acceptAssignment (needs status = 'offered') rejects the fresh card with
        -- "Ride no longer available". 'cancelled' matters for admin assignment: cancelAllAssignments()
@@ -1230,6 +1234,7 @@ export async function createRideAssignment(data: {
       data.rideId, data.driverId, data.sessionId,
       data.expiresAt, data.broadcastRound,
       data.driverLat ?? null, data.driverLng ?? null,
+      data.offeredBackgrounded ?? null,
     ]
   )
 }

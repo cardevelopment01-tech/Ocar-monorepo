@@ -30,6 +30,7 @@ vi.mock('@/modules/notifications/notifications.repository', () => ({
   getTokensForOwner: vi.fn().mockResolvedValue(['device-token-1']),
   getDriverTokensByRideAlert: vi.fn().mockResolvedValue({ v3: [], legacy: ['device-token-1'] }),
   deleteDeviceTokens: vi.fn(),
+  markRideOfferPushed: vi.fn().mockResolvedValue(undefined),
   createInAppNotification: vi.fn(),
   logNotification: vi.fn(),
   markSent: vi.fn(),
@@ -43,7 +44,7 @@ vi.mock('@/modules/notifications/notifications.repository', () => ({
 }))
 vi.mock('@/websocket/socket.server', () => ({ socketEvents: { sendNotification: vi.fn() } }))
 
-import { getDriverTokensByRideAlert } from '@/modules/notifications/notifications.repository'
+import { getDriverTokensByRideAlert, markRideOfferPushed } from '@/modules/notifications/notifications.repository'
 import { sendRideRequestPushOnce, sendRideRequestGonePush, rideRequestPushText } from '@/modules/notifications/notifications.service'
 import * as pushProvider from '@/modules/notifications/providers/push.provider'
 
@@ -58,6 +59,21 @@ describe('sendRideRequestPushOnce — one-shot per ride+driver', () => {
     await sendRideRequestPushOnce('101', '55', 'Bhubaneswar Station', 'Cuttack Bus Stand', 20)
 
     expect(getDriverTokensByRideAlert).toHaveBeenCalledWith(55n)
+    // Delivery tracking: the offer is stamped as pushed, once (a repeat call is a no-op below).
+    expect(markRideOfferPushed).toHaveBeenCalledTimes(1)
+    expect(markRideOfferPushed).toHaveBeenCalledWith(101n, 55n)
+  })
+
+  it('a failing delivery stamp never fails the push', async () => {
+    vi.mocked(markRideOfferPushed).mockRejectedValueOnce(new Error('db down'))
+    await expect(sendRideRequestPushOnce('103', '55', 'A', 'B', 20)).resolves.toBeUndefined()
+  })
+
+  it('does not stamp or send again on a second call for the same ride+driver', async () => {
+    await sendRideRequestPushOnce('104', '55', 'A', 'B', 20)
+    vi.mocked(markRideOfferPushed).mockClear()
+    await sendRideRequestPushOnce('104', '55', 'A', 'B', 20)
+    expect(markRideOfferPushed).not.toHaveBeenCalled()
   })
 
   it('does not send again on a second call for the same ride+driver', async () => {

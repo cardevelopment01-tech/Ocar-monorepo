@@ -185,6 +185,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       broadcastRound: data.broadcastRound,
       driverLat:      driver.lat,
       driverLng:      driver.lng,
+      offeredBackgrounded: driver.isBackgrounded,
     })
   ))
 

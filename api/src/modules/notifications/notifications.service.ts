@@ -155,6 +155,8 @@ export async function sendRideRequestPushOnce(
       }))
     }
     await Promise.all(sends)
+    // Delivery tracking (migration 131): remember that a push went out for this offer. Best effort, never fails the push.
+    void repo.markRideOfferPushed(BigInt(rideId), BigInt(driverId)).catch((err) => log.warn({ err, rideId, driverId }, 'markRideOfferPushed failed'))
   } catch (err) {
     log.error({ err }, 'sendRideRequestPushOnce failed')
   }
