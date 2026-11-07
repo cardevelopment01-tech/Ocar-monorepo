@@ -11,10 +11,34 @@ import { getMinWalletBalance } from '@/modules/payments/payments.service'
 import { sendRideRequestPushOnce, notifyRideEvent, type RideRequestPushDetails } from '@/modules/notifications/notifications.service'
 import type { AckCheckJobData } from './ack-check.processor'
 import { logger } from '@/lib/logger'
+import { getRoute } from '@/modules/geo/geo.service'
 
 const log = logger.child({ module: 'broadcast-processor' })
 
 const MAX_DRIVERS = BROADCAST_MAX_DRIVERS
+
+/** The offer must not wait on Google: past this the straight-line figure is shown instead. */
+const ROAD_DISTANCE_TIMEOUT_MS = 2_000
+
+/**
+ * The distance a driver sees on the offer is how far they would DRIVE to the pickup, the same figure their navigation shows after
+ * they accept. Finding drivers still uses the straight-line distance (fast, indexed); only the shown number is routed, one cached
+ * Routes call per offered driver (at most BROADCAST_MAX_DRIVERS per round). A slow or failed route keeps the straight-line number.
+ */
+async function withRoadDistance<T extends { lat: number; lng: number; distance_metres: number }>(drivers: T[], toLat: number, toLng: number): Promise<T[]> {
+  return Promise.all(drivers.map(async (d) => {
+    try {
+      const route = await Promise.race([
+        getRoute(d.lat, d.lng, toLat, toLng),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), ROAD_DISTANCE_TIMEOUT_MS)),
+      ])
+      if (!route || route.source === 'fallback' || !(route.distanceKm > 0)) return d
+      return { ...d, distance_metres: Math.max(d.distance_metres, Math.round(route.distanceKm * 1000)) }
+    } catch {
+      return d
+    }
+  }))
+}
 
 export interface BroadcastJobData {
   rideId: string
@@ -140,6 +164,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     }
     return
   }
+
+  drivers = await withRoadDistance(drivers, data.originLat, data.originLng)
 
   // Per-driver window: a backgrounded match gets longer to notice a push, tap
   // it, and let the app reconnect than a live-socket driver gets to ack.
