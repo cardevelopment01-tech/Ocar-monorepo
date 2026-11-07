@@ -101,7 +101,7 @@ describe('Daily verification: shadow mode scoring', () => {
 
     const res = await submitDaily(accessToken)
     expect(res.status).toBe(201)
-    expect(res.body).toEqual({ complete: true })
+    expect(res.body).toEqual({ complete: true, outcome: 'ok' })
 
     const rows = await pool.query(
       `SELECT kind, status, decision, decision_reason, mode, match_similarity::float8 AS sim, ocr_text, face_quality, thresholds

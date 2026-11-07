@@ -1,5 +1,6 @@
 import offersRouter from '@/modules/offers/offers.routes'
 import adminOffersRouter from '@/modules/offers/admin-offers.routes'
+import verificationReviewRouter from '@/modules/admin/verification-review.routes'
 import express, { Application, Router } from 'express'
 import helmet from 'helmet'
 import cors from 'cors'
@@ -191,6 +192,7 @@ apiRouter.use('/payments/settlements', settlementsRouter)
   apiRouter.use('/admin/analytics', analyticsRouter)
   apiRouter.use('/admin/notification-templates', templatesRouter)
   apiRouter.use('/admin/offers', adminOffersRouter)
+  apiRouter.use('/admin/verifications', verificationReviewRouter)
   apiRouter.use('/offers', offersRouter)
   apiRouter.use('/admin/notifications', broadcastRouter)
   apiRouter.use('/account', accountRouter)

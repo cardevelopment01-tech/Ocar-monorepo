@@ -116,3 +116,12 @@ html.overflow-hidden {
 input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+@layer components {
+  /* Review panes (Verifications): a flat bordered surface, no hover lift. */
+  .panel { @apply rounded-2xl border border-border bg-surface shadow-card; }
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-danger text-white text-sm font-semibold
+           hover:opacity-90 transition-all duration-150 cursor-pointer disabled:opacity-50;
+  }
+}
