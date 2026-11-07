@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 const h = vi.hoisted(() => ({
   repo: {
     getRideForShare: vi.fn(), insertShare: vi.fn(), insertShares: vi.fn(), listActive: vi.fn(), revokeOne: vi.fn(), revokeAll: vi.fn(),
-    findByTokenHash: vi.fn(), recordView: vi.fn(), getRiderFirstName: vi.fn(), getPublicTripRow: vi.fn(), getPublicStops: vi.fn(),
+    findByTokenHash: vi.fn(), recordView: vi.fn(), getRiderFirstName: vi.fn(), getPublicTripRow: vi.fn(), getPublicStops: vi.fn(), hasRecentSosShare: vi.fn(),
   },
   redis: { get: vi.fn(), set: vi.fn() },
   getConfigValue: vi.fn(),
@@ -52,6 +52,7 @@ beforeEach(() => {
   h.repo.insertShare.mockResolvedValue({ result: 'created', id: '5' })
   h.repo.insertShares.mockImplementation(async (inputs: unknown[]) => ({ result: 'created', ids: inputs.map((_, i) => String(5 + i)) }))
   h.repo.getRiderFirstName.mockResolvedValue('Asha')
+  h.repo.hasRecentSosShare.mockResolvedValue(false)
   h.contacts.list.mockResolvedValue([{ id: '1', name: 'Mum', phone: '+919811111111' }, { id: '2', name: 'Dad', phone: '+919822222222' }])
   h.notif.logNotification.mockResolvedValue(9)
   h.renderTemplate.mockResolvedValue({ body: 'sms body' })
@@ -120,6 +121,21 @@ describe('createShares', () => {
   })
 })
 
+describe('createShares hardening', () => {
+  it('names a contact once however many times the request lists them', async () => {
+    const out = await createShares(4n, 16n, ['1', '1', '1'])
+    expect(out).toHaveLength(1)
+    expect(h.sendSms).toHaveBeenCalledTimes(1)
+  })
+
+  it('a notification-log failure for one contact costs only that text, never the links', async () => {
+    h.notif.logNotification.mockRejectedValueOnce(new Error('db blip'))
+    const out = await createShares(4n, 16n, ['1', '2'])
+    expect(out.map((s) => s.sms).sort()).toEqual(['failed', 'sent'])
+    expect(out.every((s) => s.url.includes('/t/'))).toBe(true)
+  })
+})
+
 describe('createShares for several contacts', () => {
   it('is all or none: if the list does not fit the caps nobody is texted', async () => {
     h.repo.insertShares.mockResolvedValueOnce({ result: 'limit_ride' })
@@ -144,6 +160,18 @@ describe('createSosShare', () => {
     expect(await createSosShare(16n, 4n)).toBeNull()
     h.repo.insertShare.mockRejectedValueOnce(new Error('db down'))
     expect(await createSosShare(16n, 4n)).toBeNull()
+  })
+
+  it('creates no link when the live SMS template cannot render (it ships inactive): nobody would be texted it', async () => {
+    h.renderTemplate.mockRejectedValueOnce(new Error('template inactive'))
+    expect(await createSosShare(16n, 4n)).toBeNull()
+    expect(h.repo.insertShare).not.toHaveBeenCalled()
+  })
+
+  it('creates no second link within minutes of the first (a repeat press or a retried job falls back to the static pin)', async () => {
+    h.repo.hasRecentSosShare.mockResolvedValueOnce(true)
+    expect(await createSosShare(16n, 4n)).toBeNull()
+    expect(h.repo.insertShare).not.toHaveBeenCalled()
   })
 
   it('creates an SOS-flagged link that no cap can refuse', async () => {
@@ -188,6 +216,23 @@ describe('getPublicTrip', () => {
     h.getRoute.mockClear()
     const again = await getPublicTrip('x'.repeat(22), { now: NOW })
     expect(again).toMatchObject({ kind: 'ok', trip: { etaMin: 9, route: 'cached' } })
+    expect(h.getRoute).not.toHaveBeenCalled()
+  })
+
+  it('remembers a failed or straight-line-only route for the same minute, so a failing provider is asked once, not on every poll', async () => {
+    h.repo.findByTokenHash.mockResolvedValue(share())
+    h.getRoute.mockResolvedValueOnce({ source: 'fallback', durationMin: 6, polyline: 'straight' })
+    const first = await getPublicTrip('x'.repeat(22), { now: NOW })
+    expect(first).toMatchObject({ kind: 'ok', trip: { etaMin: null, route: null } })
+    expect(h.redis.set).toHaveBeenCalledWith('share:eta:16:in_trip', 'none', 'EX', 60)
+    h.getRoute.mockRejectedValueOnce(new Error('provider down'))
+    h.redis.set.mockClear()
+    await getPublicTrip('y'.repeat(22), { now: new Date(NOW.getTime() + 61_000) })
+    expect(h.redis.set).toHaveBeenCalledWith('share:eta:16:in_trip', 'none', 'EX', 60)
+    // and while that marker is cached, no routed call at all
+    h.redis.get.mockImplementation(async (k: string) => (k.startsWith('share:eta:') ? 'none' : null))
+    h.getRoute.mockClear()
+    expect(await getPublicTrip('z'.repeat(22), { now: NOW })).toMatchObject({ trip: { etaMin: null } })
     expect(h.getRoute).not.toHaveBeenCalled()
   })
 

@@ -47,12 +47,12 @@ describe('GET public trip', () => {
     expect(misses).toEqual([true])
   })
 
-  it('an expired link is 410, also a miss', async () => {
+  it('an expired link is 410 but NOT a miss: it is a real link, and a viewer holding it open must not use up the allowance of everyone behind the same address', async () => {
     h.getPublicTrip.mockResolvedValue({ kind: 'expired' })
     const { a, misses } = appWithMissProbe()
     const res = await request(a).get(`/t/${TOKEN}`)
     expect(res.status).toBe(410)
-    expect(misses).toEqual([true])
+    expect(misses).toEqual([false])
   })
 
   it('a malformed token never reaches the database: 404 and a miss', async () => {

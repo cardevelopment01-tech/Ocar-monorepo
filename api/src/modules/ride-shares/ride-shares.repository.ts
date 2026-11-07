@@ -35,6 +35,15 @@ export interface NewShare {
   isSos: boolean
 }
 
+/** An SOS link that is still live and was made in the last ten minutes (the first press already texted it). */
+export async function hasRecentSosShare(rideId: bigint): Promise<boolean> {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM ride_shares WHERE ride_id = $1 AND is_sos = true AND revoked_at IS NULL AND created_at > now() - interval '10 minutes' LIMIT 1`,
+    [rideId.toString()],
+  )
+  return rows.length > 0
+}
+
 export type InsertResult = { result: 'created'; id: string } | { result: 'limit_ride' | 'limit_hour' }
 export type InsertManyResult = { result: 'created'; ids: string[] } | { result: 'limit_ride' | 'limit_hour' }
 
@@ -59,12 +68,12 @@ export function insertShares(inputs: NewShare[], caps?: { perRide: number; perHo
     await client.query('SELECT id FROM rides WHERE id = $1 FOR UPDATE', [rideId.toString()])
     if (caps) {
       const active = await client.query<{ n: string }>(
-        'SELECT count(*)::text AS n FROM ride_shares WHERE ride_id = $1 AND revoked_at IS NULL',
+        'SELECT count(*)::text AS n FROM ride_shares WHERE ride_id = $1 AND revoked_at IS NULL AND is_sos = false',
         [rideId.toString()],
       )
       if (Number(active.rows[0]!.n) + inputs.length > caps.perRide) return { result: 'limit_ride' as const }
       const recent = await client.query<{ n: string }>(
-        `SELECT count(*)::text AS n FROM ride_shares WHERE user_id = $1 AND created_at > now() - interval '1 hour'`,
+        `SELECT count(*)::text AS n FROM ride_shares WHERE user_id = $1 AND is_sos = false AND created_at > now() - interval '1 hour'`,
         [userId.toString()],
       )
       if (Number(recent.rows[0]!.n) + inputs.length > caps.perHour) return { result: 'limit_hour' as const }
@@ -193,7 +202,10 @@ export async function getPublicTripRow(rideId: bigint): Promise<PublicTripRow | 
        FROM rides r
        LEFT JOIN users u ON u.id = r.user_id
        LEFT JOIN drivers d ON d.id = r.driver_id
-       LEFT JOIN driver_vehicles dv ON dv.driver_id = r.driver_id AND dv.is_primary = true AND dv.status != 'blacklisted'
+       LEFT JOIN driver_vehicles dv ON dv.id = COALESCE(
+         r.vehicle_id,
+         (SELECT pv.id FROM driver_vehicles pv WHERE pv.driver_id = r.driver_id AND pv.is_primary = true AND pv.status != 'blacklisted' ORDER BY pv.id LIMIT 1)
+       )
        LEFT JOIN vehicle_models vm ON vm.id = dv.model_id
        LEFT JOIN vehicle_brands vb ON vb.id = dv.brand_id
        LEFT JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id

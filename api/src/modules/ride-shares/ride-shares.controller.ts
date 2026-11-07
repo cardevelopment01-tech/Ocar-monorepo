@@ -65,7 +65,9 @@ export async function publicTrip(req: Request, res: Response, next: NextFunction
     if (!TOKEN_PATTERN.test(token)) { res.locals['tripMiss'] = true; res.status(404).json({ error: 'Not found', code: 'NOT_FOUND' }); return }
     const result = await service.getPublicTrip(token, { countView: !isPreviewBot(req.headers['user-agent']) })
     if (result.kind === 'ok') { res.status(200).json(result.trip); return }
-    res.locals['tripMiss'] = true
+    // Only an unknown link counts against the per-IP guess limit: an expired or stopped link is a real one, and a viewer who keeps
+    // it open must not use up the allowance of everyone behind the same office or carrier address.
+    if (result.kind === 'missing') res.locals['tripMiss'] = true
     if (result.kind === 'expired') { res.status(410).json({ error: 'This link is no longer active', code: 'LINK_EXPIRED' }); return }
     res.status(404).json({ error: 'Not found', code: 'NOT_FOUND' })
   } catch (err) {

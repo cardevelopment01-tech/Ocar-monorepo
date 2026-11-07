@@ -1,4 +1,4 @@
-import { IRouter, Router } from 'express'
+import { IRouter, RequestHandler, Router } from 'express'
 import { validate } from '@/middleware/validate.middleware'
 import { authenticate } from '@/middleware/auth.middleware'
 import { requireUser } from '@/middleware/role.middleware'
@@ -19,4 +19,10 @@ export default router
 
 // Public side, mounted under /api/v1/public: GET /trips/:token (no auth). Both limiters run first; see rateLimit.middleware.ts.
 export const publicRouter: IRouter = Router()
-publicRouter.get('/trips/:token', publicTripLimiters.perToken, publicTripLimiters.misses, controller.publicTrip)
+// Before the limiters, so a 429 is never cached by a proxy or CDN and kept showing after the limit has cleared.
+const noStore: RequestHandler = (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow')
+  next()
+}
+publicRouter.get('/trips/:token', noStore, publicTripLimiters.perToken, publicTripLimiters.misses, controller.publicTrip)

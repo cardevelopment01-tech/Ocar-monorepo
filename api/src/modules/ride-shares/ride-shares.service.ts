@@ -43,15 +43,20 @@ async function requireOwnShareableRide(userId: bigint, rideId: bigint) {
 }
 
 async function textContact(userId: bigint, riderName: string | null, phone: string, url: string): Promise<'sent' | 'failed'> {
-  const logId = await notifService.logNotification({ jobName: 'trip_share', recipientPhone: phone, payload: { userId: userId.toString() } })
+  // Everything here, including the notification log, stays inside the try: the share rows are already committed and the URL exists
+  // only in this response, so one contact's database or SMS error must never reject the whole create and lose every link.
+  let logId: Awaited<ReturnType<typeof notifService.logNotification>> | undefined
   try {
+    logId = await notifService.logNotification({ jobName: 'trip_share', recipientPhone: phone, payload: { userId: userId.toString() } })
     const { body } = await renderTemplate('trip_share', 'sms', { riderName: riderName ?? 'Your contact', trackUrl: url })
     await sendSms(phone, body)
     await notifService.markSent(logId)
     return 'sent'
   } catch (err) {
-    await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
     log.warn({ err }, 'trip share SMS not sent')
+    if (logId !== undefined) {
+      try { await notifService.markFailed(logId, err instanceof Error ? err.message : String(err)) } catch { /* the log row is best effort */ }
+    }
     return 'failed'
   }
 }
@@ -60,7 +65,8 @@ async function textContact(userId: bigint, riderName: string | null, phone: stri
  * Creates the rider's links: one anonymous link (for the phone's share sheet) when no contacts are named, else one per saved
  * emergency contact, each texted. The URL is returned only here; the server keeps just the hash.
  */
-export async function createShares(userId: bigint, rideId: bigint, contactIds: string[] = []): Promise<CreatedShare[]> {
+export async function createShares(userId: bigint, rideId: bigint, rawContactIds: string[] = []): Promise<CreatedShare[]> {
+  const contactIds = [...new Set(rawContactIds)] // the same contact named twice would be texted twice and burn the caps
   if (!(await tripShareEnabled())) throw httpError(403, 'Trip sharing is not available yet', 'TRIP_SHARE_DISABLED')
   await requireOwnShareableRide(userId, rideId)
 
@@ -101,6 +107,11 @@ export async function createSosShare(rideId: bigint, userId: bigint): Promise<st
     if (!(await tripShareEnabled())) return null
     const ride = await repo.getRideForShare(rideId)
     if (!ride || ride.user_id !== userId.toString()) return null
+    // A link nobody is texted is a publicly readable live location for up to 7 days and nothing else: the live SMS template ships
+    // inactive until its DLT approval, so check that it can render before creating the link.
+    try { await renderTemplate('sos_contact_live', 'sms', { riderName: 'Rider', trackUrl: urlFor('x') }) } catch { return null }
+    // The first press already texted a live link; a second one (or a retried job) falls back to the static pin instead of stacking links.
+    if (await repo.hasRecentSosShare(rideId)) return null
     const token = newToken()
     const res = await repo.insertShare({ rideId, userId, tokenHash: sha256(token), label: 'SOS', phone: null, isSos: true })
     return res.result === 'created' ? urlFor(token) : null
@@ -126,6 +137,9 @@ export const stopAllShares = (userId: bigint, rideId: bigint) => repo.revokeAll(
 
 export type PublicTripResult = { kind: 'ok'; trip: PublicTripDto & { isSos: boolean } } | { kind: 'missing' } | { kind: 'expired' }
 
+/** Cached in place of an ETA when routing failed or only had a straight-line guess. */
+const NO_ETA = 'none'
+
 /** An ETA as it was routed, with the moment it was worked out. */
 interface CachedEta extends TripEta { at: number }
 
@@ -146,18 +160,20 @@ async function etaFor(rideId: bigint, row: Awaited<ReturnType<typeof repo.getPub
   const key = `share:eta:${rideId}:${phase}`
   try {
     const cached = await redis.get(key)
+    if (cached === NO_ETA) return null
     if (cached) return agedEta(JSON.parse(cached) as CachedEta, now)
   } catch { /* a cache miss is fine */ }
   const to = phase === 'driver_on_way' ? { lat: row.origin_lat, lng: row.origin_lng } : row.destination_lat != null && row.destination_lng != null ? { lat: row.destination_lat, lng: row.destination_lng } : null
   if (!to) return null
   try {
     const route = await getRoute(row.driver_lat, row.driver_lng, to.lat, to.lng)
-    if (route.source === 'fallback') return null
+    if (route.source === 'fallback') { await redis.set(key, NO_ETA, 'EX', ETA_CACHE_SECONDS).catch(() => undefined); return null }
     const eta: CachedEta = { etaMin: Math.max(1, Math.round(route.trafficDurationMin ?? route.durationMin)), route: route.polyline, at: now.getTime() }
     await redis.set(key, JSON.stringify(eta), 'EX', ETA_CACHE_SECONDS).catch(() => undefined)
     return agedEta(eta, now)
   } catch (err) {
     log.warn({ err, rideId: String(rideId) }, 'public trip ETA unavailable')
+    await redis.set(key, NO_ETA, 'EX', ETA_CACHE_SECONDS).catch(() => undefined)
     return null
   }
 }
