@@ -1,10 +1,16 @@
 import crypto from 'crypto'
-import { getUploadUrl, promotePendingUpload } from '@/lib/storage'
+import { getUploadUrl, promotePendingUpload, extractS3Key } from '@/lib/storage'
 import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
+import { getConfigValue } from '@/lib/system-config'
+import { logger } from '@/lib/logger'
 import { findVehicleByDriverId } from './drivers.repository'
 import * as repo from './driver-verification.repository'
-import type { VerificationStatusToday } from './driver-verification.repository'
+import * as provider from './verification.provider'
+import { decideFace, decidePlate, type Thresholds } from './verification.decision'
+import type { ScoredCheck, VerificationScoring, VerificationStatusToday } from './driver-verification.repository'
+
+const log = logger.child({ module: 'driver-verification' })
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -40,6 +46,126 @@ function assertKeyBelongsToDriver(driverId: bigint, key: string, kind: 'selfie' 
   }
 }
 
+// ── Scoring (shadow mode) ─────────────────────────────────────────────────────
+// Mode 'off' keeps today's behaviour. 'shadow' scores both photos with Rekognition and records the result, but the
+// rows are still stored as auto_passed, so nothing a driver sees or can do changes. flag/block arrive in a later PR.
+
+const SCORING_TIMEOUT_MS = 4000
+const FACE_FLOOR_MARGIN = 10 // CompareFaces drops matches under its threshold, so ask lower than the review band
+
+const DEFAULT_THRESHOLDS: Thresholds = {
+  facePassMin: 90, faceReviewMin: 75, minBrightness: 35, minSharpness: 35, plateMaxEdits: 1, plateReviewEdits: 2,
+}
+
+function num(v: string, fallback: number): number {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fallback
+}
+
+export async function loadThresholds(): Promise<Thresholds> {
+  const d = DEFAULT_THRESHOLDS
+  const [pass, review, bright, sharp, maxEdits, reviewEdits] = await Promise.all([
+    getConfigValue('verification_face_pass_min', String(d.facePassMin)),
+    getConfigValue('verification_face_review_min', String(d.faceReviewMin)),
+    getConfigValue('verification_min_brightness', String(d.minBrightness)),
+    getConfigValue('verification_min_sharpness', String(d.minSharpness)),
+    getConfigValue('verification_plate_max_edits', String(d.plateMaxEdits)),
+    getConfigValue('verification_plate_review_edits', String(d.plateReviewEdits)),
+  ])
+  const t: Thresholds = {
+    facePassMin: num(pass, d.facePassMin),
+    faceReviewMin: num(review, d.faceReviewMin),
+    minBrightness: num(bright, d.minBrightness),
+    minSharpness: num(sharp, d.minSharpness),
+    plateMaxEdits: num(maxEdits, d.plateMaxEdits),
+    plateReviewEdits: num(reviewEdits, d.plateReviewEdits),
+  }
+  // A review band that sits above the pass line makes no sense; fall back to the defaults instead of mis-scoring.
+  if (t.faceReviewMin >= t.facePassMin || t.plateReviewEdits < t.plateMaxEdits) return d
+  return t
+}
+
+// Per-driver override beats the global switch. Only 'shadow' turns scoring on in this release.
+export async function resolveMode(modeOverride: string | null): Promise<'off' | 'shadow'> {
+  const mode = modeOverride ?? (await getConfigValue('verification_mode', 'off'))
+  return mode === 'shadow' ? 'shadow' : 'off'
+}
+
+function errorCheck(reason: string): ScoredCheck {
+  return { decision: 'error', reason, similarity: null, faceQuality: null, ocrText: null, ocrConfidence: null }
+}
+
+function skippedCheck(reason: string): ScoredCheck {
+  return { decision: 'skipped', reason, similarity: null, faceQuality: null, ocrText: null, ocrConfidence: null }
+}
+
+export async function scoreSelfie(selfieUrl: string, referenceUrl: string | null, t: Thresholds): Promise<ScoredCheck> {
+  const key = extractS3Key(selfieUrl)
+  const refKey = referenceUrl ? extractS3Key(referenceUrl) : null
+  if (!key) return skippedCheck('NOT_S3')
+  const scan = await provider.detectFaces(key)
+  let similarity: number | null = null
+  if (scan.faceCount === 1) {
+    if (!refKey) return skippedCheck('NO_REFERENCE')
+    try {
+      similarity = await provider.compareFaces(refKey, key, Math.max(0, t.faceReviewMin - FACE_FLOOR_MARGIN))
+    } catch (err) {
+      const name = (err as { name?: string }).name
+      // The stored reference is not a usable face photo (or its object is gone): that is the reference's problem, not
+      // the driver's, so record it as skipped rather than as a failed match.
+      if (name === 'InvalidParameterException') return skippedCheck('REFERENCE_UNUSABLE')
+      if (name === 'InvalidS3ObjectException') return skippedCheck('REFERENCE_MISSING')
+      throw err
+    }
+  }
+  const d = decideFace({ faceCount: scan.faceCount, quality: scan.quality, bestSimilarity: similarity }, t)
+  return {
+    decision: d.decision,
+    reason: d.reason,
+    similarity,
+    faceQuality: scan.quality ? { ...scan.quality } : null,
+    ocrText: null,
+    ocrConfidence: null,
+  }
+}
+
+export async function scorePlate(plateUrl: string, registeredPlate: string | null, t: Thresholds): Promise<ScoredCheck> {
+  const key = extractS3Key(plateUrl)
+  if (!key) return skippedCheck('NOT_S3')
+  if (!registeredPlate) return skippedCheck('NO_REGISTERED_PLATE')
+  const lines = await provider.detectText(key)
+  const d = decidePlate(lines, registeredPlate, t)
+  const confidence = lines.length ? lines.reduce((sum, l) => sum + l.confidence, 0) / lines.length : null
+  return {
+    decision: d.decision, reason: d.reason, similarity: null, faceQuality: null, ocrText: d.text, ocrConfidence: confidence,
+  }
+}
+
+// Never throws and never takes longer than SCORING_TIMEOUT_MS: a provider problem must not stop a driver's check.
+export async function scoreSubmission(args: {
+  selfieUrl: string
+  plateUrl: string
+  referenceUrl: string | null
+  registeredPlate: string | null
+}): Promise<VerificationScoring> {
+  const t = await loadThresholds()
+  const settle = (p: Promise<ScoredCheck>, what: string): Promise<ScoredCheck> =>
+    p.catch((err: unknown) => {
+      log.warn({ err, what }, 'verification scoring failed')
+      return errorCheck('PROVIDER_ERROR')
+    })
+  const work = Promise.all([
+    settle(scoreSelfie(args.selfieUrl, args.referenceUrl, t), 'selfie'),
+    settle(scorePlate(args.plateUrl, args.registeredPlate, t), 'plate'),
+  ])
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<[ScoredCheck, ScoredCheck]>((resolve) => {
+    timer = setTimeout(() => resolve([errorCheck('TIMEOUT'), errorCheck('TIMEOUT')]), SCORING_TIMEOUT_MS)
+  })
+  const [selfie, plate] = await Promise.race([work, timeout]).finally(() => clearTimeout(timer))
+  return { mode: 'shadow', thresholds: { ...t }, selfie, plate }
+}
+
 export async function submit(
   driverId: bigint,
   keys: { selfieKey: string; plateKey: string }
@@ -58,11 +184,25 @@ export async function submit(
     promotePendingUpload(keys.plateKey,  `${folder}/plate`),
   ])
 
+  // Scoring runs before the insert transaction opens, so no DB connection is held while Rekognition is called.
+  let scoring: VerificationScoring | undefined
+  try {
+    const ctx = await repo.getVerificationContext(driverId)
+    if ((await resolveMode(ctx.modeOverride)) === 'shadow') {
+      scoring = await scoreSubmission({
+        selfieUrl, plateUrl, referenceUrl: ctx.referenceSelfieUrl, registeredPlate: vehicle.number_plate,
+      })
+    }
+  } catch (err) {
+    log.warn({ err, driverId: String(driverId) }, 'verification scoring setup failed, storing without a score')
+  }
+
   await repo.insertTodayVerification({
     driverId,
     vehicleId: BigInt(vehicle.id),
     selfieUrl,
     plateUrl,
+    ...(scoring ? { scoring } : {}),
   })
 
   return { complete: true }
