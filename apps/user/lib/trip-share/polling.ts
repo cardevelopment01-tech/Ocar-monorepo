@@ -21,5 +21,5 @@ export function nextDelayMs(s: PollState): number {
   const base = s.ended ? ENDED_POLL_MS : s.watchedMs >= SLOW_AFTER_MS ? SLOW_POLL_MS : POLL_MS
   if (s.failures <= 0) return base
   // 5 s, 10 s, 20 s ... up to a minute, never faster than the normal pace.
-  return Math.min(MAX_BACKOFF_MS, Math.max(base, POLL_MS * 2 ** Math.min(s.failures, 6)))
+  return Math.min(MAX_BACKOFF_MS, Math.max(base, POLL_MS * 2 ** Math.min(s.failures - 1, 6)))
 }

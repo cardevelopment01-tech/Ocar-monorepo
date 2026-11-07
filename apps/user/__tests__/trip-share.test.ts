@@ -4,7 +4,7 @@ import { driverAgeSec, formatAgo, headline, mapLabel, statusView, vehicleLine } 
 import { ENDED_POLL_MS, MAX_BACKOFF_MS, POLL_MS, SLOW_AFTER_MS, SLOW_POLL_MS, nextDelayMs } from '../lib/trip-share/polling'
 import { MAX_GLIDE_MS, MIN_GLIDE_MS, lerpPosition, planGlide } from '../lib/trip-share/glide'
 import { fetchPublicTrip } from '../lib/trip-share/fetch-trip'
-import { installMapsErrorFilter, isMapsScriptError } from '../lib/trip-share/maps-error-filter'
+import { installMapsErrorFilter, isMapsRejection, isMapsScriptError } from '../lib/trip-share/maps-error-filter'
 import type { PublicTrip } from '../lib/trip-share/types'
 
 // Value: protects=what a worried relative reads on the public trip page (wording, stale vs live, the three languages) and how
@@ -128,8 +128,9 @@ describe('polling pace', () => {
   })
   it('backs off on failures (never faster than normal) and caps at a minute', () => {
     const d = (failures: number) => nextDelayMs({ watchedMs: 0, failures, ended: false })
-    expect(d(1)).toBeGreaterThan(POLL_MS)
-    expect(d(2)).toBeGreaterThan(d(1))
+    expect(d(1)).toBe(POLL_MS) // the first retry is at the normal pace: 5 s, 10 s, 20 s ...
+    expect(d(2)).toBe(POLL_MS * 2)
+    expect(d(3)).toBe(POLL_MS * 4)
     expect(d(20)).toBe(MAX_BACKOFF_MS)
     expect(nextDelayMs({ watchedMs: SLOW_AFTER_MS, failures: 1, ended: false })).toBeGreaterThanOrEqual(SLOW_POLL_MS)
   })
@@ -190,19 +191,35 @@ describe('maps error filter', () => {
     expect(isMapsScriptError(undefined)).toBe(false)
   })
 
-  it('swallows a Maps script error before other listeners, lets every other error through, and installs only once', () => {
-    const listeners: Array<{ fn: (e: ErrorEvent) => void; capture: boolean }> = []
-    const fake = { addEventListener: (_t: string, fn: (e: ErrorEvent) => void, capture: boolean) => listeners.push({ fn, capture }) } as unknown as Window
+  it('recognises a Maps loader rejection by its stack or message, and nothing else', () => {
+    const fromMaps = new Error('Could not load the Maps script')
+    fromMaps.stack = 'Error: x at https://maps.googleapis.com/maps/api/js:1:1'
+    expect(isMapsRejection(fromMaps)).toBe(true)
+    expect(isMapsRejection('Failed to load https://maps.gstatic.com/x.js')).toBe(true)
+    expect(isMapsRejection(new Error('our own bug'))).toBe(false)
+    expect(isMapsRejection(undefined)).toBe(false)
+  })
+
+  it('swallows Maps errors and rejections before other listeners, lets every other one through, and installs only once', () => {
+    const listeners: Array<{ type: string; fn: (e: never) => void; capture: boolean }> = []
+    const fake = { addEventListener: (type: string, fn: (e: never) => void, capture: boolean) => listeners.push({ type, fn, capture }) } as unknown as Window
     installMapsErrorFilter(fake)
     installMapsErrorFilter(fake)
-    expect(listeners).toHaveLength(1)
-    expect(listeners[0]!.capture).toBe(true)
-    const ev = (filename: string) => ({ filename, stopImmediatePropagation: vi.fn(), preventDefault: vi.fn() }) as unknown as ErrorEvent
-    const maps = ev('https://maps.googleapis.com/x.js')
-    listeners[0]!.fn(maps)
+    expect(listeners.map((l) => l.type)).toEqual(['error', 'unhandledrejection'])
+    expect(listeners.every((l) => l.capture)).toBe(true)
+    const [onError, onRejection] = [listeners[0]!.fn, listeners[1]!.fn] as Array<(e: unknown) => void>
+    const ev = (extra: object) => ({ ...extra, stopImmediatePropagation: vi.fn(), preventDefault: vi.fn() })
+    const maps = ev({ filename: 'https://maps.googleapis.com/x.js' })
+    onError!(maps)
     expect(maps.stopImmediatePropagation).toHaveBeenCalled()
-    const ours = ev('https://ocarindia.com/app.js')
-    listeners[0]!.fn(ours)
+    const ours = ev({ filename: 'https://ocarindia.com/app.js' })
+    onError!(ours)
     expect(ours.stopImmediatePropagation).not.toHaveBeenCalled()
+    const mapsRejection = ev({ reason: 'Failed to load https://maps.googleapis.com/maps/api/js' })
+    onRejection!(mapsRejection)
+    expect(mapsRejection.stopImmediatePropagation).toHaveBeenCalled()
+    const oursRejection = ev({ reason: new Error('our own bug') })
+    onRejection!(oursRejection)
+    expect(oursRejection.stopImmediatePropagation).not.toHaveBeenCalled()
   })
 })

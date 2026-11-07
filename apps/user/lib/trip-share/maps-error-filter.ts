@@ -6,6 +6,12 @@
 
 export const isMapsScriptError = (filename: string | undefined): boolean => !!filename && /(maps\.googleapis\.com|maps\.gstatic\.com)/.test(filename)
 
+/** A rejected promise carries no filename; Google's script shows up in the error's stack or message instead. */
+export const isMapsRejection = (reason: unknown): boolean => {
+  const text = reason instanceof Error ? `${reason.stack ?? ''} ${reason.message}` : typeof reason === 'string' ? reason : ''
+  return /(maps\.googleapis\.com|maps\.gstatic\.com)/.test(text)
+}
+
 const FLAG = '__ocarMapsErrorFilter'
 
 export function installMapsErrorFilter(target: Window = window): void {
@@ -16,6 +22,16 @@ export function installMapsErrorFilter(target: Window = window): void {
     'error',
     (e: ErrorEvent) => {
       if (isMapsScriptError(e.filename)) {
+        e.stopImmediatePropagation()
+        e.preventDefault()
+      }
+    },
+    true,
+  )
+  target.addEventListener(
+    'unhandledrejection',
+    (e: PromiseRejectionEvent) => {
+      if (isMapsRejection(e.reason)) {
         e.stopImmediatePropagation()
         e.preventDefault()
       }

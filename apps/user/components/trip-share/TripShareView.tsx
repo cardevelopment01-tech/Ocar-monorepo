@@ -60,7 +60,7 @@ function LanguageSwitcher({ lang, onChange }: { lang: Lang; onChange: (l: Lang) 
           aria-current={l.code === lang ? 'true' : undefined}
           aria-label={l.label}
           lang={l.code}
-          className={`relative h-8 min-w-[40px] rounded-full px-2 text-[14px] leading-none transition-colors duration-200 before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-[''] ${l.code === lang ? 'bg-white font-semibold text-primary-dark shadow-ambient' : 'font-medium text-text-secondary'} ${FOCUS}`}
+          className={`relative h-8 min-w-[44px] rounded-full px-2 text-[14px] leading-none transition-colors duration-200 before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-[''] ${l.code === lang ? 'bg-white font-semibold text-primary-dark shadow-ambient' : 'font-medium text-text-secondary'} ${FOCUS}`}
         >
           {l.short}
         </button>
@@ -225,12 +225,13 @@ function LiveTrip({ trip, lang, receivedAtMs, offline, onLang }: { trip: PublicT
     return () => ro.disconnect()
   }, [])
 
-  const target = trip.phase === 'driver_on_way' ? trip.pickup : trip.drop ?? trip.pickup
-  const km = trip.driver ? haversineMetres([trip.driver.lat, trip.driver.lng], [target.lat, target.lng]) / 1000 : null
+  // A ride with no fixed drop (a rental) has no destination to measure to once it has started.
+  const target = trip.phase === 'driver_on_way' ? trip.pickup : trip.drop
+  const km = trip.driver && target ? haversineMetres([trip.driver.lat, trip.driver.lng], [target.lat, target.lng]) / 1000 : null
   const vehicle = vehicleLine(trip.vehicle)
   const pendingStops = trip.stops.filter((s) => s.status === 'pending')
-  // A cancelled trip has no car to look for: the plate and driver would only be noise.
-  const showCar = trip.phase !== 'cancelled'
+  // A cancelled trip, or one waiting for a new driver, has no car to look for: the old plate would send a relative after the wrong cab.
+  const showCar = trip.phase !== 'cancelled' && trip.phase !== 'finding_driver'
   const hasDriverRow = showCar && Boolean(vehicle || trip.driverFirstName)
 
   return (
@@ -285,9 +286,14 @@ function LiveTrip({ trip, lang, receivedAtMs, offline, onLang }: { trip: PublicT
   )
 }
 
+/** Keyed by the link, so going from one trip's link to another starts from a clean page instead of showing the first trip while the second loads. */
 export default function TripShareView() {
   const { token } = useParams<{ token: string }>()
-  const state = useTripPolling(token ?? '')
+  return <TripSharePage key={token} token={token ?? ''} />
+}
+
+function TripSharePage({ token }: { token: string }) {
+  const state = useTripPolling(token)
   const [lang, setLang] = useLang()
 
   return (

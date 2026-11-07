@@ -164,10 +164,22 @@ function Camera({ points, phaseKey, bottomPad }: { points: [number, number][]; p
   const pointsRef = useRef(points)
   pointsRef.current = points
 
+  // The viewer taking over: a drag, a wheel or double-click zoom, or a pinch (two fingers). A single tap does not count.
   useEffect(() => {
     if (!map) return
-    const l = map.addListener('dragstart', () => { moved.current = true })
-    return () => l.remove()
+    const take = () => { moved.current = true }
+    const l = map.addListener('dragstart', take)
+    const div = map.getDiv()
+    const touch = (e: TouchEvent) => { if (e.touches.length > 1) take() }
+    div.addEventListener('wheel', take, { passive: true })
+    div.addEventListener('dblclick', take)
+    div.addEventListener('touchstart', touch, { passive: true })
+    return () => {
+      l.remove()
+      div.removeEventListener('wheel', take)
+      div.removeEventListener('dblclick', take)
+      div.removeEventListener('touchstart', touch)
+    }
   }, [map])
 
   // Follow the trip in. A car at 40 km/h along a 12 km frame moves about a pixel a second and looks frozen, so each time the
@@ -179,11 +191,23 @@ function Camera({ points, phaseKey, bottomPad }: { points: [number, number][]; p
   useEffect(() => {
     const pts = pointsRef.current
     if (!map || !core || pts.length < 1 || moved.current) return
-    const key = `${phaseKey}:${Math.round(bottomPad / 40)}:${closeness}`
+    // One point only (a rental has no drop): keep the car in view, re-centring each time it has moved about 400 m.
+    const cell = pts.length === 1 ? `${Math.round(pts[0]![0] * 250)}:${Math.round(pts[0]![1] * 250)}` : ''
+    const key = `${phaseKey}:${Math.round(bottomPad / 40)}:${closeness}:${cell}`
     if (fitted.current === key) return
+    const first = fitted.current === ''
     fitted.current = key
     try {
-      if (pts.length === 1) { map.setCenter({ lat: pts[0]![0], lng: pts[0]![1] }); map.setZoom(16); return }
+      if (pts.length === 1) {
+        // Centre on the middle of the part of the map the sheet does not cover, not of the whole screen (the car would sit under
+        // the sheet's edge): move the centre south by half the difference between the bottom and top insets, in pixels at this zoom.
+        const zoom = first ? 16 : map.getZoom() ?? 16
+        const offsetPx = (bottomPad + 24 - 96) / 2
+        const dLat = (offsetPx * 156543.03 * Math.cos((pts[0]![0] * Math.PI) / 180)) / 2 ** zoom / 111320
+        const centre = { lat: pts[0]![0] - dLat, lng: pts[0]![1] }
+        if (first) { map.setZoom(zoom); map.setCenter(centre) } else map.panTo(centre)
+        return
+      }
       const bounds = new core.LatLngBounds()
       pts.forEach(([lat, lng]) => bounds.extend({ lat, lng }))
       map.fitBounds(bounds, { top: 96, right: 40, left: 40, bottom: bottomPad + 24 })
@@ -205,9 +229,9 @@ function TripMap({ trip, lang, bottomPad, label }: { trip: PublicTrip; lang: Lan
   if (status === APILoadingStatus.FAILED || status === APILoadingStatus.AUTH_FAILURE || authFailed) return <MapUnavailable lang={lang} />
 
   const live = trip.phase === 'driver_on_way' || trip.phase === 'in_trip'
-  const target = trip.phase === 'driver_on_way' ? trip.pickup : trip.drop ?? trip.pickup
+  const target = trip.phase === 'driver_on_way' ? trip.pickup : trip.drop
   const framed: [number, number][] = live
-    ? [...(trip.driver ? ([[trip.driver.lat, trip.driver.lng]] as [number, number][]) : []), [target.lat, target.lng]]
+    ? [...(trip.driver ? ([[trip.driver.lat, trip.driver.lng]] as [number, number][]) : []), ...(target ? ([[target.lat, target.lng]] as [number, number][]) : [])]
     : [[trip.pickup.lat, trip.pickup.lng], ...(trip.drop ? ([[trip.drop.lat, trip.drop.lng]] as [number, number][]) : [])]
 
   return (

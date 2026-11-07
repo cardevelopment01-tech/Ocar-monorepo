@@ -25,16 +25,18 @@ export function useTripPolling(token: string): TripState {
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
     let controller: AbortController | undefined
+    let ended = false // remembered across a failed poll: a finished trip must not drop back to the 5 s pace on one network blip
     startedAt.current = Date.now()
     failures.current = 0
 
     const poll = async () => {
       controller?.abort()
-      controller = new AbortController()
-      const res = await fetchPublicTrip(token, { signal: controller.signal })
-      if (cancelled) return
+      const mine = new AbortController()
+      controller = mine
+      const res = await fetchPublicTrip(token, { signal: mine.signal })
+      // A request we aborted ourselves (the tab came back, or a newer poll started) is not a network failure: ignore it.
+      if (cancelled || mine.signal.aborted) return
       if (res.kind === 'inactive') { setState({ status: 'inactive' }); return }
-      let ended = false
       if (res.kind === 'ok') {
         failures.current = 0
         ended = res.trip.phase === 'completed' || res.trip.phase === 'cancelled'
@@ -43,9 +45,9 @@ export function useTripPolling(token: string): TripState {
         failures.current += 1
         setState((s) => (s.status === 'live' || s.status === 'loading' ? { ...s, offline: true } : s))
       }
-      schedule(ended)
+      schedule()
     }
-    const schedule = (ended: boolean) => {
+    const schedule = () => {
       clearTimeout(timer)
       if (cancelled || document.hidden) return // resumes from onVisible
       timer = setTimeout(() => void poll(), nextDelayMs({ watchedMs: Date.now() - startedAt.current, failures: failures.current, ended }))
