@@ -90,11 +90,18 @@ export async function countTodayRetakes(driverId: bigint): Promise<{ selfie: num
   return { selfie: n('selfie'), plate: n('plate') }
 }
 
-// Selfie mismatches already recorded today (block mode gives a driver a few tries, then an admin decides).
+// Selfie mismatches recorded today that are still standing (block mode gives a driver a few tries, then an admin decides).
+// Fails before the latest admin "looks fine" or the latest closed re-check are history and do not count.
 export async function countTodayFailedSelfies(driverId: bigint): Promise<number> {
   const rows = await query<{ n: string }>(
     `SELECT count(*)::text AS n FROM driver_verification_attempts
-      WHERE driver_id = $1 AND verified_for = ${TODAY_IST_EXPR} AND decision = 'fail' AND kind::text LIKE '%selfie'`,
+      WHERE driver_id = $1 AND verified_for = ${TODAY_IST_EXPR} AND decision = 'fail' AND kind::text LIKE '%selfie'
+        AND created_at > COALESCE(GREATEST(
+              (SELECT max(COALESCE(waived_at, satisfied_at)) FROM verification_challenges
+                WHERE driver_id = $1 AND status IN ('satisfied', 'waived')),
+              (SELECT max(reviewed_at) FROM driver_verifications
+                WHERE driver_id = $1 AND review_state = 'confirmed_ok')
+            ), '-infinity'::timestamptz)`,
     [driverId]
   )
   return Number(rows[0]?.n ?? 0)
@@ -128,7 +135,7 @@ const REPLACE_FAILED = `DO UPDATE SET
        decision = EXCLUDED.decision, decision_reason = EXCLUDED.decision_reason,
        mode = EXCLUDED.mode, thresholds = EXCLUDED.thresholds,
        review_state = EXCLUDED.review_state, review_priority = EXCLUDED.review_priority,
-       reviewed_by = NULL, reviewed_at = NULL
+       reviewed_by = NULL, reviewed_at = NULL, created_at = now()
      WHERE driver_verifications.status = 'failed'`
 
 export type AttemptKinds = { selfie: 'daily_selfie' | 'spot_selfie'; plate: 'daily_plate' | 'spot_plate' }
@@ -251,11 +258,17 @@ export async function redrawRidesTarget(driverId: bigint, target: number): Promi
   )
 }
 
-// Newest accepted selfie check of any kind: the point rides are counted from.
+// The point rides are counted from: the newest accepted selfie check, or the moment a re-check was closed (done or
+// waived), whichever is later. A waived or fail-open re-check writes no selfie row, so without the second term the
+// count would never reset and the driver would be sent offline again after every ride.
 export async function lastVerifiedAt(driverId: bigint): Promise<string | null> {
   const rows = await query<{ at: string | null }>(
-    `SELECT max(created_at)::text AS at FROM driver_verifications
-      WHERE driver_id = $1 AND kind IN ('daily_selfie', 'spot_selfie') AND status IN ('passed', 'auto_passed')`,
+    `SELECT GREATEST(
+              (SELECT max(created_at) FROM driver_verifications
+                WHERE driver_id = $1 AND kind IN ('daily_selfie', 'spot_selfie') AND status IN ('passed', 'auto_passed')),
+              (SELECT max(COALESCE(waived_at, satisfied_at)) FROM verification_challenges
+                WHERE driver_id = $1 AND status IN ('satisfied', 'waived'))
+            )::text AS at`,
     [driverId]
   )
   return rows[0]?.at ?? null

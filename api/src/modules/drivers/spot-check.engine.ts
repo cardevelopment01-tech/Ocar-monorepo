@@ -54,7 +54,9 @@ const drawTarget = (cfg: SpotCheckConfig) => randomInt(cfg.ridesMin, cfg.ridesMa
 /** Returns the new challenge id when the driver must re-verify, else null. Safe to call for any completed ride. */
 export async function maybeOpenSpotCheck(driverId: bigint, rideId: bigint): Promise<string | null> {
   const ctx = await getVerificationContext(driverId)
-  if ((await resolveMode(ctx.modeOverride)) === 'off') return null
+  // Shadow is invisible to drivers by design, so it never takes anyone offline.
+  const mode = await resolveMode(ctx.modeOverride)
+  if (mode !== 'flag' && mode !== 'block') return null
   if ((await getConfigValue('spot_check_enabled', 'false')) !== 'true') return null
   if (await repo.getOpenChallenge(driverId)) return null
   // Never take a driver offline with another passenger already accepted or on the way.

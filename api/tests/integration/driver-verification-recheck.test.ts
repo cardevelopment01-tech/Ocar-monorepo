@@ -354,6 +354,38 @@ describe('security review fixes', () => {
   })
 })
 
+describe('code review fixes', () => {
+  it('a waived re-check resets the ride count, so the very next ride does not re-challenge', async () => {
+    await setConfig('verification_mode', 'flag')
+    await resetChallenges()
+    await pool.query(`INSERT INTO driver_spot_check_state (driver_id, rides_target) VALUES ($1, 2)`, [driverId])
+    await addRide(); await addRide()
+    const id = await maybeOpenSpotCheck(BigInt(driverId), BigInt(await addRide()))
+    expect(id).not.toBeNull()
+    await request(app).post(`/api/v1/admin/verifications/challenges/${id}/waive`).set('Authorization', `Bearer ${adminToken}`)
+    expect(await maybeOpenSpotCheck(BigInt(driverId), BigInt(await addRide()))).toBeNull()
+  })
+
+  it('shadow mode never opens a re-check, even with the switch on', async () => {
+    await resetChallenges()
+    await pool.query(`INSERT INTO driver_spot_check_state (driver_id, rides_target) VALUES ($1, 1)`, [driverId])
+    await setConfig('verification_mode', 'shadow')
+    expect(await maybeOpenSpotCheck(BigInt(driverId), BigInt(await addRide({ km: 300 })))).toBeNull()
+    await setConfig('verification_mode', 'flag')
+  })
+
+  it('an admin "looks fine" on an unrelated old selfie leaves an open re-check alone', async () => {
+    await resetChallenges()
+    await pool.query(`DELETE FROM driver_verifications WHERE driver_id = $1`, [driverId])
+    scoreAs(80) // borderline: stored as an accepted, queued daily selfie
+    expect((await submit()).status).toBe(201)
+    const queued = (await pool.query(`SELECT id::text FROM driver_verifications WHERE driver_id = $1 AND kind = 'daily_selfie' AND review_state = 'queued'`, [driverId])).rows[0].id
+    const open = await openChallengeRow()
+    await request(app).post(`/api/v1/admin/verifications/${queued}/resolve`).set('Authorization', `Bearer ${adminToken}`).send({ outcome: 'ok' })
+    expect(await challengeStatus(open)).toBe('open')
+  })
+})
+
 describe('consent', () => {
   it('flag mode asks once; agreeing is recorded with the app version and never moves', async () => {
     await pool.query(`UPDATE drivers SET verification_consent_at = NULL, verification_consent_app_version = NULL WHERE id = $1`, [driverId])

@@ -31,7 +31,8 @@ export async function getStatus(driverId: bigint): Promise<VerificationStatus> {
   const mode = await resolveMode(ctx.modeOverride)
   if (mode === 'off') return out
   const [challenge, consentAt] = await Promise.all([repo.getOpenChallenge(driverId), repo.getConsentAt(driverId)])
-  if (challenge) { out.complete = false; out.reverify = true }
+  // Shadow never shows drivers anything, so an open re-check only counts in flag and block.
+  if (challenge && mode !== 'shadow') { out.complete = false; out.reverify = true }
   // Shadow is invisible to drivers by design, so only flag and block ask for consent.
   if (!consentAt && mode !== 'shadow') out.consentRequired = true
   return out
@@ -41,7 +42,8 @@ export async function getStatus(driverId: bigint): Promise<VerificationStatus> {
 // the feature off can never leave a driver stuck behind a challenge.
 export async function getBlockingChallenge(driverId: bigint): Promise<repo.OpenChallenge | null> {
   const ctx = await repo.getVerificationContext(driverId)
-  if ((await resolveMode(ctx.modeOverride)) === 'off') return null
+  const mode = await resolveMode(ctx.modeOverride)
+  if (mode !== 'flag' && mode !== 'block') return null
   return repo.getOpenChallenge(driverId)
 }
 
@@ -248,19 +250,22 @@ export async function submit(
     log.warn({ err, driverId: String(driverId) }, 'verification mode lookup failed, storing without a score')
   }
   const retakeMax = Math.max(1, Math.trunc(num(await getConfigValue('verification_retake_max', '3'), 3)))
-  const challenge = mode === 'off' ? null : await repo.getOpenChallenge(driverId)
+  const challenge = mode === 'flag' || mode === 'block' ? await repo.getOpenChallenge(driverId) : null
   const failsBefore = mode === 'block' ? await repo.countTodayFailedSelfies(driverId) : 0
   if (mode === 'block' && failsBefore >= retakeMax) {
     throw httpError(422, 'An admin will review your check.', 'VERIFICATION_UNDER_REVIEW')
   }
 
+  // Today's accepted rows, read once: used to skip a pointless resubmit and to recognise a plate-only redo.
+  const todayStatus = mode !== 'off' ? await repo.getTodayStatus(driverId) : null
+
   // Nothing to do when today's check is already accepted and no re-check is open: no upload, no Rekognition call, no
   // new attempt rows. Otherwise a finished driver could resubmit forever (cost) and read the result (a match oracle).
   // A day's row an admin marked failed is not "done", so a redo still goes through.
-  if (mode !== 'off' && !challenge) {
-    const today = await repo.getTodayStatus(driverId)
-    if (today.selfieDone && today.plateDone) return { complete: true, outcome: 'ok' }
-  }
+  if (todayStatus && !challenge && todayStatus.selfieDone && todayStatus.plateDone) return { complete: true, outcome: 'ok' }
+  // An admin failed only the plate: the stored selfie row stays (the upsert only replaces failed rows), so the new
+  // selfie must not be enforced or the API and the stored day would disagree.
+  const plateOnlyRedo = !!todayStatus && !challenge && todayStatus.selfieDone && !todayStatus.plateDone
 
   const folder = `drivers/${driverId}/daily-verification`
   const [selfieUrl, plateUrl] = await Promise.all([
@@ -317,7 +322,7 @@ export async function submit(
     plate: rowOutcome('plate', scoring.mode, scoring.plate.decision),
   }
   // Only a selfie that did not match in block mode keeps the re-check open; everything else closes it.
-  const selfieBlocked = outcome.selfie.status === 'failed'
+  const selfieBlocked = outcome.selfie.status === 'failed' && !plateOnlyRedo
   if (spotPath && challenge) {
     await repo.insertSpotVerification({
       driverId, vehicleId, challengeId: challenge.id, selfieUrl, plateUrl, scoring, outcome, satisfy: !selfieBlocked,

@@ -59,6 +59,7 @@ export default function DailyVerificationScreen() {
   // "Quick safety check" mode (offline after a few rides / a long ride) and the one-time consent card.
   const [reverify, setReverify] = useState(false)
   const [needsConsent, setNeedsConsent] = useState(false)
+  const [statusLoaded, setStatusLoaded] = useState(false)
   const [consentBusy, setConsentBusy] = useState(false)
   const [retakeNotes, setRetakeNotes] = useState<Partial<Record<Step, string>>>({})
   const [retakeOnly, setRetakeOnly] = useState<Step | null>(null)
@@ -69,6 +70,7 @@ export default function DailyVerificationScreen() {
     fetchVerificationStatus()
       .then((s) => { setReverify(!!s.reverify); setNeedsConsent(!!s.consentRequired) })
       .catch(() => {})
+      .finally(() => setStatusLoaded(true))
   }, [])
 
   async function agree() {
@@ -108,6 +110,7 @@ export default function DailyVerificationScreen() {
       if (step === 'selfie') setSelfie(photo)
       else setPlate(photo)
       setRetakeNotes((n) => { const next = { ...n }; delete next[step]; return next })
+      setBlocked(null)
       setStage('preview')
     } finally {
       setCapturing(false)
@@ -115,6 +118,7 @@ export default function DailyVerificationScreen() {
   }
 
   function retake() {
+    setBlocked(null)
     if (step === 'selfie') setSelfie(null)
     else setPlate(null)
     void openCamera()
@@ -152,6 +156,7 @@ export default function DailyVerificationScreen() {
       }
       if (failure?.kind === 'failed') {
         // Neutral wording, tries left, and a way to reach support. Never why it failed.
+        setRetakeNotes({})
         setBlocked({ attemptsLeft: failure.attemptsLeft, underReview: failure.attemptsLeft === 0 })
         setSelfie(null)
         setRetakeOnly('selfie')
@@ -215,6 +220,15 @@ export default function DailyVerificationScreen() {
           </Pressable>
           <Text style={styles.shutterHint}>Tap to capture</Text>
         </View>
+      </View>
+    )
+  }
+
+  // Until the status is known we cannot tell whether the consent card is due, so no camera yet.
+  if (!statusLoaded) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator color={colors.primary} size="large" />
       </View>
     )
   }

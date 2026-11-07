@@ -160,9 +160,10 @@ export async function resolve(params: {
         [row.challenge_id]
       )
     }
-    // Clearing a driver's selfie also clears any re-check still open for them. A daily row carries no challenge id, so
-    // without this an admin could restore the row and the driver would still be refused at go-online.
-    if (ok && row.kind.endsWith('selfie')) {
+    // Restoring a daily selfie that was failed also clears a re-check left open behind it. A daily row carries no challenge
+    // id, so without this the driver would still be refused at go-online. Any other "looks fine" (an old queued row, a
+    // borderline one) must not close a re-check it has nothing to do with.
+    if (ok && row.kind === 'daily_selfie' && row.status === 'failed') {
       await client.query(
         `UPDATE verification_challenges SET status = 'satisfied', satisfied_at = now() WHERE driver_id = $1 AND status = 'open'`,
         [row.driver_id]

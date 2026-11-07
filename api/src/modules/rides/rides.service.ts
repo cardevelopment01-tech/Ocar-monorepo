@@ -318,7 +318,13 @@ export async function runSpotCheckAfterCompletion(driverId: bigint, rideId: bigi
   try {
     const challengeId = await maybeOpenSpotCheck(driverId, rideId)
     if (!challengeId) return
-    await goOffline(driverId, 'spot_check')
+    // The challenge is already stored, so the offline step is retried once and the push never depends on it: a driver left
+    // online with an open challenge would not be asked again until the next go-online.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try { await goOffline(driverId, 'spot_check'); break } catch (err) {
+        log.error({ err, driverId: driverId.toString(), attempt }, 'spot-check goOffline failed')
+      }
+    }
     let title = 'Quick safety check'
     let body = 'Quick safety check to keep going. Take a selfie and a photo of your number plate to go online.'
     try {
