@@ -168,6 +168,29 @@ When table A needs FK to table B which doesn't exist yet:
 - In B's migration, add `ALTER TABLE A ADD CONSTRAINT ... FOREIGN KEY ...`
 Example: `fare_snapshots.ride_id` FK was added in 007 after `rides` was created.
 
+### Live trip sharing (`api/src/modules/ride-shares`)
+A rider shares a link (`<USER_APP_URL>/t/<token>`) that anyone can open without an app or login. Switch: `system_config.trip_share_enabled`
+(default `false`). Rules that must not drift:
+- **Hash-only tokens.** 128-bit random, only the SHA-256 is stored (`ride_shares.token_hash`), like refresh tokens. The server cannot show a link
+  again; the rider app keeps each created URL on the device.
+- **The public response is an allow-list.** `GET /api/v1/public/trips/:token` is built by `toPublicTrip()` from the narrow `getPublicTripRow()` query,
+  never from the full ride row; a test pins the exact key set. Never add fare, phone, OTP or payment data to it.
+- **The token lookup is never cached** (a revoke must work on the next poll); only the per-ride trip (2 s) and ETA (60 s, ride-keyed) are cached.
+- **Unknown, revoked and malformed tokens are one 404**; a link past ride end + 30 min or 7 days after creation is 410. Only unknown/malformed
+  tokens (404) use the strict per-IP limiter (20/min), never an expired or stopped link; valid links are capped per token (180/min). The
+  `no-store`/`noindex` headers are set by a middleware before the limiters, so a 429 is never cached.
+- **The request log and the trace redact the token** (`redactShareToken` in `observability/http-log.ts`; `httpInstrumentationConfig` in
+  `observability/tracing.ts` rewrites the http span attributes); keep the token out of every log, span attribute, metric label and Redis key. ALB
+  access logs, if ever enabled, record the raw path: exclude or redact `/api/v1/public/trips/` there.
+- **Account deletion keeps the users row**, so `ride_shares` cascades never fire: `deleteAccount` deletes the user's shares explicitly, and
+  `purge_ride_shares` (daily) is the backstop.
+- **SOS** links never count toward a rider's per-ride or hourly caps, and one is created only when `sos_contact_live` can render (it ships inactive)
+  and none was made for that ride in the last 10 minutes. The public page shows the ride's own vehicle (`rides.vehicle_id`). SOS texts carry a live link (`sos_contact_live`) only when a share could be created; otherwise the old static-pin `sos_contact` SMS goes out
+  unchanged (pinned by `tests/unit/notifications/sos-contacts-worker.test.ts`). The new SMS wordings (`trip_share`, `sos_contact_live`) ship
+  INACTIVE until their DLT templates are approved; activate them in admin then. The wording is fixed DLT text with the domain and `/t/` in it
+  and only the rider's first name and the link's token as variables (`share-sms.ts`); `docs/DLT_TEMPLATES_TRIP_SHARE.md` is the text to register, and a test
+  fails if the migration drifts from it.
+
 ### S3 document storage
 - `uploadFile(file, folder)` — uploads to S3, returns public URL in prod / MinIO URL in dev
 - `getPresignedUrl(fileUrl, expiresIn=3600)` — pass-through in dev (bucket is public), signed URL in prod
@@ -274,6 +297,8 @@ Server initialised in `api/src/websocket/socket.server.ts`.
                                           bumps version), PATCH /:id/active (toggle)
 /api/v1/rides/:id/messages             — POST (send, rate-limited), GET (list), PATCH /read
                                           (mark read) — in-ride chat between rider and driver
+/api/v1/rides/:id/shares                — POST (create a live trip link; optional contactIds), GET (list), DELETE (stop all); DELETE /:id/shares/:shareId stops one
+/api/v1/public/trips/:token            — GET, no auth: the share link's data (allow-listed, rate-limited, no-store)
 /api/v1/rides/:id/stops                — POST (rider adds a stop; allowed accepted→returning, i.e. also on a
                                           round trip's return leg, until the driver reaches the drop)
 /api/v1/rides/:id/stops/:seq/skip      — POST, rider only: the only user action that skips a stop (the driver's

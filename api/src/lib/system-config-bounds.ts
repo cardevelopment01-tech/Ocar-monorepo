@@ -45,6 +45,8 @@ const ALLOWED_VALUES: Record<string, readonly string[]> = {
   // 'false' lifts the cash-discount driver-version guard (internal testing); anything else must be refused, not read as on.
   offers_cash_guard_enforced: ['true', 'false'],
   offers_cashback_enabled: ['true', 'false'],
+  // Read as on only when exactly 'true': a typo must be refused, not left looking like an enabled kill switch.
+  trip_share_enabled: ['true', 'false'],
 }
 
 // Version rows (app_update_<app>_<platform>_min|recommended): the policy compares major.minor.patch,

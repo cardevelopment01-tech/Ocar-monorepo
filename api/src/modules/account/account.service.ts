@@ -48,6 +48,8 @@ export async function deleteAccount(role: AccountRole, id: bigint, ip: string | 
         [id.toString()],
       )
       await client.query('DELETE FROM saved_places WHERE user_id = $1', [id.toString()])
+      // The users row stays, so a foreign-key cascade never fires: live trip links (and any contact phone numbers kept with them) go now.
+      await client.query('DELETE FROM ride_shares WHERE user_id = $1', [id.toString()])
     } else {
       await client.query(
         `UPDATE drivers SET status = 'deleted', phone = 'deleted:' || id, full_name = NULL, email = NULL, gender = NULL,
