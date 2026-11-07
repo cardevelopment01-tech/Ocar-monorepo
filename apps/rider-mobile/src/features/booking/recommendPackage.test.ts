@@ -41,10 +41,26 @@ describe('recommendPackage', () => {
     expect(r).toEqual({ packageId: 4, exceeds: true, overKm: 8, overMin: 35 })
   })
 
-  it('does not charge inside the grace window', () => {
-    const r = recommendPackage(PACKAGES, 61, 362)
-    expect(r?.exceeds).toBe(true)
-    expect(r?.overKm).toBe(0)
-    expect(r?.overMin).toBe(0)
+  it('a route inside the grace still fits the largest package, so nothing is flagged as over', () => {
+    expect(recommendPackage(PACKAGES, 61, 362)).toEqual({ packageId: 4, exceeds: false, overKm: 0, overMin: 0 })
+  })
+
+  it('flags overage only once the route is past the largest package AND its grace', () => {
+    expect(recommendPackage(PACKAGES, 62.1, 300)).toEqual({ packageId: 4, exceeds: true, overKm: 1, overMin: 0 })
+    expect(recommendPackage(PACKAGES, 40, 366)).toEqual({ packageId: 4, exceeds: true, overKm: 0, overMin: 1 })
+  })
+
+  it('treats a route a little past a limit as fitting it, because the server bills only beyond limit + grace', () => {
+    const small = [pkg(10, 60, 5, 100), pkg(11, 120, 10, 180)]
+    expect(recommendPackage(small, 5.7, 30)?.packageId).toBe(10) // 5.7 km is "the same as 5 km": no extra charge
+    expect(recommendPackage(small, 7, 30)?.packageId).toBe(10) // exactly limit + 2 km
+    expect(recommendPackage(small, 7.1, 30)?.packageId).toBe(11) // past the grace: the bigger package
+  })
+
+  it('applies the same grace to time', () => {
+    const small = [pkg(10, 60, 40, 100), pkg(11, 120, 40, 180)]
+    expect(recommendPackage(small, 10, 64)?.packageId).toBe(10)
+    expect(recommendPackage(small, 10, 65)?.packageId).toBe(10) // limit + 5 min
+    expect(recommendPackage(small, 10, 66)?.packageId).toBe(11)
   })
 })

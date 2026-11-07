@@ -98,6 +98,20 @@ function PackageTierScroller({
     setCanScrollRight(el.scrollWidth - el.scrollLeft - el.clientWidth > 4)
   }, [])
 
+  // Bring the selected package (the best fit, unless the rider chose another) to the middle of the visible window.
+  const hasCentred = useRef(false)
+  useEffect(() => {
+    const el = scrollRef.current
+    const chip = el?.querySelector<HTMLElement>(`[data-pkg-id="${selectedPkgId}"]`)
+    if (!el || !chip) return
+    const e = el.getBoundingClientRect()
+    const c = chip.getBoundingClientRect()
+    const left = el.scrollLeft + (c.left - e.left) - (el.clientWidth - c.width) / 2
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollTo({ left: Math.max(0, left), behavior: hasCentred.current && !calm ? 'smooth' : 'auto' })
+    hasCentred.current = true
+  }, [selectedPkgId, pkgs])
+
   useEffect(() => {
     updateScrollState()
     const el = scrollRef.current
@@ -121,6 +135,7 @@ function PackageTierScroller({
           return (
             <button
               key={pkg.id}
+              data-pkg-id={pkg.id}
               onClick={() => onSelect(pkg.id)}
               className={cn(
                 'relative flex-shrink-0 px-3.5 py-2 rounded-xl text-center transition-all',

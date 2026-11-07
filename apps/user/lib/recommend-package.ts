@@ -7,15 +7,16 @@ const GRACE_MIN = 5
 
 export type PackageRecommendation = {
   packageId: number
-  /** True when even the largest package can't cover the trip — overage will apply. */
+  /** True when even the largest package, with its grace, can't cover the trip — overage will apply. */
   exceeds: boolean
   overKm: number
   overMin: number
 }
 
 /**
- * Smallest (cheapest) package covering both the route distance and drive time.
- * If none fits, the largest package + how far over it the trip runs.
+ * Cheapest package that fits both the route distance and drive time. A package FITS when the route is within its limit PLUS the
+ * grace the server does not bill (limit + 2 km, + 5 min): a 5.7 km route on a 5 km package costs nothing extra, so it beats the
+ * dearer 10 km one. If none fits, the largest package + how far over it the trip runs.
  * The route is a floor, not a ceiling: the rider can go anywhere within the package.
  */
 export function recommendPackage(
@@ -25,7 +26,7 @@ export function recommendPackage(
 ): PackageRecommendation | null {
   if (packages.length === 0) return null
   const fits = packages
-    .filter(p => Number(p.km_limit) >= distanceKm && p.duration_minutes >= durationMin)
+    .filter(p => distanceKm <= Number(p.km_limit) + GRACE_KM && durationMin <= p.duration_minutes + GRACE_MIN)
     .sort((a, b) => Number(a.package_fare) - Number(b.package_fare))[0]
   if (fits) return { packageId: fits.id, exceeds: false, overKm: 0, overMin: 0 }
 
