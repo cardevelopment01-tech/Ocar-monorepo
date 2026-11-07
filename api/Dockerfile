@@ -6,6 +6,9 @@ RUN npm install -g pnpm@9
 FROM base AS deps
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+# package.json's pnpm.patchedDependencies points into patches/ (react-native-maps for the rider app); pnpm reads the patch files during
+# install even for this API-only image, and fails with ENOENT if the folder is missing.
+COPY patches/ ./patches/
 COPY api/package.json ./api/
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --filter @ocar/api
@@ -28,6 +31,9 @@ RUN cp -r src/db/certs dist/db/certs
 FROM base AS prod-deps
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+# package.json's pnpm.patchedDependencies points into patches/ (react-native-maps for the rider app); pnpm reads the patch files during
+# install even for this API-only image, and fails with ENOENT if the folder is missing.
+COPY patches/ ./patches/
 COPY api/package.json ./api/
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --filter @ocar/api
