@@ -39,7 +39,8 @@ describe('createOverlay', () => {
     const native = fakeNative()
     createOverlay(native).setAlert(true)
     expect(native.setAlert).toHaveBeenCalledWith(true)
-    const { setAlert: _omit, ...older } = fakeNative()
+    const older = fakeNative()
+    delete older.setAlert // a binary built before the red-dot change has no such function
     expect(() => createOverlay(older).setAlert(true)).not.toThrow()
     expect(() => createOverlay(null).setAlert(false)).not.toThrow()
   })
