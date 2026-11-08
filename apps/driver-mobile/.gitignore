@@ -14,3 +14,6 @@ ios/
 *.orig.*
 web-build/
 expo-env.d.ts
+
+# The local overlay module keeps its Kotlin source in modules/ocar-overlay/android (the app android/ folder above is generated).
+!/modules/ocar-overlay/android/

@@ -27,7 +27,7 @@
                                                      "FOREGROUND_SERVICE_LOCATION",
                                                      "POST_NOTIFICATIONS"
                                                  ],
-                                 "blockedPermissions":  ["android.permission.SYSTEM_ALERT_WINDOW", "android.permission.RECORD_AUDIO"],
+                                 "blockedPermissions":  ["android.permission.RECORD_AUDIO"],
                                  "allowBackup":  false,
                                  "config":  {
                                                 "googleMaps":  {
