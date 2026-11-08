@@ -12,6 +12,8 @@ import type { VehicleInfo } from './types'
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
+// Lets Android finish closing the battery dialog before the overlay-permission dialog opens (it shows one alert at a time).
+const PROMPT_GAP_MS = 500
 
 // getCurrentOrLastKnownPosition (mobile-shared) is already timeout-capped and
 // falls back to a cached last-known fix on its own -- this only needs to
@@ -79,8 +81,8 @@ export function useConfirmGoOnline(
       connectSocket()
       router.dismissTo('/(tabs)/home')
       // One alert at a time: the battery prompt first, then (once) the floating-icon permission prompt.
-      // The short pause lets Android finish closing the first dialog before the second opens. A prompt that fails never blocks going online.
-      void promptBatteryOptimizationOnce().then(() => new Promise((r) => setTimeout(r, 500))).then(() => promptOverlayPermissionOnce()).catch(() => {})
+      // A prompt that fails never blocks going online.
+      void promptBatteryOptimizationOnce().then(() => new Promise((r) => setTimeout(r, PROMPT_GAP_MS))).then(() => promptOverlayPermissionOnce()).catch(() => {})
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to go online. Please try again.'))
     } finally {

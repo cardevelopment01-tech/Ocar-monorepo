@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { shouldShowIcon, shouldAutoOpen, speedKmhFromMps, AUTO_OPEN_MAX_SPEED_KMH, SPEED_MAX_AGE_MS, type AutoOpenInputs } from './policy'
+import { shouldShowIcon, shouldAutoOpen, speedKmhFromMps, onPendingChange, AUTO_OPEN_MAX_SPEED_KMH, SPEED_MAX_AGE_MS, type AutoOpenInputs } from './policy'
+
+describe('onPendingChange', () => {
+  it('announces a new request that arrives while Ocar is in the background', () => {
+    expect(onPendingChange(null, 'r1', 'background')).toEqual({ last: 'r1', clearAlert: false, notify: true })
+  })
+  it('does not announce the same ride twice', () => {
+    expect(onPendingChange('r1', 'r1', 'background')).toEqual({ last: 'r1', clearAlert: false, notify: false })
+  })
+  it('remembers but does not announce a request while Ocar is in front (the in-app card shows it)', () => {
+    expect(onPendingChange(null, 'r1', 'active')).toEqual({ last: 'r1', clearAlert: false, notify: false })
+  })
+  it('clears the dot and forgets the ride when nothing is pending, so the same ride offered again counts as new', () => {
+    const cleared = onPendingChange('r1', null, 'background')
+    expect(cleared).toEqual({ last: null, clearAlert: true, notify: false })
+    expect(onPendingChange(cleared.last, 'r1', 'background').notify).toBe(true)
+  })
+})
 
 const base: AutoOpenInputs = {
   iconEnabled: true, hasPermission: true, isOnline: true, appState: 'background',

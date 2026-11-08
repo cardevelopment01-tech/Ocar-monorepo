@@ -51,3 +51,23 @@ export function speedKmhFromMps(mps: number | null | undefined): number | null {
   if (mps === null || mps === undefined || !Number.isFinite(mps) || mps < 0) return null
   return mps * 3.6
 }
+
+export interface RequestChange {
+  /** The ride id to remember for the next change (null once nothing is pending). */
+  last: string | null
+  /** No request is waiting any more: clear the icon's dot. */
+  clearAlert: boolean
+  /** A new request arrived while Ocar is not in front: show the dot and pulse, and consider opening Ocar. */
+  notify: boolean
+}
+
+/**
+ * Decides what a change in the pending ride request means for the icon. `last` must go back to null when the request clears, so
+ * the same ride offered again to this driver (a later broadcast round) counts as new; a request that arrives while Ocar is in
+ * front is already shown by the in-app card, so it is remembered but not announced.
+ */
+export function onPendingChange(last: string | null, next: string | null, appState: AppStateName): RequestChange {
+  if (next === null) return { last: null, clearAlert: true, notify: false }
+  if (next === last) return { last, clearAlert: false, notify: false }
+  return { last: next, clearAlert: false, notify: appState !== 'active' }
+}

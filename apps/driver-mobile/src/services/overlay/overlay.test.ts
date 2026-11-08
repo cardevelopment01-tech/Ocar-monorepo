@@ -53,7 +53,8 @@ describe('createOverlay', () => {
 
   it('a native error becomes a safe fallback, never an exception into the app', () => {
     const boom = () => { throw new Error('native failure') }
-    const o = createOverlay(fakeNative({ hasPermission: boom, showIcon: boom, hideIcon: boom, bringToFront: boom, isIconShowing: boom, pulseIcon: boom, openPermissionSettings: boom }))
+    const o = createOverlay(fakeNative({ hasPermission: boom, showIcon: boom, hideIcon: boom, bringToFront: boom, isIconShowing: boom, pulseIcon: boom, setAlert: boom, openPermissionSettings: boom }))
+    expect(() => o.setAlert(true)).not.toThrow()
     expect(o.hasPermission()).toBe(false)
     expect(o.showIcon()).toBe(false)
     expect(o.bringToFront()).toBe(false)

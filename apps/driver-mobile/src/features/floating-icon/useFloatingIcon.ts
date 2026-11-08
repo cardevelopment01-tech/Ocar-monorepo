@@ -6,7 +6,7 @@ import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
-import { shouldShowIcon, shouldAutoOpen, speedKmhFromMps, type AppStateName } from './policy'
+import { shouldShowIcon, shouldAutoOpen, speedKmhFromMps, onPendingChange, type AppStateName } from './policy'
 
 // Mounted once at the root layout, next to useRideRequestListener. Android only; a build without the native module does nothing.
 //  - the floating icon shows while the driver is online and Ocar is not in front, and hides otherwise
@@ -52,6 +52,8 @@ export function useFloatingIcon(): void {
       // The dot has done its job when the driver is back in Ocar (the request card itself is showing), and it must not outlive the
       // icon's reason to exist (offline, signed out, switched off): otherwise the next appearance would wear a stale dot.
       if (appState === 'active' || !i.isOnline || !i.iconEnabled) overlay.setAlert(false)
+      // The driver left Ocar with a request still open (it arrived while Ocar was in front): the icon should say so too.
+      else if (useRideRequestStore.getState().pending) overlay.setAlert(true)
     }
     sync(AppState.currentState)
     const sub = AppState.addEventListener('change', sync)
@@ -66,12 +68,11 @@ export function useFloatingIcon(): void {
     if (!overlay.available) return
     let lastRideId: string | null = null
     return useRideRequestStore.subscribe((state) => {
-      const rideId = state.pending?.rideId ?? null
-      if (!rideId) overlay.setAlert(false) // answered, expired or taken: no request is waiting any more
-      if (!rideId || rideId === lastRideId) { lastRideId = rideId ?? lastRideId; return }
-      lastRideId = rideId
+      const change = onPendingChange(lastRideId, state.pending?.rideId ?? null, AppState.currentState)
+      lastRideId = change.last
+      if (change.clearAlert) overlay.setAlert(false) // answered, expired or taken: no request is waiting any more
+      if (!change.notify) return
       const appState = AppState.currentState
-      if (appState === 'active') return // the in-app card already owns it
       overlay.setAlert(true) // red dot and a steady pulse until the request is answered or the driver is back in Ocar
       overlay.pulseIcon() // a binary without setAlert still gets the single pulse
       const speed = lastKnownSpeed()

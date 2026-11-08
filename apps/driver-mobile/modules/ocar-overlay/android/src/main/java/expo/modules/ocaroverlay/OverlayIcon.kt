@@ -29,6 +29,9 @@ object OverlayIcon {
   private const val KEY_Y = "icon_y"
   private const val SIZE_DP = 52
   private const val MARGIN_DP = 4
+  // A request waits about 50 s. If the app side can never clear the alert (the screen was swiped away while the process lives on),
+  // the dot and pulse end by themselves a little after that instead of running forever.
+  private const val ALERT_TTL_MS = 60_000L
 
   private val main = Handler(Looper.getMainLooper())
   private var view: FrameLayout? = null
@@ -38,6 +41,7 @@ object OverlayIcon {
   // that is hidden and shown again, for example around an app-state change, comes back in the same state.
   private var alertOn = false
   private var alertAnimator: ValueAnimator? = null
+  private var alertTimeout: Runnable? = null
 
   fun hasPermission(context: Context): Boolean = Settings.canDrawOverlays(context)
 
@@ -63,6 +67,13 @@ object OverlayIcon {
   fun setAlert(on: Boolean) {
     main.post {
       alertOn = on
+      alertTimeout?.let { main.removeCallbacks(it) }
+      alertTimeout = null
+      if (on) {
+        val expire = Runnable { alertOn = false; alertTimeout = null; applyAlert() }
+        alertTimeout = expire
+        main.postDelayed(expire, ALERT_TTL_MS)
+      }
       applyAlert()
     }
   }
@@ -74,6 +85,7 @@ object OverlayIcon {
     v?.scaleX = 1f
     v?.scaleY = 1f
     badge?.visibility = if (alertOn && v != null) View.VISIBLE else View.GONE
+    v?.contentDescription = if (alertOn) "Return to Ocar, ride request waiting" else "Return to Ocar"
     if (!alertOn || v == null) return
     // Breathes inward: the window is exactly the icon's size, so growing past 1x would be clipped at its edge.
     alertAnimator = ValueAnimator.ofFloat(1f, 0.8f).apply {
@@ -118,7 +130,7 @@ object OverlayIcon {
     val icon = ImageView(app).apply {
       setImageDrawable(app.packageManager.getApplicationIcon(app.packageName))
       scaleType = ImageView.ScaleType.CENTER_CROP
-      contentDescription = "Return to Ocar"
+      importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO // the container below carries the label and the action
     }
     val circle = FrameLayout(app).apply {
       background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFFFFFFF.toInt()) }
@@ -144,6 +156,9 @@ object OverlayIcon {
     val container = FrameLayout(app).apply {
       addView(circle, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
       addView(dot, FrameLayout.LayoutParams(dp(app, 16), dp(app, 16), Gravity.TOP or Gravity.END))
+      contentDescription = "Return to Ocar"
+      // Real touches are handled by the drag listener below, which consumes them. This click is what TalkBack and switch access call.
+      setOnClickListener { bringToFront(app) }
     }
 
     val lp = WindowManager.LayoutParams(
@@ -155,7 +170,9 @@ object OverlayIcon {
     ).apply {
       gravity = Gravity.TOP or Gravity.START
       x = screenWidth(app) - size - dp(app, MARGIN_DP)
+      // The saved height is clamped to today's screen: after a rotation or a fold it could otherwise sit off-screen and be unreachable.
       y = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_Y, screenHeight(app) / 3)
+        .coerceIn(0, maxOf(0, screenHeight(app) - size))
     }
 
     attachDrag(app, wm, container, lp, size)
@@ -178,6 +195,8 @@ object OverlayIcon {
     val wm = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     alertAnimator?.cancel()
     alertAnimator = null
+    alertTimeout?.let { main.removeCallbacks(it) }
+    alertTimeout = null
     try { wm.removeView(v) } catch (_: Exception) {}
     view = null
     badge = null
