@@ -1,18 +1,63 @@
 name: CI
 
+# One CI run per change. A branch push without a PR gets no run (open a PR, or use "Run workflow"); the push triggers exist only for the
+# branches the Deploy workflow listens to (main, develop). `pull_request` has no base filter so a stacked PR (base = another branch) is checked too.
 on:
   push:
-    branches: ["**"]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
+
+# A new push to a PR cancels that PR's older run. Pushes to main/develop are never cancelled: the Deploy workflow starts from each of them.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Which areas a pull request touches, so an unrelated job is skipped (a skipped job counts as passing for a required check). Anything that is
+  # not a pull_request, any shared/root change, an empty or failed diff: everything runs. Hand-rolled git diff, no third-party action (see deploy.yml).
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      api: ${{ steps.diff.outputs.api }}
+      user: ${{ steps.diff.outputs.user }}
+      driver: ${{ steps.diff.outputs.driver }}
+      admin: ${{ steps.diff.outputs.admin }}
+      mobile: ${{ steps.diff.outputs.mobile }}
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -u
+          all() { for k in api user driver admin mobile code; do echo "$k=true" >> "$GITHUB_OUTPUT"; done; }
+          if [ "$EVENT" != "pull_request" ]; then all; exit 0; fi
+          FILES=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null) || { echo "diff failed, running everything"; all; exit 0; }
+          if [ -z "$FILES" ]; then echo "empty diff, running everything"; all; exit 0; fi
+          echo "$FILES"
+          has() { echo "$FILES" | grep -Eq "$1"; }
+          SHARED='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json|\.npmrc|\.nvmrc|patches/|packages/|\.github/workflows/ci\.yml|\.github/scripts/|eslint\.config|\.eslintrc)'
+          flag() { if has "$SHARED" || has "$2"; then echo "$1=true" >> "$GITHUB_OUTPUT"; echo "$1=true"; else echo "$1=false" >> "$GITHUB_OUTPUT"; echo "$1=false"; fi; }
+          flag api    '^api/'
+          flag user   '^apps/user/'
+          flag driver '^apps/driver/'
+          flag admin  '^apps/admin/'
+          flag mobile '^apps/(rider-mobile|driver-mobile)/'
+          # lint covers every workspace: needed whenever any code area changed (docs, infra and load-test changes skip it)
+          if has "$SHARED" || has '^(api|apps)/'; then echo "code=true" >> "$GITHUB_OUTPUT"; else echo "code=false" >> "$GITHUB_OUTPUT"; fi
+
   security-scan:
     name: Security Scan (Trivy)
     runs-on: ubuntu-latest
-    concurrency:
-      group: ci-security-scan-${{ github.ref }}
-      cancel-in-progress: true
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -52,9 +97,6 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    concurrency:
-      group: ci-migration-check-${{ github.ref }}
-      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,9 +109,9 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    concurrency:
-      group: ci-lint-${{ github.ref }}
-      cancel-in-progress: true
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -83,9 +125,9 @@ jobs:
   typecheck-api:
     name: Typecheck API
     runs-on: ubuntu-latest
-    concurrency:
-      group: ci-typecheck-api-${{ github.ref }}
-      cancel-in-progress: true
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -99,9 +141,9 @@ jobs:
   test-api:
     name: Test API
     runs-on: ubuntu-latest
-    concurrency:
-      group: ci-test-api-${{ github.ref }}
-      cancel-in-progress: true
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    timeout-minutes: 25
     services:
       postgres:
         image: postgis/postgis:17-3.5
@@ -196,9 +238,9 @@ jobs:
   typecheck-user:
     name: Typecheck User App
     runs-on: ubuntu-latest
-    concurrency:
-      group: ci-typecheck-user-${{ github.ref }}
-      cancel-in-progress: true
+    needs: changes
+    if: needs.changes.outputs.user == 'true'
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -212,9 +254,9 @@ jobs:
   typecheck-driver:
     name: Typecheck Driver App
     runs-on: ubuntu-latest
-    concurrency:
-      group: ci-typecheck-driver-${{ github.ref }}
-      cancel-in-progress: true
+    needs: changes
+    if: needs.changes.outputs.driver == 'true'
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -228,9 +270,9 @@ jobs:
   typecheck-admin:
     name: Typecheck Admin App
     runs-on: ubuntu-latest
-    concurrency:
-      group: ci-typecheck-admin-${{ github.ref }}
-      cancel-in-progress: true
+    needs: changes
+    if: needs.changes.outputs.admin == 'true'
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -245,9 +287,9 @@ jobs:
   typecheck-mobile:
     name: Typecheck Mobile Apps
     runs-on: ubuntu-latest
-    concurrency:
-      group: ci-typecheck-mobile-${{ github.ref }}
-      cancel-in-progress: true
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
