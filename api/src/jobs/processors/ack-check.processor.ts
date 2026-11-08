@@ -22,6 +22,8 @@ export interface AckCheckJobData {
   estimatedFare: number
   rideType: string
   isReturnCab: boolean
+  /** The broadcast round this offer belongs to; passed through to the card so the app can tell a re-send from a new offer. */
+  offerRound?: number
 }
 
 export async function processAckCheck(data: AckCheckJobData): Promise<void> {
@@ -52,6 +54,7 @@ export async function processAckCheck(data: AckCheckJobData): Promise<void> {
     expiresAt:        data.expiresAt,
     timeoutSeconds,
   }
+  if (data.offerRound !== undefined) payload['offerRound'] = data.offerRound
   if (data.destinationLat !== undefined) payload['destinationLat'] = data.destinationLat
   if (data.destinationLng !== undefined) payload['destinationLng'] = data.destinationLng
 

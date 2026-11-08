@@ -12,6 +12,8 @@ vi.mock('@/modules/pricing/pricing.service', () => ({
 }))
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn(async () => bookingClient) } }))
 vi.mock('@/websocket/socket.server', () => ({ socketEvents: {}, getIO: vi.fn(() => ({ to: vi.fn(() => ({ emit: vi.fn() })) })) }))
+// createBooking reads the dispatch switch; every config key here just returns its fallback (switch off).
+vi.mock('@/lib/system-config', () => ({ getConfigValue: vi.fn(async (_k: string, fallback: string) => fallback) }))
 vi.mock('@/jobs/queues', () => ({
   queues: { dispatch: { add: vi.fn().mockResolvedValue(undefined) }, scheduler: { add: vi.fn().mockResolvedValue({ id: 'j' }) } },
   QUEUE_NAMES: { DISPATCH: 'dispatch', SCHEDULER: 'scheduler' },

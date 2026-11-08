@@ -875,11 +875,17 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   // (before, a failed snapshot insert left a ride with no fare). Reservation goes last so the shared offer row is
   // locked for the shortest time.
   const chargePerStop = fareEstimate.charge_per_stop
+  // Which dispatch rules this ride lives under is decided once, here, and stamped on the ride: a later change to the switch never
+  // alters a ride already in flight (dispatch phase 1; 0 = the original behaviour).
+  // 2 = variant 1 plus the nearest-drivers head start (needs both switches on).
+  const noResend = (await getConfigValue('dispatch_no_resend_enabled', 'false')) === 'true'
+  const dispatchVariant = !noResend ? 0 : (await getConfigValue('dispatch_head_start_enabled', 'false')) === 'true' ? 2 : 1
   const client = await pool.connect()
   let ride
   try {
     await client.query('BEGIN')
     ride = await repo.createRide(rideInput, client)
+    if (dispatchVariant > 0) await client.query('UPDATE rides SET dispatch_variant = $2 WHERE id = $1', [ride.id, dispatchVariant])
     if (data.stops && data.stops.length > 0) {
       // Same rate card the fare above was quoted on, so each stop row and stop_fare agree.
       await repo.insertRideStops(BigInt(ride.id), data.stops.map(stop => ({ ...stop, chargeApplied: chargePerStop })), client)

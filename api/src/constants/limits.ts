@@ -40,6 +40,14 @@ export const BACKGROUND_MATCH_GRACE_SECONDS = 60
 // Longer per-assignment response window for a backgrounded match than a live
 // one — realistic time to notice a push, tap it, and let the app reconnect.
 export const BACKGROUND_ACCEPT_WINDOW_SECONDS = 45
+// Dispatch phase 1 rides: a ride-request push cannot be delivered after its 30 s time-to-live, so a longer window only keeps a driver
+// "holding" an offer nothing can reach.
+export const BACKGROUND_ACCEPT_WINDOW_PHASE1_SECONDS = 30
+// Open offers one ride may have at once across rounds (twice a round's maximum), so backfilling around still-open offers cannot grow it.
+export const BROADCAST_MAX_LIVE_OFFERS = BROADCAST_MAX_DRIVERS * 2
+/** Dispatch experiment (variant 2): the nearest N drivers get a round-1 offer this long before the rest. */
+export const HEAD_START_COUNT = 2
+export const HEAD_START_MS = 2_500
 // Admin manual-assign: longer than a broadcast ping since the driver was
 // deliberately picked and deserves a beat to check the trip before responding.
 export const MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS = 30

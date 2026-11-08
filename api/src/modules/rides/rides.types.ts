@@ -36,6 +36,8 @@ export interface NearbyDriver {
 
 export interface Ride {
   id: bigint
+  /** Dispatch rules this ride was booked under (0 = original behaviour); stamped once at booking. */
+  dispatch_variant: number
   user_id: bigint
   driver_id: bigint | null
   session_id: bigint | null
