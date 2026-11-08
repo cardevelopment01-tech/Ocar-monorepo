@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { AppState } from 'react-native'
-import * as Location from 'expo-location'
+import { useDriverPositionStore } from '@/services/location/driverPositionStore'
 import { overlay } from '@/services/overlay'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
@@ -13,14 +13,12 @@ import { shouldShowIcon, shouldAutoOpen, speedKmhFromMps, type AppStateName } fr
 //    brings Ocar to the front (the request card, ring and voice are the same ones the app already shows)
 // The notification path is unchanged: if anything here declines to act, the loud notification still rings as it does today.
 
-async function lastKnownSpeed(): Promise<{ kmh: number | null; ageMs: number | null }> {
-  try {
-    const pos = await Location.getLastKnownPositionAsync({ maxAge: 20_000 })
-    if (!pos) return { kmh: null, ageMs: null }
-    return { kmh: speedKmhFromMps(pos.coords.speed), ageMs: Date.now() - pos.timestamp }
-  } catch {
-    return { kmh: null, ageMs: null }
-  }
+// The speed of the latest fix from the location task that already runs while online (the same source the speed alert uses).
+// No fix yet, or a fix without a speed, is unknown, and an unknown speed keeps auto-open closed.
+function lastKnownSpeed(): { kmh: number | null; ageMs: number | null } {
+  const { position, lastUpdatedAt } = useDriverPositionStore.getState()
+  if (!position || lastUpdatedAt === null) return { kmh: null, ageMs: null }
+  return { kmh: speedKmhFromMps(position.speed), ageMs: Date.now() - lastUpdatedAt }
 }
 
 function inputs(appState: AppStateName) {
@@ -68,11 +66,9 @@ export function useFloatingIcon(): void {
       const appState = AppState.currentState
       if (appState === 'active') return // the in-app card already owns it
       overlay.pulseIcon()
-      void (async () => {
-        const speed = await lastKnownSpeed()
-        const i = { ...inputs(appState), speedKmh: speed.kmh, speedAgeMs: speed.ageMs }
-        if (shouldAutoOpen(i)) overlay.bringToFront()
-      })()
+      const speed = lastKnownSpeed()
+      const i = { ...inputs(appState), speedKmh: speed.kmh, speedAgeMs: speed.ageMs }
+      if (shouldAutoOpen(i)) overlay.bringToFront()
     })
   }, [])
 }

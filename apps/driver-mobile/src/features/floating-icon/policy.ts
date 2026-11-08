@@ -6,8 +6,11 @@ export type AppStateName = 'active' | 'background' | 'inactive' | 'unknown' | 'e
 
 /** The first rollout opens Ocar by itself only while the driver is stationary or slower than this (the owner may change it). */
 export const AUTO_OPEN_MAX_SPEED_KMH = 10
-/** A speed reading older than this is treated as unknown, so auto-open stays closed. */
-export const SPEED_MAX_AGE_MS = 20_000
+/**
+ * A speed reading older than this is treated as unknown, so auto-open stays closed. The idle location task fires every 30 s
+ * (IDLE_INTERVAL_MS), so the window must be longer than that or a parked driver would miss the gate about a third of the time.
+ */
+export const SPEED_MAX_AGE_MS = 45_000
 
 export interface IconInputs {
   iconEnabled: boolean
