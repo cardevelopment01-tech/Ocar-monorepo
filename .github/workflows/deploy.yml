@@ -1,14 +1,17 @@
 name: Deploy
 
+# The run title says which environment, so Deploy Web can tell a prd release from a stg run (it reads workflow_run.display_title).
+run-name: Deploy ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'stg' }}
+
 on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    # main -> prd (production), develop -> stg (see the `changes` job's `deploy_env`
-    # output below, resolved from `github.event.workflow_run.head_branch`). The old
-    # ocar-prod-* stack is no longer an automatic or manual target: it is being retired
-    # and replaced by stg (see docs/STG_ENVIRONMENT.md), which develop deploys to.
-    branches: [main, develop]
+    # Only develop -> stg deploys automatically. A merge to main does NOT deploy: production (prd)
+    # is released on purpose with "Run workflow" below (merge is not release), behind the prd
+    # Environment's required reviewer. The old ocar-prod-* stack is no longer a target: it is being
+    # retired and replaced by stg (see docs/STG_ENVIRONMENT.md), which develop deploys to.
+    branches: [develop]
   # Manual deploy on top of the two automatic branch triggers above -- e.g.
   # redeploying the same commit, or a staging hotfix without a new develop
   # push. See the `changes` job's `deploy_env` output for how environment
@@ -18,8 +21,9 @@ on:
       environment:
         description: Environment to deploy
         type: choice
-        # prd = production (infra/terraform/prd.tfvars). main deploys to it automatically (behind the prd
-        # Environment's required reviewer); dispatch is for redeploying the same commit.
+        # prd = production (infra/terraform/prd.tfvars). This is how production is released: run it from
+        # main (refused on any other branch, and refused unless CI passed on that exact commit), then approve
+        # it as the prd Environment's required reviewer. It always builds and deploys the commit you run it on.
         options: [stg, prd]
         required: true
 
@@ -49,7 +53,7 @@ jobs:
   # successful Deploy run exists (first run ever).
   changes:
     name: Detect relevant changes
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -81,12 +85,22 @@ jobs:
           elif [ "${{ github.event.workflow_run.head_branch }}" = "develop" ]; then
             DEPLOY_ENV="stg"
           else
-            DEPLOY_ENV="prd"
+            # Only develop (-> stg) is wired to start this automatically. Anything else must fail closed, never default to production.
+            echo "unexpected trigger for an automatic deploy (branch: ${{ github.event.workflow_run.head_branch }})" >&2
+            exit 1
           fi
           # prd is production: only main may ever be deployed to it (a manual dispatch can pick any branch).
           if [ "$DEPLOY_ENV" = "prd" ] && [ "${{ github.ref }}" != "refs/heads/main" ]; then
             echo "prd deploys must be dispatched from main (this run is on ${{ github.ref }})" >&2
             exit 1
+          fi
+          # A production release must be a commit CI passed on. (Before, the CI-then-deploy chain guaranteed it; a manual run needs the check.)
+          if [ "$DEPLOY_ENV" = "prd" ]; then
+            CI_OK=$(gh run list --workflow=ci.yml --commit "${{ github.sha }}" --event push --branch main --status success --limit 1 --json conclusion --jq length) || { echo "could not query CI runs (see the error above)" >&2; exit 1; }
+            if [ "${CI_OK:-0}" -lt 1 ]; then
+              echo "CI has not passed on ${{ github.sha }} (still running, or failed). Wait for the main CI run to finish, then run again." >&2
+              exit 1
+            fi
           fi
           echo "deploy_env=$DEPLOY_ENV" >> "$GITHUB_OUTPUT"
 
