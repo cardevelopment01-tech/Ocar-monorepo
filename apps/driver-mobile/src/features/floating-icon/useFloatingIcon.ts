@@ -51,10 +51,10 @@ export function useFloatingIcon(): void {
     }
     sync(AppState.currentState)
     const sub = AppState.addEventListener('change', sync)
-    return () => {
-      sub.remove()
-      overlay.hideIcon() // unmount or a dependency change: re-evaluated by the next effect run
-    }
+    // No hideIcon here on purpose. A swipe from Recents tears the screen down, and the icon must keep floating (the process and the
+    // location service keep running, and the icon's own tap reopens Ocar). A dependency change re-runs sync above straight away,
+    // which hides or shows the icon as needed; going offline or switching the icon off do exactly that.
+    return () => { sub.remove() }
   }, [iconEnabled, hydrated, isOnline])
 
   // A new request while Ocar is in the background.

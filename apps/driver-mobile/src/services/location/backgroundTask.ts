@@ -98,11 +98,13 @@ export async function startBackgroundTracking(): Promise<void> {
   ensureRideIntervalSubscription()
 }
 
-// For an online driver after a process restart: re-creates the task if the OS dropped it,
-// otherwise just re-arms the idle <-> ride switch that the restart wiped out.
+// For an online driver after a process restart. Always (re)starts the task rather than trusting
+// hasStartedLocationUpdatesAsync: that reads the task registration, which survives a killed process, while the foreground
+// service behind it does not. Trusting it left a driver "Online" with no location service after the app was swiped away
+// and reopened (the screen said Online, nothing was tracking, and the next swipe killed the app). Starting an already
+// running task just updates its options in place, so this is safe on every foreground.
 export async function ensureBackgroundTracking(): Promise<void> {
-  if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)) ensureRideIntervalSubscription()
-  else await startBackgroundTracking()
+  await startBackgroundTracking()
 }
 
 export async function stopBackgroundTracking(): Promise<void> {
