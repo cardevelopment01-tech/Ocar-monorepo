@@ -32,7 +32,12 @@ object OverlayIcon {
 
   private val main = Handler(Looper.getMainLooper())
   private var view: FrameLayout? = null
+  private var badge: View? = null
   private var params: WindowManager.LayoutParams? = null
+  // A request is waiting: the icon shows a red dot and keeps pulsing until the app clears it. Kept here (not on the view) so an icon
+  // that is hidden and shown again, for example around an app-state change, comes back in the same state.
+  private var alertOn = false
+  private var alertAnimator: ValueAnimator? = null
 
   fun hasPermission(context: Context): Boolean = Settings.canDrawOverlays(context)
 
@@ -51,11 +56,41 @@ object OverlayIcon {
     main.post { remove(app) }
   }
 
+  /**
+   * A request is waiting (true) or no longer is (false). While true the icon wears a red dot and pulses steadily, so a driver
+   * switching between several driver apps can see which one has a request after the notification banner is gone.
+   */
+  fun setAlert(on: Boolean) {
+    main.post {
+      alertOn = on
+      applyAlert()
+    }
+  }
+
+  private fun applyAlert() {
+    val v = view
+    alertAnimator?.cancel()
+    alertAnimator = null
+    v?.scaleX = 1f
+    v?.scaleY = 1f
+    badge?.visibility = if (alertOn && v != null) View.VISIBLE else View.GONE
+    if (!alertOn || v == null) return
+    // Breathes inward: the window is exactly the icon's size, so growing past 1x would be clipped at its edge.
+    alertAnimator = ValueAnimator.ofFloat(1f, 0.8f).apply {
+      duration = 600
+      repeatMode = ValueAnimator.REVERSE
+      repeatCount = ValueAnimator.INFINITE
+      addUpdateListener { a -> val s = a.animatedValue as Float; v.scaleX = s; v.scaleY = s }
+      start()
+    }
+  }
+
   /** A short scale pulse so a waiting driver notices an incoming request. */
   fun pulse() {
     main.post {
+      if (alertOn) return@post // the steady alert pulse is already running
       val v = view ?: return@post
-      v.animate().scaleX(1.25f).scaleY(1.25f).setDuration(150).withEndAction {
+      v.animate().scaleX(0.75f).scaleY(0.75f).setDuration(150).withEndAction {
         v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
       }.start()
     }
@@ -85,7 +120,7 @@ object OverlayIcon {
       scaleType = ImageView.ScaleType.CENTER_CROP
       contentDescription = "Return to Ocar"
     }
-    val container = FrameLayout(app).apply {
+    val circle = FrameLayout(app).apply {
       background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFFFFFFF.toInt()) }
       elevation = dp(app, 6).toFloat()
       clipToOutline = true
@@ -95,6 +130,20 @@ object OverlayIcon {
       val pad = dp(app, 4)
       setPadding(pad, pad, pad, pad)
       addView(icon, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+    }
+    // The red "request waiting" dot sits on the circle's top-right edge. It lives outside the clipped circle so it is not cut off.
+    val dot = View(app).apply {
+      background = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(0xFFE5252A.toInt())
+        setStroke(dp(app, 2), 0xFFFFFFFF.toInt())
+      }
+      elevation = dp(app, 8).toFloat()
+      visibility = View.GONE
+    }
+    val container = FrameLayout(app).apply {
+      addView(circle, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+      addView(dot, FrameLayout.LayoutParams(dp(app, 16), dp(app, 16), Gravity.TOP or Gravity.END))
     }
 
     val lp = WindowManager.LayoutParams(
@@ -113,10 +162,13 @@ object OverlayIcon {
     try {
       wm.addView(container, lp)
       view = container
+      badge = dot
       params = lp
+      applyAlert() // an icon re-added while a request is still waiting comes back wearing the dot
     } catch (_: Exception) {
       // Permission revoked between the check and the add, or the window token was refused: stay hidden.
       view = null
+      badge = null
       params = null
     }
   }
@@ -124,8 +176,11 @@ object OverlayIcon {
   private fun remove(app: Context) {
     val v = view ?: return
     val wm = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    alertAnimator?.cancel()
+    alertAnimator = null
     try { wm.removeView(v) } catch (_: Exception) {}
     view = null
+    badge = null
     params = null
   }
 

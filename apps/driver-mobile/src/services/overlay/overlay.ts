@@ -9,6 +9,8 @@ export interface NativeOverlay {
   hideIcon(): void
   isIconShowing(): boolean
   pulseIcon(): void
+  /** Optional: a binary built before the red-dot change does not have it. */
+  setAlert?(on: boolean): void
   bringToFront(): boolean
 }
 
@@ -22,6 +24,8 @@ export interface Overlay {
   hideIcon(): void
   isIconShowing(): boolean
   pulseIcon(): void
+  /** A request is waiting (true) or no longer is (false): the icon wears a red dot and pulses until cleared. */
+  setAlert(on: boolean): void
   /** True when Android accepted the launch. A refusal is expected on some phones and is not an error. */
   bringToFront(): boolean
 }
@@ -44,6 +48,7 @@ export function createOverlay(native: NativeOverlay | null | undefined): Overlay
       hideIcon: () => {},
       isIconShowing: () => false,
       pulseIcon: () => {},
+      setAlert: () => {},
       bringToFront: () => false,
     }
   }
@@ -55,6 +60,7 @@ export function createOverlay(native: NativeOverlay | null | undefined): Overlay
     hideIcon: () => guard(() => native.hideIcon(), undefined),
     isIconShowing: () => guard(() => native.isIconShowing(), false),
     pulseIcon: () => guard(() => native.pulseIcon(), undefined),
+    setAlert: (on) => guard(() => native.setAlert?.(on), undefined),
     bringToFront: () => guard(() => native.bringToFront(), false),
   }
 }

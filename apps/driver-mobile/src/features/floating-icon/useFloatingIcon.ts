@@ -46,6 +46,8 @@ export function useFloatingIcon(): void {
       const i = inputs(appState)
       if (shouldShowIcon(i)) overlay.showIcon()
       else overlay.hideIcon()
+      // The driver is back in Ocar, where the request card itself is showing: the dot has done its job.
+      if (appState === 'active') overlay.setAlert(false)
     }
     sync(AppState.currentState)
     const sub = AppState.addEventListener('change', sync)
@@ -61,11 +63,13 @@ export function useFloatingIcon(): void {
     let lastRideId: string | null = null
     return useRideRequestStore.subscribe((state) => {
       const rideId = state.pending?.rideId ?? null
+      if (!rideId) overlay.setAlert(false) // answered, expired or taken: no request is waiting any more
       if (!rideId || rideId === lastRideId) { lastRideId = rideId ?? lastRideId; return }
       lastRideId = rideId
       const appState = AppState.currentState
       if (appState === 'active') return // the in-app card already owns it
-      overlay.pulseIcon()
+      overlay.setAlert(true) // red dot and a steady pulse until the request is answered or the driver is back in Ocar
+      overlay.pulseIcon() // a binary without setAlert still gets the single pulse
       const speed = lastKnownSpeed()
       const i = { ...inputs(appState), speedKmh: speed.kmh, speedAgeMs: speed.ageMs }
       if (shouldAutoOpen(i)) overlay.bringToFront()

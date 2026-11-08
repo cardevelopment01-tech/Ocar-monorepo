@@ -8,6 +8,7 @@ const fakeNative = (over: Partial<NativeOverlay> = {}): NativeOverlay => ({
   hideIcon: vi.fn(),
   isIconShowing: vi.fn(() => true),
   pulseIcon: vi.fn(),
+  setAlert: vi.fn(),
   bringToFront: vi.fn(() => true),
   ...over,
 })
@@ -33,6 +34,15 @@ describe('createOverlay', () => {
     expect(native.hideIcon).toHaveBeenCalledTimes(1)
     expect(native.pulseIcon).toHaveBeenCalledTimes(1)
     expect(native.openPermissionSettings).toHaveBeenCalledTimes(1)
+  })
+
+  it('setAlert reaches the native icon, and is a no-op on a binary without it', () => {
+    const native = fakeNative()
+    createOverlay(native).setAlert(true)
+    expect(native.setAlert).toHaveBeenCalledWith(true)
+    const { setAlert: _omit, ...older } = fakeNative()
+    expect(() => createOverlay(older).setAlert(true)).not.toThrow()
+    expect(() => createOverlay(null).setAlert(false)).not.toThrow()
   })
 
   it('reports false when the permission is missing, never throws', () => {
