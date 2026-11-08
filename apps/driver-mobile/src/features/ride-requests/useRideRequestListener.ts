@@ -15,7 +15,7 @@ export function useRideRequestListener(): void {
       setPending(payload)
       // Clears the server-side redelivery key so a reconnect doesn't re-show
       // a request the driver has already seen (socket.server.ts's ack contract).
-      socket.emit('ride:request:ack', { rideId: payload.rideId })
+      socket.emit('ride:request:ack', payload.offerRound === undefined ? { rideId: payload.rideId } : { rideId: payload.rideId, offerRound: payload.offerRound })
     }
     function onExpired({ rideId }: { rideId: string }) {
       clearPending(rideId)

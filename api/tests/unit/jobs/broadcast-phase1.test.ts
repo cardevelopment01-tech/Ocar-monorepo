@@ -30,6 +30,9 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   findReturnCabDrivers: vi.fn().mockResolvedValue([]),
   findNearbyDrivers: vi.fn(),
   getLiveOfferDriverIds: vi.fn().mockResolvedValue([]),
+  getDeclinedDriverIds: vi.fn().mockResolvedValue([]),
+  getOfferedDrivers: vi.fn().mockResolvedValue([]),
+  getBusyDriverIds: vi.fn().mockResolvedValue([]),
   createRideAssignment: vi.fn().mockResolvedValue(undefined),
   updateRideStatusCAS: vi.fn().mockResolvedValue({ id: 1n }),
   logStatusHistory: vi.fn(),
@@ -58,6 +61,9 @@ const nearbyArg = () => vi.mocked(repo.findNearbyDrivers).mock.calls[0]![0] as {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(repo.getLiveOfferDriverIds).mockResolvedValue([])
+  vi.mocked(repo.getDeclinedDriverIds).mockResolvedValue([])
+  vi.mocked(repo.getOfferedDrivers).mockResolvedValue([])
+  vi.mocked(repo.getBusyDriverIds).mockResolvedValue([])
   vi.mocked(repo.findNearbyDrivers).mockResolvedValue([drv(1), drv(2)] as never)
   vi.mocked(hasLiveDriverSocket).mockResolvedValue(true)
 })
@@ -204,5 +210,82 @@ describe('dispatch_variant 2: nearest drivers get a head start in round 1', () =
     vi.mocked(repo.findNearbyDrivers).mockResolvedValue([drv(1), drv(2)] as never)
     await processBroadcast(data(1))
     expect(emitted()).toEqual(['1', '2'])
+  })
+})
+
+describe('dispatch_variant 1: a driver who declined is not handed the ride straight back', () => {
+  beforeEach(() => { vi.mocked(repo.getRideById).mockResolvedValue(ride(1)) })
+
+  it('rounds 1-2 leave out drivers who declined', async () => {
+    vi.mocked(repo.getDeclinedDriverIds).mockResolvedValue([7n])
+    await processBroadcast(data(2))
+    expect(nearbyArg().excludeDriverIds).toEqual([7n])
+  })
+
+  it('the last round may return to them (and does not even look them up)', async () => {
+    await processBroadcast(data(3))
+    expect(repo.getDeclinedDriverIds).not.toHaveBeenCalled()
+    expect(nearbyArg().excludeDriverIds).toBeUndefined()
+  })
+})
+
+describe('dispatch_variant 1: a thin pool is not wasted on drivers who declined', () => {
+  it('if skipping the declined leaves nobody, they are offered the ride rather than the round being burned', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(ride(1))
+    vi.mocked(repo.getDeclinedDriverIds).mockResolvedValue([1n])
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValueOnce([]).mockResolvedValueOnce([drv(1)] as never)
+    await processBroadcast(data(2))
+    expect(emitted()).toEqual(['1'])
+  })
+})
+
+describe('dispatch spread (5a): wave memory and the soft one-live-offer rule', () => {
+  const spreadRide = () => ({ status: 'requested', origin_address: 'A', destination_address: 'B', dispatch_variant: 1, dispatch_spread: 1 }) as never
+  const skipArgs = () => vi.mocked(repo.findNearbyDrivers).mock.calls.map((c) => (c[0] as { excludeDriverIds?: bigint[] }).excludeDriverIds?.map(String).sort())
+  beforeEach(() => { vi.mocked(repo.getRideById).mockResolvedValue(spreadRide()) })
+
+  it('skips every driver already offered this ride, in any status, and drivers busy with another ride', async () => {
+    vi.mocked(repo.getOfferedDrivers).mockResolvedValue([{ driver_id: 5n, status: 'cancelled' }, { driver_id: 6n, status: 'declined' }])
+    vi.mocked(repo.getBusyDriverIds).mockResolvedValue([9n])
+    await processBroadcast(data(2))
+    expect(skipArgs()[0]).toEqual(['5', '6', '9'])
+  })
+
+  it('a ride without the spread stamp never reads the wave memory', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(ride(1))
+    await processBroadcast(data(2))
+    expect(repo.getOfferedDrivers).not.toHaveBeenCalled()
+    expect(repo.getBusyDriverIds).not.toHaveBeenCalled()
+  })
+
+  it('nobody fresh and free: step 2 allows busy drivers (fresh ones still preferred over repeats)', async () => {
+    vi.mocked(repo.getOfferedDrivers).mockResolvedValue([{ driver_id: 5n, status: 'cancelled' }])
+    vi.mocked(repo.getBusyDriverIds).mockResolvedValue([9n])
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValueOnce([]).mockResolvedValueOnce([drv(9)] as never)
+    await processBroadcast(data(2))
+    expect(skipArgs()).toEqual([['5', '9'], ['5']])
+    expect(emitted()).toEqual(['9'])
+  })
+
+  it('nobody fresh at all: step 3 brings back a driver who was offered before and did not decline, not one who declined', async () => {
+    vi.mocked(repo.getOfferedDrivers).mockResolvedValue([{ driver_id: 5n, status: 'cancelled' }, { driver_id: 6n, status: 'declined' }])
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([drv(5)] as never)
+    await processBroadcast(data(2))
+    expect(skipArgs()[2]).toEqual(['6'])
+    expect(emitted()).toEqual(['5'])
+  })
+
+  it('last resort (step 4): drivers who all declined are still offered on the last round, so the ride is not closed', async () => {
+    vi.mocked(repo.getOfferedDrivers).mockResolvedValue([{ driver_id: 6n, status: 'declined' }])
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([drv(6)] as never)
+    await processBroadcast(data(3))
+    expect(emitted()).toEqual(['6'])
+    expect(repo.updateRideStatusCAS).not.toHaveBeenCalled()
+  })
+
+  it('no room for new offers (10 already open): the ladder does not run', async () => {
+    vi.mocked(repo.getLiveOfferDriverIds).mockResolvedValue([10n, 11n, 12n, 13n, 14n, 15n, 16n, 17n, 18n, 19n])
+    await processBroadcast(data(2))
+    expect(repo.findNearbyDrivers).not.toHaveBeenCalled()
   })
 })

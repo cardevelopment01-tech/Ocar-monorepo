@@ -215,6 +215,7 @@ export function initSocketServer(httpServer: HttpServer): Server {
               expiresAt:        a.expires_at,
               timeoutSeconds,
             }
+            if (a.broadcast_round != null) payload['offerRound'] = a.broadcast_round
             if (a.dest_lat != null)   payload['destinationLat'] = a.dest_lat
             if (a.dest_lng != null)   payload['destinationLng'] = a.dest_lng
             if (a.return_at != null)  payload['returnAt']  = a.return_at

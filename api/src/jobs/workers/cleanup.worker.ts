@@ -11,6 +11,7 @@ import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { socketEvents } from '@/websocket/socket.server'
 import {
   STALE_REQUESTED_MINUTES,
+  DISPATCH_WATCHDOG_SECONDS,
   STALE_ACCEPTED_HOURS,
   STALE_DRIVER_ARRIVED_HOURS,
   IDLE_HEARTBEAT_PAUSE_SECONDS,
@@ -47,6 +48,16 @@ export const cleanupWorker = new Worker(
     // interrupted (crash, force-quit, network drop) before pickup.
     for (const ride of await repo.findStaleRequestedRides(STALE_REQUESTED_MINUTES)) {
       await expireStaleRequestedRide(BigInt(ride.id))
+    }
+    // Dispatch watchdog: a flagged ride whose rounds are over and has no open offer is closed now (rider told, offer given back),
+    // not after the 20-minute sweep above.
+    for (const ride of await repo.findStuckDispatchRides(DISPATCH_WATCHDOG_SECONDS)) {
+      log.warn({ rideId: ride.id }, 'dispatch watchdog closing a ride with no live offers')
+      try {
+        await expireStaleRequestedRide(BigInt(ride.id), 'auto-expired: dispatch watchdog (no round running, no open offers)', true)
+      } catch (err) {
+        log.error({ err, rideId: ride.id }, 'dispatch watchdog failed for a ride') // one bad ride must not skip the rest of the sweep
+      }
     }
     for (const ride of await repo.findStaleAcceptedOrArrivedRides(STALE_ACCEPTED_HOURS, STALE_DRIVER_ARRIVED_HOURS)) {
       await expireStaleAcceptedOrArrivedRide(BigInt(ride.id), ride.status, BigInt(ride.driver_id))
