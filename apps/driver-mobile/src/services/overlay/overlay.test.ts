@@ -45,6 +45,16 @@ describe('createOverlay', () => {
     expect(() => createOverlay(null).setAlert(false)).not.toThrow()
   })
 
+  it('dismissRideNotification cancels the notification tagged ride-<id>, and is a no-op on a binary without it', () => {
+    const dismissNotification = vi.fn()
+    createOverlay(fakeNative({ dismissNotification })).dismissRideNotification('42')
+    expect(dismissNotification).toHaveBeenCalledWith('ride-42')
+    expect(() => createOverlay(fakeNative()).dismissRideNotification('42')).not.toThrow()
+    expect(() => createOverlay(null).dismissRideNotification('42')).not.toThrow()
+    const boom = () => { throw new Error('native failure') }
+    expect(() => createOverlay(fakeNative({ dismissNotification: boom })).dismissRideNotification('42')).not.toThrow()
+  })
+
   it('reports false when the permission is missing, never throws', () => {
     const o = createOverlay(fakeNative({ hasPermission: vi.fn(() => false), showIcon: vi.fn(() => false) }))
     expect(o.hasPermission()).toBe(false)

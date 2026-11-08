@@ -51,6 +51,12 @@ export function useFloatingIcon(): void {
       else overlay.hideIcon()
       // The dot has done its job when the driver is back in Ocar (the request card itself is showing), and it must not outlive the
       // icon's reason to exist (offline, signed out, switched off): otherwise the next appearance would wear a stale dot.
+      // Ocar is in front with a request open (auto-open, or the driver tapped the icon): Ocar's own card and ring take over, so the push
+      // notification that is already ringing must go or the driver hears both.
+      if (appState === 'active') {
+        const pending = useRideRequestStore.getState().pending
+        if (pending) overlay.dismissRideNotification(String(pending.rideId))
+      }
       if (appState === 'active' || !i.isOnline || !i.iconEnabled) overlay.setAlert(false)
       // The driver left Ocar with a request still open (it arrived while Ocar was in front): the icon should say so too.
       else if (useRideRequestStore.getState().pending) overlay.setAlert(true)

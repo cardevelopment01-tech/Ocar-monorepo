@@ -1,5 +1,7 @@
 package expo.modules.ocaroverlay
 
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -40,6 +42,16 @@ class OcarOverlayModule : Module() {
 
     /** A request is waiting (true) or no longer is (false): the icon wears a red dot and pulses while true. */
     Function("setAlert") { on: Boolean -> OverlayIcon.setAlert(on) }
+
+    /**
+     * Remove a delivered notification by its tag. Used when Ocar opens itself for a ride request: the push notification's channel
+     * sound is already ringing, and the in-app ring starts as soon as Ocar is in front, so leaving it would ring twice.
+     * A push notification message shown by the system is posted with id 0 and the message's tag; cancelling it also stops its sound.
+     */
+    Function("dismissNotification") { tag: String ->
+      val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      nm.cancel(tag, 0)
+    }
 
     /** Bring Ocar's existing task to the front. Returns false if the launch was refused. */
     Function("bringToFront") { OverlayIcon.bringToFront(context) }
