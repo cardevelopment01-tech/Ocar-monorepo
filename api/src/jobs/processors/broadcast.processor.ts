@@ -1,9 +1,9 @@
-import { socketEvents } from '@/websocket/socket.server'
+import { socketEvents, hasLiveDriverSocket } from '@/websocket/socket.server'
 import * as repo from '@/modules/rides/rides.repository'
 import { pool } from '@/db/client'
 import { releaseForRide } from '@/modules/offers/settlement'
 import { driverFare } from '@/modules/offers/driver-fare'
-import { BROADCAST_WINDOW_SECONDS, BROADCAST_MAX_DRIVERS, BACKGROUND_ACCEPT_WINDOW_SECONDS, maxPickupRadiusMetres } from '@/constants/limits'
+import { BROADCAST_WINDOW_SECONDS, BROADCAST_MAX_DRIVERS, BROADCAST_MAX_LIVE_OFFERS, BACKGROUND_ACCEPT_WINDOW_SECONDS, BACKGROUND_ACCEPT_WINDOW_PHASE1_SECONDS, maxPickupRadiusMetres } from '@/constants/limits'
 import { rideAckKey } from '@/constants/redis-keys'
 import { client as redis } from '@/db/redis'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
@@ -16,6 +16,9 @@ import { getRoute } from '@/modules/geo/geo.service'
 const log = logger.child({ module: 'broadcast-processor' })
 
 const MAX_DRIVERS = BROADCAST_MAX_DRIVERS
+/** Socket-ack wait before the fallback push: the original 4 s, or 2 s for a dispatch-phase-1 ride. */
+const ACK_CHECK_DELAY_MS = 4_000
+const ACK_CHECK_DELAY_PHASE1_MS = 2_000
 
 /** The offer must not wait on Google: past this the straight-line figure is shown instead. */
 const ROAD_DISTANCE_TIMEOUT_MS = 2_000
@@ -67,6 +70,17 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
 
   await repo.expireLapsedOffers(rideId)
 
+  // Dispatch phase 1 (stamped on the ride at booking, so a switch flip never changes a ride in flight). Rides booked before it keep
+  // dispatch_variant 0 and every line below behaves exactly as it always did.
+  const phase1 = (ride.dispatch_variant ?? 0) >= 1
+  const liveDriverIds = phase1 ? await repo.getLiveOfferDriverIds(rideId) : []
+  const liveSet = new Set(liveDriverIds.map((id) => id.toString()))
+  // Open offers this ride may have at once: backfilling around still-open offers must not grow the set across rounds.
+  const maxThisRound = phase1 ? Math.min(MAX_DRIVERS, Math.max(0, BROADCAST_MAX_LIVE_OFFERS - liveDriverIds.length)) : MAX_DRIVERS
+  if (phase1 && liveDriverIds.length > 0) {
+    log.info({ event: 'ride_offer_live_kept', rideId: data.rideId, round: data.broadcastRound, liveOffers: liveDriverIds.length, newOfferRoom: maxThisRound }, 'open offers left alone')
+  }
+
   const stops = await repo.getRideStops(rideId)
   const minWalletBalance = await getMinWalletBalance()
 
@@ -106,7 +120,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     })
     // Unknown distance (null/undefined/NaN) fails the cap: it must never read as 0 m away.
     // A driver without a usable location can't be matched, and we don't substitute the pickup point.
-    drivers = returnDrivers.filter(d => Number.isFinite(d.distance_metres) && d.distance_metres <= cap).map(d => ({
+    const returnCandidates = returnDrivers.filter(d => Number.isFinite(d.distance_metres) && d.distance_metres <= cap && !liveSet.has(String(d.driver_id)))
+    drivers = (phase1 ? returnCandidates.slice(0, maxThisRound) : returnCandidates).map(d => ({
       driver_id:        BigInt(d.driver_id),
       session_id:       BigInt(d.session_id),
       lat:              d.lat,
@@ -116,19 +131,21 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     }))
   }
 
-  if (drivers.length < MAX_DRIVERS) {
+  if (drivers.length < maxThisRound) {
     const radiusMetres = Math.min(cap, data.radiusMetres ?? cap)
-    const standardDrivers = await repo.findNearbyDrivers({
+    const nearbyParams: Parameters<typeof repo.findNearbyDrivers>[0] = {
       lat: data.originLat,
       lng: data.originLng,
       categoryIds,
-      maxDrivers: MAX_DRIVERS - drivers.length,
+      maxDrivers: maxThisRound - drivers.length,
       radiusMetres,
       minWalletBalance,
-    })
+    }
+    if (phase1 && liveDriverIds.length > 0) nearbyParams.excludeDriverIds = liveDriverIds
+    const standardDrivers = await repo.findNearbyDrivers(nearbyParams)
     const included = new Set(drivers.map(d => d.driver_id.toString()))
     for (const sd of standardDrivers) {
-      if (!included.has(sd.driver_id.toString())) {
+      if (!included.has(sd.driver_id.toString()) && !liveSet.has(sd.driver_id.toString())) {
         drivers.push({
           driver_id:       BigInt(sd.driver_id),
           session_id:      BigInt(sd.session_id),
@@ -170,7 +187,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   // Per-driver window: a backgrounded match gets longer to notice a push, tap
   // it, and let the app reconnect than a live-socket driver gets to ack.
   const driversWithWindow = drivers.map(driver => {
-    const windowSeconds = driver.isBackgrounded ? BACKGROUND_ACCEPT_WINDOW_SECONDS : BROADCAST_WINDOW_SECONDS
+    const backgroundWindow = phase1 ? BACKGROUND_ACCEPT_WINDOW_PHASE1_SECONDS : BACKGROUND_ACCEPT_WINDOW_SECONDS
+    const windowSeconds = driver.isBackgrounded ? backgroundWindow : BROADCAST_WINDOW_SECONDS
     return { ...driver, windowSeconds, expiresAt: new Date(Date.now() + windowSeconds * 1000) }
   })
 
@@ -196,7 +214,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   for (const driver of driversWithWindow) {
     log.info({
       event: 'ride_offer', rideId: data.rideId, driverId: driver.driver_id.toString(),
-      backgrounded: driver.isBackgrounded, windowSeconds: driver.windowSeconds, round: data.broadcastRound,
+      backgrounded: driver.isBackgrounded, windowSeconds: driver.windowSeconds, round: data.broadcastRound, phase1,
     }, 'ride offer created')
   }
 
@@ -221,6 +239,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       estimatedFare:    driverFare(ride),
       rideType:         data.rideType,
       isReturnCab:      data.isReturnCab,
+      offerRound:       data.broadcastRound,
     }
     if (data.destinationLat !== undefined) jobData.destinationLat = data.destinationLat
     if (data.destinationLng !== undefined) jobData.destinationLng = data.destinationLng
@@ -228,12 +247,27 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     await queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride_ack_check',
       jobData,
-      { delay: 4_000, attempts: 1, removeOnComplete: true, removeOnFail: true }
+      { delay: phase1 ? ACK_CHECK_DELAY_PHASE1_MS : ACK_CHECK_DELAY_MS, attempts: 1, removeOnComplete: true, removeOnFail: true }
     )
   }))
 
   const pickup = ride.origin_address ?? 'Pickup location'
   const drop   = ride.destination_address ?? 'Destination'
+
+  const pushNow = (driver: (typeof driversWithWindow)[number]): void => {
+    const details: RideRequestPushDetails = {
+      rideType: data.rideType,
+      isReturnCab: data.isReturnCab,
+      // The same fare the request card shows (the payable when a rider offer lowered it), not the gross estimate.
+      estimatedFare: driverFare(ride),
+      distanceToPickup: Math.round(driver.distance_metres),
+    }
+    if (ride.payment_channel) details.paymentChannel = ride.payment_channel
+    if (ride.estimated_km != null) details.tripKm = Number(ride.estimated_km)
+    if (ride.estimated_min != null) details.tripMin = Math.round(Number(ride.estimated_min))
+    void sendRideRequestPushOnce(data.rideId, driver.driver_id.toString(), pickup, drop, driver.windowSeconds, details)
+      .catch((err: unknown) => log.error({ err, rideId: data.rideId, driverId: driver.driver_id.toString() }, 'immediate push failed'))
+  }
 
   for (const driver of driversWithWindow) {
     const requestPayload: Record<string, unknown> = {
@@ -250,6 +284,9 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       isReturnCab:       data.isReturnCab,
       expiresAt:         driver.expiresAt.toISOString(),
       timeoutSeconds:    driver.windowSeconds,
+      // Which offer this is for the ride (the broadcast round). Lets the driver app tell a genuine new offer from a re-send; old
+      // builds ignore the field.
+      offerRound:        data.broadcastRound,
       stopCount:         stops.length,
     }
     if (ride.return_at)   requestPayload['returnAt']  = ride.return_at
@@ -265,20 +302,17 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     // A backgrounded driver's socket is very likely dead — don't wait for
     // ack-check's 4s-later fallback, push immediately. Guarded internally so
     // ack-check's own fallback (if it still fires) is a no-op for this driver.
-    if (driver.isBackgrounded) {
-      const details: RideRequestPushDetails = {
-        rideType: data.rideType,
-        isReturnCab: data.isReturnCab,
-        // The same fare the request card shows (the payable when a rider offer lowered it), not the gross estimate.
-        estimatedFare: driverFare(ride),
-        distanceToPickup: Math.round(driver.distance_metres),
-      }
-      if (ride.payment_channel) details.paymentChannel = ride.payment_channel
-      if (ride.estimated_km != null) details.tripKm = Number(ride.estimated_km)
-      if (ride.estimated_min != null) details.tripMin = Math.round(Number(ride.estimated_min))
-      void sendRideRequestPushOnce(data.rideId, driver.driver_id.toString(), pickup, drop, driver.windowSeconds, details)
-        .catch((err: unknown) => log.error({ err, rideId: data.rideId, driverId: driver.driver_id.toString() }, 'immediate background push failed'))
-    }
+    if (driver.isBackgrounded) pushNow(driver)
+  }
+
+  // Dispatch phase 1: a driver with no live connection anywhere cannot hear the socket emit, so the push goes out now instead of
+  // after the ack-check wait. Done after every emit so a slow presence lookup never delays another driver's card; the lookups
+  // themselves run concurrently, and an unknown answer counts as "connected" (the 2 s ack-check then covers it). The one-shot push
+  // guard makes this and the ack-check fallback a single push.
+  if (phase1) {
+    const toCheck = driversWithWindow.filter((d) => !d.isBackgrounded)
+    const present = await Promise.all(toCheck.map((d) => hasLiveDriverSocket(d.driver_id.toString())))
+    toCheck.forEach((driver, i) => { if (!present[i]) pushNow(driver) })
   }
 
   log.info(

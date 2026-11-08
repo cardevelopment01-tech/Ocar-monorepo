@@ -48,6 +48,8 @@ const BOUNDS: Record<string, ConfigBounds> = {
 // Typed `string` in the table but really booleans — free text here would silently break the reader.
 const ALLOWED_VALUES: Record<string, readonly string[]> = {
   cash_collection_enabled: ['true', 'false'],
+  // Read as on only when exactly 'true': a typo must be refused, not left looking like an enabled switch.
+  dispatch_no_resend_enabled: ['true', 'false'],
   // Anything but exactly 'true' reads as off, so a typo here would silently disable payments.
   mobile_payments_enabled: ['true', 'false'],
   app_update_enabled: ['true', 'false'],

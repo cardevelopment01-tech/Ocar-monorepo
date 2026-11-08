@@ -7,7 +7,7 @@ import { config } from '@/config'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import { rideAckKey } from '@/constants/redis-keys'
-import { getPendingAssignmentsForDriver } from '@/modules/rides/rides.repository'
+import { getPendingAssignmentsForDriver, markOfferAcked } from '@/modules/rides/rides.repository'
 import { updateLocation } from '@/modules/rides/rides.service'
 import { logger } from '@/lib/logger'
 import { isDriverSessionReplaced } from '@/middleware/auth.middleware'
@@ -150,6 +150,8 @@ export function initSocketServer(httpServer: HttpServer): Server {
         const rideId = parseId(payload?.rideId)
         if (rideId === null) return
         void redis.del(rideAckKey(rideId.toString(), user.sub)).catch(() => {})
+        // Persist the ack (dispatch phase 1): delivery used to exist only as this Redis key and a log line. Best effort.
+        void markOfferAcked(rideId, BigInt(user.sub)).catch(() => {})
         // Delivery tracking (see broadcast.processor.ts): the live app saw this request.
         log.info({ event: 'ride_offer_acked', rideId: rideId.toString(), driverId: user.sub }, 'ride request acked')
       }))
@@ -362,6 +364,22 @@ export async function isChatOpen(
 ): Promise<boolean> {
   const sockets = await getIO().in(`${ownerType}:${ownerId}`).fetchSockets()
   return sockets.some((s) => s.data['openChatRideId'] === rideId)
+}
+
+// Does this driver have a live socket right now, on any API instance? Used by dispatch to decide between waiting for the socket and
+// pushing at once. Unknown counts as "yes" (a lookup that fails or takes longer than the cap must never turn into a push storm):
+// the caller then falls back to the shorter socket-ack wait.
+const SOCKET_PRESENCE_TIMEOUT_MS = 500
+export async function hasLiveDriverSocket(driverId: string): Promise<boolean> {
+  try {
+    const sockets = await Promise.race([
+      getIO().in(`driver:${driverId}`).fetchSockets(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), SOCKET_PRESENCE_TIMEOUT_MS)),
+    ])
+    return sockets === null ? true : sockets.length > 0
+  } catch {
+    return true
+  }
 }
 
 // Real-time emits are best-effort side effects of whatever DB action triggered them

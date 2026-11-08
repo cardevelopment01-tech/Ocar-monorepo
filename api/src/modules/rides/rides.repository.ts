@@ -175,9 +175,13 @@ export async function findNearbyDrivers(params: {
   radiusMetres?: number
   maxDrivers?: number
   minWalletBalance: number
+  /** Drivers to leave out (dispatch phase 1: drivers who still hold a live offer for this ride). Omitted or empty = unchanged query. */
+  excludeDriverIds?: bigint[]
 }): Promise<NearbyDriver[]> {
   const radius = params.radiusMetres ?? 5000
   const max    = params.maxDrivers ?? 5
+  const exclude = params.excludeDriverIds ?? []
+  const excludeSql = exclude.length > 0 ? 'AND NOT (dls.driver_id = ANY($8::bigint[]))' : ''
   const res = await pool.query<NearbyDriver>(
     `SELECT
        dls.driver_id,
@@ -223,9 +227,12 @@ export async function findNearbyDrivers(params: {
          ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography,
          $4
        )
+       ${excludeSql}
      ORDER BY distance_metres ASC
      LIMIT $5`,
-    [params.lat, params.lng, params.categoryIds, radius, max, params.minWalletBalance, BACKGROUND_MATCH_GRACE_SECONDS]
+    exclude.length > 0
+      ? [params.lat, params.lng, params.categoryIds, radius, max, params.minWalletBalance, BACKGROUND_MATCH_GRACE_SECONDS, exclude]
+      : [params.lat, params.lng, params.categoryIds, radius, max, params.minWalletBalance, BACKGROUND_MATCH_GRACE_SECONDS]
   )
   return res.rows
 }
@@ -1216,7 +1223,7 @@ export async function createRideAssignment(data: {
      ON CONFLICT (ride_id, driver_id) DO UPDATE
        SET status = 'offered', expires_at = EXCLUDED.expires_at,
            session_id = EXCLUDED.session_id, broadcast_round = EXCLUDED.broadcast_round,
-           responded_at = NULL, cancelled_at = NULL
+           responded_at = NULL, cancelled_at = NULL, acked_at = NULL
        -- Re-offer in a later broadcast round: reopen a declined/expired/cancelled row, else
        -- acceptAssignment (needs status = 'offered') rejects the fresh card with
        -- "Ride no longer available". 'cancelled' matters for admin assignment: cancelAllAssignments()
@@ -1366,6 +1373,25 @@ export async function expireLapsedOffers(rideId: bigint): Promise<void> {
      SET status = 'expired', responded_at = now()
      WHERE ride_id = $1 AND status = 'offered' AND expires_at < now()`,
     [rideId]
+  )
+}
+
+// Drivers who hold an offer for this ride that is still open (not answered, not past its expiry). Time comes from the database clock only.
+export async function getLiveOfferDriverIds(rideId: bigint): Promise<bigint[]> {
+  const res = await pool.query<{ driver_id: string }>(
+    `SELECT driver_id FROM ride_assignments
+     WHERE ride_id = $1 AND status = 'offered' AND expires_at > now()`,
+    [rideId]
+  )
+  return res.rows.map(r => BigInt(r.driver_id))
+}
+
+// The driver's live app confirmed it received the offer. First ack wins; best effort, never blocks the socket handler.
+export async function markOfferAcked(rideId: bigint, driverId: bigint): Promise<void> {
+  await pool.query(
+    `UPDATE ride_assignments SET acked_at = now()
+     WHERE ride_id = $1 AND driver_id = $2 AND status = 'offered' AND acked_at IS NULL`,
+    [rideId, driverId]
   )
 }
 
