@@ -231,3 +231,46 @@ describe('a decline moves the ride on (phase 3)', () => {
     await Promise.all([1, 2, 3].map(async (n) => (await queues[QUEUE_NAMES.DISPATCH].getJob(`round-${id}-${n}`))?.remove().catch(() => {})))
   })
 })
+
+describe('spread stamp (phase 4)', () => {
+  const KEYS = ['dispatch_spread_enabled', 'dispatch_spread_city_ids']
+  const put = async (key: string, value: string) => { await pool.query(`UPDATE system_config SET value = $2 WHERE key = $1`, [key, value]); await redis.del(configKey(key)) }
+  const stamp = async (id: string) => (await pool.query(`SELECT dispatch_variant, dispatch_spread FROM rides WHERE id = $1`, [id])).rows[0]
+  let cityId = ''
+  beforeAll(async () => {
+    const { findNearestCity } = await import('@/modules/geo/geo.service')
+    cityId = String((await findNearestCity(DEFAULT_BOOKING.originLat, DEFAULT_BOOKING.originLng))!.id)
+  })
+  afterAll(async () => { for (const k of KEYS) await put(k, k.endsWith('enabled') ? 'false' : '') })
+
+  it('is stamped only when the switch is on AND the ride city is listed', async () => {
+    await setFlag('true')
+    await put('dispatch_spread_enabled', 'true')
+    await put('dispatch_spread_city_ids', '999999')
+    expect((await stamp(await book())).dispatch_spread).toBe(0)
+    await put('dispatch_spread_city_ids', cityId)
+    expect(await stamp(await book())).toMatchObject({ dispatch_variant: 1, dispatch_spread: 1 })
+    await put('dispatch_spread_enabled', 'false')
+    expect((await stamp(await book())).dispatch_spread).toBe(0)
+    await setFlag('false')
+  })
+
+  it('is never stamped when the base no-resend switch is off', async () => {
+    await setFlag('false')
+    await put('dispatch_spread_enabled', 'true')
+    await put('dispatch_spread_city_ids', cityId)
+    expect(await stamp(await book())).toMatchObject({ dispatch_variant: 0, dispatch_spread: 0 })
+  })
+
+  it('wave memory: a driver whose offer was lost is re-offered only because nobody else exists (ladder step 3)', async () => {
+    await setFlag('true')
+    await put('dispatch_spread_enabled', 'true')
+    await put('dispatch_spread_city_ids', cityId)
+    const id = await book()
+    await broadcast(id, 1)
+    await pool.query(`UPDATE ride_assignments SET status = 'cancelled' WHERE ride_id = $1`, [id])
+    await broadcast(id, 2)
+    expect((await assignment(id))[0]).toMatchObject({ status: 'offered', broadcast_round: 2 })
+    await setFlag('false')
+  })
+})

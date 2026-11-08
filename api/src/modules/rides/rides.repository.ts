@@ -1411,6 +1411,20 @@ export async function getDispatchState(rideId: bigint): Promise<{ dispatch_varia
   return res.rows[0] ?? null
 }
 
+// Every driver this ride has ever offered to, with the offer's outcome (the wave memory).
+export async function getOfferedDrivers(rideId: bigint): Promise<{ driver_id: bigint; status: string }[]> {
+  const res = await pool.query<{ driver_id: string; status: string }>(
+    `SELECT driver_id::text, status::text AS status FROM ride_assignments WHERE ride_id = $1`, [rideId])
+  return res.rows.map((r) => ({ driver_id: BigInt(r.driver_id), status: r.status }))
+}
+
+// Drivers who currently hold a live offer for a DIFFERENT ride.
+export async function getBusyDriverIds(rideId: bigint): Promise<bigint[]> {
+  const res = await pool.query<{ driver_id: string }>(
+    `SELECT DISTINCT driver_id::text FROM ride_assignments WHERE ride_id <> $1 AND status = 'offered' AND expires_at > now()`, [rideId])
+  return res.rows.map((r) => BigInt(r.driver_id))
+}
+
 export async function getDeclinedDriverIds(rideId: bigint): Promise<bigint[]> {
   const res = await pool.query<{ driver_id: string }>(
     `SELECT driver_id::text FROM ride_assignments WHERE ride_id = $1 AND status = 'declined'`, [rideId])

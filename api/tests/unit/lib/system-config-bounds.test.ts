@@ -31,3 +31,16 @@ describe('validateConfigBounds', () => {
     expect(validateConfigBounds('cash_collection_tolerance', 'abc')).toMatch(/number/)
   })
 })
+
+describe('dispatch switches', () => {
+  it.each(['dispatch_no_resend_enabled', 'dispatch_head_start_enabled', 'dispatch_spread_enabled'])('%s accepts only true or false', (key) => {
+    expect(validateConfigBounds(key, 'true')).toBeNull()
+    expect(validateConfigBounds(key, 'false')).toBeNull()
+    expect(validateConfigBounds(key, 'yes')).not.toBeNull()
+  })
+
+  it('dispatch_spread_city_ids is empty or a comma list of ids', () => {
+    for (const ok of ['', '1', '1,2,13']) expect(validateConfigBounds('dispatch_spread_city_ids', ok)).toBeNull()
+    for (const bad of ['1, 2', 'a', '1,', ',1', '1;2']) expect(validateConfigBounds('dispatch_spread_city_ids', bad)).not.toBeNull()
+  })
+})

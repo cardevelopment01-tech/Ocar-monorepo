@@ -77,8 +77,18 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   // Rounds 1-2 also skip drivers who declined this ride (a decline now moves the ride on at once, so the same driver must not be handed it
   // straight back); the last round may return to them, since by then a declined driver is better than none.
   const declinedDriverIds = phase1 && data.broadcastRound < 3 ? await repo.getDeclinedDriverIds(rideId) : []
-  const skipDriverIds = [...liveDriverIds, ...declinedDriverIds]
+  // Dispatch spread (5a, per-city, stamped on the ride): remember every driver this ride already offered, and prefer drivers who hold no
+  // live offer on another ride. Both are soft: if that leaves nobody, the ladder below relaxes them, so spreading never costs a ride.
+  const spread = phase1 && (ride.dispatch_spread ?? 0) >= 1
+  const [offeredBefore, busyDriverIds] = spread
+    ? await Promise.all([repo.getOfferedDrivers(rideId), repo.getBusyDriverIds(rideId)])
+    : [[], []] as [Awaited<ReturnType<typeof repo.getOfferedDrivers>>, bigint[]]
+  const skipDriverIds = spread
+    ? [...new Set([...liveDriverIds, ...offeredBefore.map((o) => o.driver_id), ...busyDriverIds].map((id) => id.toString()))].map((id) => BigInt(id))
+    : [...liveDriverIds, ...declinedDriverIds]
   const liveSet = new Set(skipDriverIds.map((id) => id.toString()))
+  // Return-cab matches are rare and route-specific, so a spread ride only keeps them away from drivers holding an open offer for this ride.
+  const returnSkip = spread ? new Set(liveDriverIds.map((id) => id.toString())) : liveSet
   // Open offers this ride may have at once: backfilling around still-open offers must not grow the set across rounds.
   const maxThisRound = phase1 ? Math.min(MAX_DRIVERS, Math.max(0, BROADCAST_MAX_LIVE_OFFERS - liveDriverIds.length)) : MAX_DRIVERS
   if (phase1 && liveDriverIds.length > 0) {
@@ -124,7 +134,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     })
     // Unknown distance (null/undefined/NaN) fails the cap: it must never read as 0 m away.
     // A driver without a usable location can't be matched, and we don't substitute the pickup point.
-    const returnCandidates = returnDrivers.filter(d => Number.isFinite(d.distance_metres) && d.distance_metres <= cap && !liveSet.has(String(d.driver_id)))
+    const returnCandidates = returnDrivers.filter(d => Number.isFinite(d.distance_metres) && d.distance_metres <= cap && !returnSkip.has(String(d.driver_id)))
     drivers = (phase1 ? returnCandidates.slice(0, maxThisRound) : returnCandidates).map(d => ({
       driver_id:        BigInt(d.driver_id),
       session_id:       BigInt(d.session_id),
@@ -162,8 +172,36 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     }
   }
 
+  // Spread ladder, each step only when the one before found nobody (and only if there is room for a new offer): (2) allow drivers busy with
+  // another ride, (3) also allow drivers offered before who did not decline, (4) everyone except open offers, decliners included. So the
+  // rule can never leave a ride with fewer drivers than a non-spread ride would have had.
+  let spreadLevel = 1
+  if (spread && !drivers.length && maxThisRound > 0) {
+    const offeredIds = offeredBefore.map((o) => o.driver_id)
+    const declined = offeredBefore.filter((o) => o.status === 'declined').map((o) => o.driver_id)
+    const steps: bigint[][] = [[...liveDriverIds, ...offeredIds], [...liveDriverIds, ...declined], [...liveDriverIds]]
+    for (const skip of steps) {
+      spreadLevel++
+      const found = await repo.findNearbyDrivers({
+        lat: data.originLat, lng: data.originLng, categoryIds, maxDrivers: maxThisRound,
+        radiusMetres: Math.min(cap, data.radiusMetres ?? cap), minWalletBalance,
+        ...(skip.length > 0 ? { excludeDriverIds: skip } : {}),
+      })
+      for (const sd of found) {
+        drivers.push({
+          driver_id: BigInt(sd.driver_id), session_id: BigInt(sd.session_id), lat: sd.lat, lng: sd.lng,
+          distance_metres: sd.distance_metres, isBackgrounded: sd.is_available === false,
+        })
+      }
+      if (drivers.length) break
+    }
+  }
+  if (spread) {
+    log.info({ event: 'ride_offer_spread', rideId: data.rideId, round: data.broadcastRound, level: spreadLevel, alreadyOffered: offeredBefore.length, busySkipped: busyDriverIds.length, picked: drivers.length }, 'spread pick')
+  }
+
   // A pool smaller than the wave: if skipping the drivers who declined left nobody, offer to them rather than burn the round.
-  if (phase1 && !drivers.length && declinedDriverIds.length > 0) {
+  if (phase1 && !spread && !drivers.length && declinedDriverIds.length > 0) {
     const retry: Parameters<typeof repo.findNearbyDrivers>[0] = {
       lat: data.originLat, lng: data.originLng, categoryIds, maxDrivers: maxThisRound,
       radiusMetres: Math.min(cap, data.radiusMetres ?? cap), minWalletBalance,
