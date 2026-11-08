@@ -196,9 +196,18 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   const sendOffers = async (list: typeof drivers): Promise<void> => {
     // Per-driver window: a backgrounded match gets longer to notice a push, tap
     // it, and let the app reconnect than a live-socket driver gets to ack.
+    // Dispatch phase 1: a driver whose app looks foregrounded but has no live connection is in the same position as a backgrounded one
+    // (only the push can reach them), so they get the same longer window and an immediate push. Lookups run concurrently, capped at
+    // 500 ms each; an unknown answer counts as connected.
+    const offline = new Set<string>()
+    if (phase1) {
+      const toCheck = list.filter((d) => !d.isBackgrounded)
+      const present = await Promise.all(toCheck.map((d) => hasLiveDriverSocket(d.driver_id.toString())))
+      toCheck.forEach((d, i) => { if (!present[i]) offline.add(d.driver_id.toString()) })
+    }
     const driversWithWindow = list.map(driver => {
       const backgroundWindow = phase1 ? BACKGROUND_ACCEPT_WINDOW_PHASE1_SECONDS : BACKGROUND_ACCEPT_WINDOW_SECONDS
-      const windowSeconds = driver.isBackgrounded ? backgroundWindow : BROADCAST_WINDOW_SECONDS
+      const windowSeconds = driver.isBackgrounded || offline.has(driver.driver_id.toString()) ? backgroundWindow : BROADCAST_WINDOW_SECONDS
       return { ...driver, windowSeconds, expiresAt: new Date(Date.now() + windowSeconds * 1000) }
     })
 
@@ -312,17 +321,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       // A backgrounded driver's socket is very likely dead — don't wait for
       // ack-check's 4s-later fallback, push immediately. Guarded internally so
       // ack-check's own fallback (if it still fires) is a no-op for this driver.
-      if (driver.isBackgrounded) pushNow(driver)
-    }
-
-    // Dispatch phase 1: a driver with no live connection anywhere cannot hear the socket emit, so the push goes out now instead of
-    // after the ack-check wait. Done after every emit so a slow presence lookup never delays another driver's card; the lookups
-    // themselves run concurrently, and an unknown answer counts as "connected" (the 2 s ack-check then covers it). The one-shot push
-    // guard makes this and the ack-check fallback a single push.
-    if (phase1) {
-      const toCheck = driversWithWindow.filter((d) => !d.isBackgrounded)
-      const present = await Promise.all(toCheck.map((d) => hasLiveDriverSocket(d.driver_id.toString())))
-      toCheck.forEach((driver, i) => { if (!present[i]) pushNow(driver) })
+      if (driver.isBackgrounded || offline.has(driver.driver_id.toString())) pushNow(driver)
     }
 
   }

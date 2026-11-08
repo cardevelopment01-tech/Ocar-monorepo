@@ -140,15 +140,11 @@ describe('dispatch_variant 1: delivery', () => {
     expect(vi.mocked(sendRideRequestPushOnce).mock.calls.map((c) => c[1])).toEqual(['2'])
   })
 
-  it('every card is emitted before any presence lookup is awaited (a slow lookup never delays a driver)', async () => {
-    let resolvePresence: (v: boolean) => void = () => {}
-    vi.mocked(hasLiveDriverSocket).mockReturnValue(new Promise<boolean>((r) => { resolvePresence = r }))
-    const done = processBroadcast(data())
-    await vi.waitFor(() => expect(socketEvents.sendRideRequest).toHaveBeenCalledTimes(2))
-    expect(sendRideRequestPushOnce).not.toHaveBeenCalled()
-    resolvePresence(false)
-    await done
-    expect(sendRideRequestPushOnce).toHaveBeenCalledTimes(2)
+  it('a driver who looks foregrounded but has no live connection gets the 30 s window too; a connected one keeps 20 s', async () => {
+    vi.mocked(hasLiveDriverSocket).mockImplementation(async (id: string) => id === '1')
+    await processBroadcast(data())
+    const windows = Object.fromEntries(vi.mocked(socketEvents.sendRideRequest).mock.calls.map((c) => [c[0], (c[1] as { timeoutSeconds: number }).timeoutSeconds]))
+    expect(windows).toEqual({ '1': 20, '2': 30 })
   })
 
   it('a backgrounded driver gets a 30 s window (the push cannot outlive its 30 s time-to-live) and one push, not two', async () => {

@@ -1387,11 +1387,16 @@ export async function getLiveOfferDriverIds(rideId: bigint): Promise<bigint[]> {
 }
 
 // The driver's live app confirmed it received the offer. First ack wins; best effort, never blocks the socket handler.
-export async function markOfferAcked(rideId: bigint, driverId: bigint): Promise<void> {
+// `offerRound` (sent by newer driver apps) ties the ack to the offer it answers, so a late ack for an earlier card cannot mark a
+// re-opened offer as delivered. Older apps send none and keep the old behaviour.
+export async function markOfferAcked(rideId: bigint, driverId: bigint, offerRound?: number): Promise<void> {
+  const params: unknown[] = [rideId, driverId]
+  let roundClause = ''
+  if (offerRound !== undefined) { params.push(offerRound); roundClause = ' AND broadcast_round = $3' }
   await pool.query(
     `UPDATE ride_assignments SET acked_at = now()
-     WHERE ride_id = $1 AND driver_id = $2 AND status = 'offered' AND acked_at IS NULL`,
-    [rideId, driverId]
+     WHERE ride_id = $1 AND driver_id = $2 AND status = 'offered' AND acked_at IS NULL${roundClause}`,
+    params
   )
 }
 

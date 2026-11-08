@@ -156,6 +156,16 @@ describe('repository: live offers, acks and the exclusion list', () => {
     expect((await assignment(id))[0].acked_at).toBeNull()
   })
 
+  it('an ack that names an earlier round does not mark the current offer as received', async () => {
+    const id = await book()
+    await broadcast(id, 1)
+    await broadcast(id, 2)
+    await repo.markOfferAcked(BigInt(id), BigInt(driver.driverId), 1)
+    expect((await assignment(id))[0].acked_at).toBeNull()
+    await repo.markOfferAcked(BigInt(id), BigInt(driver.driverId), 2)
+    expect((await assignment(id))[0].acked_at).not.toBeNull()
+  })
+
   it('findNearbyDrivers leaves out the drivers it is told to, and is unchanged when the list is empty', async () => {
     const base = {
       lat: DEFAULT_BOOKING.originLat, lng: DEFAULT_BOOKING.originLng, categoryIds: [BigInt(driver.categoryId)], minWalletBalance: 0, radiusMetres: 10_000,

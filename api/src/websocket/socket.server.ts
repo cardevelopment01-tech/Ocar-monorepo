@@ -146,12 +146,13 @@ export function initSocketServer(httpServer: HttpServer): Server {
       }).catch(() => {})
 
       // Clear ACK key when driver confirms receipt of a ride request
-      socket.on('ride:request:ack', safeHandler(log, 'ride:request:ack', (payload?: { rideId?: unknown }) => {
+      socket.on('ride:request:ack', safeHandler(log, 'ride:request:ack', (payload?: { rideId?: unknown; offerRound?: unknown }) => {
         const rideId = parseId(payload?.rideId)
         if (rideId === null) return
         void redis.del(rideAckKey(rideId.toString(), user.sub)).catch(() => {})
         // Persist the ack (dispatch phase 1): delivery used to exist only as this Redis key and a log line. Best effort.
-        void markOfferAcked(rideId, BigInt(user.sub)).catch(() => {})
+        const round = Number.isInteger(payload?.offerRound) ? (payload!.offerRound as number) : undefined
+        void markOfferAcked(rideId, BigInt(user.sub), round).catch(() => {})
         // Delivery tracking (see broadcast.processor.ts): the live app saw this request.
         log.info({ event: 'ride_offer_acked', rideId: rideId.toString(), driverId: user.sub }, 'ride request acked')
       }))
@@ -371,14 +372,17 @@ export async function isChatOpen(
 // the caller then falls back to the shorter socket-ack wait.
 const SOCKET_PRESENCE_TIMEOUT_MS = 500
 export async function hasLiveDriverSocket(driverId: string): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const sockets = await Promise.race([
       getIO().in(`driver:${driverId}`).fetchSockets(),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), SOCKET_PRESENCE_TIMEOUT_MS)),
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), SOCKET_PRESENCE_TIMEOUT_MS) }),
     ])
     return sockets === null ? true : sockets.length > 0
   } catch {
     return true
+  } finally {
+    clearTimeout(timer)
   }
 }
 
