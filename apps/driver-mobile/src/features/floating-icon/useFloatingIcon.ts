@@ -79,8 +79,7 @@ export function useFloatingIcon(): void {
       if (change.clearAlert) overlay.setAlert(false) // answered, expired or taken: no request is waiting any more
       if (!change.notify) return
       const appState = AppState.currentState
-      overlay.setAlert(true) // red dot and a steady pulse until the request is answered or the driver is back in Ocar
-      overlay.pulseIcon() // a binary without setAlert still gets the single pulse
+      overlay.setAlert(true) // a pulsing red dot until the request is answered or the driver is back in Ocar
       const speed = lastKnownSpeed()
       const i = { ...inputs(appState), speedKmh: speed.kmh, speedAgeMs: speed.ageMs }
       if (shouldAutoOpen(i)) overlay.bringToFront()

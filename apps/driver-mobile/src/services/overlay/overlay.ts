@@ -8,7 +8,6 @@ export interface NativeOverlay {
   showIcon(): boolean
   hideIcon(): void
   isIconShowing(): boolean
-  pulseIcon(): void
   /** Optional: a binary built before the red-dot change does not have it. */
   setAlert?(on: boolean): void
   /** Optional, same reason: removes a delivered notification by tag. */
@@ -25,8 +24,7 @@ export interface Overlay {
   showIcon(): boolean
   hideIcon(): void
   isIconShowing(): boolean
-  pulseIcon(): void
-  /** A request is waiting (true) or no longer is (false): the icon wears a red dot and pulses until cleared. */
+  /** A request is waiting (true) or no longer is (false): the icon wears a pulsing red dot until cleared. */
   setAlert(on: boolean): void
   /** Removes the ride request's push notification (tag `ride-<rideId>`, set by the server) so it stops ringing once Ocar's own card takes over. */
   dismissRideNotification(rideId: string): void
@@ -51,7 +49,6 @@ export function createOverlay(native: NativeOverlay | null | undefined): Overlay
       showIcon: () => false,
       hideIcon: () => {},
       isIconShowing: () => false,
-      pulseIcon: () => {},
       setAlert: () => {},
       dismissRideNotification: () => {},
       bringToFront: () => false,
@@ -64,7 +61,6 @@ export function createOverlay(native: NativeOverlay | null | undefined): Overlay
     showIcon: () => guard(() => native.showIcon(), false),
     hideIcon: () => guard(() => native.hideIcon(), undefined),
     isIconShowing: () => guard(() => native.isIconShowing(), false),
-    pulseIcon: () => guard(() => native.pulseIcon(), undefined),
     setAlert: (on) => guard(() => native.setAlert?.(on), undefined),
     dismissRideNotification: (rideId) => guard(() => native.dismissNotification?.(`ride-${rideId}`), undefined),
     bringToFront: () => guard(() => native.bringToFront(), false),

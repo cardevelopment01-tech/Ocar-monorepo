@@ -61,7 +61,7 @@ object OverlayIcon {
   }
 
   /**
-   * A request is waiting (true) or no longer is (false). While true the icon wears a red dot and pulses steadily, so a driver
+   * A request is waiting (true) or no longer is (false). While true the icon wears a red dot that pulses steadily, so a driver
    * switching between several driver apps can see which one has a request after the notification banner is gone.
    */
   fun setAlert(on: Boolean) {
@@ -80,31 +80,29 @@ object OverlayIcon {
 
   private fun applyAlert() {
     val v = view
+    val dot = badge
     alertAnimator?.cancel()
     alertAnimator = null
-    v?.scaleX = 1f
-    v?.scaleY = 1f
-    badge?.visibility = if (alertOn && v != null) View.VISIBLE else View.GONE
+    dot?.scaleX = 1f
+    dot?.scaleY = 1f
+    dot?.alpha = 1f
+    dot?.visibility = if (alertOn && v != null) View.VISIBLE else View.GONE
     v?.contentDescription = if (alertOn) "Return to Ocar, ride request waiting" else "Return to Ocar"
-    if (!alertOn || v == null) return
-    // Breathes inward: the window is exactly the icon's size, so growing past 1x would be clipped at its edge.
-    alertAnimator = ValueAnimator.ofFloat(1f, 0.8f).apply {
+    if (!alertOn || v == null || dot == null) return
+    // Only the red dot pulses; the icon itself stays still. The dot shrinks and dims, then returns: it sits in the window's corner, so
+    // growing past its size would be clipped at the window edge.
+    alertAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
       duration = 600
       repeatMode = ValueAnimator.REVERSE
       repeatCount = ValueAnimator.INFINITE
-      addUpdateListener { a -> val s = a.animatedValue as Float; v.scaleX = s; v.scaleY = s }
+      addUpdateListener { a ->
+        val t = a.animatedValue as Float
+        val s = 1f - 0.4f * t
+        dot.scaleX = s
+        dot.scaleY = s
+        dot.alpha = 1f - 0.65f * t
+      }
       start()
-    }
-  }
-
-  /** A short scale pulse so a waiting driver notices an incoming request. */
-  fun pulse() {
-    main.post {
-      if (alertOn) return@post // the steady alert pulse is already running
-      val v = view ?: return@post
-      v.animate().scaleX(0.75f).scaleY(0.75f).setDuration(150).withEndAction {
-        v.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
-      }.start()
     }
   }
 

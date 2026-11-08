@@ -7,7 +7,6 @@ const fakeNative = (over: Partial<NativeOverlay> = {}): NativeOverlay => ({
   showIcon: vi.fn(() => true),
   hideIcon: vi.fn(),
   isIconShowing: vi.fn(() => true),
-  pulseIcon: vi.fn(),
   setAlert: vi.fn(),
   bringToFront: vi.fn(() => true),
   ...over,
@@ -21,7 +20,7 @@ describe('createOverlay', () => {
     expect(o.showIcon()).toBe(false)
     expect(o.bringToFront()).toBe(false)
     expect(o.isIconShowing()).toBe(false)
-    expect(() => { o.hideIcon(); o.pulseIcon(); o.openPermissionSettings() }).not.toThrow()
+    expect(() => { o.hideIcon(); o.setAlert(true); o.openPermissionSettings() }).not.toThrow()
   })
 
   it('delegates to the native module when it exists', () => {
@@ -30,9 +29,9 @@ describe('createOverlay', () => {
     expect(o.available).toBe(true)
     expect(o.showIcon()).toBe(true)
     expect(o.bringToFront()).toBe(true)
-    o.hideIcon(); o.pulseIcon(); o.openPermissionSettings()
+    o.hideIcon(); o.setAlert(true); o.openPermissionSettings()
     expect(native.hideIcon).toHaveBeenCalledTimes(1)
-    expect(native.pulseIcon).toHaveBeenCalledTimes(1)
+    expect(native.setAlert).toHaveBeenCalledWith(true)
     expect(native.openPermissionSettings).toHaveBeenCalledTimes(1)
   })
 
@@ -63,12 +62,12 @@ describe('createOverlay', () => {
 
   it('a native error becomes a safe fallback, never an exception into the app', () => {
     const boom = () => { throw new Error('native failure') }
-    const o = createOverlay(fakeNative({ hasPermission: boom, showIcon: boom, hideIcon: boom, bringToFront: boom, isIconShowing: boom, pulseIcon: boom, setAlert: boom, openPermissionSettings: boom }))
+    const o = createOverlay(fakeNative({ hasPermission: boom, showIcon: boom, hideIcon: boom, bringToFront: boom, isIconShowing: boom, setAlert: boom, openPermissionSettings: boom }))
     expect(() => o.setAlert(true)).not.toThrow()
     expect(o.hasPermission()).toBe(false)
     expect(o.showIcon()).toBe(false)
     expect(o.bringToFront()).toBe(false)
     expect(o.isIconShowing()).toBe(false)
-    expect(() => { o.hideIcon(); o.pulseIcon(); o.openPermissionSettings() }).not.toThrow()
+    expect(() => { o.hideIcon(); o.setAlert(true); o.openPermissionSettings() }).not.toThrow()
   })
 })

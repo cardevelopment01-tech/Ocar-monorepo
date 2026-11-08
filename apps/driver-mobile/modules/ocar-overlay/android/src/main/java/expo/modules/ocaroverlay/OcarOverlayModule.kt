@@ -37,10 +37,7 @@ class OcarOverlayModule : Module() {
 
     Function("isIconShowing") { OverlayIcon.isShowing }
 
-    /** A brief pulse on the icon, for an incoming request while the app is in the background. */
-    Function("pulseIcon") { OverlayIcon.pulse() }
-
-    /** A request is waiting (true) or no longer is (false): the icon wears a red dot and pulses while true. */
+    /** A request is waiting (true) or no longer is (false): the icon wears a red dot that pulses while true. */
     Function("setAlert") { on: Boolean -> OverlayIcon.setAlert(on) }
 
     /**
