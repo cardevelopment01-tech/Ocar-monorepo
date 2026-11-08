@@ -112,12 +112,13 @@ describe('an open offer in a later round', () => {
     await setFlag('false')
   })
 
-  it('variant 1: a driver who DECLINED still comes back in a later round (re-offer is kept; only a live offer is left alone)', async () => {
+  it('variant 1: after a decline the ride is still offered again when this is the only driver (thin pool is not wasted)', async () => {
     await setFlag('true')
     const id = await book()
     await broadcast(id, 1)
     const res = await request(app).post(`/api/v1/rides/${id}/decline`).set('Authorization', `Bearer ${driver.accessToken}`)
     expect(res.status).toBe(200)
+    expect((await assignment(id))[0].status).toBe('declined')
     await broadcast(id, 2)
     const row = (await assignment(id))[0]
     expect(row.status).toBe('offered')
@@ -174,5 +175,59 @@ describe('repository: live offers, acks and the exclusion list', () => {
     expect(all.map((d) => String(d.driver_id))).toContain(String(driver.driverId))
     expect((await repo.findNearbyDrivers({ ...base, excludeDriverIds: [] })).map((d) => String(d.driver_id))).toContain(String(driver.driverId))
     expect((await repo.findNearbyDrivers({ ...base, excludeDriverIds: [BigInt(driver.driverId)] })).map((d) => String(d.driver_id))).not.toContain(String(driver.driverId))
+  })
+})
+
+describe('dispatch watchdog (phase 3)', () => {
+  const stuck = async (id: string) => (await repo.findStuckDispatchRides(120)).map((r) => r.id).includes(id)
+  // The watchdog times from updated_at, which a trigger resets on every UPDATE, so age it with triggers off (replica role) inside a transaction.
+  const age = async (id: string) => {
+    const c = await pool.connect()
+    try {
+      await c.query('BEGIN')
+      await c.query(`SET LOCAL session_replication_role = replica`)
+      await c.query(`UPDATE rides SET updated_at = now() - interval '5 minutes' WHERE id = $1`, [id])
+      await c.query('COMMIT')
+    } finally { c.release() }
+  }
+
+  it('finds a flagged ride past the wait with no open offer, and leaves it alone while an offer is open', async () => {
+    await setFlag('true')
+    const id = await book()
+    await setFlag('false')
+    await broadcast(id, 1)
+    await age(id)
+    expect(await stuck(id)).toBe(false) // driver holds a live offer
+    await pool.query(`UPDATE ride_assignments SET expires_at = now() - interval '1 second' WHERE ride_id = $1`, [id])
+    expect(await stuck(id)).toBe(true)
+  })
+
+  it('never touches a ride booked under the original rules, or a recent one', async () => {
+    await setFlag('false')
+    const old = await book()
+    await age(old)
+    expect(await stuck(old)).toBe(false)
+    await setFlag('true')
+    const fresh = await book()
+    await setFlag('false')
+    expect(await stuck(fresh)).toBe(false)
+  })
+})
+
+describe('a decline moves the ride on (phase 3)', () => {
+  it('the last open offer declined -> round 2 starts now; one round only, even with a second decline', async () => {
+    const { queues, QUEUE_NAMES } = await import('@/jobs/queues')
+    await setFlag('true')
+    const id = await book()
+    await setFlag('false')
+    await broadcast(id, 1)
+    const job2 = async () => queues[QUEUE_NAMES.DISPATCH].getJob(`round-${id}-2`)
+    expect(await (await job2())!.isDelayed()).toBe(true)
+    // another online driver in the shared test DB may also hold an offer, so close every other open offer first
+    await pool.query(`UPDATE ride_assignments SET status = 'declined' WHERE ride_id = $1 AND driver_id <> $2`, [id, driver.driverId])
+    const decline = () => request(app).post(`/api/v1/rides/${id}/decline`).set('Authorization', `Bearer ${driver.accessToken}`)
+    await Promise.all([decline(), decline()])
+    expect(await (await job2())!.isDelayed()).toBe(false)
+    await Promise.all([1, 2, 3].map(async (n) => (await queues[QUEUE_NAMES.DISPATCH].getJob(`round-${id}-${n}`))?.remove().catch(() => {})))
   })
 })

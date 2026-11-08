@@ -74,7 +74,11 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   // dispatch_variant 0 and every line below behaves exactly as it always did.
   const phase1 = (ride.dispatch_variant ?? 0) >= 1
   const liveDriverIds = phase1 ? await repo.getLiveOfferDriverIds(rideId) : []
-  const liveSet = new Set(liveDriverIds.map((id) => id.toString()))
+  // Rounds 1-2 also skip drivers who declined this ride (a decline now moves the ride on at once, so the same driver must not be handed it
+  // straight back); the last round may return to them, since by then a declined driver is better than none.
+  const declinedDriverIds = phase1 && data.broadcastRound < 3 ? await repo.getDeclinedDriverIds(rideId) : []
+  const skipDriverIds = [...liveDriverIds, ...declinedDriverIds]
+  const liveSet = new Set(skipDriverIds.map((id) => id.toString()))
   // Open offers this ride may have at once: backfilling around still-open offers must not grow the set across rounds.
   const maxThisRound = phase1 ? Math.min(MAX_DRIVERS, Math.max(0, BROADCAST_MAX_LIVE_OFFERS - liveDriverIds.length)) : MAX_DRIVERS
   if (phase1 && liveDriverIds.length > 0) {
@@ -141,7 +145,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       radiusMetres,
       minWalletBalance,
     }
-    if (phase1 && liveDriverIds.length > 0) nearbyParams.excludeDriverIds = liveDriverIds
+    if (phase1 && skipDriverIds.length > 0) nearbyParams.excludeDriverIds = skipDriverIds
     const standardDrivers = await repo.findNearbyDrivers(nearbyParams)
     const included = new Set(drivers.map(d => d.driver_id.toString()))
     for (const sd of standardDrivers) {
@@ -153,6 +157,23 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
           lng:             sd.lng,
           distance_metres: sd.distance_metres,
           isBackgrounded:  sd.is_available === false,
+        })
+      }
+    }
+  }
+
+  // A pool smaller than the wave: if skipping the drivers who declined left nobody, offer to them rather than burn the round.
+  if (phase1 && !drivers.length && declinedDriverIds.length > 0) {
+    const retry: Parameters<typeof repo.findNearbyDrivers>[0] = {
+      lat: data.originLat, lng: data.originLng, categoryIds, maxDrivers: maxThisRound,
+      radiusMetres: Math.min(cap, data.radiusMetres ?? cap), minWalletBalance,
+    }
+    if (liveDriverIds.length > 0) retry.excludeDriverIds = liveDriverIds
+    for (const sd of await repo.findNearbyDrivers(retry)) {
+      if (!liveSet.has(sd.driver_id.toString()) || declinedDriverIds.some((d) => d === BigInt(sd.driver_id))) {
+        drivers.push({
+          driver_id: BigInt(sd.driver_id), session_id: BigInt(sd.session_id), lat: sd.lat, lng: sd.lng,
+          distance_metres: sd.distance_metres, isBackgrounded: sd.is_available === false,
         })
       }
     }
