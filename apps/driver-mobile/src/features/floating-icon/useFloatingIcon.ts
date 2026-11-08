@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Alert, AppState } from 'react-native'
+import { AppState } from 'react-native'
 import * as Location from 'expo-location'
 import { overlay } from '@/services/overlay'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
@@ -56,24 +56,6 @@ export function useFloatingIcon(): void {
       overlay.hideIcon() // unmount or a dependency change: re-evaluated by the next effect run
     }
   }, [iconEnabled, hydrated, isOnline])
-
-  // Ask once, the first time the driver goes online with the icon on and the permission missing. Android will not let an app grant
-  // itself "Display over other apps", so the driver must allow it in system settings; this explains why first. "Not now" is
-  // remembered and the app keeps working through the notification; the Notification settings switch asks again on demand.
-  useEffect(() => {
-    if (!overlay.available || !hydrated || !iconEnabled || !isOnline) return
-    const prefs = useAlertPrefsStore.getState()
-    if (prefs.overlayPermissionAsked || overlay.hasPermission()) return
-    prefs.setOverlayPermissionAsked(true)
-    Alert.alert(
-      'Keep Ocar one tap away',
-      'Allow Ocar to show a small icon over other apps while you are online, so you can use Maps and come straight back, and so new ride requests open Ocar for you. You can turn this off any time in Notification settings.',
-      [
-        { text: 'Not now', style: 'cancel' },
-        { text: 'Allow', onPress: () => overlay.openPermissionSettings() },
-      ]
-    )
-  }, [hydrated, iconEnabled, isOnline])
 
   // A new request while Ocar is in the background.
   useEffect(() => {

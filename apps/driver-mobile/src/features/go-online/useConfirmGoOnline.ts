@@ -6,6 +6,7 @@ import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { connectSocket } from '@/services/socket'
 import { startBackgroundTracking } from '@/services/location/backgroundTask'
 import { promptBatteryOptimizationOnce } from '@/services/batteryOptimization'
+import { promptOverlayPermissionOnce } from '@/features/floating-icon/promptOverlayPermission'
 import { goOnline as apiGoOnline } from './api'
 import type { VehicleInfo } from './types'
 
@@ -77,7 +78,8 @@ export function useConfirmGoOnline(
       await startBackgroundTracking()
       connectSocket()
       router.dismissTo('/(tabs)/home')
-      void promptBatteryOptimizationOnce()
+      // One alert at a time: the battery prompt first, then (once) the floating-icon permission prompt.
+      void promptBatteryOptimizationOnce().then(() => new Promise((r) => setTimeout(r, 500))).then(() => promptOverlayPermissionOnce())
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to go online. Please try again.'))
     } finally {
