@@ -5,15 +5,12 @@ import { getApiErrorMessage, getCurrentOrLastKnownPosition } from '@ocar/mobile-
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { connectSocket } from '@/services/socket'
 import { startBackgroundTracking } from '@/services/location/backgroundTask'
-import { promptBatteryOptimizationOnce } from '@/services/batteryOptimization'
 import { promptOverlayPermissionOnce } from '@/features/floating-icon/promptOverlayPermission'
 import { goOnline as apiGoOnline } from './api'
 import type { VehicleInfo } from './types'
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
-// Lets Android finish closing the battery dialog before the overlay-permission dialog opens (it shows one alert at a time).
-const PROMPT_GAP_MS = 500
 
 // getCurrentOrLastKnownPosition (mobile-shared) is already timeout-capped and
 // falls back to a cached last-known fix on its own -- this only needs to
@@ -80,9 +77,8 @@ export function useConfirmGoOnline(
       await startBackgroundTracking()
       connectSocket()
       router.dismissTo('/(tabs)/home')
-      // One alert at a time: the battery prompt first, then (once) the floating-icon permission prompt.
-      // A prompt that fails never blocks going online.
-      void promptBatteryOptimizationOnce().then(() => new Promise((r) => setTimeout(r, PROMPT_GAP_MS))).then(() => promptOverlayPermissionOnce()).catch(() => {})
+      // Asked once, the first time the driver goes online. A prompt that fails never blocks going online.
+      void promptOverlayPermissionOnce().catch(() => {})
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to go online. Please try again.'))
     } finally {
