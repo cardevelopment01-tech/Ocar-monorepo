@@ -45,6 +45,9 @@ export const BACKGROUND_ACCEPT_WINDOW_SECONDS = 45
 export const BACKGROUND_ACCEPT_WINDOW_PHASE1_SECONDS = 30
 // Open offers one ride may have at once across rounds (twice a round's maximum), so backfilling around still-open offers cannot grow it.
 export const BROADCAST_MAX_LIVE_OFFERS = BROADCAST_MAX_DRIVERS * 2
+/** Dispatch experiment (variant 2): the nearest N drivers get a round-1 offer this long before the rest. */
+export const HEAD_START_COUNT = 2
+export const HEAD_START_MS = 2_500
 // Admin manual-assign: longer than a broadcast ping since the driver was
 // deliberately picked and deserves a beat to check the trip before responding.
 export const MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS = 30

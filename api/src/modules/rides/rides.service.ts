@@ -877,7 +877,9 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   const chargePerStop = fareEstimate.charge_per_stop
   // Which dispatch rules this ride lives under is decided once, here, and stamped on the ride: a later change to the switch never
   // alters a ride already in flight (dispatch phase 1; 0 = the original behaviour).
-  const dispatchVariant = (await getConfigValue('dispatch_no_resend_enabled', 'false')) === 'true' ? 1 : 0
+  // 2 = variant 1 plus the nearest-drivers head start (needs both switches on).
+  const noResend = (await getConfigValue('dispatch_no_resend_enabled', 'false')) === 'true'
+  const dispatchVariant = !noResend ? 0 : (await getConfigValue('dispatch_head_start_enabled', 'false')) === 'true' ? 2 : 1
   const client = await pool.connect()
   let ride
   try {

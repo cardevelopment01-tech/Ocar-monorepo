@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Dispatch phase 1 (docs/superpowers/plans/2026-11-08-dispatch-spread-to-more-drivers.md): rides stamped dispatch_variant 1 never re-send a still
 // open offer, cap open offers per ride, push at once to a driver with no live connection (otherwise ack-check after 2 s), and use a 30 s window
@@ -158,5 +158,55 @@ describe('dispatch_variant 1: delivery', () => {
     expect((vi.mocked(socketEvents.sendRideRequest).mock.calls[0]![1] as { timeoutSeconds: number }).timeoutSeconds).toBe(30)
     expect(hasLiveDriverSocket).not.toHaveBeenCalled()
     expect(sendRideRequestPushOnce).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('dispatch_variant 1: last round with offers still open', () => {
+  beforeEach(() => { vi.mocked(repo.getRideById).mockResolvedValue(ride(1)) })
+
+  it('does not close the ride as no_drivers while an earlier offer is live; it looks again in 5 s', async () => {
+    vi.mocked(repo.getLiveOfferDriverIds).mockResolvedValue([1n])
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValue([])
+    await processBroadcast(data(3))
+    expect(repo.updateRideStatusCAS).not.toHaveBeenCalled()
+    const again = vi.mocked(queues.dispatch.add).mock.calls.find((c) => c[0] === 'broadcast_ride')!
+    expect((again[1] as { broadcastRound: number }).broadcastRound).toBe(3)
+    expect((again[2] as { delay: number }).delay).toBe(5000)
+  })
+})
+
+describe('dispatch_variant 2: nearest drivers get a head start in round 1', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.mocked(repo.getRideById).mockResolvedValue(ride(2))
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValue([drv(1), drv(2), drv(3), drv(4)] as never)
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('offers the nearest 2 at once and the rest only after the head start', async () => {
+    const done = processBroadcast(data(1))
+    await vi.advanceTimersByTimeAsync(100)
+    expect(emitted()).toEqual(['1', '2'])
+    await vi.advanceTimersByTimeAsync(2500)
+    await done
+    expect(emitted()).toEqual(['1', '2', '3', '4'])
+  })
+
+  it('skips the rest if the ride was taken during the head start', async () => {
+    const done = processBroadcast(data(1))
+    await vi.advanceTimersByTimeAsync(100)
+    vi.mocked(repo.getRideById).mockResolvedValue({ status: 'accepted' } as never)
+    await vi.advanceTimersByTimeAsync(2500)
+    await done
+    expect(emitted()).toEqual(['1', '2'])
+  })
+
+  it('later rounds, and 2 or fewer drivers, are sent at once', async () => {
+    await processBroadcast(data(2))
+    expect(emitted()).toEqual(['1', '2', '3', '4'])
+    vi.mocked(socketEvents.sendRideRequest).mockClear()
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValue([drv(1), drv(2)] as never)
+    await processBroadcast(data(1))
+    expect(emitted()).toEqual(['1', '2'])
   })
 })
