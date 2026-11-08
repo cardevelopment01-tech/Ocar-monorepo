@@ -1155,6 +1155,19 @@ export async function findStaleRequestedRides(minutes: number): Promise<{ id: st
   return res.rows
 }
 
+// Dispatch watchdog: a flagged (dispatch_variant >= 1) ride still 'requested' well past the end of its rounds, with no offer still open.
+// Nothing is running for it (a lost round job, a crashed worker), so it would otherwise sit until the 20-minute stale sweep.
+export async function findStuckDispatchRides(seconds: number): Promise<{ id: string }[]> {
+  const res = await pool.query<{ id: string }>(
+    `SELECT r.id::text FROM rides r
+     WHERE r.status = 'requested' AND r.dispatch_variant >= 1
+       AND r.created_at < now() - ($1 || ' seconds')::interval
+       AND NOT EXISTS (SELECT 1 FROM ride_assignments ra WHERE ra.ride_id = r.id AND ra.status = 'offered' AND ra.expires_at > now())`,
+    [seconds]
+  )
+  return res.rows
+}
+
 export interface StaleAcceptedOrArrivedRow {
   id: string
   status: 'accepted' | 'driver_arrived'
@@ -1387,6 +1400,22 @@ export async function getLiveOfferDriverIds(rideId: bigint): Promise<bigint[]> {
 }
 
 // The driver's live app confirmed it received the offer. First ack wins; best effort, never blocks the socket handler.
+export async function getDispatchState(rideId: bigint): Promise<{ dispatch_variant: number; last_round: number; live_offers: number } | null> {
+  const res = await pool.query<{ dispatch_variant: number; last_round: number; live_offers: number }>(
+    `SELECT r.dispatch_variant,
+            COALESCE(MAX(ra.broadcast_round), 0)::int AS last_round,
+            (COUNT(*) FILTER (WHERE ra.status = 'offered' AND ra.expires_at > now()))::int AS live_offers
+     FROM rides r LEFT JOIN ride_assignments ra ON ra.ride_id = r.id
+     WHERE r.id = $1 AND r.status = 'requested' GROUP BY r.id`, [rideId])
+  return res.rows[0] ?? null
+}
+
+export async function getDeclinedDriverIds(rideId: bigint): Promise<bigint[]> {
+  const res = await pool.query<{ driver_id: string }>(
+    `SELECT driver_id::text FROM ride_assignments WHERE ride_id = $1 AND status = 'declined'`, [rideId])
+  return res.rows.map((r) => BigInt(r.driver_id))
+}
+
 // `offerRound` (sent by newer driver apps) ties the ack to the offer it answers, so a late ack for an earlier card cannot mark a
 // re-opened offer as delivered. Older apps send none and keep the old behaviour.
 export async function markOfferAcked(rideId: bigint, driverId: bigint, offerRound?: number): Promise<void> {

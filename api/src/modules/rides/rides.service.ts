@@ -999,17 +999,17 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride',
       { ...jobData, broadcastRound: 1 },
-      { delay: 0, attempts: 2, removeOnComplete: true }
+      { jobId: `round-${ride.id}-1`, delay: 0, attempts: 2, removeOnComplete: true }
     ),
     queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride',
       { ...jobData, broadcastRound: 2 },
-      { delay: 25_000, attempts: 1, removeOnComplete: true }
+      { jobId: `round-${ride.id}-2`, delay: 25_000, attempts: 1, removeOnComplete: true }
     ),
     queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride',
       { ...jobData, broadcastRound: 3 },
-      { delay: 50_000, attempts: 1, removeOnComplete: true }
+      { jobId: `round-${ride.id}-3`, delay: 50_000, attempts: 1, removeOnComplete: true }
     ),
   ])
 
@@ -1031,6 +1031,21 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
 // no error surfaced) since the local UI has already dismissed the card.
 export async function declineRide(driverId: bigint, rideId: bigint): Promise<void> {
   await repo.declineAssignment(rideId, driverId)
+  await promoteNextRoundIfIdle(rideId).catch((err: unknown) => log.error({ err, rideId }, 'promote next round failed'))
+}
+
+/**
+ * Dispatch phase 3: when the last open offer on a flagged ride is declined, the next round runs now instead of waiting out its 25 s timer.
+ * The next round is a delayed job with a fixed id (`round-<ride>-<n>`), so promoting it can only ever start that one job: concurrent
+ * declines, or a decline racing a round that is already due, cannot produce a second round.
+ */
+async function promoteNextRoundIfIdle(rideId: bigint): Promise<void> {
+  const state = await repo.getDispatchState(rideId)
+  if (!state || state.dispatch_variant < 1 || state.live_offers > 0) return
+  const next = state.last_round + 1
+  if (next > 3) return
+  const job = await queues[QUEUE_NAMES.DISPATCH].getJob(`round-${rideId}-${next}`)
+  if (job && await job.isDelayed()) await job.promote()
 }
 
 /** A ride request is over for these drivers: end it on their open apps (socket) and silence the push on their locked phones. */
@@ -2517,16 +2532,18 @@ export async function forceAssignGraceCheck(rideId: bigint, driverId: bigint): P
 
 // ── Orphaned-ride sweep (cleanup worker) ────────────────────────
 
-export async function expireStaleRequestedRide(rideId: bigint) {
+export async function expireStaleRequestedRide(rideId: bigint, note = 'auto-expired: no broadcast resolution', releaseOffer = false) {
   // Only a ride that is still 'requested' may expire; one a driver accepted a moment ago must be left alone.
   const expired = await repo.updateRideStatusCAS(rideId, 'requested', 'no_drivers')
   if (!expired) return
+  // The watchdog path gives the rider's offer back (best effort; the stale-reservation sweep is the backstop), as the last broadcast round does.
+  if (releaseOffer) await releaseForRide(pool, rideId, 'no drivers').catch((err: unknown) => log.error({ err, rideId }, 'offer release failed'))
   await repo.logStatusHistory({
     rideId,
     fromStatus: 'requested',
     toStatus:   'no_drivers',
     actor:      'system',
-    note:       'auto-expired: no broadcast resolution',
+    note,
   })
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'no_drivers' })
   const noDriversRide = await repo.getRideCoreById(rideId)

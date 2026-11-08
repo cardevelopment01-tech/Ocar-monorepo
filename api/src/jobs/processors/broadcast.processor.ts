@@ -74,7 +74,11 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   // dispatch_variant 0 and every line below behaves exactly as it always did.
   const phase1 = (ride.dispatch_variant ?? 0) >= 1
   const liveDriverIds = phase1 ? await repo.getLiveOfferDriverIds(rideId) : []
-  const liveSet = new Set(liveDriverIds.map((id) => id.toString()))
+  // Rounds 1-2 also skip drivers who declined this ride (a decline now moves the ride on at once, so the same driver must not be handed it
+  // straight back); the last round may return to them, since by then a declined driver is better than none.
+  const declinedDriverIds = phase1 && data.broadcastRound < 3 ? await repo.getDeclinedDriverIds(rideId) : []
+  const skipDriverIds = [...liveDriverIds, ...declinedDriverIds]
+  const liveSet = new Set(skipDriverIds.map((id) => id.toString()))
   // Open offers this ride may have at once: backfilling around still-open offers must not grow the set across rounds.
   const maxThisRound = phase1 ? Math.min(MAX_DRIVERS, Math.max(0, BROADCAST_MAX_LIVE_OFFERS - liveDriverIds.length)) : MAX_DRIVERS
   if (phase1 && liveDriverIds.length > 0) {
@@ -141,7 +145,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       radiusMetres,
       minWalletBalance,
     }
-    if (phase1 && liveDriverIds.length > 0) nearbyParams.excludeDriverIds = liveDriverIds
+    if (phase1 && skipDriverIds.length > 0) nearbyParams.excludeDriverIds = skipDriverIds
     const standardDrivers = await repo.findNearbyDrivers(nearbyParams)
     const included = new Set(drivers.map(d => d.driver_id.toString()))
     for (const sd of standardDrivers) {

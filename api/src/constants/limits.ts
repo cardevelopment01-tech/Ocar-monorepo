@@ -139,6 +139,8 @@ export const PAGINATION_MAX_LIMIT = 100
 // requested_at, so advance-booking dispatch (which bumps updated_at when it
 // flips 'scheduled' -> 'requested') is never mistaken for stale.
 export const STALE_REQUESTED_MINUTES = 20
+/** Dispatch watchdog (variant >= 1 rides): rounds end by ~50 s and the longest offer window is 30 s, so past this with no live offer the dispatch is lost. */
+export const DISPATCH_WATCHDOG_SECONDS = 120
 export const STALE_ACCEPTED_HOURS = 3
 export const STALE_DRIVER_ARRIVED_HOURS = 1
 export const STALE_IN_PROGRESS_CEILING_HOURS = 12

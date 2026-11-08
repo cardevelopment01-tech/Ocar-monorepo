@@ -5,6 +5,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   findStaleInProgressRides:        vi.fn(),
   flagRideForReview:               vi.fn(),
   findStaleRequestedRides:         vi.fn().mockResolvedValue([]),
+  findStuckDispatchRides:          vi.fn().mockResolvedValue([]),
   findStaleAcceptedOrArrivedRides: vi.fn().mockResolvedValue([]),
   findStaleOnlineDrivers:          vi.fn().mockResolvedValue([]),
 }))

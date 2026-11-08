@@ -30,6 +30,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   findReturnCabDrivers: vi.fn().mockResolvedValue([]),
   findNearbyDrivers: vi.fn(),
   getLiveOfferDriverIds: vi.fn().mockResolvedValue([]),
+  getDeclinedDriverIds: vi.fn().mockResolvedValue([]),
   createRideAssignment: vi.fn().mockResolvedValue(undefined),
   updateRideStatusCAS: vi.fn().mockResolvedValue({ id: 1n }),
   logStatusHistory: vi.fn(),
@@ -58,6 +59,7 @@ const nearbyArg = () => vi.mocked(repo.findNearbyDrivers).mock.calls[0]![0] as {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(repo.getLiveOfferDriverIds).mockResolvedValue([])
+  vi.mocked(repo.getDeclinedDriverIds).mockResolvedValue([])
   vi.mocked(repo.findNearbyDrivers).mockResolvedValue([drv(1), drv(2)] as never)
   vi.mocked(hasLiveDriverSocket).mockResolvedValue(true)
 })
@@ -204,5 +206,21 @@ describe('dispatch_variant 2: nearest drivers get a head start in round 1', () =
     vi.mocked(repo.findNearbyDrivers).mockResolvedValue([drv(1), drv(2)] as never)
     await processBroadcast(data(1))
     expect(emitted()).toEqual(['1', '2'])
+  })
+})
+
+describe('dispatch_variant 1: a driver who declined is not handed the ride straight back', () => {
+  beforeEach(() => { vi.mocked(repo.getRideById).mockResolvedValue(ride(1)) })
+
+  it('rounds 1-2 leave out drivers who declined', async () => {
+    vi.mocked(repo.getDeclinedDriverIds).mockResolvedValue([7n])
+    await processBroadcast(data(2))
+    expect(nearbyArg().excludeDriverIds).toEqual([7n])
+  })
+
+  it('the last round may return to them (and does not even look them up)', async () => {
+    await processBroadcast(data(3))
+    expect(repo.getDeclinedDriverIds).not.toHaveBeenCalled()
+    expect(nearbyArg().excludeDriverIds).toBeUndefined()
   })
 })
