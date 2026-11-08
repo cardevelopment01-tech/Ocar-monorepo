@@ -79,7 +79,8 @@ export function useConfirmGoOnline(
       connectSocket()
       router.dismissTo('/(tabs)/home')
       // One alert at a time: the battery prompt first, then (once) the floating-icon permission prompt.
-      void promptBatteryOptimizationOnce().then(() => new Promise((r) => setTimeout(r, 500))).then(() => promptOverlayPermissionOnce())
+      // The short pause lets Android finish closing the first dialog before the second opens. A prompt that fails never blocks going online.
+      void promptBatteryOptimizationOnce().then(() => new Promise((r) => setTimeout(r, 500))).then(() => promptOverlayPermissionOnce()).catch(() => {})
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to go online. Please try again.'))
     } finally {

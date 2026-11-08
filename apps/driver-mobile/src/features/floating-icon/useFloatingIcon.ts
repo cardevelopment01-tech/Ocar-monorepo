@@ -3,6 +3,7 @@ import { AppState } from 'react-native'
 import { useDriverPositionStore } from '@/services/location/driverPositionStore'
 import { overlay } from '@/services/overlay'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
+import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { shouldShowIcon, shouldAutoOpen, speedKmhFromMps, type AppStateName } from './policy'
@@ -28,7 +29,8 @@ function inputs(appState: AppStateName) {
     iconEnabled: prefs.hasHydrated && prefs.floatingIconEnabled,
     autoOpenEnabled: prefs.hasHydrated && prefs.autoOpenEnabled,
     hasPermission: overlay.hasPermission(),
-    isOnline: session.isOnline,
+    // Signing out does not clear the in-memory online flag (the server takes the driver offline), so "online" also needs a signed-in driver.
+    isOnline: session.isOnline && useAuthStore.getState().isAuthenticated,
     hasActiveRide: session.activeRide !== null,
     appState,
   }
@@ -38,6 +40,7 @@ export function useFloatingIcon(): void {
   const iconEnabled = useAlertPrefsStore((s) => s.floatingIconEnabled)
   const hydrated = useAlertPrefsStore((s) => s.hasHydrated)
   const isOnline = useDriverSessionStore((s) => s.isOnline)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   // Keep the icon in step with: the opt-in, being online, and whether Ocar is in front.
   useEffect(() => {
@@ -46,8 +49,9 @@ export function useFloatingIcon(): void {
       const i = inputs(appState)
       if (shouldShowIcon(i)) overlay.showIcon()
       else overlay.hideIcon()
-      // The driver is back in Ocar, where the request card itself is showing: the dot has done its job.
-      if (appState === 'active') overlay.setAlert(false)
+      // The dot has done its job when the driver is back in Ocar (the request card itself is showing), and it must not outlive the
+      // icon's reason to exist (offline, signed out, switched off): otherwise the next appearance would wear a stale dot.
+      if (appState === 'active' || !i.isOnline || !i.iconEnabled) overlay.setAlert(false)
     }
     sync(AppState.currentState)
     const sub = AppState.addEventListener('change', sync)
@@ -55,7 +59,7 @@ export function useFloatingIcon(): void {
     // location service keep running, and the icon's own tap reopens Ocar). A dependency change re-runs sync above straight away,
     // which hides or shows the icon as needed; going offline or switching the icon off do exactly that.
     return () => { sub.remove() }
-  }, [iconEnabled, hydrated, isOnline])
+  }, [iconEnabled, hydrated, isOnline, isAuthenticated])
 
   // A new request while Ocar is in the background.
   useEffect(() => {
