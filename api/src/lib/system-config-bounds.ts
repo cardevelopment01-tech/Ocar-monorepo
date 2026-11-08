@@ -71,8 +71,6 @@ const ALLOWED_VALUES: Record<string, readonly string[]> = {
 
 // Version rows (app_update_<app>_<platform>_min|recommended): the policy compares major.minor.patch,
 // so '1.2', 'v1.2.3' or '1.2.3-beta' would silently compare as "no limit".
-// City ids the spread engine is on for: empty (off everywhere) or a comma list of ids, no spaces.
-const CITY_LIST_RE = /^(\d+(,\d+)*)?$/
 const VERSION_KEY_RE = /^app_update_(rider|driver)_(android|ios)_(min|recommended)$/
 const VERSION_VALUE_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}$/
 
@@ -103,6 +101,9 @@ export function versionPairCheck(key: string): { siblingKey: string; check: (val
 export function getConfigBounds(key: string): ConfigBounds | null {
   return BOUNDS[key] ?? null
 }
+
+// City ids the spread engine is on for: empty (off everywhere) or a comma list of ids, no spaces.
+const CITY_LIST_RE = /^(\d+(,\d+)*)?$/
 
 export function validateConfigBounds(key: string, value: string): string | null {
   const allowed = ALLOWED_VALUES[key]

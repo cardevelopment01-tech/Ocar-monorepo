@@ -274,4 +274,18 @@ describe('dispatch spread (5a): wave memory and the soft one-live-offer rule', (
     expect(skipArgs()[2]).toEqual(['6'])
     expect(emitted()).toEqual(['5'])
   })
+
+  it('last resort (step 4): drivers who all declined are still offered on the last round, so the ride is not closed', async () => {
+    vi.mocked(repo.getOfferedDrivers).mockResolvedValue([{ driver_id: 6n, status: 'declined' }])
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([drv(6)] as never)
+    await processBroadcast(data(3))
+    expect(emitted()).toEqual(['6'])
+    expect(repo.updateRideStatusCAS).not.toHaveBeenCalled()
+  })
+
+  it('no room for new offers (10 already open): the ladder does not run', async () => {
+    vi.mocked(repo.getLiveOfferDriverIds).mockResolvedValue([10n, 11n, 12n, 13n, 14n, 15n, 16n, 17n, 18n, 19n])
+    await processBroadcast(data(2))
+    expect(repo.findNearbyDrivers).not.toHaveBeenCalled()
+  })
 })
