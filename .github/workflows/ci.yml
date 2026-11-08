@@ -8,9 +8,11 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A new push to a PR cancels that PR's older run. Pushes to main/develop are never cancelled: the Deploy workflow starts from each of them.
+# A new push to a PR cancels that PR's older run. A push to main/develop (or a manual run) gets its own per-commit group, so it is never
+# cancelled or replaced by a newer run: the Deploy workflow starts from each of them. Keep the push branches below in sync with the
+# `branches:` filters of the workflow_run triggers in deploy.yml and deploy-web.yml.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -40,11 +42,13 @@ jobs:
           set -u
           all() { for k in api user driver admin mobile code; do echo "$k=true" >> "$GITHUB_OUTPUT"; done; }
           if [ "$EVENT" != "pull_request" ]; then all; exit 0; fi
-          FILES=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null) || { echo "diff failed, running everything"; all; exit 0; }
+          FILES=$(git diff --name-only "$BASE...$HEAD") || { echo "diff failed, running everything"; all; exit 0; }
           if [ -z "$FILES" ]; then echo "empty diff, running everything"; all; exit 0; fi
-          echo "$FILES"
-          has() { echo "$FILES" | grep -Eq "$1"; }
-          SHARED='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json|\.npmrc|\.nvmrc|patches/|packages/|\.github/workflows/ci\.yml|\.github/scripts/|eslint\.config|\.eslintrc)'
+          printf '%s
+' "$FILES"
+          has() { printf '%s
+' "$FILES" | grep -Eq "$1"; }
+          SHARED='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json|\.npmrc|\.nvmrc|patches/|packages/|\.github/workflows/ci\.yml|\.github/scripts/|eslint\.config|\.eslintrc|tsconfig|docker-compose)'
           flag() { if has "$SHARED" || has "$2"; then echo "$1=true" >> "$GITHUB_OUTPUT"; echo "$1=true"; else echo "$1=false" >> "$GITHUB_OUTPUT"; echo "$1=false"; fi; }
           flag api    '^api/'
           flag user   '^apps/user/'
@@ -110,7 +114,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -126,7 +130,7 @@ jobs:
     name: Typecheck API
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.api == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.api == 'true') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -142,7 +146,7 @@ jobs:
     name: Test API
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.api == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.api == 'true') }}
     timeout-minutes: 25
     services:
       postgres:
@@ -239,7 +243,7 @@ jobs:
     name: Typecheck User App
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.user == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.user == 'true') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -255,7 +259,7 @@ jobs:
     name: Typecheck Driver App
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.driver == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.driver == 'true') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -271,7 +275,7 @@ jobs:
     name: Typecheck Admin App
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.admin == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.admin == 'true') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -288,7 +292,7 @@ jobs:
     name: Typecheck Mobile Apps
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.mobile == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.mobile == 'true') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -303,3 +307,20 @@ jobs:
       - run: pnpm --filter @ocar/rider-mobile exec tsc --noEmit
       - run: pnpm --filter @ocar/driver-mobile exec tsc --noEmit
       - run: pnpm --filter @ocar/driver-mobile exec vitest run
+
+  # One check that is red if anything failed or was cancelled, and green when every job passed or was legitimately skipped. Use THIS as the
+  # required status check in branch protection: a skipped job counts as passing, so requiring the individual jobs alone would let a broken
+  # `changes` job skip the tests and still merge.
+  ci-gate:
+    name: CI passed
+    if: ${{ always() }}
+    needs: [changes, security-scan, migration-check, lint, typecheck-api, test-api, typecheck-user, typecheck-driver, typecheck-admin, typecheck-mobile]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          echo '${{ toJSON(needs) }}' | python3 -c "
+          import json,sys
+          bad={k:v['result'] for k,v in json.load(sys.stdin).items() if v['result'] in ('failure','cancelled')}
+          print(bad or 'all jobs passed or were skipped by design')
+          sys.exit(1 if bad else 0)"
