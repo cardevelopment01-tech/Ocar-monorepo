@@ -30,8 +30,9 @@ jobs:
           set -u
           SHA=""
           for id in $(gh api "repos/$REPO/deployments?environment=prd&per_page=30" --jq '.[].id'); do
-            state=$(gh api "repos/$REPO/deployments/$id/statuses?per_page=1" --jq '.[0].state')
-            if [ "$state" = "success" ]; then SHA=$(gh api "repos/$REPO/deployments/$id" --jq .sha); break; fi
+            # Any success in its history: a deployment later superseded is marked inactive, but it was live.
+            ok=$(gh api "repos/$REPO/deployments/$id/statuses?per_page=100" --jq '[.[].state] | index("success") != null')
+            if [ "$ok" = "true" ]; then SHA=$(gh api "repos/$REPO/deployments/$id" --jq .sha); break; fi
           done
           {
             echo "### Release status"

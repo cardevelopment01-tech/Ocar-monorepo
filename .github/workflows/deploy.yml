@@ -1,5 +1,8 @@
 name: Deploy
 
+# The run title says which environment, so Deploy Web can tell a prd release from a stg run (it reads workflow_run.display_title).
+run-name: Deploy ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'stg' }}
+
 on:
   workflow_run:
     workflows: ["CI"]
@@ -50,7 +53,7 @@ jobs:
   # successful Deploy run exists (first run ever).
   changes:
     name: Detect relevant changes
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -82,7 +85,9 @@ jobs:
           elif [ "${{ github.event.workflow_run.head_branch }}" = "develop" ]; then
             DEPLOY_ENV="stg"
           else
-            DEPLOY_ENV="prd"
+            # Only develop (-> stg) is wired to start this automatically. Anything else must fail closed, never default to production.
+            echo "unexpected trigger for an automatic deploy (branch: ${{ github.event.workflow_run.head_branch }})" >&2
+            exit 1
           fi
           # prd is production: only main may ever be deployed to it (a manual dispatch can pick any branch).
           if [ "$DEPLOY_ENV" = "prd" ] && [ "${{ github.ref }}" != "refs/heads/main" ]; then
@@ -91,7 +96,7 @@ jobs:
           fi
           # A production release must be a commit CI passed on. (Before, the CI-then-deploy chain guaranteed it; a manual run needs the check.)
           if [ "$DEPLOY_ENV" = "prd" ]; then
-            CI_OK=$(gh run list --workflow=ci.yml --commit "${{ github.sha }}" --status=success --limit 1 --json conclusion --jq length)
+            CI_OK=$(gh run list --workflow=ci.yml --commit "${{ github.sha }}" --event push --branch main --status success --limit 1 --json conclusion --jq length) || { echo "could not query CI runs (see the error above)" >&2; exit 1; }
             if [ "${CI_OK:-0}" -lt 1 ]; then
               echo "CI has not passed on ${{ github.sha }} (still running, or failed). Wait for the main CI run to finish, then run again." >&2
               exit 1

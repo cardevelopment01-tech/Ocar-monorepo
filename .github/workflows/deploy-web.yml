@@ -53,7 +53,8 @@ jobs:
   # Production only: did CI pass and did the API deploy succeed (or have nothing to deploy)?
   gate:
     name: Gate on the API deploy
-    if: github.event_name == 'workflow_run'
+    # Production only. A workflow_run counts only if it was a prd release: a stg run started from main must never ship the web apps to production.
+    if: (github.event_name == 'workflow_run' && github.event.workflow_run.display_title == 'Deploy prd') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -65,11 +66,18 @@ jobs:
       # Script comes from the tested commit, not from anything the triggering run produced.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - id: gate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # A manual production web deploy must be a commit CI passed on.
+            n=$(gh run list --workflow=ci.yml --commit "${{ github.sha }}" --event push --branch main --status success --limit 1 --json conclusion --jq length) || n=0
+            if [ "${n:-0}" -ge 1 ]; then out="ok=true"; else out="ok=false (CI has not passed on ${{ github.sha }})"; fi
+            echo "$out"; echo "$out" | grep -E '^ok=' | cut -d' ' -f1 >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           out=$(python3 .github/scripts/web_release.py gate "${{ github.repository }}" "${{ github.event.workflow_run.id }}")
           echo "$out"
           echo "$out" | grep -E '^ok=' >> "$GITHUB_OUTPUT"
@@ -86,7 +94,7 @@ jobs:
       ${{ !cancelled() && (
         (github.event_name == 'workflow_run' && needs.gate.outputs.ok == 'true') ||
         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
-        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.gate.outputs.ok == 'true')
       ) }}
     timeout-minutes: 25
     concurrency:
