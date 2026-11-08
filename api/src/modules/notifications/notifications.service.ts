@@ -111,7 +111,8 @@ export async function sendRideRequestPushOnce(
 
   try {
     if (await redis.exists(rideGoneKey(rideId, driverId))) return // the request ended before we got to send it
-    const base = { tag: `ride-${rideId}`, ttlSeconds: Math.min(windowSeconds, 30) }
+    // noProxy: Google Play services must not show the ride request for the app without running it (the app speaks the summary).
+    const base = { tag: `ride-${rideId}`, ttlSeconds: Math.min(windowSeconds, 30), noProxy: true }
     // Builds that have the loud channel get the long alarm-stream ring and the full details; older builds keep the
     // channel they have (naming a channel the app lacks would land the push in Android's quiet fallback).
     let tokens: { v3: string[]; legacy: string[] }
