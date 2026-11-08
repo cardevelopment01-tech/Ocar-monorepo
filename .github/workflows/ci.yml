@@ -44,10 +44,8 @@ jobs:
           if [ "$EVENT" != "pull_request" ]; then all; exit 0; fi
           FILES=$(git diff --name-only "$BASE...$HEAD") || { echo "diff failed, running everything"; all; exit 0; }
           if [ -z "$FILES" ]; then echo "empty diff, running everything"; all; exit 0; fi
-          printf '%s
-' "$FILES"
-          has() { printf '%s
-' "$FILES" | grep -Eq "$1"; }
+          printf '%s\n' "$FILES"
+          has() { printf '%s\n' "$FILES" | grep -Eq "$1"; }
           SHARED='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json|\.npmrc|\.nvmrc|patches/|packages/|\.github/workflows/ci\.yml|\.github/scripts/|eslint\.config|\.eslintrc|tsconfig|docker-compose)'
           flag() { if has "$SHARED" || has "$2"; then echo "$1=true" >> "$GITHUB_OUTPUT"; echo "$1=true"; else echo "$1=false" >> "$GITHUB_OUTPUT"; echo "$1=false"; fi; }
           flag api    '^api/'
