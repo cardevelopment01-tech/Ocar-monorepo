@@ -36,10 +36,11 @@ describe('ride offer de-duplication', () => {
 
   it('an offer with no round (older server) always shows', () => {
     const { setPending, clearPending } = useRideRequestStore.getState()
-    const { offerRound: _r, ...noRound } = offer()
-    setPending(noRound as RideRequestPayload)
+    const noRound = offer()
+    delete noRound.offerRound
+    setPending(noRound)
     clearPending('1')
-    setPending(noRound as RideRequestPayload)
+    setPending(noRound)
     expect(useRideRequestStore.getState().pending).not.toBeNull()
   })
 })
