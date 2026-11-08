@@ -224,3 +224,13 @@ describe('dispatch_variant 1: a driver who declined is not handed the ride strai
     expect(nearbyArg().excludeDriverIds).toBeUndefined()
   })
 })
+
+describe('dispatch_variant 1: a thin pool is not wasted on drivers who declined', () => {
+  it('if skipping the declined leaves nobody, they are offered the ride rather than the round being burned', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(ride(1))
+    vi.mocked(repo.getDeclinedDriverIds).mockResolvedValue([1n])
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValueOnce([]).mockResolvedValueOnce([drv(1)] as never)
+    await processBroadcast(data(2))
+    expect(emitted()).toEqual(['1'])
+  })
+})

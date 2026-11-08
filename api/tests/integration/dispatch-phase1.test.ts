@@ -112,18 +112,17 @@ describe('an open offer in a later round', () => {
     await setFlag('false')
   })
 
-  it('variant 1: a driver who DECLINED is skipped in round 2 but may come back in the last round', async () => {
+  it('variant 1: after a decline the ride is still offered again when this is the only driver (thin pool is not wasted)', async () => {
     await setFlag('true')
     const id = await book()
     await broadcast(id, 1)
     const res = await request(app).post(`/api/v1/rides/${id}/decline`).set('Authorization', `Bearer ${driver.accessToken}`)
     expect(res.status).toBe(200)
-    await broadcast(id, 2)
     expect((await assignment(id))[0].status).toBe('declined')
-    await broadcast(id, 3)
+    await broadcast(id, 2)
     const row = (await assignment(id))[0]
     expect(row.status).toBe('offered')
-    expect(row.broadcast_round).toBe(3)
+    expect(row.broadcast_round).toBe(2)
     await setFlag('false')
   })
 })
@@ -181,7 +180,16 @@ describe('repository: live offers, acks and the exclusion list', () => {
 
 describe('dispatch watchdog (phase 3)', () => {
   const stuck = async (id: string) => (await repo.findStuckDispatchRides(120)).map((r) => r.id).includes(id)
-  const age = (id: string) => pool.query(`UPDATE rides SET created_at = now() - interval '5 minutes' WHERE id = $1`, [id])
+  // The watchdog times from updated_at, which a trigger resets on every UPDATE, so age it with triggers off (replica role) inside a transaction.
+  const age = async (id: string) => {
+    const c = await pool.connect()
+    try {
+      await c.query('BEGIN')
+      await c.query(`SET LOCAL session_replication_role = replica`)
+      await c.query(`UPDATE rides SET updated_at = now() - interval '5 minutes' WHERE id = $1`, [id])
+      await c.query('COMMIT')
+    } finally { c.release() }
+  }
 
   it('finds a flagged ride past the wait with no open offer, and leaves it alone while an offer is open', async () => {
     await setFlag('true')

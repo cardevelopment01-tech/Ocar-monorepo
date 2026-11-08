@@ -1042,10 +1042,13 @@ export async function declineRide(driverId: bigint, rideId: bigint): Promise<voi
 async function promoteNextRoundIfIdle(rideId: bigint): Promise<void> {
   const state = await repo.getDispatchState(rideId)
   if (!state || state.dispatch_variant < 1 || state.live_offers > 0) return
-  const next = state.last_round + 1
-  if (next > 3) return
-  const job = await queues[QUEUE_NAMES.DISPATCH].getJob(`round-${rideId}-${next}`)
-  if (job && await job.isDelayed()) await job.promote()
+  // A round still sending (its offers are inserted in parallel) can briefly show no live offers: leave the ride to it.
+  const jobs = await Promise.all([1, 2, 3].map((n) => queues[QUEUE_NAMES.DISPATCH].getJob(`round-${rideId}-${n}`)))
+  if (await Promise.all(jobs.map(async (j) => (j ? j.isActive() : false))).then((a) => a.some(Boolean))) return
+  // The earliest round still waiting on its timer (not "last round that wrote rows": a round that found nobody writes none).
+  for (const job of jobs) {
+    if (job && await job.isDelayed()) { await job.promote(); return }
+  }
 }
 
 /** A ride request is over for these drivers: end it on their open apps (socket) and silence the push on their locked phones. */

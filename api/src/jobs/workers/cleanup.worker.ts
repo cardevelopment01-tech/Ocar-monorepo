@@ -53,7 +53,11 @@ export const cleanupWorker = new Worker(
     // not after the 20-minute sweep above.
     for (const ride of await repo.findStuckDispatchRides(DISPATCH_WATCHDOG_SECONDS)) {
       log.warn({ rideId: ride.id }, 'dispatch watchdog closing a ride with no live offers')
-      await expireStaleRequestedRide(BigInt(ride.id), 'auto-expired: dispatch watchdog (no round running, no open offers)', true)
+      try {
+        await expireStaleRequestedRide(BigInt(ride.id), 'auto-expired: dispatch watchdog (no round running, no open offers)', true)
+      } catch (err) {
+        log.error({ err, rideId: ride.id }, 'dispatch watchdog failed for a ride') // one bad ride must not skip the rest of the sweep
+      }
     }
     for (const ride of await repo.findStaleAcceptedOrArrivedRides(STALE_ACCEPTED_HOURS, STALE_DRIVER_ARRIVED_HOURS)) {
       await expireStaleAcceptedOrArrivedRide(BigInt(ride.id), ride.status, BigInt(ride.driver_id))

@@ -162,6 +162,23 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     }
   }
 
+  // A pool smaller than the wave: if skipping the drivers who declined left nobody, offer to them rather than burn the round.
+  if (phase1 && !drivers.length && declinedDriverIds.length > 0) {
+    const retry: Parameters<typeof repo.findNearbyDrivers>[0] = {
+      lat: data.originLat, lng: data.originLng, categoryIds, maxDrivers: maxThisRound,
+      radiusMetres: Math.min(cap, data.radiusMetres ?? cap), minWalletBalance,
+    }
+    if (liveDriverIds.length > 0) retry.excludeDriverIds = liveDriverIds
+    for (const sd of await repo.findNearbyDrivers(retry)) {
+      if (!liveSet.has(sd.driver_id.toString()) || declinedDriverIds.some((d) => d === BigInt(sd.driver_id))) {
+        drivers.push({
+          driver_id: BigInt(sd.driver_id), session_id: BigInt(sd.session_id), lat: sd.lat, lng: sd.lng,
+          distance_metres: sd.distance_metres, isBackgrounded: sd.is_available === false,
+        })
+      }
+    }
+  }
+
   if (!drivers.length) {
     if (data.broadcastRound >= 3 && phase1 && liveDriverIds.length > 0) {
       // Dispatch phase 1: nobody new to offer, but earlier offers are still open and must be allowed to be answered. Look again shortly;
