@@ -2,7 +2,8 @@ name: Deploy Web (Vercel)
 
 # Release order and safety net for the three web apps (admin, driver, user):
 #
-#   push to main -> CI -> Deploy (API, blue/green + bake) -> THIS workflow (production)
+#   merge to main -> CI only (merge is not release)
+#   release: "Run workflow" on Deploy (prd, from main) -> approve -> API blue/green + bake -> THIS workflow (production)
 #
 # - Production web deploys run only AFTER the API deploy finished and only if it did not fail
 #   or roll back (`gate` job), so a site never ships against a backend that was rolled back.
@@ -13,6 +14,7 @@ name: Deploy Web (Vercel)
 #   previous production deployment is restored with `vercel rollback` (Pro plan: any earlier
 #   production deployment) and the job fails loudly.
 # - Pull requests get preview deployments only. Manual runs deploy main to production.
+#   Production web deploys follow a production API release (the Deploy run on main), not every merge.
 #
 # Why prebuilt deploys: Vercel blocks every deployment it builds itself when the commit author
 # is not a seat on the team (single-seat plan, pushes come from another account); prebuilt

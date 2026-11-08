@@ -1,0 +1,46 @@
+name: Release status
+
+# Merge is not release: a merge to main no longer deploys production. This writes one line to the run summary after each
+# merge: how many commits on main are not live yet (and how many of them touch the API), so nothing sits merged-but-unshipped unnoticed.
+# Release with: Actions > Deploy > Run workflow > prd (from main), then approve it.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: read
+
+jobs:
+  status:
+    name: Commits waiting for a production release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compare main with the last successful prd deployment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -u
+          SHA=""
+          for id in $(gh api "repos/$REPO/deployments?environment=prd&per_page=30" --jq '.[].id'); do
+            state=$(gh api "repos/$REPO/deployments/$id/statuses?per_page=1" --jq '.[0].state')
+            if [ "$state" = "success" ]; then SHA=$(gh api "repos/$REPO/deployments/$id" --jq .sha); break; fi
+          done
+          {
+            echo "### Release status"
+            if [ -z "$SHA" ] || ! git cat-file -e "$SHA" 2>/dev/null; then
+              echo "No successful prd deployment found in recent history, so I cannot tell what is waiting."
+            else
+              N=$(git rev-list --count "$SHA..HEAD")
+              API=$(git diff --name-only "$SHA" HEAD | grep -Ec '^(api/|infra/alloy/|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json)' || true)
+              echo "Live on prd: \`${SHA:0:8}\`. **$N commit(s)** on main are not deployed yet; **$API** changed file(s) affect the API image."
+              if [ "$N" -gt 0 ]; then echo; git log --oneline "$SHA..HEAD" | head -30 | sed 's/^/- /'; fi
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
