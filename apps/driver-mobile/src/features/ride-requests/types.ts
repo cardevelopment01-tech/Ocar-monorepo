@@ -12,6 +12,8 @@ export type RideRequestPayload = {
   isReturnCab: boolean
   expiresAt: string
   timeoutSeconds: number
+  // Which broadcast round made this offer (server sets it; absent from older servers). Same ride + same round = the same offer.
+  offerRound?: number
   destinationLat?: number
   destinationLng?: number
   returnAt?: string

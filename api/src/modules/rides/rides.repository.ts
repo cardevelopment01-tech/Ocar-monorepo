@@ -1689,6 +1689,7 @@ export async function getDriverTripHistory(
 }
 
 export interface PendingAssignment {
+  broadcast_round: number | null
   ride_id: string
   expires_at: string
   origin_address: string | null
@@ -1719,6 +1720,7 @@ export async function getPendingAssignmentsForDriver(
     `SELECT
        ra.ride_id::text,
        ra.expires_at,
+       ra.broadcast_round,
        r.origin_address,
        r.destination_address,
        ST_Y(r.origin::geometry)      AS origin_lat,
