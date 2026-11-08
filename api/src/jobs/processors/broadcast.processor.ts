@@ -77,7 +77,14 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   // Rounds 1-2 also skip drivers who declined this ride (a decline now moves the ride on at once, so the same driver must not be handed it
   // straight back); the last round may return to them, since by then a declined driver is better than none.
   const declinedDriverIds = phase1 && data.broadcastRound < 3 ? await repo.getDeclinedDriverIds(rideId) : []
-  const skipDriverIds = [...liveDriverIds, ...declinedDriverIds]
+  // Dispatch spread (5a, per-city, stamped on the ride): remember every driver this ride already offered, and prefer drivers who hold no
+  // live offer on another ride. Both are soft: if that leaves nobody, the ladder below relaxes them, so spreading never costs a ride.
+  const spread = phase1 && (ride.dispatch_spread ?? 0) >= 1
+  const offeredBefore = spread ? await repo.getOfferedDrivers(rideId) : []
+  const busyDriverIds = spread ? await repo.getBusyDriverIds(rideId) : []
+  const skipDriverIds = spread
+    ? [...new Set([...liveDriverIds, ...offeredBefore.map((o) => o.driver_id), ...busyDriverIds].map((id) => id.toString()))].map((id) => BigInt(id))
+    : [...liveDriverIds, ...declinedDriverIds]
   const liveSet = new Set(skipDriverIds.map((id) => id.toString()))
   // Open offers this ride may have at once: backfilling around still-open offers must not grow the set across rounds.
   const maxThisRound = phase1 ? Math.min(MAX_DRIVERS, Math.max(0, BROADCAST_MAX_LIVE_OFFERS - liveDriverIds.length)) : MAX_DRIVERS
@@ -160,6 +167,35 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
         })
       }
     }
+  }
+
+  // Spread ladder, each step only when the one before found nobody: (2) allow busy drivers, (3) allow drivers offered before who did not
+  // decline, (4) the thin-pool step below allows everyone but open offers.
+  let spreadLevel = 1
+  if (spread && !drivers.length) {
+    const notDeclined = new Set(offeredBefore.filter((o) => o.status !== 'declined').map((o) => o.driver_id.toString()))
+    const steps: bigint[][] = [
+      [...liveDriverIds, ...offeredBefore.map((o) => o.driver_id)],
+      [...liveDriverIds, ...offeredBefore.filter((o) => !notDeclined.has(o.driver_id.toString())).map((o) => o.driver_id)],
+    ]
+    for (const skip of steps) {
+      spreadLevel++
+      const found = await repo.findNearbyDrivers({
+        lat: data.originLat, lng: data.originLng, categoryIds, maxDrivers: maxThisRound,
+        radiusMetres: Math.min(cap, data.radiusMetres ?? cap), minWalletBalance,
+        ...(skip.length > 0 ? { excludeDriverIds: skip } : {}),
+      })
+      for (const sd of found) {
+        drivers.push({
+          driver_id: BigInt(sd.driver_id), session_id: BigInt(sd.session_id), lat: sd.lat, lng: sd.lng,
+          distance_metres: sd.distance_metres, isBackgrounded: sd.is_available === false,
+        })
+      }
+      if (drivers.length) break
+    }
+  }
+  if (spread) {
+    log.info({ event: 'ride_offer_spread', rideId: data.rideId, round: data.broadcastRound, level: spreadLevel, alreadyOffered: offeredBefore.length, busySkipped: busyDriverIds.length, picked: drivers.length }, 'spread pick')
   }
 
   // A pool smaller than the wave: if skipping the drivers who declined left nobody, offer to them rather than burn the round.

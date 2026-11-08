@@ -50,6 +50,8 @@ const ALLOWED_VALUES: Record<string, readonly string[]> = {
   cash_collection_enabled: ['true', 'false'],
   // Read as on only when exactly 'true': a typo must be refused, not left looking like an enabled switch.
   dispatch_no_resend_enabled: ['true', 'false'],
+  dispatch_head_start_enabled: ['true', 'false'],
+  dispatch_spread_enabled: ['true', 'false'],
   // Anything but exactly 'true' reads as off, so a typo here would silently disable payments.
   mobile_payments_enabled: ['true', 'false'],
   app_update_enabled: ['true', 'false'],
@@ -69,6 +71,8 @@ const ALLOWED_VALUES: Record<string, readonly string[]> = {
 
 // Version rows (app_update_<app>_<platform>_min|recommended): the policy compares major.minor.patch,
 // so '1.2', 'v1.2.3' or '1.2.3-beta' would silently compare as "no limit".
+// City ids the spread engine is on for: empty (off everywhere) or a comma list of ids, no spaces.
+const CITY_LIST_RE = /^(\d+(,\d+)*)?$/
 const VERSION_KEY_RE = /^app_update_(rider|driver)_(android|ios)_(min|recommended)$/
 const VERSION_VALUE_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}$/
 
@@ -103,6 +107,7 @@ export function getConfigBounds(key: string): ConfigBounds | null {
 export function validateConfigBounds(key: string, value: string): string | null {
   const allowed = ALLOWED_VALUES[key]
   if (allowed && !allowed.includes(value)) return `value must be one of: ${allowed.join(', ')}`
+  if (key === 'dispatch_spread_city_ids' && !CITY_LIST_RE.test(value)) return 'value must be empty or city ids separated by commas, e.g. 1,2'
   if (VERSION_KEY_RE.test(key) && !VERSION_VALUE_RE.test(value)) return 'value must look like 1.2.3'
 
   const bounds = BOUNDS[key]

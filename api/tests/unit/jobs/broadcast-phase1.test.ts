@@ -31,6 +31,8 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   findNearbyDrivers: vi.fn(),
   getLiveOfferDriverIds: vi.fn().mockResolvedValue([]),
   getDeclinedDriverIds: vi.fn().mockResolvedValue([]),
+  getOfferedDrivers: vi.fn().mockResolvedValue([]),
+  getBusyDriverIds: vi.fn().mockResolvedValue([]),
   createRideAssignment: vi.fn().mockResolvedValue(undefined),
   updateRideStatusCAS: vi.fn().mockResolvedValue({ id: 1n }),
   logStatusHistory: vi.fn(),
@@ -60,6 +62,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(repo.getLiveOfferDriverIds).mockResolvedValue([])
   vi.mocked(repo.getDeclinedDriverIds).mockResolvedValue([])
+  vi.mocked(repo.getOfferedDrivers).mockResolvedValue([])
+  vi.mocked(repo.getBusyDriverIds).mockResolvedValue([])
   vi.mocked(repo.findNearbyDrivers).mockResolvedValue([drv(1), drv(2)] as never)
   vi.mocked(hasLiveDriverSocket).mockResolvedValue(true)
 })
@@ -232,5 +236,42 @@ describe('dispatch_variant 1: a thin pool is not wasted on drivers who declined'
     vi.mocked(repo.findNearbyDrivers).mockResolvedValueOnce([]).mockResolvedValueOnce([drv(1)] as never)
     await processBroadcast(data(2))
     expect(emitted()).toEqual(['1'])
+  })
+})
+
+describe('dispatch spread (5a): wave memory and the soft one-live-offer rule', () => {
+  const spreadRide = () => ({ status: 'requested', origin_address: 'A', destination_address: 'B', dispatch_variant: 1, dispatch_spread: 1 }) as never
+  const skipArgs = () => vi.mocked(repo.findNearbyDrivers).mock.calls.map((c) => (c[0] as { excludeDriverIds?: bigint[] }).excludeDriverIds?.map(String).sort())
+  beforeEach(() => { vi.mocked(repo.getRideById).mockResolvedValue(spreadRide()) })
+
+  it('skips every driver already offered this ride, in any status, and drivers busy with another ride', async () => {
+    vi.mocked(repo.getOfferedDrivers).mockResolvedValue([{ driver_id: 5n, status: 'cancelled' }, { driver_id: 6n, status: 'declined' }])
+    vi.mocked(repo.getBusyDriverIds).mockResolvedValue([9n])
+    await processBroadcast(data(2))
+    expect(skipArgs()[0]).toEqual(['5', '6', '9'])
+  })
+
+  it('a ride without the spread stamp never reads the wave memory', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue(ride(1))
+    await processBroadcast(data(2))
+    expect(repo.getOfferedDrivers).not.toHaveBeenCalled()
+    expect(repo.getBusyDriverIds).not.toHaveBeenCalled()
+  })
+
+  it('nobody fresh and free: step 2 allows busy drivers (fresh ones still preferred over repeats)', async () => {
+    vi.mocked(repo.getOfferedDrivers).mockResolvedValue([{ driver_id: 5n, status: 'cancelled' }])
+    vi.mocked(repo.getBusyDriverIds).mockResolvedValue([9n])
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValueOnce([]).mockResolvedValueOnce([drv(9)] as never)
+    await processBroadcast(data(2))
+    expect(skipArgs()).toEqual([['5', '9'], ['5']])
+    expect(emitted()).toEqual(['9'])
+  })
+
+  it('nobody fresh at all: step 3 brings back a driver who was offered before and did not decline, not one who declined', async () => {
+    vi.mocked(repo.getOfferedDrivers).mockResolvedValue([{ driver_id: 5n, status: 'cancelled' }, { driver_id: 6n, status: 'declined' }])
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([drv(5)] as never)
+    await processBroadcast(data(2))
+    expect(skipArgs()[2]).toEqual(['6'])
+    expect(emitted()).toEqual(['5'])
   })
 })

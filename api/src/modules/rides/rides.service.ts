@@ -880,12 +880,18 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   // 2 = variant 1 plus the nearest-drivers head start (needs both switches on).
   const noResend = (await getConfigValue('dispatch_no_resend_enabled', 'false')) === 'true'
   const dispatchVariant = !noResend ? 0 : (await getConfigValue('dispatch_head_start_enabled', 'false')) === 'true' ? 2 : 1
+  // Spread (5a) is stamped the same way, and only for the cities the owner listed.
+  let dispatchSpread = 0
+  if (dispatchVariant > 0 && originCity && (await getConfigValue('dispatch_spread_enabled', 'false')) === 'true') {
+    const cities = (await getConfigValue('dispatch_spread_city_ids', '')).split(',').filter(Boolean)
+    if (cities.includes(String(originCity.id))) dispatchSpread = 1
+  }
   const client = await pool.connect()
   let ride
   try {
     await client.query('BEGIN')
     ride = await repo.createRide(rideInput, client)
-    if (dispatchVariant > 0) await client.query('UPDATE rides SET dispatch_variant = $2 WHERE id = $1', [ride.id, dispatchVariant])
+    if (dispatchVariant > 0) await client.query('UPDATE rides SET dispatch_variant = $2, dispatch_spread = $3 WHERE id = $1', [ride.id, dispatchVariant, dispatchSpread])
     if (data.stops && data.stops.length > 0) {
       // Same rate card the fare above was quoted on, so each stop row and stop_fare agree.
       await repo.insertRideStops(BigInt(ride.id), data.stops.map(stop => ({ ...stop, chargeApplied: chargePerStop })), client)
