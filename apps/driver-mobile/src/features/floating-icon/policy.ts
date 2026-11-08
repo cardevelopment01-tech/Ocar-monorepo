@@ -4,8 +4,11 @@
 
 export type AppStateName = 'active' | 'background' | 'inactive' | 'unknown' | 'extension'
 
-/** The first rollout opens Ocar by itself only while the driver is stationary or slower than this (the owner may change it). */
-export const AUTO_OPEN_MAX_SPEED_KMH = 10
+/**
+ * Ocar opens itself for a request only at or below this speed. Set high on purpose (owner's call, 2026-11-08): drivers get most
+ * requests on the move and Uber/Ola-style apps show them anyway, so this only stops the screen jumping up at highway speed.
+ */
+export const AUTO_OPEN_MAX_SPEED_KMH = 40
 /**
  * A speed reading older than this is treated as unknown, so auto-open stays closed. The idle location task fires every 30 s
  * (IDLE_INTERVAL_MS), so the window must be longer than that or a parked driver would miss the gate about a third of the time.
