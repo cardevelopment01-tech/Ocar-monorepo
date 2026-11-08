@@ -156,6 +156,8 @@ export async function sendRideRequestPushOnce(
       }))
     }
     await Promise.all(sends)
+    // Delivery tracking (see broadcast.processor.ts): a push went out for this offer.
+    log.info({ event: 'ride_offer_pushed', rideId, driverId, loudDevices: v3.length, legacyDevices: legacy.length }, 'ride request pushed')
   } catch (err) {
     log.error({ err }, 'sendRideRequestPushOnce failed')
   }
