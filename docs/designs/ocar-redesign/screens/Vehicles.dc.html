@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Choose a ride</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0}
+button,input{font-family:inherit}
+.press{transition:transform .16s cubic-bezier(.3,.7,.3,1),background-color .2s ease,border-color .2s ease,box-shadow .25s ease}
+.press:active{transform:scale(.985)}
+.hide-scroll{scrollbar-width:none}
+.hide-scroll::-webkit-scrollbar{display:none}
+.fold{transition:max-height .45s cubic-bezier(.22,.9,.32,1),opacity .3s ease,margin .45s cubic-bezier(.22,.9,.32,1)}
+.scrim{transition:opacity .25s ease}
+.overlay{transition:transform .45s cubic-bezier(.22,.9,.32,1)}
+.tabnum{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; background: #F6FBFB; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #14171A">
+
+<div class="hide-scroll" style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; overflow-y: auto; padding: 56px 18px 300px">
+
+<div style="display: flex; align-items: center; gap: 12px">
+<a href="TripType.dc.html" class="press" aria-label="Back" style="width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; border: 1px solid rgba(20,23,26,0.08); box-shadow: 0 2px 8px rgba(20,23,26,0.06); display: flex; align-items: center; justify-content: center; text-decoration: none">
+<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M16 10H4.5M9.5 4.8L4.3 10l5.2 5.2" stroke="#14171A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</a>
+<h1 style="flex-grow: 1; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.2px">Choose a ride</h1>
+<span style="height: 32px; padding: 0 12px; border-radius: 16px; background: #E8F4F6; color: #0A7788; font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center">One way</span>
+</div>
+
+<div style="margin-top: 20px; background: #FFFFFF; border: 1px solid rgba(20,23,26,0.07); border-radius: 18px; box-shadow: 0 2px 8px rgba(20,23,26,0.05), inset 0 1px 0 rgba(255,255,255,0.9); padding: 14px 16px; display: flex; align-items: center; gap: 12px">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0">
+<span style="width: 10px; height: 10px; border-radius: 5px; background: #0E8FA3; box-shadow: 0 0 0 3px rgba(14,143,163,0.16)"></span>
+<span style="height: 14px; border-left: 1.5px dashed #B3C0C3"></span>
+<span style="width: 9px; height: 9px; border-radius: 2.5px; background: #14171A"></span>
+</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">FC project road, Byasanagar</div>
+<div style="font-size: 13.5px; font-weight: 600; margin-top: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Triumph International Pvt Ltd</div>
+</div>
+<div style="text-align: right; flex-shrink: 0">
+<div class="tabnum" style="font-size: 14px; font-weight: 700">18.4 km</div>
+<div class="tabnum" style="font-size: 12px; color: #5F6468; margin-top: 2px">34 min</div>
+</div>
+</div>
+
+<div style="display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 11px 14px; background: #E8F4F6; border-radius: 14px"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true" style="flex-shrink: 0"><rect x="4.2" y="8.6" width="11.6" height="8" rx="2.2" stroke="#0A7788" stroke-width="1.6"/><path d="M7 8.6V6.4a3 3 0 0 1 6 0v2.2" stroke="#0A7788" stroke-width="1.6" stroke-linecap="round"/></svg><span style="font-size: 12.5px; font-weight: 600; color: #0A7788">Fare locked. Tolls and taxes included.</span></div>
+
+<div style="font-size: 14px; font-weight: 600; color: #14171A; margin: 22px 2px 12px">Available near you</div>
+
+<sc-for list="{{vehicles}}" as="v" hint-placeholder-count="3">
+<button class="press" onClick="{{v.pick}}" aria-pressed="{{v.pressed}}" style="width: 100%; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; padding: 14px 16px 14px 10px; background: {{v.bg}}; border: 1.5px solid {{v.border}}; border-radius: 20px; box-shadow: {{v.shadow}}; text-align: left; cursor: {{v.cursor}}; color: #14171A; font-family: inherit">
+<span style="width: 104px; height: 64px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; opacity: {{v.imgOpacity}}">
+<img src="{{v.img}}" alt="" style="width: 104px; height: auto; max-height: 64px; object-fit: contain; filter: {{v.imgFilter}}">
+</span>
+<span style="flex-grow: 1; min-width: 0">
+<span style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px">
+<span style="font-size: 16px; font-weight: 700">{{v.name}}</span>
+<span style="display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; color: #5F6468">
+<svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="6.8" r="3.2" stroke="#5F6468" stroke-width="1.8"/><path d="M3.8 16.6c.9-3 3.3-4.4 6.2-4.4s5.3 1.4 6.2 4.4" stroke="#5F6468" stroke-width="1.8" stroke-linecap="round"/></svg>
+{{v.seats}}
+</span>
+</span>
+<span style="display: block; font-size: 12.5px; font-weight: 600; color: {{v.subColor}}">{{v.sub}}</span>
+</span>
+<span style="flex-shrink: 0; text-align: right">
+<span class="tabnum" style="display: {{v.oldDisplay}}; font-size: 12px; color: #8A9094; text-decoration: line-through; margin-bottom: 1px">{{v.oldPrice}}</span>
+<span class="tabnum" style="display: block; font-size: 17px; font-weight: 800; letter-spacing: -0.2px; color: {{v.priceColor}}">{{v.price}}</span>
+<span style="display: {{v.noteDisplay}}; margin-top: 5px; height: 20px; line-height: 20px; padding: 0 8px; border-radius: 10px; background: {{v.noteBg}}; color: {{v.noteColor}}; font-size: 10.5px; font-weight: 800; letter-spacing: 0.3px; white-space: nowrap">{{v.note}}</span>
+</span>
+</button>
+</sc-for>
+
+</div>
+
+<div style="position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 28px 28px 0 0; box-shadow: 0 -10px 30px rgba(20,23,26,0.08); padding: 14px 18px 28px">
+<div style="width: 36px; height: 4px; border-radius: 2px; background: rgba(20,23,26,0.12); margin: 0 auto 14px"></div>
+
+<div class="fold" style="overflow: hidden; max-height: {{bannerMax}}; opacity: {{bannerOpacity}}; margin-bottom: {{bannerMb}}">
+<div style="position: relative; display: flex; align-items: center; background: linear-gradient(120deg, #F1F9FA 0%, #FFF8E8 100%); border: 1px solid rgba(214,165,82,0.5); border-radius: 18px; overflow: hidden">
+<span style="position: absolute; left: -7px; top: 50%; margin-top: -7px; width: 14px; height: 14px; border-radius: 7px; background: #FFFFFF; box-shadow: inset 0 0 0 1px rgba(214,165,82,0.5)"></span>
+<span style="position: absolute; right: 78px; top: 50%; margin-top: -7px; margin-right: -7px; width: 14px; height: 14px; border-radius: 7px; background: #FFFFFF; box-shadow: inset 0 0 0 1px rgba(214,165,82,0.5)"></span>
+<div style="flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 18px">
+<span style="width: 38px; height: 38px; flex-shrink: 0; border-radius: 19px; background: linear-gradient(135deg, #F6DC9A, #D6A552); box-shadow: 0 4px 10px rgba(214,165,82,0.35), inset 0 1px 0 rgba(255,255,255,0.5); display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 15L15 5" stroke="#3E2A05" stroke-width="1.8" stroke-linecap="round"/><circle cx="6.4" cy="6.4" r="1.9" stroke="#3E2A05" stroke-width="1.6"/><circle cx="13.6" cy="13.6" r="1.9" stroke="#3E2A05" stroke-width="1.6"/></svg></span>
+<span style="min-width: 0"><span style="display: block; font-size: 14px; font-weight: 800; margin-bottom: 1px; letter-spacing: 0.2px">{{bannerTitle}}</span><span style="display: block; font-size: 12.5px; color: #5F6468; font-weight: 500">{{bannerSub}}</span></span>
+</div>
+<button class="press" onClick="{{removeCoupon}}" style="width: 78px; align-self: stretch; flex-shrink: 0; background: transparent; border: none; border-left: 1.5px dashed rgba(214,165,82,0.55); color: #0A7788; font-size: 13px; font-weight: 700; cursor: pointer">Remove</button>
+</div>
+</div>
+
+<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px">
+<button class="press" style="flex: 1; height: 48px; border-radius: 16px; background: #F7F6F1; border: 1px solid rgba(20,23,26,0.06); display: flex; align-items: center; gap: 10px; padding: 0 14px; font-size: 14px; font-weight: 600; color: #14171A; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.5" y="5" width="15" height="10" rx="2.5" stroke="#14171A" stroke-width="1.5"/><circle cx="10" cy="10" r="2.2" stroke="#14171A" stroke-width="1.5"/></svg>
+Cash
+<svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true" style="margin-left: auto"><path d="M5 7.5l5 5 5-5" stroke="#8A9094" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+<button class="press" onClick="{{openOffers}}" style="flex: 1; height: 48px; border-radius: 16px; background: {{offerBg}}; border: 1px solid {{offerBorder}}; display: flex; align-items: center; gap: 10px; padding: 0 14px; font-size: 14px; font-weight: 700; color: {{offerColor}}; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10.5V4.6A1.1 1.1 0 0 1 4.1 3.5h5.9l6.8 6.8a1.1 1.1 0 0 1 0 1.6l-4.9 4.9a1.1 1.1 0 0 1-1.6 0L3 10.5z" stroke="#0A7788" stroke-width="1.5" stroke-linejoin="round"/><circle cx="7" cy="7.4" r="1.2" fill="#0A7788"/></svg>
+{{offerLabel}}
+<svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true" style="margin-left: auto"><path d="M7.5 4.5L13 10l-5.5 5.5" stroke="#8A9094" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+</div>
+<a href="Driver.dc.html" class="press" style="height: 56px; border-radius: 18px; background: #0B8296; color: #FFFFFF; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none; box-shadow: 0 12px 24px rgba(14,143,163,0.30), inset 0 1px 0 rgba(255,255,255,0.18)">
+<span class="tabnum">{{cta}}</span>
+<span class="tabnum" style="display: {{oldCtaDisplay}}; font-size: 13.5px; font-weight: 600; color: rgba(255,255,255,0.62); text-decoration: line-through">{{oldCta}}</span>
+</a>
+</div>
+
+<div class="scrim" onClick="{{closeOffers}}" style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(20,23,26,0.5); opacity: {{scrimOpacity}}; pointer-events: {{scrimEvents}}"></div>
+<div class="overlay" style="position: absolute; left: 0; right: 0; bottom: 0; background: #F6FBFB; border-radius: 30px 30px 0 0; padding: 12px 18px 30px; transform: translateY({{offersY}}); box-shadow: 0 -12px 32px rgba(20,23,26,0.16)">
+<div style="width: 36px; height: 4px; border-radius: 2px; background: rgba(20,23,26,0.14); margin: 0 auto 18px"></div>
+<div style="font-size: 20px; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 4px">Offers for this ride</div>
+<div style="font-size: 13.5px; color: #5F6468; margin-bottom: 16px">One coupon can be applied per ride.</div>
+
+<div style="display: flex; align-items: center; height: 52px; background: #FFFFFF; border: 1px solid rgba(20,23,26,0.10); border-radius: 16px; padding: 0 8px 0 16px; margin-bottom: 16px">
+<span style="flex-grow: 1; font-size: 14.5px; color: #8A9094">Enter coupon code</span>
+<span style="height: 36px; padding: 0 16px; border-radius: 12px; background: #F4F5F1; color: #8A9094; font-size: 13.5px; font-weight: 700; display: inline-flex; align-items: center">Apply</span>
+</div>
+
+<div style="font-size: 14px; font-weight: 600; color: #14171A; margin: 0 2px 10px">Available coupons</div>
+<sc-for list="{{coupons}}" as="c" hint-placeholder-count="2">
+<div style="position: relative; display: flex; align-items: center; margin-bottom: 10px; background: #FFFFFF; border: 1.5px solid {{c.border}}; border-radius: 20px; box-shadow: 0 2px 8px rgba(20,23,26,0.05); overflow: hidden">
+<span style="position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(180deg, #F6DC9A, #D6A552)"></span>
+<div style="flex-grow: 1; min-width: 0; padding: 14px 8px 14px 20px">
+<span style="display: inline-block; height: 24px; line-height: 21px; padding: 0 10px; border-radius: 8px; border: 1.5px dashed rgba(214,165,82,0.8); background: #FFF8E8; color: #7A5410; font-size: 12.5px; font-weight: 800; letter-spacing: 1.2px; margin-bottom: 8px">{{c.code}}</span>
+<span style="display: block; font-size: 15px; font-weight: 700; margin-bottom: 2px">{{c.title}}</span>
+<span style="display: block; font-size: 12.5px; color: #5F6468">{{c.desc}}</span>
+</div>
+<button class="press" onClick="{{c.pick}}" style="margin-right: 14px; height: 38px; padding: 0 18px; border-radius: 19px; background: {{c.btnBg}}; border: 1.5px solid {{c.btnBorder}}; color: {{c.btnColor}}; font-size: 13.5px; font-weight: 700; cursor: pointer; flex-shrink: 0">{{c.btnLabel}}</button>
+</div>
+</sc-for>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const DEFAULT_COUPON = '';
+    const sel = s.sel || 'suv';
+    const code = s.coupon === undefined ? DEFAULT_COUPON : s.coupon;
+    const fmt = (n) => '₹' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    const couponDefs = [
+      { code: 'OCAR20', title: '20% off your ride', desc: 'Up to ₹500 off on any ride', calc: (p) => Math.min(Math.round(p * 0.2), 500) },
+      { code: 'FLAT150', title: 'Flat ₹150 off', desc: 'On rides above ₹1,500', calc: (p) => (p >= 1500 ? 150 : 0) }
+    ];
+    const active = couponDefs.find((c) => c.code === code) || null;
+
+    const fleet = [
+      { id: 'hatch', name: 'Hatchback', seats: '4', img: '../assets/vehicle-hatchback.png', ok: false, price: 2215, eta: 'No cars nearby right now', note: '' },
+      { id: 'sedan', name: 'Sedan', seats: '4', img: '../assets/vehicle-sedan.png', ok: true, price: 2480, eta: '3 min away', note: 'Best value' },
+      { id: 'suv', name: 'SUV', seats: '6', img: '../assets/vehicle-suv.png', ok: true, price: 2996, eta: '5 min away', note: 'Extra space' }
+    ];
+
+    const vehicles = fleet.map((f) => {
+      const on = f.ok && f.id === sel;
+      const disc = f.ok && active ? active.calc(f.price) : 0;
+      const saved = disc > 0;
+      const note = saved ? 'Save ' + fmt(disc) : f.note;
+      return {
+        name: f.name, seats: f.seats, img: f.img,
+        sub: f.eta, price: fmt(f.price - disc), oldPrice: fmt(f.price),
+        oldDisplay: saved ? 'block' : 'none',
+        note: note,
+        noteDisplay: note ? 'inline-block' : 'none',
+        noteBg: saved ? '#E3F3F6' : (f.id === 'sedan' ? 'rgba(214,165,82,0.2)' : '#F4F5F1'),
+        noteColor: saved ? '#0A7788' : (f.id === 'sedan' ? '#7A5410' : '#3C4247'),
+        subColor: f.ok ? '#0A7788' : '#6B7176',
+        priceColor: f.ok ? '#14171A' : '#8A9094',
+        bg: on ? '#F3FAFB' : '#FFFFFF',
+        border: on ? '#0B8296' : 'rgba(20,23,26,0.08)',
+        shadow: on ? '0 0 0 4px rgba(14,143,163,0.10), 0 2px 8px rgba(20,23,26,0.06)' : '0 2px 8px rgba(20,23,26,0.05)',
+        cursor: f.ok ? 'pointer' : 'not-allowed',
+        imgOpacity: f.ok ? '1' : '0.45',
+        imgFilter: f.ok ? 'none' : 'grayscale(1)',
+        pressed: on ? 'true' : 'false',
+        pick: () => { if (f.ok) this.setState({ sel: f.id }); }
+      };
+    });
+
+    const cur = fleet.find((f) => f.id === sel) || fleet[2];
+    const curDisc = active ? active.calc(cur.price) : 0;
+
+    const coupons = couponDefs.map((c) => {
+      const applied = c.code === code;
+      return {
+        code: c.code, title: c.title, desc: c.desc,
+        border: applied ? '#0B8296' : 'rgba(20,23,26,0.08)',
+        btnLabel: applied ? 'Applied' : 'Apply',
+        btnBg: applied ? '#E8F4F6' : '#0B8296',
+        btnBorder: applied ? '#0B8296' : '#0B8296',
+        btnColor: applied ? '#0A7788' : '#FFFFFF',
+        pick: () => this.setState({ coupon: c.code, offers: false })
+      };
+    });
+
+    const open = !!s.offers;
+    const has = !!active && curDisc > 0;
+    return {
+      vehicles, coupons,
+      cta: 'Book ' + cur.name + ' · ' + fmt(cur.price - curDisc),
+      oldCta: fmt(cur.price),
+      oldCtaDisplay: has ? 'inline' : 'none',
+      bannerMax: has ? '90px' : '0px',
+      bannerOpacity: has ? '1' : '0',
+      bannerMb: has ? '14px' : '0px',
+      bannerTitle: (active ? active.code : '') + ' applied',
+      bannerSub: 'You save ' + fmt(curDisc) + ' on this ride',
+      offerLabel: active ? active.code : 'Offers',
+      offerBg: active ? '#E3F3F6' : '#F7F6F1',
+      offerBorder: active ? 'rgba(14,143,163,0.4)' : 'rgba(20,23,26,0.06)',
+      offerColor: active ? '#0A7788' : '#14171A',
+      scrimOpacity: open ? '1' : '0',
+      scrimEvents: open ? 'auto' : 'none',
+      offersY: open ? '0px' : '110%',
+      openOffers: () => this.setState({ offers: true }),
+      closeOffers: () => this.setState({ offers: false }),
+      removeCoupon: () => this.setState({ coupon: '' })
+    };
+  }
+}
+</script>
+</body>
+</html>
