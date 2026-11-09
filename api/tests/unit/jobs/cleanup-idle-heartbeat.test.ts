@@ -10,6 +10,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   findStaleOnlineDrivers:          vi.fn().mockResolvedValue([]),
   isDriverStale:                   vi.fn().mockResolvedValue(true),
   pauseIfAvailable:                vi.fn().mockResolvedValue('55'),
+  hasActiveRide:                   vi.fn().mockResolvedValue(false),
 }))
 vi.mock('@/modules/rides/rides.service', () => ({
   expireStaleRequestedRide:       vi.fn(),
@@ -68,7 +69,7 @@ describe('cleanup worker — in-progress ride sweep', () => {
 })
 
 describe('cleanup worker — idle heartbeat sweep', () => {
-  beforeEach(() => { vi.clearAllMocks(); vi.mocked(repo.isDriverStale).mockResolvedValue(true); vi.mocked(repo.pauseIfAvailable).mockResolvedValue('55' as never) })
+  beforeEach(() => { vi.clearAllMocks(); vi.mocked(repo.isDriverStale).mockResolvedValue(true); vi.mocked(repo.hasActiveRide).mockResolvedValue(false); vi.mocked(repo.pauseIfAvailable).mockResolvedValue('55' as never) })
 
   it('pauses a driver stale past the short tier without ending their session', async () => {
     vi.mocked(repo.findStaleInProgressRides).mockResolvedValue([])
@@ -143,6 +144,7 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     vi.mocked(isDriverSocketConnected).mockResolvedValue(false)
     vi.mocked(notifyOwner).mockResolvedValue(undefined as never)
     vi.mocked(repo.isDriverStale).mockResolvedValue(true)
+    vi.mocked(repo.hasActiveRide).mockResolvedValue(false)
     vi.mocked(repo.pauseIfAvailable).mockResolvedValue('55' as never)
     vi.mocked(redis.set).mockResolvedValue('OK' as never)
     heartbeats({})
@@ -243,5 +245,20 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     vi.mocked(isDriverSocketConnected).mockResolvedValue(true)
     await run()
     expect(goOffline).toHaveBeenCalledWith(BigInt(7), 'stale_heartbeat')
+  })
+
+  it('a driver on a ride is never ended by the hard limit', async () => {
+    stale(['7'], ['7'], ['7'])
+    heartbeats({ '7': Date.now() - 5_000 })
+    vi.mocked(repo.hasActiveRide).mockResolvedValue(true)
+    await run()
+    expect(goOffline).not.toHaveBeenCalled()
+  })
+
+  it('one driver failing to be ended does not stop the sweep for the next one', async () => {
+    stale(['7', '8'], ['7', '8'])
+    vi.mocked(goOffline).mockRejectedValueOnce(new Error('deadlock') as never)
+    await run()
+    expect(goOffline).toHaveBeenCalledTimes(2)
   })
 })

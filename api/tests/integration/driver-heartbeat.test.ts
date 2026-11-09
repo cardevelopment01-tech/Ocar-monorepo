@@ -207,11 +207,10 @@ describe('review hardening', () => {
     }
   })
 
-  it('the throttle is set only after a heartbeat was recorded (a failed attempt does not block the retry)', async () => {
+  it('the throttle is atomic and also applies to a wrong-session heartbeat', async () => {
     await reset()
-    await beat({ sessionId: '999999999' }) // ignored: wrong session, nothing recorded
-    expect(await redis.get(driverHeartbeatThrottleKey(String(driver.driverId)))).toBeNull()
-    await beat({ sessionId: driver.sessionId })
+    await beat({ sessionId: '999999999' }) // wrong session: ignored, but a looping client is throttled (no repeated database reads)
     expect(await redis.get(driverHeartbeatThrottleKey(String(driver.driverId)))).not.toBeNull()
+    expect(await hb()).toBeNull()
   })
 })

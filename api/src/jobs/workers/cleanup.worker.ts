@@ -115,17 +115,23 @@ export const cleanupWorker = new Worker(
       const alive = (hb10.get(d.driver_id) ?? 0) > Date.now() - IDLE_HEARTBEAT_OFFLINE_MINUTES * 60_000 || conn10.has(d.driver_id)
       if (alive && !hardLimit.has(d.driver_id)) continue
       if (!(await repo.isDriverStale(BigInt(d.driver_id), IDLE_HEARTBEAT_OFFLINE_MINUTES * 60))) continue
-      await goOffline(BigInt(d.driver_id), 'stale_heartbeat')
-      // Hardcoded copy, not a notification_templates row (unlike most other notification
-      // types) — deliberately out of scope for this fix; revisit if ops needs to edit this wording.
-      await notifyOwner({
-        ownerType: 'driver',
-        ownerId:   BigInt(d.driver_id),
-        type:      'session_ended_stale',
-        title:     'You went offline',
-        body:      "We lost connection to your device and paused your online status. Tap Go Online to start again.",
-        tag:       'session-status',
-      }).catch((err: unknown) => log.error({ err, driverId: d.driver_id }, 'stale-offline notify failed'))
+      // A driver on a ride is never ended by this sweep (the ride sweep flags a stale ride for a human instead).
+      if (await repo.hasActiveRide(BigInt(d.driver_id))) continue
+      try {
+        await goOffline(BigInt(d.driver_id), 'stale_heartbeat')
+        // Hardcoded copy, not a notification_templates row (unlike most other notification
+        // types) — deliberately out of scope for this fix; revisit if ops needs to edit this wording.
+        await notifyOwner({
+          ownerType: 'driver',
+          ownerId:   BigInt(d.driver_id),
+          type:      'session_ended_stale',
+          title:     'You went offline',
+          body:      "We lost connection to your device and paused your online status. Tap Go Online to start again.",
+          tag:       'session-status',
+        }).catch((err: unknown) => log.error({ err, driverId: d.driver_id }, 'stale-offline notify failed'))
+      } catch (err) {
+        log.error({ err, driverId: d.driver_id }, 'stale-offline sweep failed for a driver') // one bad driver must not skip the rest
+      }
     }
   },
   { connection: redisConnection }

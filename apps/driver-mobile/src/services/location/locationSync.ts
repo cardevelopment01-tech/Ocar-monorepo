@@ -59,16 +59,23 @@ type HeartbeatDeps = {
   socket: Pick<ReturnType<typeof getSocket>, 'connected' | 'timeout'>
   api: Pick<ReturnType<typeof getApi>, 'post'>
 }
+// The server has no live session for this driver: forget it everywhere (disk and memory) so nothing keeps reporting for an ended session.
+function forgetSession(): void {
+  clearPersistedSessionId()
+  useDriverSessionStore.getState().setOffline?.()
+}
+
 const HEARTBEAT_ACK_TIMEOUT_MS = 5000
 const HEARTBEAT_BACKOFF_START_MS = 3000
 const HEARTBEAT_BACKOFF_MAX_MS = 20_000
 let heartbeatBackoffMs = 0
+let nextHeartbeatAtMs = 0
 
 // `deps` is for tests only; the app resolves the socket and API lazily (see the file header).
 export async function emitHeartbeat(nowMs: number = Date.now(), deps?: HeartbeatDeps): Promise<void> {
   const sessionId = await resolveSessionId()
   if (!sessionId) return
-  if (nowMs - lastHeartbeatAtMs < HEARTBEAT_MIN_INTERVAL_MS) return
+  if (nowMs - lastHeartbeatAtMs < HEARTBEAT_MIN_INTERVAL_MS || nowMs < nextHeartbeatAtMs) return
   lastHeartbeatAtMs = nowMs
   const socket = deps?.socket ?? getSocket()
   if (socket.connected) {
@@ -76,7 +83,7 @@ export async function emitHeartbeat(nowMs: number = Date.now(), deps?: Heartbeat
     const reply = await new Promise<{ ok?: boolean; sessionActive?: boolean } | null>((resolve) => {
       socket.timeout(HEARTBEAT_ACK_TIMEOUT_MS).emit('driver:heartbeat', { sessionId }, (err: unknown, res?: { ok?: boolean; sessionActive?: boolean }) => resolve(!err && res?.ok === true ? res : null))
     })
-    if (reply) { heartbeatBackoffMs = 0; if (reply.sessionActive === false) clearPersistedSessionId(); return }
+    if (reply) { heartbeatBackoffMs = 0; if (reply.sessionActive === false) forgetSession(); return }
   }
   // No socket, or no confirmation: one HTTP call, best effort.
   if (heartbeatHttpInFlight) return
@@ -85,17 +92,19 @@ export async function emitHeartbeat(nowMs: number = Date.now(), deps?: Heartbeat
     const res = await (deps?.api ?? getApi()).post('/api/v1/rides/sessions/heartbeat', { sessionId }) as { data?: { sessionActive?: boolean } } | undefined
     heartbeatBackoffMs = 0
     // The server has no live session for this driver: forget the saved id so the background task stops reporting for an ended session.
-    if (res?.data?.sessionActive === false) clearPersistedSessionId()
+    if (res?.data?.sessionActive === false) forgetSession()
   } catch {
     // Retry sooner than the normal interval (a short blip should not cost a whole 20 s), but back off while the network stays down.
     heartbeatBackoffMs = Math.min(heartbeatBackoffMs ? heartbeatBackoffMs * 2 : HEARTBEAT_BACKOFF_START_MS, HEARTBEAT_BACKOFF_MAX_MS)
-    lastHeartbeatAtMs = nowMs - HEARTBEAT_MIN_INTERVAL_MS + heartbeatBackoffMs
+    // Measured from the failure (after the ack wait and the request), not from when the call started.
+    nextHeartbeatAtMs = (deps ? nowMs : Date.now()) + heartbeatBackoffMs
+    lastHeartbeatAtMs = 0
   } finally {
     heartbeatHttpInFlight = false
   }
 }
 
-export function resetHeartbeatForTests(): void { lastHeartbeatAtMs = 0; heartbeatHttpInFlight = false; heartbeatBackoffMs = 0 }
+export function resetHeartbeatForTests(): void { lastHeartbeatAtMs = 0; heartbeatHttpInFlight = false; heartbeatBackoffMs = 0; nextHeartbeatAtMs = 0 }
 
 export async function emitLocationTick(fix: LocationFix): Promise<void> {
   const sessionId = await resolveSessionId()

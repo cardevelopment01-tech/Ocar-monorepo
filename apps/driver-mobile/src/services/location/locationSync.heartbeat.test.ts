@@ -22,7 +22,7 @@ const api = vi.hoisted(() => ({ post: vi.fn() }))
 const session = vi.hoisted(() => ({ sessionId: '9' as string | null }))
 const disk = vi.hoisted(() => ({ id: null as string | null, cleared: 0 }))
 
-vi.mock('@/store/useDriverSessionStore', () => ({ useDriverSessionStore: { getState: () => session } }))
+vi.mock('@/store/useDriverSessionStore', () => ({ useDriverSessionStore: { getState: () => ({ ...session, setOffline: () => { session.sessionId = null; disk.cleared++ } }) } }))
 vi.mock('./persistedSession', () => ({ readPersistedSessionId: async () => disk.id, clearPersistedSessionId: () => { disk.cleared++ } }))
 
 import { emitHeartbeat, resetHeartbeatForTests } from './locationSync'
@@ -89,14 +89,15 @@ describe('driver heartbeat', () => {
   it('the server saying "no live session" over the socket makes the app forget its saved session id', async () => {
     sock.sessionActive = false
     await emitHeartbeat(100_000, deps)
-    expect(disk.cleared).toBe(1)
+    expect(disk.cleared).toBeGreaterThanOrEqual(1)
+    expect(session.sessionId).toBeNull()
   })
 
   it('the same over HTTP', async () => {
     sock.connected = false
     api.post.mockResolvedValue({ data: { sessionActive: false } })
     await emitHeartbeat(100_000, deps)
-    expect(disk.cleared).toBe(1)
+    expect(disk.cleared).toBeGreaterThanOrEqual(1)
   })
 
   it('while the network stays down the retries back off (3 s, 6 s, 12 s ...) instead of firing on every task run', async () => {

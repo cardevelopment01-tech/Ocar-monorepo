@@ -1144,6 +1144,11 @@ export async function canResumeAfterSweep(driverId: bigint, maxPositionAgeSecond
   return (res.rowCount ?? 0) > 0
 }
 
+export async function hasActiveRide(driverId: bigint): Promise<boolean> {
+  const res = await pool.query(`SELECT 1 FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress','returning') LIMIT 1`, [driverId])
+  return (res.rowCount ?? 0) > 0
+}
+
 // The idle sweep re-checks a driver right before acting on them: a fix or heartbeat can land between building the list and acting.
 export async function isDriverStale(driverId: bigint, staleSeconds: number): Promise<boolean> {
   const res = await pool.query(
@@ -1163,6 +1168,7 @@ export async function pauseIfAvailable(driverId: bigint): Promise<string | null>
     `UPDATE driver_location_snapshots dls SET is_available = false, updated_at = now()
      FROM driver_sessions ds
      WHERE dls.driver_id = $1 AND ds.driver_id = dls.driver_id AND ds.status = 'online' AND dls.is_available = true
+       AND NOT EXISTS (SELECT 1 FROM rides r WHERE r.driver_id = dls.driver_id AND r.status IN ('accepted','driver_arrived','in_progress','returning'))
      RETURNING ds.id::text AS session_id`,
     [driverId]
   )

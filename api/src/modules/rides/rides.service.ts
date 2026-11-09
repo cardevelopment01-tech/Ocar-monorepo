@@ -418,13 +418,25 @@ export async function driverHeartbeat(driverId: bigint, sessionId: bigint): Prom
   const id = driverId.toString()
   // Server-side throttle: a client that loops costs one Redis read, not a database read. It is set only after a heartbeat was recorded, so
   // a failed attempt never blocks the retry.
-  const recent = await withTimeout(redis.get(driverHeartbeatThrottleKey(id))).catch(() => null)
-  if (recent) return 'ok'
+  // Atomic (SET NX): concurrent heartbeats (socket plus the HTTP fallback) run once, and a looping client with a stale session id is throttled too.
+  // If the work below throws, the key is released so the app's retry is not blocked.
+  const throttleKey = driverHeartbeatThrottleKey(id)
+  const first = await withTimeout(redis.set(throttleKey, '1', 'EX', HEARTBEAT_MIN_INTERVAL_SECONDS, 'NX')).catch(() => 'OK')
+  if (first === null) return 'ok'
+  try {
+    return await recordHeartbeat(driverId, sessionId)
+  } catch (err) {
+    await withTimeout(redis.del(throttleKey)).catch(() => undefined)
+    throw err
+  }
+}
+
+async function recordHeartbeat(driverId: bigint, sessionId: bigint): Promise<'ok' | 'ended'> {
+  const id = driverId.toString()
   const session = await repo.getActiveSession(driverId)
   if (!session) { notifySessionEnded(driverId); return 'ended' }
   if (String(session.id) !== sessionId.toString()) return 'ok'
   await withTimeout(redis.set(driverHeartbeatKey(id), String(Date.now()), 'EX', HEARTBEAT_TTL_SECONDS)).catch(() => undefined)
-  await withTimeout(redis.set(driverHeartbeatThrottleKey(id), '1', 'EX', HEARTBEAT_MIN_INTERVAL_SECONDS)).catch(() => undefined)
   // A network blip can get a driver paused by the idle sweep. When the app is heard from again, put them back, but only if the SWEEP paused
   // them (a deliberate pause clears the marker), for this same session, with an approved account, no active ride and a position not too old.
   const pausedFor = await withTimeout(redis.get(driverSweepPausedKey(id))).catch(() => null)
