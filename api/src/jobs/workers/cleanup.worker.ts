@@ -10,7 +10,7 @@ import {
 import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { socketEvents, isDriverSocketConnected } from '@/websocket/socket.server'
 import { client as redis } from '@/db/redis'
-import { driverHeartbeatKey } from '@/constants/redis-keys'
+import { driverHeartbeatKey, driverSweepPausedKey } from '@/constants/redis-keys'
 import {
   STALE_REQUESTED_MINUTES,
   DISPATCH_WATCHDOG_SECONDS,
@@ -99,6 +99,9 @@ export const cleanupWorker = new Worker(
       const alive = (hb90.get(id) ?? 0) > Date.now() - IDLE_HEARTBEAT_PAUSE_SECONDS * 1000 || conn90.has(id)
       if (alive && !posOld.has(id)) continue
       await pauseAvailability(BigInt(id))
+      // Remember that the sweep (not the driver) paused them, for this session, so a heartbeat after a network blip can resume them.
+      const session = await repo.getActiveSession(BigInt(id))
+      if (session) await redis.set(driverSweepPausedKey(id), String(session.id), 'EX', 6 * 3600).catch(() => undefined)
     }
     const quiet10Ids = quiet10.map((d) => d.driver_id)
     const hb10 = await lastHeartbeatMs(quiet10Ids)

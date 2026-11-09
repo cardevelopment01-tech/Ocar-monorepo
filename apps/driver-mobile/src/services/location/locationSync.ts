@@ -1,4 +1,10 @@
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
+import { readPersistedSessionId } from './persistedSession'
+
+// The in-memory session id, or (in a bare background process after the app was killed, before the session is re-derived) the one on disk.
+async function resolveSessionId(): Promise<string | null> {
+  return useDriverSessionStore.getState().sessionId ?? (await readPersistedSessionId())
+}
 
 // `socket` and `api` are required lazily inside emitLocationTick, not imported
 // at module scope -- backgroundTask.ts (which imports this module) is itself
@@ -49,26 +55,33 @@ const HEARTBEAT_MIN_INTERVAL_MS = 20_000
 let lastHeartbeatAtMs = 0
 let heartbeatHttpInFlight = false
 
-type HeartbeatDeps = { socket: Pick<ReturnType<typeof getSocket>, 'connected' | 'emit'>; api: Pick<ReturnType<typeof getApi>, 'post'> }
+type HeartbeatDeps = {
+  socket: Pick<ReturnType<typeof getSocket>, 'connected' | 'timeout'>
+  api: Pick<ReturnType<typeof getApi>, 'post'>
+}
+const HEARTBEAT_ACK_TIMEOUT_MS = 5000
 
 // `deps` is for tests only; the app resolves the socket and API lazily (see the file header).
 export async function emitHeartbeat(nowMs: number = Date.now(), deps?: HeartbeatDeps): Promise<void> {
-  const sessionId = useDriverSessionStore.getState().sessionId
+  const sessionId = await resolveSessionId()
   if (!sessionId) return
   if (nowMs - lastHeartbeatAtMs < HEARTBEAT_MIN_INTERVAL_MS) return
   lastHeartbeatAtMs = nowMs
   const socket = deps?.socket ?? getSocket()
   if (socket.connected) {
-    socket.emit('driver:heartbeat', { sessionId })
-    return
+    // A socket that says "connected" can be half dead (a network blip, a sleeping radio): ask the server to confirm it got the heartbeat.
+    const delivered = await new Promise<boolean>((resolve) => {
+      socket.timeout(HEARTBEAT_ACK_TIMEOUT_MS).emit('driver:heartbeat', { sessionId }, (err: unknown, res?: { ok?: boolean }) => resolve(!err && res?.ok === true))
+    })
+    if (delivered) return
   }
-  // No socket (backgrounded, or the task woke the app headless): one HTTP call, best effort. The next task run retries.
+  // No socket, or no confirmation: one HTTP call, best effort. If that fails too the next task run tries again at once.
   if (heartbeatHttpInFlight) return
   heartbeatHttpInFlight = true
   try {
     await (deps?.api ?? getApi()).post('/api/v1/rides/sessions/heartbeat', { sessionId })
   } catch {
-    lastHeartbeatAtMs = 0 // let the next task run try again at once
+    lastHeartbeatAtMs = 0
   } finally {
     heartbeatHttpInFlight = false
   }
@@ -77,7 +90,7 @@ export async function emitHeartbeat(nowMs: number = Date.now(), deps?: Heartbeat
 export function resetHeartbeatForTests(): void { lastHeartbeatAtMs = 0; heartbeatHttpInFlight = false }
 
 export async function emitLocationTick(fix: LocationFix): Promise<void> {
-  const sessionId = useDriverSessionStore.getState().sessionId
+  const sessionId = await resolveSessionId()
   if (!sessionId) return // not online -- nothing to report against
 
   const socket = getSocket()

@@ -3,6 +3,10 @@ export const driverHeartbeatKey = (driverId: string): string => `driver:hb:${dri
 /** Throttle: the server accepts at most one heartbeat per driver per few seconds, whatever the client sends. */
 export const driverHeartbeatThrottleKey = (driverId: string): string => `driver:hb:throttle:${driverId}`
 
+/** Set by the idle sweep when IT paused a driver (value = session id), so a later heartbeat can resume them after a network blip. A pause the
+ *  driver chose never sets it, so a heartbeat never overrides a deliberate pause. */
+export const driverSweepPausedKey = (driverId: string): string => `driver:sweep-paused:${driverId}`
+
 export const rideAckKey = (rideId: string, driverId: string): string =>
   `ride:ack:${rideId}:${driverId}`
 

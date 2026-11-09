@@ -3,7 +3,7 @@ import request from 'supertest'
 import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
-import { driverHeartbeatKey, driverHeartbeatThrottleKey } from '@/constants/redis-keys'
+import { driverHeartbeatKey, driverHeartbeatThrottleKey, driverSweepPausedKey } from '@/constants/redis-keys'
 import { setupOnlineDriver, cleanupRideAndDriverData } from '../helpers/fixtures/rides.fixture'
 
 // The driver heartbeat (liveness without a position) against a real database and Redis.
@@ -33,7 +33,18 @@ afterAll(async () => {
 
 const beat = (body: unknown) => request(app).post('/api/v1/rides/sessions/heartbeat').set('Authorization', `Bearer ${driver.accessToken}`).send(body as object)
 const hb = () => redis.get(driverHeartbeatKey(String(driver.driverId)))
-const reset = () => redis.del(driverHeartbeatKey(String(driver.driverId)), driverHeartbeatThrottleKey(String(driver.driverId)))
+const reset = () => redis.del(driverHeartbeatKey(String(driver.driverId)), driverHeartbeatThrottleKey(String(driver.driverId)), driverSweepPausedKey(String(driver.driverId)))
+const available = async () => (await pool.query(`SELECT is_available FROM driver_location_snapshots WHERE driver_id = $1`, [driver.driverId])).rows[0].is_available as boolean
+// recorded_at/updated_at are reset by triggers on every UPDATE; age them with triggers off, inside a transaction.
+async function agePosition(seconds: number) {
+  const c = await pool.connect()
+  try {
+    await c.query('BEGIN'); await c.query(`SET LOCAL session_replication_role = replica`)
+    await c.query(`UPDATE driver_location_snapshots SET recorded_at = now() - ($2 || ' seconds')::interval WHERE driver_id = $1`, [driver.driverId, seconds])
+    await c.query(`UPDATE driver_sessions SET updated_at = now() - ($2 || ' seconds')::interval WHERE id = $1`, [driver.sessionId, seconds])
+    await c.query('COMMIT')
+  } finally { c.release() }
+}
 
 describe('driver heartbeat', () => {
   it('records "still here" in Redis for the driver\'s own session', async () => {
@@ -81,5 +92,55 @@ describe('driver heartbeat', () => {
   it('requires a driver login', async () => {
     const res = await request(app).post('/api/v1/rides/sessions/heartbeat').send({ sessionId: driver.sessionId })
     expect(res.status).toBe(401)
+  })
+})
+
+describe('coming back after a network blip', () => {
+  it('a driver the SWEEP paused is resumed by the next heartbeat (position a few minutes old)', async () => {
+    await reset()
+    await agePosition(150)
+    await pool.query(`UPDATE driver_location_snapshots SET is_available = false WHERE driver_id = $1`, [driver.driverId])
+    await redis.set(driverSweepPausedKey(String(driver.driverId)), driver.sessionId, 'EX', 600)
+    await beat({ sessionId: driver.sessionId })
+    expect(await available()).toBe(true)
+    expect(await redis.get(driverSweepPausedKey(String(driver.driverId)))).toBeNull()
+  })
+
+  it('a pause the driver chose (no sweep marker) is never undone by a heartbeat', async () => {
+    await reset()
+    await agePosition(150)
+    await pool.query(`UPDATE driver_location_snapshots SET is_available = false WHERE driver_id = $1`, [driver.driverId])
+    await beat({ sessionId: driver.sessionId })
+    expect(await available()).toBe(false)
+  })
+
+  it('a position older than the cap is not resumed by a heartbeat (it waits for a fresh fix)', async () => {
+    await reset()
+    await agePosition(20 * 60)
+    await pool.query(`UPDATE driver_location_snapshots SET is_available = false WHERE driver_id = $1`, [driver.driverId])
+    await redis.set(driverSweepPausedKey(String(driver.driverId)), driver.sessionId, 'EX', 600)
+    await beat({ sessionId: driver.sessionId })
+    expect(await available()).toBe(false)
+  })
+
+  it('a marker from another session does not resume this one', async () => {
+    await reset()
+    await agePosition(150)
+    await pool.query(`UPDATE driver_location_snapshots SET is_available = false WHERE driver_id = $1`, [driver.driverId])
+    await redis.set(driverSweepPausedKey(String(driver.driverId)), '123456789', 'EX', 600)
+    await beat({ sessionId: driver.sessionId })
+    expect(await available()).toBe(false)
+  })
+
+  it('a suspended driver is not resumed', async () => {
+    await reset()
+    await agePosition(150)
+    await pool.query(`UPDATE driver_location_snapshots SET is_available = false WHERE driver_id = $1`, [driver.driverId])
+    await redis.set(driverSweepPausedKey(String(driver.driverId)), driver.sessionId, 'EX', 600)
+    await pool.query(`UPDATE drivers SET status = 'suspended' WHERE id = $1`, [driver.driverId])
+    try {
+      await beat({ sessionId: driver.sessionId })
+      expect(await available()).toBe(false)
+    } finally { await pool.query(`UPDATE drivers SET status = 'active' WHERE id = $1`, [driver.driverId]) }
   })
 })

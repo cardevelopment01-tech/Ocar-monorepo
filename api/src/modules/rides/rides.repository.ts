@@ -1129,6 +1129,20 @@ export async function setDriverAvailability(driverId: bigint, isAvailable: boole
 // Same staleSeconds param is reused
 // for both the short pause-from-pool tier and the longer force-offline tier —
 // see cleanup.worker.ts.
+// Can a driver the idle sweep paused be put back? Only an approved driver with an online session whose position is not older than the cap
+// (matching ranks by that position; a fresh fix resumes them on its own).
+export async function canResumeAfterSweep(driverId: bigint, maxPositionAgeSeconds: number): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT 1 FROM drivers d
+     JOIN driver_sessions ds ON ds.driver_id = d.id AND ds.status = 'online'
+     JOIN driver_location_snapshots dls ON dls.driver_id = d.id
+     WHERE d.id = $1 AND d.status = 'active'
+       AND GREATEST(dls.recorded_at, ds.updated_at) > now() - ($2 || ' seconds')::interval`,
+    [driverId, maxPositionAgeSeconds]
+  )
+  return (res.rowCount ?? 0) > 0
+}
+
 export async function findStaleOnlineDrivers(staleSeconds: number): Promise<{ driver_id: string }[]> {
   const res = await pool.query<{ driver_id: string }>(
     `SELECT ds.driver_id::text

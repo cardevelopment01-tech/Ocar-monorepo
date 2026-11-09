@@ -8,6 +8,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   findStuckDispatchRides:          vi.fn().mockResolvedValue([]),
   findStaleAcceptedOrArrivedRides: vi.fn().mockResolvedValue([]),
   findStaleOnlineDrivers:          vi.fn().mockResolvedValue([]),
+  getActiveSession:                vi.fn().mockResolvedValue({ id: '55' }),
 }))
 vi.mock('@/modules/rides/rides.service', () => ({
   expireStaleRequestedRide:       vi.fn(),
@@ -22,7 +23,7 @@ vi.mock('@/websocket/socket.server', () => ({
   socketEvents: { sendStuckRideFlagged: vi.fn() },
   isDriverSocketConnected: vi.fn().mockResolvedValue(false),
 }))
-vi.mock('@/db/redis', () => ({ client: { mget: vi.fn() } }))
+vi.mock('@/db/redis', () => ({ client: { mget: vi.fn(), set: vi.fn().mockResolvedValue('OK') } }))
 vi.mock('bullmq', () => ({
   Worker: vi.fn().mockImplementation((_name, processor) => ({ on: vi.fn(), __processor: processor })),
   Queue: vi.fn().mockImplementation(() => ({ on: vi.fn() })),
@@ -145,6 +146,8 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     vi.mocked(repo.findStaleAcceptedOrArrivedRides).mockResolvedValue([])
     vi.mocked(isDriverSocketConnected).mockResolvedValue(false)
     vi.mocked(notifyOwner).mockResolvedValue(undefined as never)
+    vi.mocked(repo.getActiveSession).mockResolvedValue({ id: '55' } as never)
+    vi.mocked(redis.set).mockResolvedValue('OK' as never)
     heartbeats({})
   })
 
@@ -207,5 +210,18 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     stale(['7'], ['7'])
     await run()
     expect(vi.mocked(isDriverSocketConnected).mock.calls.filter((c) => c[0] === '7').length).toBeLessThanOrEqual(2)
+  })
+
+  it('a sweep pause leaves a marker for the session, so a later heartbeat can resume the driver', async () => {
+    stale(['8'], [])
+    await run()
+    expect(redis.set).toHaveBeenCalledWith('driver:sweep-paused:8', '55', 'EX', expect.any(Number))
+  })
+
+  it('a driver spared by a heartbeat is not marked as swept', async () => {
+    stale(['7'], [])
+    heartbeats({ '7': Date.now() - 5_000 })
+    await run()
+    expect(redis.set).not.toHaveBeenCalled()
   })
 })

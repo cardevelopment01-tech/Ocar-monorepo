@@ -4,7 +4,7 @@ import { httpError, createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { client as redis } from '@/db/redis'
 import { withTimeout } from '@/lib/with-timeout'
-import { startOtpKey, endOtpKey, activeRideByDriverKey, rideAckKey, driverHeartbeatKey, driverHeartbeatThrottleKey } from '@/constants/redis-keys'
+import { startOtpKey, endOtpKey, activeRideByDriverKey, rideAckKey, driverHeartbeatKey, driverHeartbeatThrottleKey, driverSweepPausedKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
 import crypto from 'crypto'
 import { config } from '@/config'
@@ -37,6 +37,7 @@ import {
   FORCE_ASSIGN_GRACE_MINUTES,
   HEARTBEAT_TTL_SECONDS,
   HEARTBEAT_MIN_INTERVAL_SECONDS,
+  POSITION_MAX_AGE_SECONDS,
 } from '@/constants/limits'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import type { BillingMode, BookingRequest, Ride, RideCore, StopInput } from './rides.types'
@@ -419,6 +420,13 @@ export async function driverHeartbeat(driverId: bigint, sessionId: bigint): Prom
   if (!session) { notifySessionEnded(driverId); return }
   if (String(session.id) !== sessionId.toString()) return
   await withTimeout(redis.set(driverHeartbeatKey(id), String(Date.now()), 'EX', HEARTBEAT_TTL_SECONDS)).catch(() => undefined)
+  // A network blip can get a driver paused by the idle sweep. When the app is heard from again, put them back, but only if the SWEEP paused
+  // them (a deliberate pause never sets the marker), for this same session, and their position is not too old.
+  const pausedFor = await withTimeout(redis.get(driverSweepPausedKey(id))).catch(() => null)
+  if (pausedFor === sessionId.toString() && await repo.canResumeAfterSweep(driverId, POSITION_MAX_AGE_SECONDS)) {
+    await repo.setDriverAvailability(driverId, true)
+    await withTimeout(redis.del(driverSweepPausedKey(id))).catch(() => undefined)
+  }
 }
 
 export async function updateLocation(driverId: bigint, data: {
