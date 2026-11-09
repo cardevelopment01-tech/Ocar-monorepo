@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native'
 import { useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import Animated, { FadeIn, FadeOut, LinearTransition, useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated'
-import { Skeleton, VehicleIcon, colors, radii, spacing, typography, fonts, h } from '@ocar/mobile-shared'
+import { Button, Skeleton, VehicleIcon, font, h } from '@ocar/mobile-shared'
+import { IconButton } from '@/components/ui'
 import type { RentalPackage, VehicleCategory } from '@ocar/mobile-shared'
 import { createBooking, fetchRentalPackages, fetchRoute, fetchVehicleCategories, fetchFareEstimate, resolveBookingError } from '@/features/booking/api'
 import { recommendPackage, type PackageRecommendation } from '@/features/booking/recommendPackage'
@@ -356,15 +357,7 @@ export default function RentalScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable
-          onPress={() => goBack(router)}
-          style={({ pressed }) => [styles.backButton, pressed ? styles.pressedScale : null]}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Feather name="arrow-left" size={17} color={colors.ink900} />
-        </Pressable>
+        <IconButton icon="arrow-left" label="Go back" onPress={() => goBack(router)} />
         <View style={styles.headerText}>
           <Text style={styles.title}>City Rides</Text>
           <Text style={styles.subtitle} numberOfLines={1}>{pickup?.address ?? 'Pickup location'}</Text>
@@ -375,7 +368,7 @@ export default function RentalScreen() {
           accessibilityRole="button"
           accessibilityLabel="Who's travelling"
         >
-          <Feather name="user" size={11} color={colors.primaryDark} />
+          <Feather name="user" size={16} color={h.ivory} />
           <Text style={styles.riderPillText} numberOfLines={1}>{bookingForOther ? riderName : 'For me'}</Text>
         </Pressable>
       </View>
@@ -386,11 +379,11 @@ export default function RentalScreen() {
         <View style={styles.tripCard}>
           <View style={styles.tripRow}>
             <Pressable onPress={() => setScheduleSheetOpen(true)} style={styles.scheduleChip} accessibilityRole="button">
-              <Feather name="clock" size={12} color={colors.primaryDark} />
+              <Feather name="clock" size={12} color={h.tealText} />
               <Text style={styles.scheduleChipText}>{scheduledFor ? formatPickupTime(new Date(scheduledFor)) : 'Now'}</Text>
               {scheduledFor ? (
                 <Pressable onPress={() => setScheduledFor(null)} hitSlop={8} accessibilityLabel="Reset to ride now">
-                  <Feather name="x" size={12} color={colors.primaryDark} />
+                  <Feather name="x" size={12} color={h.tealText} />
                 </Pressable>
               ) : null}
             </Pressable>
@@ -398,7 +391,7 @@ export default function RentalScreen() {
           </View>
           <View style={styles.tripDivider} />
           <Pressable onPress={() => router.push('/booking/add-stop')} style={styles.routeRow}>
-            <Feather name="navigation" size={13} color={colors.primary} />
+            <Feather name="navigation" size={13} color={h.tealCta} />
             <Text style={styles.routeText} numberOfLines={1}>{drop?.address ?? 'Destination'}</Text>
           </Pressable>
         </View>
@@ -499,7 +492,7 @@ export default function RentalScreen() {
                     </View>
                   ) : (
                     <>
-                      <Text style={styles.trayLabel}>{`PACKAGE · ${pkgs.length} TIERS`}</Text>
+                      <Text style={styles.trayLabel}>{`Package · ${pkgs.length} tiers`}</Text>
                       <PackageTierScroller
                         pkgs={pkgs}
                         selectedPkgId={selectedPkgId}
@@ -518,7 +511,7 @@ export default function RentalScreen() {
                               </Text>
                               {estimate != null && estimate.surgeMultiplier > 1 ? (
                                 <View style={styles.surgeRow}>
-                                  <Feather name="zap" size={9} color={colors.warning} />
+                                  <Feather name="zap" size={9} color={h.goldInk} />
                                   <Text style={styles.surgeText}>{`${estimate.surgeMultiplier}× surge`}</Text>
                                 </View>
                               ) : null}
@@ -536,7 +529,7 @@ export default function RentalScreen() {
 
                       {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) ? (
                         <View style={styles.warnCard}>
-                          <Feather name="info" size={13} color={colors.warning} />
+                          <Feather name="info" size={13} color={h.goldInk} />
                           <Text style={styles.warnText}>
                             {`Your route (~${trip.km} km, ${formatDuration(trip.min)}) is longer than the biggest package.${
                               recommendation.overKm > 0 ? ` About ${recommendation.overKm} km over` : ''
@@ -559,32 +552,27 @@ export default function RentalScreen() {
         </Text>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         {priceBanner ? <PriceChangedBanner message={priceBanner} onDismiss={() => setPriceBanner(null)} /> : null}
         {selectedPkg ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
         {bookError ? (
           <Text style={styles.error} accessibilityLiveRegion="polite">{bookError}</Text>
         ) : null}
-        <Pressable
+        <Button
+          variant="cta"
+          label={
+            !drop
+              ? 'Add a drop-off to continue'
+              : !selectedPkg
+              ? 'Select a package'
+              : estimate != null
+              ? `Book · ₹${Math.round(payable ?? estimate.breakdown.total)}`
+              : 'Book'
+          }
           onPress={() => void handleBook()}
           disabled={!canBook}
-          style={({ pressed }) => [styles.bookBtn, !canBook ? styles.disabled : null, pressed && canBook ? styles.pressedScale : null]}
-          accessibilityRole="button"
-        >
-          {booking ? (
-            <ActivityIndicator color={colors.inkInverse} />
-          ) : (
-            <Text style={styles.bookText}>
-              {!drop
-                ? 'Add a drop-off to continue'
-                : !selectedPkg
-                ? 'Select a package'
-                : estimate != null
-                ? `Book · ₹${Math.round(payable ?? estimate.breakdown.total)}`
-                : 'Book'}
-            </Text>
-          )}
-        </Pressable>
+          loading={booking}
+        />
       </View>
 
       <OfferSheet
@@ -614,84 +602,84 @@ export default function RentalScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
-  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: h.line10, boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
+  screen: { flex: 1, backgroundColor: h.canvas },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8 },
+  backButtonUnused: { width: 40, height: 40, borderRadius: 20, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
   pressedScale: { transform: [{ scale: 0.97 }] },
   headerText: { flex: 1 },
-  title: { ...typography.title, color: h.ivory, fontFamily: fonts.bold },
-  subtitle: { ...typography.caption, color: h.ivoryDim, marginTop: 1 },
-  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: h.chip, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, maxWidth: 110 },
-  riderPillText: { ...typography.caption, color: h.ivory, fontFamily: fonts.bold },
+  title: { fontFamily: font.b, fontSize: 17, lineHeight: 24, color: h.ivory },
+  subtitle: { fontFamily: font.m, fontSize: 12.5, lineHeight: 18, color: h.ivoryDim, marginTop: 1 },
+  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: h.chip, borderRadius: 9999, paddingHorizontal: 8 + 2, paddingVertical: 4 + 2, maxWidth: 110 },
+  riderPillText: { fontSize: 12.5, lineHeight: 18, color: h.ivory, fontFamily: font.b },
   body: { flex: 1 },
-  bodyContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.sm },
+  bodyContent: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 24, gap: 8 },
 
-  tripCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: radii['2xl'], padding: spacing.sm + 4, boxShadow: '0 3px 12px rgba(20,23,26,0.07)', gap: spacing.sm },
+  tripCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: 24, padding: 8 + 4, boxShadow: '0 3px 12px rgba(20,23,26,0.07)', gap: 8 },
   tripRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  tripMeta: { ...typography.caption, color: h.ivoryDim, fontFamily: fonts.semibold },
+  tripMeta: { fontSize: 12.5, lineHeight: 18, color: h.ivoryDim, fontFamily: font.sb },
   tripDivider: { height: 1, backgroundColor: h.line08 },
-  routeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  routeText: { ...typography.body, color: h.ivory, fontFamily: fonts.bold, flex: 1, fontSize: 13 },
-  scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: h.chip, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2 },
-  scheduleChipText: { ...typography.caption, color: h.ivory, fontFamily: fonts.bold },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  routeText: { fontSize: 14.5, lineHeight: 21, color: h.ivory, fontFamily: font.b, flex: 1 },
+  scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: h.chip, borderRadius: 9999, paddingHorizontal: 8 + 2, paddingVertical: 4 + 2 },
+  scheduleChipText: { fontSize: 12.5, lineHeight: 18, color: h.ivory, fontFamily: font.b },
 
-  vehHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: spacing.xs },
+  vehHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4 },
   sectionLabel: { ...sectionLabel },
-  vehCount: { ...typography.caption, color: h.ivoryFaint, fontFamily: fonts.semibold },
+  vehCount: { fontSize: 12.5, lineHeight: 18, color: h.ivoryFaint, fontFamily: font.sb },
 
-  vehCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: radii['2xl'], overflow: 'hidden', boxShadow: '0 2px 8px rgba(20,23,26,0.04)' },
-  vehCardOpen: { borderColor: '#E58BBD', boxShadow: '0 8px 24px rgba(220,62,147,0.14)' },
-  vehRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, padding: spacing.sm + 4 },
+  vehCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: 24, overflow: 'hidden', boxShadow: '0 2px 8px rgba(20,23,26,0.04)' },
+  vehCardOpen: { borderColor: '#0B8296', boxShadow: '0 8px 24px rgba(14,143,163,0.14)' },
+  vehRow: { flexDirection: 'row', alignItems: 'center', gap: 8 + 4, padding: 8 + 4 },
   vehRowDisabled: { opacity: 0.4 },
   iconWrap: { width: 52, height: 44, borderRadius: 12, backgroundColor: h.chip, alignItems: 'center', justifyContent: 'center' },
   iconWrapOpen: { backgroundColor: h.chip },
   vehInfo: { flex: 1, gap: 2, minWidth: 0 },
   vehNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  vehName: { fontSize: 14, fontFamily: fonts.bold, color: h.ivory },
-  premiumBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FBF3E6', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2 },
-  premiumBadgeText: { fontSize: 12, fontFamily: fonts.semibold, color: '#8A6323' },
+  vehName: { fontSize: 16, fontFamily: font.b, color: h.ivory },
+  premiumBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FBF3E6', borderRadius: 9999, paddingHorizontal: 7, paddingVertical: 2 },
+  premiumBadgeText: { fontSize: 12, fontFamily: font.sb, color: '#8A6323' },
   vehSeatsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  vehSeats: { ...typography.caption, color: h.ivoryDim, fontSize: 11 },
+  vehSeats: { fontFamily: font.m, fontSize: 12.5, lineHeight: 18, color: h.muted },
   vehFareBlock: { alignItems: 'flex-end', minWidth: 56 },
-  vehFareFrom: { fontSize: 14, fontFamily: fonts.bold, color: h.ivory },
-  vehFareSelected: { fontSize: 15, fontFamily: fonts.bold, color: h.ivory },
-  vehNoPkgs: { fontSize: 11, fontFamily: fonts.semibold, color: h.ivoryFaint },
+  vehFareFrom: { fontSize: 15, fontFamily: font.b, color: h.ivory },
+  vehFareSelected: { fontSize: 15, fontFamily: font.b, color: h.ivory },
+  vehNoPkgs: { fontSize: 11, fontFamily: font.sb, color: h.ivoryFaint },
   chevronOpen: { transform: [{ rotate: '180deg' }] },
 
-  tray: { backgroundColor: h.chip, marginHorizontal: 6, marginBottom: 6, borderRadius: radii.lg, padding: spacing.sm + 4 },
-  trayLoadingRow: { flexDirection: 'row', gap: spacing.xs + 4 },
-  trayLabel: { fontSize: 10, fontFamily: fonts.bold, letterSpacing: 0.4, color: h.ivoryDim, marginBottom: spacing.sm },
-  tierRow: { flexGrow: 0, marginBottom: spacing.sm + 4 },
-  tierRowContent: { gap: spacing.xs + 2, paddingTop: 4 },
-  tierChip: { minWidth: 64, paddingVertical: 8, paddingHorizontal: 13, borderRadius: radii.md, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, alignItems: 'center' },
-  tierFade: { position: 'absolute', top: 4, bottom: spacing.sm + 4, right: 0, width: 44 },
-  tierArrowBtn: { position: 'absolute', top: 4, right: 4, width: 26, height: 26, borderRadius: radii.full, backgroundColor: h.surface, alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(14,143,163,0.22)' },
-  tierChipActive: { backgroundColor: '#FDEFF6', borderColor: '#DC3E93', boxShadow: '0 6px 16px rgba(220,62,147,0.18)' },
-  tierDuration: { fontSize: 11.5, fontFamily: fonts.bold, color: h.ivory },
-  tierKm: { fontSize: 9.5, color: h.ivoryFaint },
-  tierTextActive: { color: '#A31F6B' },
-  tierKmActive: { color: 'rgba(163,31,107,0.72)' },
-  bestFitTag: { alignSelf: 'center', backgroundColor: '#DC3E93', borderRadius: radii.full, paddingHorizontal: 8, paddingVertical: 2, marginBottom: 4 },
-  bestFitText: { fontSize: 11, fontFamily: fonts.bold, color: '#FFFFFF', letterSpacing: 0.3, flexShrink: 0 },
-  trayDivider: { height: 1, backgroundColor: h.line08, marginBottom: spacing.sm },
-  trayTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  tray: { backgroundColor: h.chip, marginHorizontal: 6, marginBottom: 6, borderRadius: 18, padding: 8 + 4 },
+  trayLoadingRow: { flexDirection: 'row', gap: 4 + 4 },
+  trayLabel: { fontSize: 13, fontFamily: font.sb, color: h.ivory, marginBottom: 8 },
+  tierRow: { flexGrow: 0, marginBottom: 8 + 4 },
+  tierRowContent: { gap: 4 + 2, paddingTop: 4 },
+  tierChip: { minWidth: 64, paddingVertical: 8, paddingHorizontal: 13, borderRadius: 12, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, alignItems: 'center' },
+  tierFade: { position: 'absolute', top: 4, bottom: 8 + 4, right: 0, width: 44 },
+  tierArrowBtn: { position: 'absolute', top: 4, right: 4, width: 26, height: 26, borderRadius: 9999, backgroundColor: h.surface, alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(14,143,163,0.22)' },
+  tierChipActive: { backgroundColor: '#F3FAFB', borderColor: '#0B8296', boxShadow: '0 6px 16px rgba(14,143,163,0.18)' },
+  tierDuration: { fontSize: 13.5, fontFamily: font.b, color: h.ivory },
+  tierKm: { fontSize: 11.5, color: h.ivoryFaint },
+  tierTextActive: { color: '#0A7788' },
+  tierKmActive: { color: 'rgba(10,119,136,0.72)' },
+  bestFitTag: { alignSelf: 'center', backgroundColor: '#0B8296', borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, marginBottom: 4 },
+  bestFitText: { fontSize: 11, fontFamily: font.b, color: '#FFFFFF', letterSpacing: 0.3, flexShrink: 0 },
+  trayDivider: { height: 1, backgroundColor: h.line08, marginBottom: 8 },
+  trayTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   trayTotalInfo: { flex: 1, minWidth: 0 },
-  trayTotalMeta: { fontSize: 11.5, color: h.ivoryDim, fontFamily: fonts.medium },
-  trayExtra: { fontFamily: fonts.bold, color: '#A31F6B' },
+  trayTotalMeta: { fontSize: 11.5, color: h.ivoryDim, fontFamily: font.m },
+  trayExtra: { fontFamily: font.b, color: '#0A7788' },
   surgeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
-  surgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.warning },
-  trayTotalValue: { fontSize: 19, fontFamily: fonts.bold, color: h.teal, letterSpacing: -0.3 },
+  surgeText: { fontSize: 10, fontFamily: font.b, color: h.goldInk },
+  trayTotalValue: { fontSize: 19, fontFamily: font.b, color: h.teal, letterSpacing: -0.3 },
   trayTotalUnavailable: { fontSize: 14, color: h.ivoryFaint },
 
-  warnCard: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, backgroundColor: colors.warningLight, borderRadius: radii.lg, padding: spacing.md, marginTop: spacing.sm + 4 },
-  warnText: { ...typography.caption, flex: 1, color: h.ivory, lineHeight: 17 },
+  warnCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: h.goldWash, borderRadius: 18, padding: 16, marginTop: 8 + 4 },
+  warnText: { fontFamily: font.m, fontSize: 12.5, lineHeight: 18, flex: 1, color: h.ivory },
 
-  footnote: { ...typography.caption, color: h.ivoryFaint, lineHeight: 17, marginTop: spacing.xs },
-  footnoteStrong: { color: h.ivoryDim, fontFamily: fonts.semibold },
+  footnote: { fontFamily: font.m, fontSize: 12.5, lineHeight: 18, color: h.ivoryFaint, marginTop: 4 },
+  footnoteStrong: { color: h.ivoryDim, fontFamily: font.sb },
 
-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: h.line08, backgroundColor: colors.bg },
-  error: { ...typography.body, color: colors.error, marginBottom: spacing.xs, textAlign: 'center' },
-  bookBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 54, boxShadow: '0 10px 24px rgba(14,143,163,0.28)' },
+  footer: { paddingHorizontal: 24, paddingTop: 8, borderTopWidth: 1, borderTopColor: h.line08, backgroundColor: h.canvas },
+  error: { fontFamily: font.r, fontSize: 14.5, lineHeight: 21, color: h.danger, marginBottom: 4, textAlign: 'center' },
+  bookBtn: { backgroundColor: h.tealCta, borderRadius: 16, paddingVertical: 8 + 8, alignItems: 'center', justifyContent: 'center', minHeight: 54, boxShadow: '0 10px 24px rgba(14,143,163,0.28)' },
   disabled: { opacity: 0.5 },
-  bookText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
+  bookText: { fontSize: 14.5, lineHeight: 21, color: '#FFFFFF', fontFamily: font.b },
 })
