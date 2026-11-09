@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#5FE3A8' },
   liveText: { fontFamily: font.xb, fontSize: 11.5, letterSpacing: 1.2, color: '#FFFFFF' },
   title: { fontFamily: font.xb, fontSize: 22, letterSpacing: -0.4, color: '#FFFFFF' },
-  lead: { fontFamily: font.m, fontSize: 13, lineHeight: 18, color: 'rgba(255,255,255,0.86)', marginTop: 3 },
+  lead: { fontFamily: font.m, fontSize: 13, lineHeight: 18, color: 'rgba(255,255,255,0.86)', marginTop: 3, paddingRight: 56 },
   scroll: { flexGrow: 0 },
   body: { gap: 10, paddingHorizontal: 18, paddingTop: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 68, paddingLeft: 14, paddingRight: 8, borderRadius: 20, backgroundColor: h.chip },

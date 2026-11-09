@@ -148,7 +148,7 @@ export function EditPickupSheet({
             )}
           </View>
           <Text style={styles.hint}>
-            {distanceToUser != null ? `${distanceToUser} m from your live location · ` : ''}
+            {distanceToUser != null ? `${distanceToUser >= 1000 ? `${(distanceToUser / 1000).toFixed(1)} km` : `${distanceToUser} m`} from your live location · ` : ''}
             Drag the pin to fine-tune.
           </Text>
           {driverAssigned ? <Text style={styles.hint}>Your driver will be notified of the update.</Text> : null}
