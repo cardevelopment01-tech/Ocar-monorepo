@@ -4,6 +4,7 @@ import { useFocusEffect, useIsFocused, useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
+import { LinearGradient } from 'expo-linear-gradient'
 import { Button, spacing, h, font, pillTextFor, getApiErrorMessage, haversineMetres, ageMs, track } from '@ocar/mobile-shared'
 
 // Same threshold as the API (MIN_TRIP_DISTANCE_METRES): closer than this is the same place, not a trip.
@@ -500,6 +501,7 @@ export default function BookingPickersScreen() {
       {/* Fixed footer: Continue never drifts up/down as the results area above
           changes height -- the exact instability this redesign fixes. */}
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+        <LinearGradient pointerEvents="none" colors={['rgba(246,251,251,0)', h.canvas]} style={styles.fade} />
         {continueError ? (
           <Text style={styles.error} accessibilityLiveRegion="polite">
             {continueError}
@@ -566,5 +568,6 @@ const styles = StyleSheet.create({
   section: { marginBottom: 14 },
   sectionLabel: { ...sectionLabel, marginHorizontal: 2, marginTop: 14, marginBottom: 10 },
   error: { fontFamily: font.m, fontSize: 14, color: h.danger, marginBottom: spacing.xs },
+  fade: { position: 'absolute', left: 0, right: 0, top: -40, height: 40 },
   footer: { paddingHorizontal: 18, paddingTop: 10, backgroundColor: h.canvas },
 })
