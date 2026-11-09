@@ -65,10 +65,11 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
             {upgradedTo ? (
               <View style={styles.upgraded}><Text style={styles.upgradedText}>Upgraded to {upgradedTo}</Text></View>
             ) : null}
+            {/* In the text column so the plate's left edge lines up with the name above it. */}
+            <View style={styles.plateInfo}>
+              <PlateBadge plate={view.plate} />
+            </View>
           </View>
-        </View>
-        <View style={styles.plateRow}>
-          <PlateBadge plate={view.plate} />
         </View>
       </View>
 
@@ -98,14 +99,14 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
 const styles = StyleSheet.create({
   card: { backgroundColor: '#F7F6F1', borderRadius: 22, borderWidth: 1, borderColor: 'rgba(20,23,26,0.05)', padding: 14, gap: 12 },
   top: { flexDirection: 'row', gap: 16, alignItems: 'center' },
-  info: { flex: 1, minWidth: 0, gap: 3, paddingLeft: 4 },
+  info: { flex: 1, minWidth: 0, gap: 3 },
   name: { fontFamily: font.b, fontSize: 16.5, lineHeight: 22, color: h.ivory },
   meta: { fontFamily: font.m, fontSize: 12.5, color: h.muted },
   verified: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   verifiedText: { fontFamily: font.b, fontSize: 12, color: h.live },
   upgraded: { alignSelf: 'flex-start', backgroundColor: '#DDF5EA', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, marginTop: 2 },
   upgradedText: { fontFamily: font.b, fontSize: 11, color: h.live },
-  plateRow: { alignItems: 'flex-start', paddingLeft: 2 },
+  plateInfo: { alignItems: 'flex-start', marginTop: 6 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
   message: { flex: 1.5, height: 50, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: h.tealWash },
   messageText: { fontFamily: font.b, fontSize: 14.5, color: h.tealText, flexShrink: 1 },
