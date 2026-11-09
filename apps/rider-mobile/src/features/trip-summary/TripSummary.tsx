@@ -4,7 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, buildTripFacts, colors, dropDisplay, fonts, maybeRequestReview, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, buildTripFacts, dropDisplay, font, h, maybeRequestReview, shadow, spacing } from '@ocar/mobile-shared'
+import { IconButton } from '@/components/ui'
 import { fetchProfile } from '@/features/profile/api'
 import { DriverAvatar, driverViewFromRide } from '@/features/ride-tracking/components/DriverIdentity'
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
@@ -92,9 +93,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
   return (
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={back} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back" style={styles.backBtn}>
-          <Feather name="arrow-left" size={22} color={colors.ink900} />
-        </Pressable>
+        <IconButton icon="arrow-left" label="Back" onPress={back} />
         <Text style={styles.headerTitle} accessibilityRole="header">Trip details</Text>
       </View>
 
@@ -119,7 +118,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
         {/* Headline: what happened on the left, what it cost on the right. */}
         <View style={styles.section}>
-          <LinearGradient colors={[colors.primarySubtle, colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.9 }} style={styles.heroTint} />
+          <LinearGradient colors={['#EEF8F9', '#FFFFFF']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.9 }} style={styles.heroTint} />
           <View style={styles.headRow}>
             <View style={styles.flex}>
               <Text style={styles.title} numberOfLines={2}>{tripTitle(ride)}</Text>
@@ -137,8 +136,8 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
           </View>
           <View style={styles.statusRow}>
             <View style={[styles.pill, completed ? styles.pillOk : styles.pillBad]}>
-              <Feather name={completed ? 'check' : 'x'} size={13} color={completed ? colors.success : colors.error} />
-              <Text style={[styles.pillText, { color: completed ? colors.success : colors.error }]}>{completed ? 'Completed' : ride.status === 'no_drivers' ? 'No drivers found' : 'Cancelled'}</Text>
+              <Feather name={completed ? 'check' : 'x'} size={13} color={completed ? h.live : h.danger} />
+              <Text style={[styles.pillText, { color: completed ? h.live : h.danger }]}>{completed ? 'Completed' : ride.status === 'no_drivers' ? 'No drivers found' : 'Cancelled'}</Text>
             </View>
             {fareCaption ? <Text style={styles.sub}>{fareCaption}</Text> : null}
             {/* The receipt's Payment row says this when there are fare rows; only repeat it when there are none. */}
@@ -146,7 +145,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
           </View>
           {pay && pay.kind === 'cash_due' ? (
             <View style={styles.dueStrip} accessibilityRole="alert">
-              <Feather name="alert-circle" size={18} color={colors.warning} />
+              <Feather name="alert-circle" size={18} color={h.goldInk} />
               <Text style={styles.dueText}>{pay.text}</Text>
             </View>
           ) : null}
@@ -234,7 +233,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
               style={styles.listRow}
             >
               <Text style={styles.listLabel}>Time breakdown</Text>
-              <Feather name={breakdownOpen ? 'chevron-up' : 'chevron-down'} size={20} color={colors.ink600} />
+              <Feather name={breakdownOpen ? 'chevron-up' : 'chevron-down'} size={20} color={h.faint} />
             </Pressable>
             {breakdownOpen ? (
               <View style={styles.timeline}>
@@ -274,12 +273,12 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
           {completed ? (
             <Pressable onPress={() => emailSupport('receipt')} accessibilityRole="link" accessibilityLabel="Email a receipt request" style={styles.listRow}>
               <Text style={styles.listLabel}>Download receipt</Text>
-              <Feather name="chevron-right" size={20} color={colors.ink600} />
+              <Feather name="chevron-right" size={20} color={h.faint} />
             </Pressable>
           ) : null}
           <Pressable onPress={() => emailSupport('help')} accessibilityRole="link" accessibilityLabel="Get help with this trip, email support" style={[styles.listRow, completed ? styles.ruled : null]}>
             <Text style={styles.listLabel}>Get help with this trip</Text>
-            <Feather name="chevron-right" size={20} color={colors.ink600} />
+            <Feather name="chevron-right" size={20} color={h.faint} />
           </Pressable>
         </View>
         <Text style={styles.rideId} selectable>Ride #{ride.id}</Text>
@@ -287,76 +286,72 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
       {!canGoBack ? (
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-          <Button label="Back to home" onPress={goHome} />
+          <Button variant="cta" label="Back to home" onPress={goHome} />
         </View>
       ) : null}
     </View>
   )
 }
 
-const hair = { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border } as const
-const cardShadow = { shadowColor: colors.primary, shadowOpacity: 0.1, shadowRadius: 16, shadowOffset: { width: 0, height: 2 }, elevation: 3 } as const
+const hair = { borderTopWidth: 1, borderTopColor: h.line07 } as const
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
+  screen: { flex: 1, backgroundColor: h.canvas },
   flex: { flex: 1, minWidth: 0 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
-  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { ...typography.headline, color: colors.ink900 },
-  content: { paddingHorizontal: spacing.md, gap: spacing.sm + 4 },
-  map: { height: MAP_HEIGHT, borderRadius: radii['2xl'], overflow: 'hidden', backgroundColor: colors.surface3 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingBottom: 12 },
+  headerTitle: { fontFamily: font.b, fontSize: 20, letterSpacing: -0.2, color: h.ivory },
+  content: { paddingHorizontal: 18, gap: 14 },
+  map: { height: MAP_HEIGHT, borderRadius: 24, overflow: 'hidden', backgroundColor: h.chip },
 
-  // DESIGN.md Cards: white, 24px radius, teal-tinted ambient shadow (never neutral grey), no nested cards.
-  section: { backgroundColor: colors.surface, borderRadius: radii['2xl'], padding: spacing.md + 4, gap: spacing.sm + 4, ...cardShadow },
-  listCard: { backgroundColor: colors.surface, borderRadius: radii['2xl'], ...cardShadow },
-  heroTint: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: radii['2xl'] },
+  section: { backgroundColor: h.surface, borderRadius: 24, borderWidth: 1, borderColor: h.line07, padding: 18, gap: 14, boxShadow: shadow.sm },
+  listCard: { backgroundColor: h.surface, borderRadius: 22, borderWidth: 1, borderColor: h.line07, boxShadow: shadow.sm, overflow: 'hidden' },
+  heroTint: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 24 },
   ruled: hair,
-  headRow: { gap: spacing.xs },
-  title: { ...typography.title, fontSize: 20, lineHeight: 26, color: colors.ink900 },
-  sub: { ...typography.label, color: colors.ink600 },
-  fare: { fontFamily: fonts.bold, fontSize: 40, lineHeight: 46, letterSpacing: -1, color: colors.ink900, fontVariant: ['tabular-nums'] },
-  statusRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
-  pillOk: { backgroundColor: colors.successLight },
-  pillBad: { backgroundColor: colors.errorLight },
-  pillText: { fontFamily: fonts.semibold, fontSize: 12 },
-  dueStrip: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.warningLight, borderRadius: radii.lg, padding: spacing.sm + 4 },
-  dueText: { ...typography.label, fontSize: 14, fontFamily: fonts.bold, color: colors.ink900, flex: 1 },
+  headRow: { gap: 4 },
+  title: { fontFamily: font.b, fontSize: 20, lineHeight: 26, color: h.ivory },
+  sub: { fontFamily: font.m, fontSize: 13, color: h.muted },
+  fare: { fontFamily: font.xb, fontSize: 40, lineHeight: 46, letterSpacing: -1, color: h.ivory, fontVariant: ['tabular-nums'] },
+  statusRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, height: 26, borderRadius: 13 },
+  pillOk: { backgroundColor: '#DDF5EA' },
+  pillBad: { backgroundColor: h.dangerWash },
+  pillText: { fontFamily: font.b, fontSize: 12 },
+  dueStrip: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: h.goldWash, borderRadius: 16, padding: 14 },
+  dueText: { fontFamily: font.b, fontSize: 14, color: h.ivory, flex: 1 },
 
-  routeRow: { flexDirection: 'row', gap: spacing.sm + 4 },
+  routeRow: { flexDirection: 'row', gap: 14 },
   markerCol: { width: 10, alignItems: 'center', paddingTop: 7 },
-  pickupText: { paddingBottom: spacing.sm + 4 },
+  pickupText: { paddingBottom: 14 },
   dot: { width: 10, height: 10 },
-  dotPickup: { borderRadius: 5, backgroundColor: colors.primary },
-  dotDrop: { borderRadius: 2, backgroundColor: colors.ink900 },
-  line: { width: 1, flex: 1, marginTop: 2, backgroundColor: colors.border },
+  dotPickup: { borderRadius: 5, backgroundColor: h.teal, boxShadow: '0 0 0 3px rgba(14,143,163,0.18)' },
+  dotDrop: { borderRadius: 3, backgroundColor: h.ivory },
+  line: { width: 0, flex: 1, marginTop: 2, borderLeftWidth: 1.5, borderLeftColor: '#B3C0C3', borderStyle: 'dashed' },
   routeText: { flex: 1, minWidth: 0 },
-  routeLabel: { ...typography.label, color: colors.ink600 },
-  routeValue: { ...typography.body, lineHeight: 22, color: colors.ink900, fontFamily: fonts.semibold },
-  routeNote: { ...typography.label, color: colors.ink600 },
+  routeLabel: { fontFamily: font.sb, fontSize: 11.5, color: h.label },
+  routeValue: { fontFamily: font.b, fontSize: 14.5, lineHeight: 21, color: h.ivory },
+  routeNote: { fontFamily: font.m, fontSize: 12.5, color: h.muted },
 
-  sectionTitle: { ...typography.title, fontSize: 16, color: colors.ink900 },
-  receipt: { gap: spacing.sm + 4 },
-  receiptRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
-  receiptLabel: { ...typography.body, lineHeight: 22, color: colors.ink900 },
-  receiptDetail: { ...typography.label, color: colors.ink600 },
-  receiptAmount: { ...typography.body, lineHeight: 22, color: colors.ink900, fontFamily: fonts.semibold, fontVariant: ['tabular-nums'] },
-  totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, backgroundColor: colors.primarySubtle, borderRadius: radii.lg, paddingVertical: spacing.sm + 6, paddingHorizontal: spacing.md, marginTop: spacing.xs },
-  totalLabel: { ...typography.title, color: colors.ink900, flex: 1 },
-  totalAmount: { fontFamily: fonts.bold, fontSize: 22, lineHeight: 28, color: colors.ink900, fontVariant: ['tabular-nums'] },
+  sectionTitle: { fontFamily: font.sb, fontSize: 14, color: h.ivory },
+  receipt: { gap: 12 },
+  receiptRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 },
+  receiptLabel: { fontFamily: font.sb, fontSize: 14.5, lineHeight: 21, color: h.ivory },
+  receiptDetail: { fontFamily: font.m, fontSize: 12.5, color: h.muted },
+  receiptAmount: { fontFamily: font.b, fontSize: 14.5, lineHeight: 21, color: h.ivory, fontVariant: ['tabular-nums'] },
+  totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, backgroundColor: h.tealWash, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, marginTop: 4 },
+  totalLabel: { fontFamily: font.b, fontSize: 16, color: h.ivory, flex: 1 },
+  totalAmount: { fontFamily: font.xb, fontSize: 24, lineHeight: 30, letterSpacing: -0.4, color: h.ivory, fontVariant: ['tabular-nums'] },
 
-  listRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, minHeight: 56, paddingHorizontal: spacing.md + 4 },
-  listLabel: { ...typography.body, fontFamily: fonts.semibold, color: colors.ink900, flex: 1 },
-  timeline: { paddingHorizontal: spacing.md + 4, paddingBottom: spacing.md, gap: spacing.sm + 4 },
-  timelineRow: { flexDirection: 'row', gap: spacing.md },
-  timelineTime: { ...typography.body, lineHeight: 22, width: 72, color: colors.ink900, fontFamily: fonts.semibold, fontVariant: ['tabular-nums'] },
+  listRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, minHeight: 58, paddingHorizontal: 18 },
+  listLabel: { fontFamily: font.sb, fontSize: 15, color: h.ivory, flex: 1 },
+  timeline: { paddingHorizontal: 18, paddingBottom: 16, gap: 12 },
+  timelineRow: { flexDirection: 'row', gap: 16 },
+  timelineTime: { fontFamily: font.b, fontSize: 14.5, lineHeight: 21, width: 72, color: h.ivory, fontVariant: ['tabular-nums'] },
 
-  driverRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4 },
-  driverName: { ...typography.title, fontSize: 16, color: colors.ink900 },
-  // The plate is what a rider matches against the car, so it never shares a truncating line.
-  plate: { ...typography.label, fontFamily: fonts.bold, letterSpacing: 1, color: colors.ink900 },
+  driverRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  driverName: { fontFamily: font.b, fontSize: 16, color: h.ivory },
+  plate: { fontFamily: font.xb, fontSize: 13, letterSpacing: 1, color: h.ivory },
 
-  rideId: { ...typography.label, color: colors.ink600, textAlign: 'center', paddingVertical: spacing.md },
+  rideId: { fontFamily: font.m, fontSize: 12.5, color: h.faint, textAlign: 'center', paddingVertical: 16 },
 
-  footer: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.md, paddingTop: spacing.sm, backgroundColor: colors.bg },
+  footer: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 18, paddingTop: 10, backgroundColor: h.canvas },
 })
