@@ -51,7 +51,7 @@ const STALE_LOCATION_MS = 3 * 60 * 1000
 // with "Trip details" expanded -- matches Uber's own half-screen sheet
 // ceiling (its Base design system caps a mobile sheet at collapsed/half/full,
 // never letting the half state swallow the whole map).
-const MAX_SHEET_HEIGHT_RATIO = 0.62
+const MAX_SHEET_HEIGHT_RATIO = 0.7
 const SHEET_ENTRANCE_DISTANCE = 40
 const SHEET_ENTRANCE_DURATION_MS = 400
 
@@ -353,7 +353,7 @@ export default function RideTrackingScreen() {
         <ScrollView
           ref={sheetScrollRef}
           style={styles.sheetScroll}
-          contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
+          contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, spacing.lg) + 24 }]}
           showsVerticalScrollIndicator={false}
         >
           {upgradeCategory ? <UpgradeToast categoryName={upgradeCategory} /> : null}

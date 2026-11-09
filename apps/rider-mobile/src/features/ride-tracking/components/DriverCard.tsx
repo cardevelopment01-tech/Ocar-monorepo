@@ -75,7 +75,7 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
           <DriverAvatar view={view} photo={ride.driverPhoto} size="lg" chip />
           <View style={styles.info}>
             <Text style={styles.name} numberOfLines={2}>{view.name}</Text>
-            <Text style={styles.meta} numberOfLines={2}>{view.vehicleLine}{view.tripsText ? ` · ${view.tripsText}` : ''}</Text>
+            <Text style={styles.meta} numberOfLines={3}>{view.vehicleLine}{view.tripsText ? ` · ${view.tripsText}` : ''}</Text>
             {view.verified ? (
               <View style={styles.verified}>
                 <Feather name="shield" size={12} color={h.live} />
@@ -90,8 +90,8 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
               <PlateBadge plate={view.plate} />
             </View>
           </View>
-          {carImage ? <Image source={carImage} style={styles.car} resizeMode="contain" accessibilityIgnoresInvertColors /> : null}
         </View>
+        {carImage ? <Image source={carImage} style={styles.car} resizeMode="contain" accessibilityIgnoresInvertColors /> : null}
       </View>
 
       <View style={styles.actions}>
@@ -136,7 +136,7 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
 
 const styles = StyleSheet.create({
   card: { backgroundColor: '#F7F6F1', borderRadius: 22, borderWidth: 1, borderColor: 'rgba(20,23,26,0.05)', padding: 14, gap: 12 },
-  top: { flexDirection: 'row', gap: 16, alignItems: 'center' },
+  top: { flexDirection: 'row', gap: 16, alignItems: 'center', paddingRight: 0 },
   info: { flex: 1, minWidth: 0, gap: 3 },
   name: { fontFamily: font.b, fontSize: 16.5, lineHeight: 22, color: h.ivory },
   meta: { fontFamily: font.m, fontSize: 12.5, color: h.muted },
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   upgraded: { alignSelf: 'flex-start', backgroundColor: '#DDF5EA', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, marginTop: 2 },
   upgradedText: { fontFamily: font.b, fontSize: 11, color: h.live },
   plateInfo: { alignItems: 'flex-start', marginTop: 6 },
-  car: { width: 84, height: 56, marginLeft: 4 },
+  car: { position: 'absolute', right: 0, bottom: 0, width: 72, height: 46 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
   message: { flex: 1.5, height: 50, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: h.tealWash },
   messageText: { fontFamily: font.b, fontSize: 14.5, color: h.tealText, flexShrink: 1 },

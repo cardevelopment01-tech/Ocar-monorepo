@@ -25,7 +25,7 @@ export function RideActions({ actions }: { actions: RideAction[] }) {
           style={({ pressed }) => [styles.tile, i < actions.length - 1 && styles.divider, pressed && styles.pressed]}
         >
           <Feather name={a.icon} size={19} color={a.destructive ? h.danger : h.tealText} />
-          <Text style={[styles.label, a.destructive && styles.labelDestructive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{a.label}</Text>
+          <Text style={[styles.label, a.destructive && styles.labelDestructive]} numberOfLines={1}>{a.label}</Text>
         </Pressable>
       ))}
     </View>
@@ -37,6 +37,6 @@ const styles = StyleSheet.create({
   tile: { flex: 1, alignItems: 'center', gap: 8, paddingVertical: 16, paddingHorizontal: 6, minHeight: 64 },
   divider: { borderRightWidth: 1, borderRightColor: h.line07 },
   pressed: { backgroundColor: '#F4F8F8' },
-  label: { fontFamily: font.sb, fontSize: 12, color: h.ivory },
+  label: { fontFamily: font.sb, fontSize: 11.5, color: h.ivory },
   labelDestructive: { color: h.danger },
 })
