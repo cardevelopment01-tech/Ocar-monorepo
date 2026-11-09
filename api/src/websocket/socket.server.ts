@@ -8,7 +8,7 @@ import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import { rideAckKey } from '@/constants/redis-keys'
 import { getPendingAssignmentsForDriver, markOfferAcked } from '@/modules/rides/rides.repository'
-import { updateLocation } from '@/modules/rides/rides.service'
+import { updateLocation, driverHeartbeat } from '@/modules/rides/rides.service'
 import { logger } from '@/lib/logger'
 import { isDriverSessionReplaced } from '@/middleware/auth.middleware'
 import { initNearbyBus } from './nearby-bus'
@@ -194,6 +194,13 @@ export function initSocketServer(httpServer: HttpServer): Server {
         })
       }))
 
+      // Liveness only (no position): see driverHeartbeat in rides.service.ts.
+      socket.on('driver:heartbeat', safeHandler(log, 'driver:heartbeat', (data?: { sessionId?: unknown }) => {
+        const sessionId = parseId(data?.sessionId)
+        if (sessionId === null) return
+        driverHeartbeat(BigInt(user.sub), sessionId).catch((err: unknown) => log.error({ err }, 'driver:heartbeat failed'))
+      }))
+
       // On reconnect, immediately re-deliver any assignments the driver may have
       // missed while their socket was down (messages are not buffered by Socket.io).
       void getPendingAssignmentsForDriver(BigInt(user.sub))
@@ -372,16 +379,16 @@ export async function isChatOpen(
 // pushing at once. Unknown counts as "yes" (a lookup that fails or takes longer than the cap must never turn into a push storm):
 // the caller then falls back to the shorter socket-ack wait.
 const SOCKET_PRESENCE_TIMEOUT_MS = 500
-export async function hasLiveDriverSocket(driverId: string): Promise<boolean> {
+export async function hasLiveDriverSocket(driverId: string, whenUnknown = true): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const sockets = await Promise.race([
       getIO().in(`driver:${driverId}`).fetchSockets(),
       new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), SOCKET_PRESENCE_TIMEOUT_MS) }),
     ])
-    return sockets === null ? true : sockets.length > 0
+    return sockets === null ? whenUnknown : sockets.length > 0
   } catch {
-    return true
+    return whenUnknown
   } finally {
     clearTimeout(timer)
   }

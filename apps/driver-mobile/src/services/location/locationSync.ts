@@ -43,6 +43,39 @@ let httpInFlight = false
 let httpBackoffMs = 0
 let httpRetryAt = 0
 
+// "Still here" without a position. The location task can run with a fix that is dropped for poor accuracy, or a driver can sit still, and
+// the server only learns the driver is alive from a position; this tells it directly. Rate-limited (the task runs every 3 s on a ride).
+const HEARTBEAT_MIN_INTERVAL_MS = 20_000
+let lastHeartbeatAtMs = 0
+let heartbeatHttpInFlight = false
+
+type HeartbeatDeps = { socket: Pick<ReturnType<typeof getSocket>, 'connected' | 'emit'>; api: Pick<ReturnType<typeof getApi>, 'post'> }
+
+// `deps` is for tests only; the app resolves the socket and API lazily (see the file header).
+export async function emitHeartbeat(nowMs: number = Date.now(), deps?: HeartbeatDeps): Promise<void> {
+  const sessionId = useDriverSessionStore.getState().sessionId
+  if (!sessionId) return
+  if (nowMs - lastHeartbeatAtMs < HEARTBEAT_MIN_INTERVAL_MS) return
+  lastHeartbeatAtMs = nowMs
+  const socket = deps?.socket ?? getSocket()
+  if (socket.connected) {
+    socket.emit('driver:heartbeat', { sessionId })
+    return
+  }
+  // No socket (backgrounded, or the task woke the app headless): one HTTP call, best effort. The next task run retries.
+  if (heartbeatHttpInFlight) return
+  heartbeatHttpInFlight = true
+  try {
+    await (deps?.api ?? getApi()).post('/api/v1/rides/sessions/heartbeat', { sessionId })
+  } catch {
+    lastHeartbeatAtMs = 0 // let the next task run try again at once
+  } finally {
+    heartbeatHttpInFlight = false
+  }
+}
+
+export function resetHeartbeatForTests(): void { lastHeartbeatAtMs = 0; heartbeatHttpInFlight = false }
+
 export async function emitLocationTick(fix: LocationFix): Promise<void> {
   const sessionId = useDriverSessionStore.getState().sessionId
   if (!sessionId) return // not online -- nothing to report against

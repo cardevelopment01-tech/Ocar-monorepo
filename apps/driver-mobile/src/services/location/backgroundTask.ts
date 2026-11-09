@@ -1,6 +1,6 @@
 import * as Location from 'expo-location'
 import * as TaskManager from 'expo-task-manager'
-import { emitLocationTick } from './locationSync'
+import { emitLocationTick, emitHeartbeat } from './locationSync'
 import { useDriverPositionStore } from './driverPositionStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { isAccurateEnough, trackingProfileForRideState } from './locationPolicy'
@@ -12,6 +12,8 @@ export const LOCATION_TASK_NAME = 'ocar-background-location-spike'
 // was killed, so the task definition has to already exist when that happens.
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (error) return
+  // The task ran, so the driver is here: say so before deciding whether the fix is good enough to send as a position.
+  void emitHeartbeat().catch(() => {})
   try {
     const { locations } = (data as { locations: Location.LocationObject[] }) ?? { locations: [] }
     const latest = locations[locations.length - 1]

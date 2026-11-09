@@ -8,7 +8,7 @@ import {
   goOffline,
 } from '@/modules/rides/rides.service'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
-import { socketEvents } from '@/websocket/socket.server'
+import { socketEvents, hasLiveDriverSocket } from '@/websocket/socket.server'
 import {
   STALE_REQUESTED_MINUTES,
   DISPATCH_WATCHDOG_SECONDS,
@@ -68,10 +68,15 @@ export const cleanupWorker = new Worker(
     // this sweep only catches drivers who never got to report anything (real crash,
     // OS-killed process, battery death). Short tier pulls them out of the matching
     // pool; only the long tier actually ends the session.
+    // A driver whose app is connected right now is not silent, whatever their last location fix says (a fix can be dropped for poor
+    // accuracy while the driver sits still). Unknown presence counts as "not connected": the old behaviour.
+    const notConnected = async (id: string) => !(await hasLiveDriverSocket(id, false))
     for (const d of await repo.findStaleOnlineDrivers(IDLE_HEARTBEAT_PAUSE_SECONDS)) {
+      if (!(await notConnected(d.driver_id))) continue
       await pauseAvailability(BigInt(d.driver_id))
     }
     for (const d of await repo.findStaleOnlineDrivers(IDLE_HEARTBEAT_OFFLINE_MINUTES * 60)) {
+      if (!(await notConnected(d.driver_id))) continue
       await goOffline(BigInt(d.driver_id), 'stale_heartbeat')
       // Hardcoded copy, not a notification_templates row (unlike most other notification
       // types) — deliberately out of scope for this fix; revisit if ops needs to edit this wording.

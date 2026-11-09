@@ -402,6 +402,15 @@ export function notifySessionEnded(driverId: bigint, now = Date.now()): boolean 
   return true
 }
 
+/**
+ * Heartbeat from the driver app. Only refreshes the session's liveness: it never changes the driver's position or availability (a paused
+ * driver stays paused until the normal resume path, which has its own checks). If the server already ended the session, tell the phone.
+ */
+export async function driverHeartbeat(driverId: bigint, sessionId: bigint): Promise<void> {
+  const alive = await repo.touchSession(driverId, sessionId)
+  if (!alive) notifySessionEnded(driverId)
+}
+
 export async function updateLocation(driverId: bigint, data: {
   sessionId: bigint
   lat: number

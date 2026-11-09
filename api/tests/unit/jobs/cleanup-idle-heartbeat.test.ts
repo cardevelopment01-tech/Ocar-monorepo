@@ -20,6 +20,7 @@ vi.mock('@/modules/notifications/notifications.service', () => ({
 }))
 vi.mock('@/websocket/socket.server', () => ({
   socketEvents: { sendStuckRideFlagged: vi.fn() },
+  hasLiveDriverSocket: vi.fn().mockResolvedValue(false),
 }))
 vi.mock('bullmq', () => ({
   Worker: vi.fn().mockImplementation((_name, processor) => ({ on: vi.fn(), __processor: processor })),
@@ -29,6 +30,7 @@ vi.mock('bullmq', () => ({
 import * as repo from '@/modules/rides/rides.repository'
 import { pauseAvailability, goOffline } from '@/modules/rides/rides.service'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
+import { hasLiveDriverSocket } from '@/websocket/socket.server'
 
 describe('cleanup worker — in-progress ride sweep', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -115,5 +117,31 @@ describe('cleanup worker — idle heartbeat sweep', () => {
     expect(goOffline).toHaveBeenCalledTimes(1)
     expect(goOffline).toHaveBeenCalledWith(BigInt(7), 'stale_heartbeat')
     expect(notifyOwner).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('cleanup worker — a connected driver is not silent', () => {
+  beforeEach(() => { vi.clearAllMocks(); vi.mocked(hasLiveDriverSocket).mockResolvedValue(false) })
+
+  it('a driver stale on location but with a live socket is neither paused nor ended', async () => {
+    vi.mocked(repo.findStaleInProgressRides).mockResolvedValue([])
+    vi.mocked(repo.findStaleOnlineDrivers).mockResolvedValue([{ driver_id: '7' }, { driver_id: '8' }] as never)
+    vi.mocked(hasLiveDriverSocket).mockImplementation(async (id: string) => id === '7')
+    const { cleanupWorker } = await import('@/jobs/workers/cleanup.worker')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (cleanupWorker as any).__processor()
+    expect(pauseAvailability).toHaveBeenCalledTimes(1)
+    expect(pauseAvailability).toHaveBeenCalledWith(BigInt(8))
+    expect(goOffline).toHaveBeenCalledTimes(1)
+    expect(goOffline).toHaveBeenCalledWith(BigInt(8), 'stale_heartbeat')
+  })
+
+  it('presence is asked with "unknown means not connected", so a failed lookup keeps the old behaviour', async () => {
+    vi.mocked(repo.findStaleInProgressRides).mockResolvedValue([])
+    vi.mocked(repo.findStaleOnlineDrivers).mockResolvedValue([{ driver_id: '7' }] as never)
+    const { cleanupWorker } = await import('@/jobs/workers/cleanup.worker')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (cleanupWorker as any).__processor()
+    expect(hasLiveDriverSocket).toHaveBeenCalledWith('7', false)
   })
 })
