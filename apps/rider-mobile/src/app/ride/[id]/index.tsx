@@ -21,6 +21,9 @@ import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { NextStopRow } from '@/features/ride-tracking/components/NextStopRow'
 import { TripDetailsCard } from '@/features/ride-tracking/components/TripDetailsCard'
 import { FareDriftToast, UpgradeToast } from '@/features/ride-tracking/components/Toasts'
+import { fleetImageFor } from '@/features/home/fleet'
+import { goBack } from '@/lib/goBack'
+import { IconButton } from '@/components/ui'
 import { TripSummary } from '@/features/trip-summary/TripSummary'
 import { ReconnectBanner } from '@/features/ride-tracking/components/ReconnectBanner'
 import { DriverCancelledBanner } from '@/features/ride-tracking/components/DriverCancelledBanner'
@@ -229,6 +232,12 @@ export default function RideTrackingScreen() {
     }
   }
 
+  // The drive to pickup has no booked distance, so the bar's total is the first distance the ETA reported.
+  const [startKm, setStartKm] = useState<number | null>(null)
+  useEffect(() => {
+    if (ride?.status === 'accepted' && eta && startKm === null && eta.distanceKm > 0) setStartKm(eta.distanceKm)
+  }, [ride?.status, eta, startKm])
+
   if (driverCancelled) {
     return <DriverCancelledBanner />
   }
@@ -303,6 +312,7 @@ export default function RideTrackingScreen() {
       />
 
       <View style={[styles.mapOverlayTop, { paddingTop: insets.top + spacing.sm }]} pointerEvents="box-none">
+        {isAssigned ? <View style={styles.backRow}><IconButton icon="arrow-left" label="Back" onPress={() => goBack(router)} /></View> : null}
         {isInProgress ? (
           <View style={styles.tripPill}>
             <View style={styles.tripPillDot} />
@@ -352,7 +362,8 @@ export default function RideTrackingScreen() {
             <FareDriftToast previousFare={fareDrift.previousFare} currentFare={fareDrift.currentFare} onDismiss={dismissFareDrift} />
           ) : null}
 
-          <StatusBanner status={status} eta={eta} totalKm={ride.estimatedKm ?? null} {...(status === 'accepted' && !driverLocated ? { overrideSub: 'Locating your driver…' } : {})} />
+          <StatusBanner status={status} eta={eta} totalKm={status === 'accepted' ? startKm : (ride.estimatedKm ?? null)}
+            {...(status === 'driver_arrived' && ride.startOtp ? { pin: ride.startOtp } : {})} {...(status === 'accepted' && !driverLocated ? { overrideSub: 'Locating your driver…' } : {})} />
 
           {unreachableStop ? (
             <View style={styles.unreachableBanner} accessibilityRole="alert">
@@ -414,7 +425,6 @@ export default function RideTrackingScreen() {
           {hasDriver && isAssigned ? (
             <MeetAtRow address={ride.originAddress} lat={ride.originLat} lng={ride.originLng} />
           ) : null}
-          {hasDriver && status === 'driver_arrived' ? <PinBand otp={ride.startOtp ?? null} phase="start" /> : null}
           {/* The end PIN is only released once the driver taps "Arrived at drop", so it is not on screen all trip. */}
           {hasDriver && isInProgress && ride.dropArrivedAt ? <PinBand otp={ride.endOtp ?? null} phase="end" /> : null}
           {hasDriver ? (
@@ -425,6 +435,8 @@ export default function RideTrackingScreen() {
               canCall={canCall}
               unreadChatCount={unreadChatCount}
               onOpenChat={() => router.push(`/ride/${rideId}/chat`)}
+              carImage={bookedCategoryId === null ? null : fleetImageFor(vehicleSlugs.get(bookedCategoryId) ?? '')}
+              {...(canShare ? { onShare: () => setShareOpen(true) } : {})}
             />
           ) : null}
 
@@ -444,7 +456,6 @@ export default function RideTrackingScreen() {
           {hasDriver ? (
             <RideActions
               actions={[
-                ...(canShare ? [{ key: 'share', label: 'Share trip', icon: 'share-2' as const, onPress: () => setShareOpen(true) }] : []),
                 { key: 'details', label: detailsExpanded ? 'Hide details' : 'Trip details', icon: detailsExpanded ? 'chevron-up' : 'file-text', onPress: () => setDetailsExpanded((v) => !v) },
                 ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
                 ...(canAddStop ? [{ key: 'stop', label: 'Add stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),
@@ -526,6 +537,7 @@ const styles = StyleSheet.create({
   unreachableTitle: { fontFamily: font.b, fontSize: 14.5, color: h.ivory },
   unreachableBody: { fontFamily: font.m, fontSize: 13.5, lineHeight: 20, color: h.muted },
   unreachableActions: { gap: 8, marginTop: 6 },
+  backRow: { alignSelf: 'flex-start' },
   tripPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 9, height: 44, paddingLeft: 14, paddingRight: 16, borderRadius: 22, backgroundColor: h.surface, boxShadow: '0 4px 14px rgba(20,23,26,0.14)' },
   tripPillDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#1FA971', boxShadow: '0 0 0 4px rgba(31,169,113,0.18)' },
   tripPillText: { fontFamily: font.b, fontSize: 14, color: h.ivory },

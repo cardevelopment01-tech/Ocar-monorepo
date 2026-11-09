@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Animated, {
   Easing,
+  ZoomIn,
   cancelAnimation,
   useAnimatedStyle,
   useReducedMotion,
@@ -20,6 +21,8 @@ export type StatusBannerProps = {
   eta: { etaMin: number; distanceKm: number } | null
   /** The booked route distance, for the progress bar on a trip (null = unknown, bar hidden). */
   totalKm?: number | null
+  /** The ride PIN the rider reads out at the car, shown beside the headline (null = none yet). */
+  pin?: string | null
 }
 
 // Reduced-motion users still see the plain dot (state is legible without the
@@ -56,7 +59,7 @@ function PulsingDot({ color, pulse }: { color: string; pulse: boolean }) {
 
 // Design (Driver.dc.html / Ride.dc.html): a small status kicker with the live dot, then the ETA as the hero line
 // ("Arriving in 4 min" / "12 min left"). Without an ETA the status label is the hero and the sub-line sits under it.
-export function StatusBanner({ status, overrideSub, eta, totalKm = null }: StatusBannerProps) {
+export function StatusBanner({ status, overrideSub, eta, totalKm = null, pin = null }: StatusBannerProps) {
   const cfg = STATUS_CONFIG[status]
   const sub = overrideSub ?? cfg.sub
   const etaTime = eta ? formatEta(eta.etaMin, eta.distanceKm) : null
@@ -67,7 +70,7 @@ export function StatusBanner({ status, overrideSub, eta, totalKm = null }: Statu
     ? new Date(serverNow() + eta.etaMin * 60_000).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
     : null
   // Progress = how much of the booked route is behind the car. Only when the booked distance is known.
-  const progress = eta && onTrip && totalKm != null && totalKm > 0 ? Math.min(1, Math.max(0, 1 - eta.distanceKm / totalKm)) : null
+  const progress = eta && (onTrip || status === 'accepted') && totalKm != null && totalKm > 0 ? Math.min(1, Math.max(0, 1 - eta.distanceKm / totalKm)) : null
   return (
     <View accessibilityRole="header">
       <View style={styles.headRow}>
@@ -85,6 +88,16 @@ export function StatusBanner({ status, overrideSub, eta, totalKm = null }: Statu
           <Text style={etaTime ? styles.hero : styles.heroPlain} numberOfLines={2} maxFontSizeMultiplier={1.2}>{hero}</Text>
           {etaTime && !onTrip ? <Text style={styles.sub}>{etaTime.distance}</Text> : !etaTime && sub ? <Text style={styles.sub}>{sub}</Text> : null}
         </View>
+        {pin && !onTrip ? (
+          <View style={styles.pinBox} accessible accessibilityLabel={`Ride PIN ${pin.split('').join(' ')}`}>
+            <Text style={styles.pinLabel}>Ride PIN</Text>
+            <View style={styles.pinDigits}>
+              {pin.split('').map((d, i) => (
+                <Animated.Text key={i} entering={ZoomIn.springify().damping(13).delay(120 + i * 90)} style={styles.pinDigit} maxFontSizeMultiplier={1.3}>{d}</Animated.Text>
+              ))}
+            </View>
+          </View>
+        ) : null}
         {arriveBy ? (
           <View style={styles.arriveBox}>
             <Text style={styles.arriveLabel}>Arrive by</Text>
@@ -106,6 +119,10 @@ const styles = StyleSheet.create({
   headRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
   headText: { flex: 1, minWidth: 0, gap: 3 },
   kickerMuted: { fontFamily: font.sb, fontSize: 13, color: h.muted, fontVariant: ['tabular-nums'] },
+  pinBox: { alignItems: 'center', backgroundColor: '#F3FAFB', borderWidth: 1, borderColor: 'rgba(14,143,163,0.22)', borderRadius: 14, paddingVertical: 8, paddingHorizontal: 12, boxShadow: '0 6px 14px rgba(14,143,163,0.12)' },
+  pinLabel: { fontFamily: font.sb, fontSize: 12, color: h.tealText },
+  pinDigits: { flexDirection: 'row', gap: 4, marginTop: 1 },
+  pinDigit: { fontFamily: font.xb, fontSize: 21, letterSpacing: 1, color: h.ivory, fontVariant: ['tabular-nums'] },
   arriveBox: { alignItems: 'flex-end', backgroundColor: h.chip, borderRadius: 14, paddingVertical: 8, paddingHorizontal: 14 },
   arriveLabel: { fontFamily: font.sb, fontSize: 12, color: h.label },
   arriveTime: { fontFamily: font.xb, fontSize: 18, color: h.ivory, fontVariant: ['tabular-nums'], marginTop: 1 },

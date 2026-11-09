@@ -239,7 +239,7 @@ export default function RideChatScreen() {
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           // List shrinks when the keyboard opens -- keep the latest message visible
           onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
-          ListHeaderComponent={<Text style={styles.privacy}>Your number stays private. Messages are only for this ride.</Text>}
+          ListHeaderComponent={<View style={styles.listHead}><View style={styles.todayPill}><Text style={styles.todayText}>Today</Text></View><Text style={styles.privacy}>Your number stays private. Messages are only for this ride.</Text></View>}
           renderItem={renderItem}
         />
       )}
@@ -275,7 +275,7 @@ export default function RideChatScreen() {
             <TextInput
               value={draft}
               onChangeText={setDraft}
-              placeholder="Type a message"
+              placeholder={`Message ${driverViewFromRide(driverRide).firstName}`}
               placeholderTextColor={h.faint}
               selectionColor={h.teal}
               cursorColor={h.teal}
@@ -344,6 +344,9 @@ const styles = StyleSheet.create({
   emptyText: { fontFamily: font.sb, fontSize: 14.5, color: h.muted, textAlign: 'center' },
   messageList: { flex: 1 },
   list: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 8, gap: 4 },
+  listHead: { alignItems: 'center' },
+  todayPill: { height: 26, paddingHorizontal: 12, borderRadius: 13, backgroundColor: '#E8EEEE', justifyContent: 'center', marginBottom: 12 },
+  todayText: { fontFamily: font.sb, fontSize: 12, color: h.muted },
   privacy: { alignSelf: 'center', maxWidth: 300, textAlign: 'center', fontFamily: font.m, fontSize: 12.5, lineHeight: 19, color: h.label, marginBottom: 16 },
   bubbleRow: { alignItems: 'flex-start' },
   bubbleRowMine: { alignItems: 'flex-end' },
