@@ -44,3 +44,12 @@ describe('dispatch switches', () => {
     for (const bad of ['1, 2', 'a', '1,', ',1', '1;2']) expect(validateConfigBounds('dispatch_spread_city_ids', bad)).not.toBeNull()
   })
 })
+
+describe('idle driver settings', () => {
+  it('accepts values inside the range and refuses typos', () => {
+    expect(validateConfigBounds('driver_idle_pause_seconds', '90')).toBeNull()
+    expect(validateConfigBounds('driver_idle_pause_seconds', '9')).not.toBeNull()
+    expect(validateConfigBounds('driver_idle_offline_minutes', '60')).toBeNull()
+    expect(validateConfigBounds('driver_idle_offline_minutes', '6000')).not.toBeNull()
+  })
+})

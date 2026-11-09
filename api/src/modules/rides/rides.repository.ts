@@ -1129,6 +1129,52 @@ export async function setDriverAvailability(driverId: bigint, isAvailable: boole
 // Same staleSeconds param is reused
 // for both the short pause-from-pool tier and the longer force-offline tier —
 // see cleanup.worker.ts.
+// Can a driver the idle sweep paused be put back? Only an approved driver with an online session whose position is not older than the cap
+// (matching ranks by that position; a fresh fix resumes them on its own).
+export async function canResumeAfterSweep(driverId: bigint, maxPositionAgeSeconds: number): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT 1 FROM drivers d
+     JOIN driver_sessions ds ON ds.driver_id = d.id AND ds.status = 'online'
+     JOIN driver_location_snapshots dls ON dls.driver_id = d.id
+     WHERE d.id = $1 AND d.status = 'active'
+       AND GREATEST(dls.recorded_at, ds.updated_at) > now() - ($2 || ' seconds')::interval
+       AND NOT EXISTS (SELECT 1 FROM rides r WHERE r.driver_id = d.id AND r.status IN ('accepted','driver_arrived','in_progress','returning'))`,
+    [driverId, maxPositionAgeSeconds]
+  )
+  return (res.rowCount ?? 0) > 0
+}
+
+export async function hasActiveRide(driverId: bigint): Promise<boolean> {
+  const res = await pool.query(`SELECT 1 FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress','returning') LIMIT 1`, [driverId])
+  return (res.rowCount ?? 0) > 0
+}
+
+// The idle sweep re-checks a driver right before acting on them: a fix or heartbeat can land between building the list and acting.
+export async function isDriverStale(driverId: bigint, staleSeconds: number): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT 1 FROM driver_sessions ds
+     JOIN driver_location_snapshots dls ON dls.driver_id = ds.driver_id
+     WHERE ds.driver_id = $1 AND ds.status = 'online'
+       AND now() - GREATEST(dls.recorded_at, ds.updated_at) > ($2 || ' seconds')::interval`,
+    [driverId, staleSeconds]
+  )
+  return (res.rowCount ?? 0) > 0
+}
+
+// The sweep's pause: flips availability off ONLY for a driver who is currently available, and says which session it was. A driver who had
+// already paused on purpose is left alone and gets no marker (a heartbeat must never undo a deliberate pause).
+export async function pauseIfAvailable(driverId: bigint): Promise<string | null> {
+  const res = await pool.query<{ session_id: string }>(
+    `UPDATE driver_location_snapshots dls SET is_available = false, updated_at = now()
+     FROM driver_sessions ds
+     WHERE dls.driver_id = $1 AND ds.driver_id = dls.driver_id AND ds.status = 'online' AND dls.is_available = true
+       AND NOT EXISTS (SELECT 1 FROM rides r WHERE r.driver_id = dls.driver_id AND r.status IN ('accepted','driver_arrived','in_progress','returning'))
+     RETURNING ds.id::text AS session_id`,
+    [driverId]
+  )
+  return res.rows[0]?.session_id ?? null
+}
+
 export async function findStaleOnlineDrivers(staleSeconds: number): Promise<{ driver_id: string }[]> {
   const res = await pool.query<{ driver_id: string }>(
     `SELECT ds.driver_id::text

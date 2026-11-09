@@ -1,5 +1,6 @@
 import { Router, IRouter, RequestHandler } from 'express'
 import { AppErrors } from '@/constants/errors'
+import { httpError } from '@/lib/errors'
 import { authenticate } from '@/middleware/auth.middleware'
 import { client as redis } from '@/db/redis'
 import { startOtpKey } from '@/constants/redis-keys'
@@ -142,6 +143,17 @@ router.post('/sessions/location', authenticate(), onlyDriver, async (req, res, n
     const driverId = req.driver!.id
     await service.updateLocation(driverId, req.body as Parameters<typeof service.updateLocation>[1])
     res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
+router.post('/sessions/heartbeat', authenticate(), onlyDriver, async (req, res, next) => {
+  try {
+    const raw = (req.body as { sessionId?: unknown } | undefined)?.sessionId
+    if (typeof raw !== 'string' && typeof raw !== 'number') throw httpError(422, 'sessionId is required', 'VALIDATION_ERROR')
+    let sessionId: bigint
+    try { sessionId = BigInt(raw) } catch { throw httpError(422, 'sessionId is invalid', 'VALIDATION_ERROR') }
+    const result = await service.driverHeartbeat(req.driver!.id, sessionId)
+    res.json({ success: true, sessionActive: result !== 'ended' })
   } catch (err) { next(err) }
 })
 

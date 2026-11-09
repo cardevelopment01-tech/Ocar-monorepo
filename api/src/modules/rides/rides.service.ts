@@ -4,7 +4,7 @@ import { httpError, createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { client as redis } from '@/db/redis'
 import { withTimeout } from '@/lib/with-timeout'
-import { startOtpKey, endOtpKey, activeRideByDriverKey, rideAckKey } from '@/constants/redis-keys'
+import { startOtpKey, endOtpKey, activeRideByDriverKey, rideAckKey, driverHeartbeatKey, driverHeartbeatThrottleKey, driverSweepPausedKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
 import crypto from 'crypto'
 import { config } from '@/config'
@@ -35,6 +35,9 @@ import {
   MIN_TRIP_DISTANCE_METRES,
   MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS,
   FORCE_ASSIGN_GRACE_MINUTES,
+  HEARTBEAT_TTL_SECONDS,
+  HEARTBEAT_MIN_INTERVAL_SECONDS,
+  POSITION_MAX_AGE_SECONDS,
 } from '@/constants/limits'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import type { BillingMode, BookingRequest, Ride, RideCore, StopInput } from './rides.types'
@@ -346,12 +349,15 @@ export async function pauseAvailability(driverId: bigint): Promise<void> {
   const session = await repo.getActiveSession(driverId)
   if (!session || session.status !== 'online') return
   await repo.setDriverAvailability(driverId, false)
+  // A deliberate pause: a heartbeat must never resume it (the marker means "the idle sweep paused this driver").
+  await withTimeout(redis.del(driverSweepPausedKey(driverId.toString()))).catch(() => undefined)
 }
 
 export async function resumeAvailability(driverId: bigint): Promise<void> {
   const session = await repo.getActiveSession(driverId)
   if (!session || session.status !== 'online') return
   await repo.setDriverAvailability(driverId, true)
+  await withTimeout(redis.del(driverSweepPausedKey(driverId.toString()))).catch(() => undefined)
 }
 
 // Per-driver state for the live trail. Keyed by driverId (a small, slowly-growing set) and cleared the moment a
@@ -400,6 +406,45 @@ export function notifySessionEnded(driverId: bigint, now = Date.now()): boolean 
     created_at: new Date(now).toISOString(),
   })
   return true
+}
+
+/**
+ * Heartbeat from the driver app: "still here", without a position. Stored in Redis only (the app sends one every ~20 s) and read by the idle
+ * sweep. It never changes the driver's position, and only resumes availability for a pause the idle SWEEP made (never one the driver chose).
+ * A heartbeat for a session id that is not the driver's current one is ignored. Returns 'ended' only when the driver has no live session at all
+ * (the app then forgets its saved session id), 'ok' otherwise.
+ */
+export async function driverHeartbeat(driverId: bigint, sessionId: bigint): Promise<'ok' | 'ended'> {
+  const id = driverId.toString()
+  // Server-side throttle: a client that loops costs one Redis read, not a database read. It is set only after a heartbeat was recorded, so
+  // a failed attempt never blocks the retry.
+  // Atomic (SET NX): concurrent heartbeats (socket plus the HTTP fallback) run once, and a looping client with a stale session id is throttled too.
+  // If the work below throws, the key is released so the app's retry is not blocked.
+  const throttleKey = driverHeartbeatThrottleKey(id)
+  const first = await withTimeout(redis.set(throttleKey, '1', 'EX', HEARTBEAT_MIN_INTERVAL_SECONDS, 'NX')).catch(() => 'OK')
+  if (first === null) return 'ok'
+  try {
+    return await recordHeartbeat(driverId, sessionId)
+  } catch (err) {
+    await withTimeout(redis.del(throttleKey)).catch(() => undefined)
+    throw err
+  }
+}
+
+async function recordHeartbeat(driverId: bigint, sessionId: bigint): Promise<'ok' | 'ended'> {
+  const id = driverId.toString()
+  const session = await repo.getActiveSession(driverId)
+  if (!session) { notifySessionEnded(driverId); return 'ended' }
+  if (String(session.id) !== sessionId.toString()) return 'ok'
+  await withTimeout(redis.set(driverHeartbeatKey(id), String(Date.now()), 'EX', HEARTBEAT_TTL_SECONDS)).catch(() => undefined)
+  // A network blip can get a driver paused by the idle sweep. When the app is heard from again, put them back, but only if the SWEEP paused
+  // them (a deliberate pause clears the marker), for this same session, with an approved account, no active ride and a position not too old.
+  const pausedFor = await withTimeout(redis.get(driverSweepPausedKey(id))).catch(() => null)
+  if (pausedFor === sessionId.toString() && await repo.canResumeAfterSweep(driverId, POSITION_MAX_AGE_SECONDS)) {
+    await repo.setDriverAvailability(driverId, true)
+    await withTimeout(redis.del(driverSweepPausedKey(id))).catch(() => undefined)
+  }
+  return 'ok'
 }
 
 export async function updateLocation(driverId: bigint, data: {
