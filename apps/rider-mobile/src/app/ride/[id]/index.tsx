@@ -436,7 +436,6 @@ export default function RideTrackingScreen() {
               unreadChatCount={unreadChatCount}
               onOpenChat={() => router.push(`/ride/${rideId}/chat`)}
               carImage={bookedCategoryId === null ? null : fleetImageFor(vehicleSlugs.get(bookedCategoryId) ?? '')}
-              {...(canShare ? { onShare: () => setShareOpen(true) } : {})}
             />
           ) : null}
 
@@ -456,6 +455,7 @@ export default function RideTrackingScreen() {
           {hasDriver ? (
             <RideActions
               actions={[
+                ...(canShare ? [{ key: 'share', label: 'Share trip', icon: 'share-2' as const, onPress: () => setShareOpen(true) }] : []),
                 { key: 'details', label: detailsExpanded ? 'Hide details' : 'Trip details', icon: detailsExpanded ? 'chevron-up' : 'file-text', onPress: () => setDetailsExpanded((v) => !v) },
                 ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
                 ...(canAddStop ? [{ key: 'stop', label: 'Add stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),

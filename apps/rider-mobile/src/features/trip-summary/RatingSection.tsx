@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import Animated, { FadeIn } from 'react-native-reanimated'
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated'
 import { Ionicons } from '@expo/vector-icons'
 import { Button, font, h, getApiErrorMessage } from '@ocar/mobile-shared'
 import type { RatingTag } from '@ocar/mobile-shared'
@@ -94,12 +94,29 @@ export function RatingSection({ rideId, driverName, existing, onRated }: {
   )
 }
 
+// A star pops (up, then settles) when it turns on, a little later for each one further along, so a 5 fills like a sweep.
+function StarIcon({ on, index }: { on: boolean; index: number }) {
+  const k = useSharedValue(1)
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) { first.current = false; return }
+    if (on) k.set(withSequence(withTiming(1, { duration: index * 55 }), withTiming(1.28, { duration: 110 }), withSpring(1, { damping: 12 })))
+    else k.set(1)
+  }, [on, index, k])
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: k.get() }] }))
+  return (
+    <Animated.View style={style}>
+      <Ionicons name="star" size={36} color={on ? '#E2A93B' : EMPTY_STAR} />
+    </Animated.View>
+  )
+}
+
 function Stars({ value, onSelect }: { value: number; onSelect?: (n: number) => void }) {
   return (
     <View style={styles.stars} accessibilityRole={onSelect ? 'radiogroup' : 'image'} accessibilityLabel={onSelect ? undefined : `Rated ${value} of 5`}>
       {[1, 2, 3, 4, 5].map((s) => {
         const on = value >= s
-        const icon = <Ionicons name="star" size={36} color={on ? '#E2A93B' : EMPTY_STAR} />
+        const icon = <StarIcon on={on} index={s - 1} />
         return onSelect ? (
           <Pressable key={s} onPress={() => onSelect(s)} hitSlop={4} accessibilityRole="radio" accessibilityState={{ selected: value === s }} accessibilityLabel={`Rate ${s} of 5, ${WORDS[s]}`} style={styles.star}>
             {icon}

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import Animated, { FadeIn, FadeInDown, ZoomIn, useReducedMotion } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -25,6 +26,25 @@ const MAP_HEIGHT = 196
 // Marker pins draw above their coordinate, so the top needs ~a pin of room; the default full-screen padding
 // (80 top + 80 bottom) is bigger than this whole map and makes it zoom out to the continent.
 const MAP_FIT_PADDING = { top: 56, right: 48, bottom: 28, left: 48 }
+
+// The total counts up from zero once on arrival (about 0.7 s, ease-out); instant for reduced motion or a zero fare.
+function useCountUp(target: number): number {
+  const reduced = useReducedMotion()
+  const [v, setV] = useState(reduced ? target : 0)
+  const done = useRef(false)
+  useEffect(() => {
+    if (reduced || target <= 0 || done.current) { setV(target); return }
+    done.current = true
+    const start = Date.now()
+    const id = setInterval(() => {
+      const k = Math.min(1, (Date.now() - start) / 700)
+      setV(target * (1 - Math.pow(1 - k, 3)))
+      if (k >= 1) clearInterval(id)
+    }, 16)
+    return () => clearInterval(id)
+  }, [target, reduced])
+  return v
+}
 
 export type TripSummaryProps = {
   ride: RideDetailExtra
@@ -77,6 +97,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
   const fareValue = completed ? invoice.total : Number(ride.totalFinal ?? 0)
   const showFare = fareValue > 0
   const fareText = formatMoney(fareValue)
+  const fareShown = formatMoney(Math.round(useCountUp(fareValue)))
   const when = formatTripWhen(ride.completedAt ?? ride.requestedAt)
   const facts = completed ? buildTripFacts(ride) : []
   const timeline = buildTimeline(ride)
@@ -101,17 +122,19 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
         showsVerticalScrollIndicator={false}
       >
         {/* Arrival header: a badge, what happened, and the trip in one line. */}
-        <View style={styles.arrive}>
+        <Animated.View entering={FadeIn.duration(300)} style={styles.arrive}>
+          <Animated.View entering={ZoomIn.springify().damping(12).delay(80)}>
           <LinearGradient colors={completed ? ['#12A0B6', '#0A7788'] : ['#EE5A5E', '#C23B3B']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.badge, completed ? styles.badgeOk : styles.badgeBad]}>
             <Feather name={completed ? 'check' : 'x'} size={26} color="#FFFFFF" />
           </LinearGradient>
+          </Animated.View>
           <View style={styles.flex}>
             <Text style={styles.arriveTitle} accessibilityRole="header" numberOfLines={2}>
               {completed ? 'You have arrived' : ride.status === 'no_drivers' ? 'No drivers found' : 'Ride cancelled'}
             </Text>
             <Text style={styles.sub} numberOfLines={2}>{[tripTitle(ride), facts.find((f) => f.key === 'distance')?.value, facts.find((f) => f.key === 'time')?.value, when].filter(Boolean).join(' · ')}</Text>
           </View>
-        </View>
+        </Animated.View>
 
         {/* Route preview: non-interactive so it never fights the scroll. */}
         {hasMap ? (
@@ -130,13 +153,13 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
         {/* The ticket: total, route strip, a perforation, the fare breakdown, total band, trip id. */}
         {showFare || completed ? (
-          <View style={styles.ticket}>
+          <Animated.View entering={FadeInDown.duration(420).delay(180)} style={styles.ticket}>
             <LinearGradient colors={['#EEF8F9', '#FFFFFF']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.8 }} style={styles.ticketTint} pointerEvents="none" />
             <View style={styles.ticketTop}>
               <View style={styles.flex}>
                 <Text style={styles.fareLabel}>{fareCaption ?? 'Total fare'}</Text>
                 {showFare ? (
-                  <Text style={styles.fare} maxFontSizeMultiplier={1.3} accessibilityLabel={`${fareCaption ?? 'Fare'} ${fareText}`}>{fareText}</Text>
+                  <Text style={styles.fare} maxFontSizeMultiplier={1.3} accessibilityLabel={`${fareCaption ?? 'Fare'} ${fareText}`}>{fareShown}</Text>
                 ) : null}
               </View>
               {pay && pay.kind === 'paid' ? <Chip label={pay.text} tone="teal" icon="check" /> : null}
@@ -189,7 +212,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
                 </Pressable>
               ) : null}
             </View>
-          </View>
+          </Animated.View>
         ) : null}
 
         {/* Stops only: the ticket's strip already shows pickup -> drop. */}

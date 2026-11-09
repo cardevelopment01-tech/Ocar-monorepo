@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import Animated, {
   Easing,
-  ZoomIn,
+  FadeIn,
   cancelAnimation,
   useAnimatedStyle,
   useReducedMotion,
@@ -93,7 +93,7 @@ export function StatusBanner({ status, overrideSub, eta, totalKm = null, pin = n
             <Text style={styles.pinLabel}>Ride PIN</Text>
             <View style={styles.pinDigits}>
               {pin.split('').map((d, i) => (
-                <Animated.Text key={i} entering={ZoomIn.springify().damping(13).delay(120 + i * 90)} style={styles.pinDigit} maxFontSizeMultiplier={1.3}>{d}</Animated.Text>
+                <Animated.Text key={i} entering={FadeIn.duration(220)} style={styles.pinDigit} maxFontSizeMultiplier={1.3}>{d}</Animated.Text>
               ))}
             </View>
           </View>

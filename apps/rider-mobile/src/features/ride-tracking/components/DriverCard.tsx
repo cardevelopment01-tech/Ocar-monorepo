@@ -16,8 +16,6 @@ export type DriverCardProps = {
   onOpenChat: () => void
   /** The booked vehicle's render, drawn at the card's right edge. */
   carImage?: ImageSourcePropType | null
-  /** Opens trip sharing; the share button only shows when this is set. */
-  onShare?: () => void
 }
 
 // Who is coming, in the order a rider matches them against the car in front of them: photo + rating,
@@ -41,7 +39,7 @@ function callErrorMessage(err: unknown, firstName: string): string {
   }
 }
 
-export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOpenChat, carImage = null, onShare }: DriverCardProps) {
+export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOpenChat, carImage = null }: DriverCardProps) {
   const view = driverViewFromRide(ride)
   const upgradedTo = ride.bookedCategoryName && ride.assignedCategoryName && ride.bookedCategoryName !== ride.assignedCategoryName
     ? ride.assignedCategoryName : null
@@ -119,11 +117,6 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
             </Text>
           </Pressable>
         ) : null}
-        {onShare ? (
-          <Pressable onPress={onShare} style={styles.shareBtn} accessibilityRole="button" accessibilityLabel="Share trip">
-            <Feather name="share" size={18} color={h.ivory} />
-          </Pressable>
-        ) : null}
       </View>
 
       {phase === 'ringing' ? (
@@ -153,7 +146,6 @@ const styles = StyleSheet.create({
   upgradedText: { fontFamily: font.b, fontSize: 11, color: h.live },
   plateInfo: { alignItems: 'flex-start', marginTop: 6 },
   car: { width: 84, height: 56, marginLeft: 4 },
-  shareBtn: { width: 50, height: 50, borderRadius: 16, backgroundColor: h.chip, alignItems: 'center', justifyContent: 'center' },
   actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
   message: { flex: 1.5, height: 50, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: h.tealWash },
   messageText: { fontFamily: font.b, fontSize: 14.5, color: h.tealText, flexShrink: 1 },
