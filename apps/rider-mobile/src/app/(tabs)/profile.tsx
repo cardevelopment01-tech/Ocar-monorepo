@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { h, font, geo, sectionLabel, shadow } from '@/theme/homeTokens'
 import { useNavClearance } from '@/features/home/FloatingTabBar'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Feather } from '@expo/vector-icons'
+import { Feather, Ionicons } from "@expo/vector-icons"
 import Animated, { FadeInDown, FadeIn, useAnimatedStyle } from 'react-native-reanimated'
 import { Button, Press, colors, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, sendTestError, useKeyboardOffset, mapSaveError, hasStorePage, openStorePage } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
@@ -144,7 +144,7 @@ export default function ProfileScreen() {
               <View style={styles.statDivider} />
               <View style={styles.statTile}>
                 <View style={styles.statValueRow}>
-                  <Feather name="star" size={17} color="#E2A93B" />
+                  <Ionicons name="star" size={17} color="#E2A93B" />
                   <Text style={styles.statValue}>{stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '-'}</Text>
                 </View>
                 <Text style={styles.statLabel}>Your rating</Text>
@@ -178,7 +178,7 @@ export default function ProfileScreen() {
             <ListRow icon="shield" title="Safety" subtitle="Emergency contacts" onPress={go('safety')} />
           </GroupedList>
 
-          <Text style={styles.sectionLabel}>Support</Text>
+          <Text style={[styles.sectionLabel, { marginTop: 26 }]}>Support</Text>
           <GroupedList>
             <ListRow icon="help-circle" title="Help and support" subtitle="Email our support team" onPress={openSupport} />
             {hasStorePage() ? <ListRow icon="star" title="Rate Ocar" subtitle="Tell others what you think" onPress={() => void openStorePage(null, { writeReview: true })} /> : null}
@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
   tileTitle: { fontFamily: font.b, fontSize: 15, color: h.ivory, marginBottom: 2 },
   tileSub: { fontFamily: font.r, fontSize: 12.5, color: h.muted },
   soon: { position: 'absolute', top: 14, right: 14 },
-  sectionLabel: { ...sectionLabel, marginHorizontal: 2, marginTop: 14, marginBottom: -4 },
+  sectionLabel: { ...sectionLabel, marginHorizontal: 2, marginTop: 14, marginBottom: 10 },
   signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(194,59,59,0.28)', marginTop: 10 },
   signOutText: { fontFamily: font.b, fontSize: 15, color: h.danger },
   deleteBtn: { alignItems: 'center', paddingVertical: 10, marginTop: 8 },

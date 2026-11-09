@@ -2,7 +2,7 @@
 // the driver app has its own redesign pass. Buttons live in @ocar/mobile-shared as Button variant 'cta' | 'soft'.
 import { useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
-import { Feather } from '@expo/vector-icons'
+import { Feather, Ionicons } from "@expo/vector-icons"
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Press, Text, ease, font, h, shadow } from '@ocar/mobile-shared'
@@ -145,7 +145,7 @@ export function StarRating({ value, onChange, size = 36 }: { value: number; onCh
     <View style={s.stars} accessibilityRole="adjustable" accessibilityValue={{ min: 0, max: 5, now: value }}>
       {[1, 2, 3, 4, 5].map((n) => (
         <Pressable key={n} disabled={!onChange} onPress={() => onChange?.(n)} hitSlop={4} accessibilityLabel={`${n} star${n > 1 ? 's' : ''}`}>
-          <Feather name="star" size={size} color={n <= value ? '#E2A93B' : '#E4EAEB'} style={n <= value ? s.starOn : null} />
+          <Ionicons name="star" size={size} color={n <= value ? "#E2A93B" : "#E4EAEB"} />
         </Pressable>
       ))}
     </View>
@@ -197,7 +197,6 @@ const s = StyleSheet.create({
   receipt: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 6 },
   amount: { width: 64, textAlign: 'right', fontFamily: font.b, fontSize: 14.5, color: h.ivory, fontVariant: ['tabular-nums'] },
   stars: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
-  starOn: { },
   seg: { flexDirection: 'row', backgroundColor: h.chip, borderRadius: 14, padding: 4, gap: 4 },
   segItem: { flex: 1, minHeight: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   segText: { fontFamily: font.sb, fontSize: 13.5 },
