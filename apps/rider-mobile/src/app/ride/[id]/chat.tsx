@@ -3,9 +3,10 @@ import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, T
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import Animated, { FadeInDown, FadeInUp, useAnimatedStyle } from 'react-native-reanimated'
+import Animated, { FadeIn, FadeInUp, useAnimatedStyle } from 'react-native-reanimated'
 import { Feather, Ionicons } from '@expo/vector-icons'
-import { colors, radii, shadows, spacing, typography, useKeyboardOffset, useRoomJoin, fonts } from '@ocar/mobile-shared'
+import { spacing, useKeyboardOffset, useRoomJoin, font, h } from '@ocar/mobile-shared'
+import { IconButton } from '@/components/ui'
 import { socket } from '@/services/socket'
 import { DriverRow, driverViewFromRide } from '@/features/ride-tracking/components/DriverIdentity'
 import type { RideDetailExtra } from '@/features/ride-tracking/types'
@@ -210,21 +211,19 @@ export default function RideChatScreen() {
     // across the rest of this ride flow (AddStopSheet/CancelSheet) and driver
     // app's own chat screen.
     <Animated.View style={[styles.container, keyboardStyle]}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => goBack(router, { pathname: '/ride/[id]', params: { id: rideId } })} style={styles.backBtn} accessibilityLabel="Back">
-          <Feather name="chevron-left" size={20} color={colors.ink900} />
-        </Pressable>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <IconButton icon="arrow-left" label="Back" onPress={() => goBack(router, { pathname: '/ride/[id]', params: { id: rideId } })} />
         <DriverRow view={driverViewFromRide(driverRide)} photo={driverRide?.driverPhoto ?? null} />
       </View>
 
       {loading ? (
         <View style={styles.centered}>
-          <ActivityIndicator color={colors.primary} />
+          <ActivityIndicator color={h.teal} />
         </View>
       ) : messages.length === 0 ? (
         <Animated.View entering={FadeInUp.duration(280)} style={styles.centered}>
           <View style={styles.emptyIconWrap}>
-            <Feather name="message-circle" size={22} color={colors.ink400} />
+            <Feather name="message-circle" size={22} color={h.tealText} />
           </View>
           <Text style={styles.emptyText}>No messages yet. Send a quick update below.</Text>
         </Animated.View>
@@ -238,6 +237,7 @@ export default function RideChatScreen() {
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           // List shrinks when the keyboard opens -- keep the latest message visible
           onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
+          ListHeaderComponent={<Text style={styles.privacy}>Your number stays private. Messages are only for this ride.</Text>}
           renderItem={renderItem}
         />
       )}
@@ -274,9 +274,9 @@ export default function RideChatScreen() {
               value={draft}
               onChangeText={setDraft}
               placeholder="Type a message"
-              placeholderTextColor={colors.ink400}
-              selectionColor={colors.primary}
-              cursorColor={colors.primary}
+              placeholderTextColor={h.faint}
+              selectionColor={h.teal}
+              cursorColor={h.teal}
               style={styles.inputWrap}
               multiline
               maxLength={1000}
@@ -286,7 +286,7 @@ export default function RideChatScreen() {
               disabled={!draft.trim()}
               style={({ pressed }) => [styles.sendBtn, !draft.trim() ? styles.sendBtnDisabled : null, pressed && draft.trim() ? styles.pressedScale : null]}
             >
-              <Feather name="send" size={16} color={colors.inkInverse} />
+              <Feather name="send" size={19} color="#FFFFFF" />
             </Pressable>
           </Animated.View>
         </>
@@ -301,7 +301,7 @@ const Bubble = memo(function Bubble({ msg, onRetry }: { msg: LocalMessage; onRet
 
   return (
     <Animated.View
-      {...(msg.fresh ? { entering: FadeInDown.duration(220).springify().damping(18) } : {})}
+      {...(msg.fresh ? { entering: FadeIn.duration(160) } : {})}
       style={[styles.bubbleRow, mine ? styles.bubbleRowMine : null]}
     >
       <View
@@ -319,9 +319,9 @@ const Bubble = memo(function Bubble({ msg, onRetry }: { msg: LocalMessage; onRet
           msg.localStatus === 'sending' ? (
             <Text style={styles.metaSending}>Sending…</Text>
           ) : msg.readAt ? (
-            <Ionicons name="checkmark-done" size={13} color={colors.accent} />
+            <Ionicons name="checkmark-done" size={14} color={h.gold} />
           ) : (
-            <Ionicons name="checkmark" size={13} color={colors.primary} />
+            <Ionicons name="checkmark" size={14} color={h.tealText} />
           )
         ) : null}
         {mine && failed ? (
@@ -335,59 +335,36 @@ const Bubble = memo(function Bubble({ msg, onRetry }: { msg: LocalMessage; onRet
 })
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.bg },
-  backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(20,23,26,0.08)' },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, gap: spacing.sm },
-  emptyIconWrap: { width: 56, height: 56, borderRadius: radii.full, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { ...typography.body, color: colors.ink400, textAlign: 'center', fontFamily: fonts.semibold },
+  container: { flex: 1, backgroundColor: h.canvas },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingBottom: 12, backgroundColor: h.canvas },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, gap: 12 },
+  emptyIconWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: h.tealWash, alignItems: 'center', justifyContent: 'center' },
+  emptyText: { fontFamily: font.sb, fontSize: 14.5, color: h.muted, textAlign: 'center' },
   messageList: { flex: 1 },
-  list: { padding: spacing.md, gap: spacing.xs },
+  list: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 8, gap: 4 },
+  privacy: { alignSelf: 'center', maxWidth: 300, textAlign: 'center', fontFamily: font.m, fontSize: 12.5, lineHeight: 19, color: h.label, marginBottom: 16 },
   bubbleRow: { alignItems: 'flex-start' },
   bubbleRowMine: { alignItems: 'flex-end' },
-  // Asymmetric corner (the "tail" corner squared off) matches web's Bubble --
-  // reads as a directional speech bubble instead of a uniform rounded box.
-  bubble: { maxWidth: '78%', paddingHorizontal: spacing.sm + 6, paddingVertical: spacing.sm + 2, marginBottom: 2 },
-  bubbleTheirs: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignSelf: 'flex-start',
-    borderTopLeftRadius: radii.lg,
-    borderTopRightRadius: radii.lg,
-    borderBottomRightRadius: radii.lg,
-    borderBottomLeftRadius: 4,
-  },
-  bubbleMine: {
-    backgroundColor: colors.primary,
-    alignSelf: 'flex-end',
-    borderTopLeftRadius: radii.lg,
-    borderTopRightRadius: radii.lg,
-    borderBottomLeftRadius: radii.lg,
-    borderBottomRightRadius: 4,
-    ...shadows.card,
-  },
+  bubble: { maxWidth: '80%', paddingHorizontal: 15, paddingVertical: 11, marginBottom: 2 },
+  bubbleTheirs: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line07, alignSelf: 'flex-start', borderRadius: 20, borderBottomLeftRadius: 6, boxShadow: '0 2px 8px rgba(20,23,26,0.05)' },
+  bubbleMine: { backgroundColor: h.tealCta, alignSelf: 'flex-end', borderRadius: 20, borderBottomRightRadius: 6, boxShadow: '0 6px 14px rgba(14,143,163,0.20)' },
   bubbleSending: { opacity: 0.7 },
-  bubbleText: { ...typography.body, color: colors.ink900, lineHeight: 21 },
-  bubbleTextMine: { color: colors.inkInverse },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 2, marginBottom: spacing.xs },
+  bubbleText: { fontFamily: font.m, fontSize: 14.5, lineHeight: 21, color: h.ivory },
+  bubbleTextMine: { color: '#FFFFFF' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4, marginBottom: 8 },
   metaRowMine: { alignSelf: 'flex-end' },
-  metaTime: { fontSize: 10.5, fontFamily: fonts.semibold, color: colors.ink400 },
-  metaSending: { fontSize: 10.5, color: colors.ink400 },
-  metaFailed: { fontSize: 10.5, fontFamily: fonts.bold, color: colors.error },
-  readOnlyBanner: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm + 4, paddingBottom: spacing.md },
-  readOnlyText: { ...typography.caption, fontFamily: fonts.semibold, color: colors.primaryDark, backgroundColor: colors.primarySubtle, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, borderRadius: radii.full, overflow: 'hidden' },
-  // Fixed height, flexGrow: 0 -- without an explicit bound here, this row
-  // previously stretched to fill the screen's remaining flex space, and each
-  // chip's radii.full on a tall-narrow box rendered as a giant vertical
-  // capsule instead of a compact pill.
-  cannedScroll: { flexGrow: 0, height: 44 },
-  cannedRow: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.xs, gap: spacing.xs },
-  cannedChip: { height: 34, justifyContent: 'center', paddingHorizontal: spacing.sm + 4, borderRadius: radii.full, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
-  cannedChipText: { ...typography.caption, fontFamily: fonts.semibold, color: colors.ink600 },
-  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
-  inputWrap: { flex: 1, ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, maxHeight: 100 },
-  sendBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  metaTime: { fontSize: 11, fontFamily: font.m, color: h.faint, fontVariant: ['tabular-nums'] },
+  metaSending: { fontSize: 11, fontFamily: font.m, color: h.faint },
+  metaFailed: { fontSize: 11.5, fontFamily: font.b, color: h.danger },
+  readOnlyBanner: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingBottom: spacing.md },
+  readOnlyText: { fontFamily: font.sb, fontSize: 12.5, color: h.tealText, backgroundColor: h.tealWash, paddingHorizontal: 16, paddingVertical: 7, borderRadius: 999, overflow: 'hidden' },
+  cannedScroll: { flexGrow: 0, height: 52, backgroundColor: h.surface },
+  cannedRow: { alignItems: 'center', paddingHorizontal: 18, paddingTop: 10, gap: 8 },
+  cannedChip: { height: 40, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 20, backgroundColor: h.surface, borderWidth: 1, borderColor: 'rgba(14,143,163,0.35)' },
+  cannedChipText: { fontFamily: font.sb, fontSize: 13.5, color: h.tealText },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 18, paddingTop: 12, borderTopWidth: 1, borderTopColor: h.line07, backgroundColor: h.surface },
+  inputWrap: { flex: 1, fontFamily: font.m, fontSize: 14.5, color: h.ivory, backgroundColor: h.chip, borderWidth: 1, borderColor: h.line06, borderRadius: 26, paddingHorizontal: 20, paddingVertical: 14, minHeight: 52, maxHeight: 110 },
+  sendBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: h.tealCta, alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 18px rgba(14,143,163,0.28)' },
   sendBtnDisabled: { opacity: 0.4 },
   pressedScale: { transform: [{ scale: 0.97 }] },
 })
