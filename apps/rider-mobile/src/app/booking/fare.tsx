@@ -4,7 +4,9 @@ import { useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { Button, ErrorState, colors, radii, shadows, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { Button, ErrorState, font, h, shadow, spacing } from '@ocar/mobile-shared'
+import { Chip, IconButton, TicketBanner } from '@/components/ui'
+import { OffersSheet, type OfferCoupon } from '@/features/booking/components/OffersSheet'
 import { CategoryCard, type CategoryEta } from '@/features/booking/components/CategoryCard'
 import { SelectRideMap } from '@/features/booking/components/SelectRideMap'
 import { useFareEstimates } from '@/features/booking/hooks/useFareEstimates'
@@ -28,7 +30,10 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
 // select below rather than in the middle" redesign: previously the map was a
 // small fixed box sandwiched between the header and a scrolling list, so the
 // Book button drifted up and down with however many categories loaded.
-const MAP_HEIGHT_RATIO = 0.4
+const MAP_HEIGHT_RATIO = 0.3
+
+const RIDE_TYPE_LABEL = { one_way: 'One way', round_trip: 'Round trip', rental: 'City ride' } as const
+const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
 
 // Module scope: an inline ItemSeparatorComponent is a new component type every render, so React
 // unmounted and remounted every separator whenever the nearby-driver poll re-rendered the screen.
@@ -72,6 +77,11 @@ export default function BookingFareScreen() {
   const [nearbyDrivers, setNearbyDrivers] = useState<Array<{ driverId: string; lat: number; lng: number; categoryId: number }>>([])
   const [refreshSignal, setRefreshSignal] = useState(0)
   const [paymentNote, setPaymentNote] = useState<string | null>(null)
+  // TODO(backend): coupons do not exist yet. The list stays empty until an offers endpoint exists, so nothing is ever
+  // applied and no discount is computed on the client; the sheet and banner below are UI only.
+  const coupons: OfferCoupon[] = []
+  const [offersOpen, setOffersOpen] = useState(false)
+  const [appliedCode, setAppliedCode] = useState<string | null>(null)
 
   // Hide any category whose estimate fetch failed (e.g. no rate card for this
   // ride_type -- auto_rickshaw only has `rental`) once loading has settled;
@@ -108,6 +118,7 @@ export default function BookingFareScreen() {
   const allUnavailable = liveCheck && visibleCategories.length > 0 && visibleCategories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
   const selectedNoCars = liveCheck && effectiveSelected != null && (driverEta[effectiveSelected]?.count ?? 0) === 0
   const canBook = effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars
+  const selectedName = visibleCategories.find((c) => c.id === effectiveSelected)?.displayName
 
   // Available categories first, unavailable ones pushed to the bottom rather
   // than left interleaved -- categories list order otherwise comes straight
@@ -193,21 +204,13 @@ export default function BookingFareScreen() {
           />
         ) : null}
         <View style={[styles.headerRow, { top: insets.top + spacing.sm }]}>
-          <Pressable
-            onPress={() => goBack(router)}
-            style={({ pressed }) => [styles.backButton, pressed ? styles.pressedScale : null]}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Feather name="arrow-left" size={17} color={colors.ink900} />
-          </Pressable>
+          <IconButton icon="arrow-left" label="Go back" onPress={() => goBack(router)} />
           {pickup && drop ? (
             <View style={styles.breadcrumb}>
               <Pressable onPress={() => goBack(router)} style={styles.breadcrumbHalf}>
                 <Text style={styles.breadcrumbOrigin} numberOfLines={1}>{pickup.address}</Text>
               </Pressable>
-              <Feather name="chevron-right" size={12} color={colors.ink400} />
+              <Feather name="chevron-right" size={12} color={h.faint} />
               <Pressable onPress={() => goBack(router)} style={styles.breadcrumbHalf}>
                 <Text style={styles.breadcrumbDest} numberOfLines={1}>{drop.address}</Text>
               </Pressable>
@@ -222,6 +225,9 @@ export default function BookingFareScreen() {
             <View style={styles.sheetHandle} />
             <View style={styles.sheetTitleRow}>
               <Text style={styles.title}>Choose a ride</Text>
+              <Chip label={RIDE_TYPE_LABEL[rideType]} />
+            </View>
+            <View style={styles.metaRow}>
               {distanceKm != null && durationMin != null ? (
                 <Text style={styles.subtitle}>
                   {rideType === 'round_trip'
@@ -232,10 +238,10 @@ export default function BookingFareScreen() {
             </View>
             {scheduledFor ? (
               <View style={styles.scheduledNote}>
-                <Feather name="clock" size={12} color={colors.primaryDark} />
+                <Feather name="clock" size={13} color={h.tealText} />
                 <Text style={styles.scheduledNoteText}>Pickup {formatPickupTime(new Date(scheduledFor))}</Text>
                 <Pressable onPress={() => setScheduledFor(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Reset to ride now">
-                  <Feather name="x" size={12} color={colors.primaryDark} />
+                  <Feather name="x" size={14} color={h.tealText} />
                 </Pressable>
               </View>
             ) : null}
@@ -243,7 +249,7 @@ export default function BookingFareScreen() {
 
           {allUnavailable ? (
             <View style={styles.noDriversBanner}>
-              <Feather name="clock" size={13} color={colors.warning} />
+              <Feather name="clock" size={14} color={h.goldInk} />
               <Text style={styles.noDriversText}>No drivers nearby. Try again in a few minutes.</Text>
               <Pressable onPress={() => setRefreshSignal((n) => n + 1)} hitSlop={6}>
                 <Text style={styles.noDriversAction}>Retry now</Text>
@@ -267,7 +273,7 @@ export default function BookingFareScreen() {
               ListHeaderComponent={
                 rideType === 'one_way' && !scheduledFor && returnCabCategories.size > 0 ? (
                   <View style={styles.returnCabSection}>
-                    <Text style={styles.returnCabLabel}>Return Cab Available</Text>
+                    <Text style={styles.returnCabLabel}>Return cab available</Text>
                     {visibleCategories
                       .filter((cat) => returnCabCategories.has(cat.id))
                       .map((cat) => {
@@ -314,18 +320,31 @@ export default function BookingFareScreen() {
 
           {/* Fixed footer within the sheet -- Book never drifts with list length. */}
           <View style={[styles.sheetFooter, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-            <View style={styles.paymentRow}>
-              <View style={styles.paymentLeft}>
-                <View style={styles.paymentIconWrap}>
-                  <Feather name="credit-card" size={14} color={colors.ink600} />
-                </View>
-                <Text style={styles.paymentLabel}>Cash</Text>
+            {appliedCode ? (
+              <View style={styles.bannerWrap}>
+                <TicketBanner title={`${appliedCode} applied`} onRemove={() => setAppliedCode(null)} />
               </View>
+            ) : null}
+            <View style={styles.payRow}>
               <Pressable
                 onPress={() => { setPaymentNote('Cash only for now'); setTimeout(() => setPaymentNote(null), 2000) }}
-                hitSlop={6}
+                style={({ pressed }) => [styles.payBtn, pressed ? styles.pressedScale : null]}
+                accessibilityRole="button"
+                accessibilityLabel="Payment method: Cash"
               >
-                <Text style={styles.paymentChange}>Change</Text>
+                <Feather name="credit-card" size={18} color={h.ivory} />
+                <Text style={styles.payText}>Cash</Text>
+                <Feather name="chevron-down" size={16} color={h.faint} style={styles.payChev} />
+              </Pressable>
+              <Pressable
+                onPress={() => setOffersOpen(true)}
+                style={({ pressed }) => [styles.payBtn, appliedCode ? styles.offerOn : null, pressed ? styles.pressedScale : null]}
+                accessibilityRole="button"
+                accessibilityLabel="Offers"
+              >
+                <Feather name="tag" size={18} color={h.tealText} />
+                <Text style={[styles.payText, appliedCode ? { color: h.tealText, fontFamily: font.b } : null]} numberOfLines={1}>{appliedCode ?? 'Offers'}</Text>
+                <Feather name="chevron-right" size={16} color={h.faint} style={styles.payChev} />
               </Pressable>
             </View>
             {paymentNote ? <Text style={styles.paymentNote}>{paymentNote}</Text> : null}
@@ -335,11 +354,12 @@ export default function BookingFareScreen() {
               </Text>
             ) : null}
             <Button
+              variant="cta"
               label={
                 allUnavailable
                   ? 'No drivers available'
                   : selectedFare != null
-                  ? `Book · ₹${Math.round(selectedFare)}`
+                  ? `Book ${selectedName ?? ''}${selectedName ? ' · ' : '· '}${rupees(selectedFare)}`
                   : 'Book'
               }
               onPress={() => void handleBook()}
@@ -350,104 +370,63 @@ export default function BookingFareScreen() {
           </View>
         </View>
       </View>
+      <OffersSheet
+        visible={offersOpen}
+        onClose={() => setOffersOpen(false)}
+        coupons={coupons}
+        appliedCode={appliedCode}
+        onApply={(code) => { setAppliedCode(code); setOffersOpen(false) }}
+      />
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: h.canvas },
   mapSection: { width: '100%' },
-  headerRow: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    elevation: 3,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-  },
+  headerRow: { position: 'absolute', left: 18, right: 18, flexDirection: 'row', alignItems: 'center', gap: 12 },
   breadcrumb: {
     flex: 1,
-    height: 40,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
+    height: 44,
+    backgroundColor: h.surface,
+    borderRadius: 22,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 14,
     gap: 4,
-    elevation: 3,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    boxShadow: shadow.sm,
   },
   breadcrumbHalf: { flex: 1, minWidth: 0 },
-  breadcrumbOrigin: { ...typography.caption, fontFamily: fonts.medium, color: colors.ink600 },
-  breadcrumbDest: { ...typography.caption, fontFamily: fonts.bold, color: colors.ink900 },
+  breadcrumbOrigin: { fontFamily: font.m, fontSize: 12.5, color: h.muted },
+  breadcrumbDest: { fontFamily: font.b, fontSize: 12.5, color: h.ivory },
   pressedScale: { transform: [{ scale: 0.97 }] },
-  sheetShadowWrap: {
-    flex: 1,
-    marginTop: -radii.xl,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    ...shadows.card,
-    shadowOpacity: 0.12,
-  },
-  sheet: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    overflow: 'hidden',
-  },
-  sheetHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs },
-  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.sm },
-  sheetTitleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  scheduledNote: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: spacing.xs, backgroundColor: colors.primarySubtle, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2 },
-  scheduledNoteText: { ...typography.caption, color: colors.primaryDark, fontFamily: fonts.bold },
-  noDriversBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.xs,
-    backgroundColor: colors.warningLight,
-    borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.35)',
-    borderRadius: radii.md,
-    paddingVertical: spacing.xs + 2,
-    paddingHorizontal: spacing.sm,
-  },
-  noDriversText: { ...typography.caption, color: colors.warning, fontFamily: fonts.semibold, flex: 1 },
-  noDriversAction: { ...typography.caption, color: colors.warning, fontFamily: fonts.bold, textDecorationLine: 'underline' },
-  title: { ...typography.headline, color: colors.ink900 },
-  subtitle: { ...typography.caption, fontFamily: fonts.semibold, color: colors.ink400 },
+  sheetShadowWrap: { flex: 1, marginTop: -28, borderTopLeftRadius: 28, borderTopRightRadius: 28, boxShadow: shadow.md },
+  sheet: { flex: 1, backgroundColor: h.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+  sheetHeader: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 6 },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.12)', alignSelf: 'center', marginBottom: 14 },
+  sheetTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  metaRow: { marginTop: 2 },
+  scheduledNote: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, minHeight: 36, backgroundColor: h.tealWash, borderRadius: 999, paddingHorizontal: 14 },
+  scheduledNoteText: { fontFamily: font.sb, fontSize: 12.5, color: h.tealText },
+  noDriversBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 18, marginBottom: 6, backgroundColor: h.goldWash, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 14 },
+  noDriversText: { fontFamily: font.sb, fontSize: 12.5, color: h.goldInk, flex: 1 },
+  noDriversAction: { fontFamily: font.b, fontSize: 12.5, color: h.goldInk, textDecorationLine: 'underline' },
+  title: { fontFamily: font.xb, fontSize: 20, letterSpacing: -0.3, color: h.ivory },
+  subtitle: { fontFamily: font.m, fontSize: 12.5, color: h.muted, fontVariant: ['tabular-nums'] },
   listFlex: { flex: 1 },
-  list: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
-  returnCabSection: { marginBottom: spacing.xs },
-  returnCabLabel: { ...typography.caption, fontFamily: fonts.bold, color: colors.success, marginBottom: spacing.xs },
-  returnCabDivider: { height: 1, backgroundColor: colors.borderLight, marginTop: spacing.xs, marginBottom: spacing.sm },
-  divider: { height: 1, backgroundColor: colors.borderLight, marginVertical: 2 },
-  skeletonCard: { height: 72, borderRadius: 16, backgroundColor: colors.surface3, marginBottom: spacing.sm },
-  sheetFooter: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight },
-  paymentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
-  paymentLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  paymentIconWrap: { width: 28, height: 28, borderRadius: 8, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
-  paymentLabel: { ...typography.label, fontFamily: fonts.semibold, color: colors.ink600 },
-  paymentChange: { ...typography.caption, fontFamily: fonts.bold, color: colors.primaryDark },
-  paymentNote: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginBottom: spacing.xs },
-  error: { ...typography.body, color: colors.error, marginBottom: spacing.xs },
+  list: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12 },
+  returnCabSection: { marginBottom: 4 },
+  returnCabLabel: { fontFamily: font.sb, fontSize: 14, color: h.live, marginHorizontal: 2, marginBottom: 10 },
+  returnCabDivider: { height: 1, backgroundColor: h.line07, marginTop: 2, marginBottom: 14 },
+  divider: { height: 0 },
+  skeletonCard: { height: 92, borderRadius: 20, backgroundColor: h.chip, marginBottom: 12 },
+  sheetFooter: { paddingHorizontal: 18, paddingTop: 12, borderTopWidth: 1, borderTopColor: h.line06 },
+  bannerWrap: { marginBottom: 12 },
+  payRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  payBtn: { flex: 1, height: 48, borderRadius: 16, backgroundColor: h.chip, borderWidth: 1, borderColor: h.line06, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 },
+  offerOn: { backgroundColor: h.tealWash, borderColor: 'rgba(14,143,163,0.4)' },
+  payText: { fontFamily: font.sb, fontSize: 14, color: h.ivory, flexShrink: 1 },
+  payChev: { marginLeft: 'auto' },
+  paymentNote: { fontFamily: font.m, fontSize: 12.5, color: h.muted, textAlign: 'center', marginBottom: 8 },
+  error: { fontFamily: font.m, fontSize: 14, color: h.danger, marginBottom: 8 },
 })
