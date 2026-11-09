@@ -303,6 +303,12 @@ export default function RideTrackingScreen() {
       />
 
       <View style={[styles.mapOverlayTop, { paddingTop: insets.top + spacing.sm }]} pointerEvents="box-none">
+        {isInProgress ? (
+          <View style={styles.tripPill}>
+            <View style={styles.tripPillDot} />
+            <Text style={styles.tripPillText}>{ride.status === 'returning' ? 'Returning to pickup' : 'Trip in progress'}</Text>
+          </View>
+        ) : null}
         {!socketConnected ? <ReconnectBanner /> : null}
         {addStopError ? <Text style={styles.addStopError}>{addStopError}</Text> : null}
       </View>
@@ -320,6 +326,8 @@ export default function RideTrackingScreen() {
           return triggerSos(rideId, fix?.lat ?? storeLat ?? undefined, fix?.lng ?? storeLng ?? undefined)
         }}
         anchor="top-right"
+        look="redesign"
+        {...(canShare ? { onShareTrip: () => setShareOpen(true) } : {})}
       />
 
       <Animated.View
@@ -344,7 +352,7 @@ export default function RideTrackingScreen() {
             <FareDriftToast previousFare={fareDrift.previousFare} currentFare={fareDrift.currentFare} onDismiss={dismissFareDrift} />
           ) : null}
 
-          <StatusBanner status={status} eta={eta} {...(status === 'accepted' && !driverLocated ? { overrideSub: 'Locating your driver…' } : {})} />
+          <StatusBanner status={status} eta={eta} totalKm={ride.estimatedKm ?? null} {...(status === 'accepted' && !driverLocated ? { overrideSub: 'Locating your driver…' } : {})} />
 
           {unreachableStop ? (
             <View style={styles.unreachableBanner} accessibilityRole="alert">
@@ -518,5 +526,8 @@ const styles = StyleSheet.create({
   unreachableTitle: { fontFamily: font.b, fontSize: 14.5, color: h.ivory },
   unreachableBody: { fontFamily: font.m, fontSize: 13.5, lineHeight: 20, color: h.muted },
   unreachableActions: { gap: 8, marginTop: 6 },
+  tripPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 9, height: 44, paddingLeft: 14, paddingRight: 16, borderRadius: 22, backgroundColor: h.surface, boxShadow: '0 4px 14px rgba(20,23,26,0.14)' },
+  tripPillDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#1FA971', boxShadow: '0 0 0 4px rgba(31,169,113,0.18)' },
+  tripPillText: { fontFamily: font.b, fontSize: 14, color: h.ivory },
   addStopError: { fontFamily: font.m, fontSize: 12.5, color: h.danger, alignSelf: 'flex-end', backgroundColor: h.surface, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, boxShadow: shadow.sm },
 })

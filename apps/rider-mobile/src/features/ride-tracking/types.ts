@@ -14,6 +14,8 @@ export type RideDetailExtra = RideDetail & {
   userRatingGiven: number | null
   // The booked vehicle category. The API sends bigint columns as strings, so it may arrive as a numeric string.
   categoryId?: number | string | null
+  // The booked route distance in km (fare_snapshots.estimated_km, sent as a number); the trip progress bar's total.
+  estimatedKm?: number | null
 }
 
 export const SEARCHING_STATUSES = new Set(['requested', 'scheduled'])
