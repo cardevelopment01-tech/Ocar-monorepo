@@ -3,7 +3,7 @@ import { Alert, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Button, ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, colors, radii, spacing, typography, fonts, getApiErrorMessage, getFreshFix, getLastKnownFix, track } from '@ocar/mobile-shared'
+import { Button, ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, font, h, shadow, spacing, getApiErrorMessage, getFreshFix, getLastKnownFix, track } from '@ocar/mobile-shared'
 import { api, serverNow } from '@/services/api'
 import { triggerSos } from '@/features/safety/api'
 import { useLocationStore } from '@/store/useLocationStore'
@@ -281,7 +281,9 @@ export default function RideTrackingScreen() {
       />
 
       <Animated.View style={[styles.sheet, sheetEntranceStyle]}>
-        <View style={styles.handle} />
+        <Pressable onPress={() => hasDriver && setDetailsExpanded((v) => !v)} accessibilityRole="button" accessibilityLabel="Expand trip details" style={styles.handleHit}>
+          <View style={styles.handle} />
+        </Pressable>
         <ScrollView
           style={styles.sheetScroll}
           contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
@@ -303,13 +305,14 @@ export default function RideTrackingScreen() {
               </Text>
               <View style={styles.unreachableActions}>
                 <Button
+                  variant="cta"
                   label="Skip stop"
                   loading={skippingStop}
                   onPress={() => runSkip(unreachableStop.sequence)}
                 />
                 <Button
                   label="Keep stop"
-                  variant="ghost"
+                  variant="soft"
                   disabled={skippingStop}
                   onPress={() => setKeptStops((k) => [...k, unreachableStop.sequence])}
                 />
@@ -432,8 +435,8 @@ export default function RideTrackingScreen() {
 const SCREEN_HEIGHT = Dimensions.get('window').height
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  container: { flex: 1, backgroundColor: colors.bg },
+  screen: { flex: 1, backgroundColor: h.canvas },
+  container: { flex: 1, backgroundColor: h.canvas },
   skeletonBlock: { marginBottom: spacing.md },
   mapOverlayTop: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: spacing.md, gap: spacing.xs, zIndex: 5 },
   sheet: {
@@ -442,56 +445,25 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     maxHeight: SCREEN_HEIGHT * MAX_SHEET_HEIGHT_RATIO,
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    boxShadow: '0 -10px 22px rgba(20,23,26,0.10)',
+    backgroundColor: h.surface,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    boxShadow: '0 -12px 32px rgba(20,23,26,0.12)',
   },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginTop: 10, marginBottom: 6 },
+  handleHit: { height: 28, justifyContent: 'center' },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.14)', alignSelf: 'center' },
   sheetScroll: { flexGrow: 0 },
-  sheetContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, gap: spacing.md },
-  searchingBlock: { gap: spacing.sm + 2, alignItems: 'center', paddingVertical: spacing.xs },
-  searchingTitle: { ...typography.title, color: colors.ink900 },
-  searchingBody: { ...typography.body, color: colors.ink600, textAlign: 'center' },
-  cancelButton: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  cancelButtonText: { ...typography.body, color: colors.error, fontFamily: fonts.semibold },
-  cancelLink: { alignItems: 'center', paddingVertical: spacing.xs },
-  cancelLinkText: { ...typography.label, color: colors.error, fontFamily: fonts.bold },
-  editPickupLink: { alignItems: 'center', paddingVertical: spacing.xs },
-  editPickupLinkText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
-  detailsExpanded: { gap: spacing.sm },
-  unreachableBanner: {
-    gap: spacing.xs,
-    backgroundColor: colors.warningLight,
-    borderRadius: radii.md,
-    padding: spacing.md,
-  },
-  unreachableTitle: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
-  unreachableBody: { ...typography.body, color: colors.ink600 },
-  unreachableActions: { gap: spacing.xs, marginTop: spacing.xs },
-  // Floats on the map, top-right below the "Add stop" pill.
-  addStopBtn: {
-    alignSelf: 'flex-end',
-    // Clears the SOS button (56px circle, anchored top-right by SOSButton's
-    // own `anchor="top-right"` positioning) -- both were landing in the same
-    // corner with no coordination between the two, since SOS is positioned
-    // by its own component and this pill only knew about its own container.
-    marginTop: 72,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs + 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.surface,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  addStopText: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
-  addStopError: { ...typography.caption, color: colors.error, alignSelf: 'flex-end', backgroundColor: colors.surface, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radii.md },
-  detailsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: spacing.xs },
-  detailsToggleText: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
+  sheetContent: { paddingHorizontal: 18, paddingTop: 4, gap: 14 },
+  searchingBlock: { gap: 12, alignItems: 'center', paddingVertical: 4 },
+  searchingBody: { fontFamily: font.m, fontSize: 14, lineHeight: 21, color: h.muted, textAlign: 'center' },
+  cancelButton: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', minHeight: 52, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(194,59,59,0.28)' },
+  cancelButtonText: { fontFamily: font.b, fontSize: 15, color: h.danger },
+  editPickupLink: { alignItems: 'center', justifyContent: 'center', minHeight: 44 },
+  editPickupLinkText: { fontFamily: font.b, fontSize: 13.5, color: h.tealText },
+  detailsExpanded: { gap: 12 },
+  unreachableBanner: { gap: 6, backgroundColor: h.goldWash, borderRadius: 18, padding: 16 },
+  unreachableTitle: { fontFamily: font.b, fontSize: 14.5, color: h.ivory },
+  unreachableBody: { fontFamily: font.m, fontSize: 13.5, lineHeight: 20, color: h.muted },
+  unreachableActions: { gap: 8, marginTop: 6 },
+  addStopError: { fontFamily: font.m, fontSize: 12.5, color: h.danger, alignSelf: 'flex-end', backgroundColor: h.surface, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, boxShadow: shadow.sm },
 })

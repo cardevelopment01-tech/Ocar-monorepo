@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
+import { font, h } from '@ocar/mobile-shared'
 import type { RideStop } from '@ocar/mobile-shared'
 
 export type NextStopRowProps = {
@@ -34,20 +34,12 @@ export function NextStopRow({ stop, position, total, busy = false, onSkip }: Nex
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surface2,
-    borderRadius: radii.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: h.chip, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 16 },
   text: { flex: 1 },
-  label: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
-  address: { ...typography.body, color: colors.ink900, fontFamily: fonts.medium },
-  skip: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm },
-  skipText: { ...typography.label, color: colors.error, fontFamily: fonts.bold },
+  label: { fontFamily: font.sb, fontSize: 11.5, color: h.label },
+  address: { fontFamily: font.b, fontSize: 14, color: h.ivory },
+  skip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
+  skipText: { fontFamily: font.b, fontSize: 13.5, color: h.danger },
   pressed: { opacity: 0.6 },
   busy: { opacity: 0.5 },
 })

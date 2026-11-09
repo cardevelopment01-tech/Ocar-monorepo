@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native'
-import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { font, h } from '@ocar/mobile-shared'
 import type { RideDetailExtra } from '../types'
 
 export type TripDetailsCardProps = {
@@ -47,15 +47,15 @@ export function TripDetailsCard({ ride, fare }: TripDetailsCardProps) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: radii.xl, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 20, backgroundColor: h.chip },
   dots: { alignItems: 'center', gap: 2, alignSelf: 'stretch', paddingVertical: 3 },
-  dot: { width: 9, height: 9, borderRadius: 5 },
-  dotPickup: { backgroundColor: colors.primary },
-  dotDrop: { backgroundColor: colors.ink900 },
-  line: { width: 1, flex: 1, minHeight: 20, backgroundColor: colors.border },
-  textCol: { flex: 1, minWidth: 0, gap: spacing.sm },
-  label: { ...typography.caption, fontSize: 11, color: colors.ink400, fontFamily: fonts.semibold },
-  value: { ...typography.label, fontSize: 13, color: colors.ink900, fontFamily: fonts.semibold },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  dotPickup: { backgroundColor: h.teal, boxShadow: '0 0 0 3px rgba(14,143,163,0.18)' },
+  dotDrop: { backgroundColor: h.ivory, borderRadius: 3 },
+  line: { width: 0, flex: 1, minHeight: 20, borderLeftWidth: 1.5, borderLeftColor: '#B3C0C3', borderStyle: 'dashed' },
+  textCol: { flex: 1, minWidth: 0, gap: 12 },
+  label: { fontFamily: font.sb, fontSize: 11.5, color: h.label },
+  value: { fontFamily: font.b, fontSize: 14, color: h.ivory },
   fareCol: { alignItems: 'flex-end', flexShrink: 0 },
-  fareValue: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
+  fareValue: { fontFamily: font.xb, fontSize: 16, color: h.ivory, fontVariant: ['tabular-nums'] },
 })

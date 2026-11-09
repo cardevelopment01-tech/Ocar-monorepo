@@ -9,9 +9,9 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated'
-import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { font, h } from '@ocar/mobile-shared'
 import { formatEta } from '@ocar/shared'
-import { STATUS_CONFIG, statusBg, type StatusKey } from '../statusConfig'
+import { STATUS_CONFIG, type StatusKey } from '../statusConfig'
 
 export type StatusBannerProps = {
   status: StatusKey
@@ -51,43 +51,35 @@ function PulsingDot({ color, pulse }: { color: string; pulse: boolean }) {
   )
 }
 
-// Colored status header -- direct port of the web tracking page's status badge row
-// (STATUS_CONFIG-driven background/border/dot color + pulsing dot + live ETA).
+// Design (Driver.dc.html / Ride.dc.html): a small status kicker with the live dot, then the ETA as the hero line
+// ("Arriving in 4 min" / "12 min left"). Without an ETA the status label is the hero and the sub-line sits under it.
 export function StatusBanner({ status, overrideSub, eta }: StatusBannerProps) {
   const cfg = STATUS_CONFIG[status]
   const sub = overrideSub ?? cfg.sub
-  const { bg, border } = statusBg(status)
-
+  const etaTime = eta ? formatEta(eta.etaMin, eta.distanceKm) : null
+  const hero = etaTime ? (status === 'accepted' ? `Arriving in ${etaTime.time}` : `${etaTime.time} left`) : cfg.label
   return (
-    <View style={[styles.container, { backgroundColor: bg, borderColor: border }]}>
-      <PulsingDot color={cfg.dot} pulse={cfg.dotPulse} />
-      <View style={styles.textCol}>
-        <Text style={styles.label}>{cfg.label}</Text>
-        {sub ? <Text style={styles.sub}>{sub}</Text> : null}
-      </View>
-      {eta ? (
-        <View style={styles.etaCol}>
-          <Text style={styles.etaMin}>{formatEta(eta.etaMin, eta.distanceKm).time}</Text>
-          <Text style={styles.etaKm}>{formatEta(eta.etaMin, eta.distanceKm).distance}</Text>
+    <View style={styles.container} accessibilityRole="header">
+      {etaTime ? (
+        <View style={styles.kickerRow}>
+          <PulsingDot color={cfg.dot} pulse={cfg.dotPulse} />
+          <Text style={styles.kicker}>{cfg.label}</Text>
         </View>
       ) : null}
+      <Text style={etaTime ? styles.hero : styles.heroPlain} numberOfLines={2} maxFontSizeMultiplier={1.2}>{hero}</Text>
+      {etaTime ? <Text style={styles.sub}>{etaTime.distance}</Text> : sub ? <Text style={styles.sub}>{sub}</Text> : null}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4,
-    borderRadius: radii.xl, borderWidth: 1,
-  },
+  container: { gap: 3 },
+  kickerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dotWrap: { width: 12, height: 12, alignItems: 'center', justifyContent: 'center' },
-  dot: { width: 12, height: 12, borderRadius: 6, position: 'absolute' },
+  dot: { width: 8, height: 8, borderRadius: 4, position: 'absolute' },
   dotPulse: { width: 12, height: 12, borderRadius: 6, position: 'absolute' },
-  textCol: { flex: 1, gap: 2 },
-  label: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
-  sub: { ...typography.caption, color: colors.ink600 },
-  etaCol: { alignItems: 'flex-end' },
-  etaMin: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
-  etaKm: { ...typography.caption, color: colors.ink600 },
+  kicker: { fontFamily: font.sb, fontSize: 13, color: h.tealText },
+  hero: { fontFamily: font.xb, fontSize: 32, lineHeight: 36, letterSpacing: -0.9, color: h.ivory, fontVariant: ['tabular-nums'] },
+  heroPlain: { fontFamily: font.xb, fontSize: 24, lineHeight: 30, letterSpacing: -0.5, color: h.ivory },
+  sub: { fontFamily: font.m, fontSize: 13, color: h.muted },
 })

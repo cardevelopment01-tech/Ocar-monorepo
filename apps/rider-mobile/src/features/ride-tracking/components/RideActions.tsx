@@ -1,7 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { colors, fonts, shadows } from '@ocar/mobile-shared'
-import { card } from '@/theme/homeTokens'
+import { font, h, shadow } from '@ocar/mobile-shared'
 
 export type RideAction = {
   key: string
@@ -25,7 +24,7 @@ export function RideActions({ actions }: { actions: RideAction[] }) {
           accessibilityLabel={a.label}
           style={({ pressed }) => [styles.tile, i < actions.length - 1 && styles.divider, pressed && styles.pressed]}
         >
-          <Feather name={a.icon} size={19} color={a.destructive ? colors.error : colors.primary} />
+          <Feather name={a.icon} size={19} color={a.destructive ? h.danger : h.tealText} />
           <Text style={[styles.label, a.destructive && styles.labelDestructive]}>{a.label}</Text>
         </Pressable>
       ))}
@@ -34,10 +33,10 @@ export function RideActions({ actions }: { actions: RideAction[] }) {
 }
 
 const styles = StyleSheet.create({
-  card: { ...card, flexDirection: 'row', overflow: 'hidden', ...shadows.card },
-  tile: { flex: 1, alignItems: 'center', gap: 8, paddingVertical: 18 },
-  divider: { borderRightWidth: 1, borderRightColor: 'rgba(20,23,26,0.06)' },
-  pressed: { backgroundColor: 'rgba(20,23,26,0.04)' },
-  label: { fontFamily: fonts.semibold, fontSize: 12, color: colors.ink900 },
-  labelDestructive: { color: colors.error },
+  card: { backgroundColor: h.surface, borderRadius: 22, borderWidth: 1, borderColor: h.line07, flexDirection: 'row', overflow: 'hidden', boxShadow: shadow.sm },
+  tile: { flex: 1, alignItems: 'center', gap: 8, paddingVertical: 16, minHeight: 64 },
+  divider: { borderRightWidth: 1, borderRightColor: h.line07 },
+  pressed: { backgroundColor: '#F4F8F8' },
+  label: { fontFamily: font.sb, fontSize: 12, color: h.ivory },
+  labelDestructive: { color: h.danger },
 })
