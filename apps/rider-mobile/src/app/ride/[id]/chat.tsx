@@ -7,6 +7,7 @@ import Animated, { FadeIn, FadeInUp, useAnimatedStyle } from 'react-native-reani
 import { Feather, Ionicons } from '@expo/vector-icons'
 import { spacing, useKeyboardOffset, useRoomJoin, font, h } from '@ocar/mobile-shared'
 import { IconButton } from '@/components/ui'
+import { ChatBackdrop } from '@/features/ride-tracking/components/ChatBackdrop'
 import { socket } from '@/services/socket'
 import { DriverRow, driverViewFromRide } from '@/features/ride-tracking/components/DriverIdentity'
 import type { RideDetailExtra } from '@/features/ride-tracking/types'
@@ -211,6 +212,7 @@ export default function RideChatScreen() {
     // across the rest of this ride flow (AddStopSheet/CancelSheet) and driver
     // app's own chat screen.
     <Animated.View style={[styles.container, keyboardStyle]}>
+      <ChatBackdrop />
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <IconButton icon="arrow-left" label="Back" onPress={() => goBack(router, { pathname: '/ride/[id]', params: { id: rideId } })} />
         <DriverRow view={driverViewFromRide(driverRide)} photo={driverRide?.driverPhoto ?? null} />
@@ -336,7 +338,7 @@ const Bubble = memo(function Bubble({ msg, onRetry }: { msg: LocalMessage; onRet
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: h.canvas },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingBottom: 12, backgroundColor: h.canvas },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingBottom: 12 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, gap: 12 },
   emptyIconWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: h.tealWash, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontFamily: font.sb, fontSize: 14.5, color: h.muted, textAlign: 'center' },
