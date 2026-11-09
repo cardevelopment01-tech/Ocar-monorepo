@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
   statLabel: { fontFamily: font.m, fontSize: 12, color: h.muted, marginTop: 2 },
   tiles: { flexDirection: 'row', gap: 12 },
   tileHit: { flex: 1 },
-  tile: { padding: 16, backgroundColor: h.surface, borderRadius: 22, borderWidth: 1, borderColor: h.line07, boxShadow: shadow.sm },
+  tile: { minHeight: 148, padding: 16, backgroundColor: h.surface, borderRadius: 22, borderWidth: 1, borderColor: h.line07, boxShadow: shadow.sm },
   tileIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   tileTitle: { fontFamily: font.b, fontSize: 15, color: h.ivory, marginBottom: 2 },
   tileSub: { fontFamily: font.r, fontSize: 12.5, color: h.muted },
