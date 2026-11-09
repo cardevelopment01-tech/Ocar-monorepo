@@ -10,6 +10,7 @@ import {
 import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { socketEvents, isDriverSocketConnected } from '@/websocket/socket.server'
 import { client as redis } from '@/db/redis'
+import { getConfigValue } from '@/lib/system-config'
 import { driverHeartbeatKey, driverSweepPausedKey } from '@/constants/redis-keys'
 import {
   STALE_REQUESTED_MINUTES,
@@ -89,18 +90,27 @@ export const cleanupWorker = new Worker(
       const flags = await Promise.all(ids.map((id) => isDriverSocketConnected(id)))
       return new Set(ids.filter((_, i) => flags[i]))
     }
-    const quiet90 = await repo.findStaleOnlineDrivers(IDLE_HEARTBEAT_PAUSE_SECONDS)
-    const quiet10 = await repo.findStaleOnlineDrivers(IDLE_HEARTBEAT_OFFLINE_MINUTES * 60)
-    const posOldList = POSITION_MAX_AGE_SECONDS === IDLE_HEARTBEAT_OFFLINE_MINUTES * 60 ? quiet10 : await repo.findStaleOnlineDrivers(POSITION_MAX_AGE_SECONDS)
+    // Live values (admin settings, cached ~30 s), falling back to the defaults on a missing or unusable value.
+    const intSetting = async (key: string, fallback: number, min: number, max: number) => {
+      const n = Number(await getConfigValue(key, String(fallback)))
+      return Number.isInteger(n) && n >= min && n <= max ? n : fallback
+    }
+    const pauseSec = await intSetting('driver_idle_pause_seconds', IDLE_HEARTBEAT_PAUSE_SECONDS, 30, 900)
+    const offlineSec = (await intSetting('driver_idle_offline_minutes', IDLE_HEARTBEAT_OFFLINE_MINUTES, 5, 240)) * 60
+    const posCapSec = Math.max(POSITION_MAX_AGE_SECONDS, pauseSec)
+    const hardSec = Math.max(SESSION_POSITION_HARD_LIMIT_SECONDS, offlineSec)
+    const quiet90 = await repo.findStaleOnlineDrivers(pauseSec)
+    const quiet10 = await repo.findStaleOnlineDrivers(offlineSec)
+    const posOldList = posCapSec === offlineSec ? quiet10 : await repo.findStaleOnlineDrivers(posCapSec)
     const posOld = new Set(posOldList.map((d) => d.driver_id))
     const quiet90Ids = quiet90.map((d) => d.driver_id)
     const hb90 = await lastHeartbeatMs(quiet90Ids)
-    const conn90 = await connectedAmong(quiet90Ids.filter((id) => !posOld.has(id) && !((hb90.get(id) ?? 0) > Date.now() - IDLE_HEARTBEAT_PAUSE_SECONDS * 1000)))
+    const conn90 = await connectedAmong(quiet90Ids.filter((id) => !posOld.has(id) && !((hb90.get(id) ?? 0) > Date.now() - pauseSec * 1000)))
     for (const id of quiet90Ids) {
-      const alive = (hb90.get(id) ?? 0) > Date.now() - IDLE_HEARTBEAT_PAUSE_SECONDS * 1000 || conn90.has(id)
+      const alive = (hb90.get(id) ?? 0) > Date.now() - pauseSec * 1000 || conn90.has(id)
       if (alive && !posOld.has(id)) continue
       // Re-check right before acting: a fix or heartbeat can have landed while the lists above were being built.
-      if (!(await repo.isDriverStale(BigInt(id), IDLE_HEARTBEAT_PAUSE_SECONDS))) continue
+      if (!(await repo.isDriverStale(BigInt(id), pauseSec))) continue
       // Pauses only a driver who is currently available, and leaves a marker only then, so a heartbeat can resume exactly the drivers the
       // sweep paused (never one who paused on purpose).
       const pausedSession = await repo.pauseIfAvailable(BigInt(id))
@@ -108,13 +118,13 @@ export const cleanupWorker = new Worker(
     }
     const quiet10Ids = quiet10.map((d) => d.driver_id)
     const hb10 = await lastHeartbeatMs(quiet10Ids)
-    const conn10 = await connectedAmong(quiet10Ids.filter((id) => !((hb10.get(id) ?? 0) > Date.now() - IDLE_HEARTBEAT_OFFLINE_MINUTES * 60_000)))
+    const conn10 = await connectedAmong(quiet10Ids.filter((id) => !((hb10.get(id) ?? 0) > Date.now() - offlineSec * 1000)))
     // A position this old ends the session whatever the app says: a heartbeat or a connection shows the app is open, not that the driver can take a ride.
-    const hardLimit = new Set((await repo.findStaleOnlineDrivers(SESSION_POSITION_HARD_LIMIT_SECONDS)).map((d) => d.driver_id))
+    const hardLimit = new Set((hardSec === offlineSec ? quiet10 : await repo.findStaleOnlineDrivers(hardSec)).map((d) => d.driver_id))
     for (const d of quiet10) {
-      const alive = (hb10.get(d.driver_id) ?? 0) > Date.now() - IDLE_HEARTBEAT_OFFLINE_MINUTES * 60_000 || conn10.has(d.driver_id)
+      const alive = (hb10.get(d.driver_id) ?? 0) > Date.now() - offlineSec * 1000 || conn10.has(d.driver_id)
       if (alive && !hardLimit.has(d.driver_id)) continue
-      if (!(await repo.isDriverStale(BigInt(d.driver_id), IDLE_HEARTBEAT_OFFLINE_MINUTES * 60))) continue
+      if (!(await repo.isDriverStale(BigInt(d.driver_id), offlineSec))) continue
       // A driver on a ride is never ended by this sweep (the ride sweep flags a stale ride for a human instead).
       if (await repo.hasActiveRide(BigInt(d.driver_id))) continue
       try {

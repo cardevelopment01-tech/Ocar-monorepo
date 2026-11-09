@@ -21,6 +21,7 @@ import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useRideRequestListener } from '@/features/ride-requests/useRideRequestListener'
 import { useFloatingIcon } from '@/features/floating-icon/useFloatingIcon'
 import { RideRequestOverlay } from '@/features/ride-requests/RideRequestOverlay'
+import { ConnectionBanner } from '@/features/connection/ConnectionBanner'
 import { useSessionSyncListener } from '@/features/go-online/useSessionSyncListener'
 import { useSessionResync } from '@/features/go-online/useSessionResync'
 import { usePushNotificationRouting } from '@/features/notifications/usePushNotificationRouting'
@@ -97,6 +98,7 @@ function RootLayout() {
           <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false, freezeOnBlur: true }} />
           <RideRequestOverlay />
+          <ConnectionBanner />
           <UpdateGate app="driver" baseURL={API_URL} isBusy={updateBusy} logoSource={logoMarkImage} supportMailto="mailto:grievance@ocarindia.com?subject=Ocar%20driver%20support" />
           {showSplashOverlay ? (
             <SplashOverlay
