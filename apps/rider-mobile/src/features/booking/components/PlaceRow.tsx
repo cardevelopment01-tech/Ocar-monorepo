@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { colors, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { font, h } from '@ocar/mobile-shared'
 
 export type PlaceRowProps = {
   icon: React.ComponentProps<typeof Feather>['name']
@@ -10,13 +10,15 @@ export type PlaceRowProps = {
   last?: boolean
   /** Pre-formatted distance from pickup (e.g. "3.2 km"), shown right-aligned. */
   distance?: string | undefined
+  /** 'teal' tints the icon chip (Popular places); default is the neutral chip. */
+  tone?: 'neutral' | 'teal'
 }
 
 // One shared row shape for live autocomplete results, recent searches, and
 // favourite (saved) places -- all three lists in the redesigned search screen
 // render through this, so switching between them never changes row height,
 // icon size, or spacing (the exact instability this replaced).
-export function PlaceRow({ icon, label, address, onPress, last, distance }: PlaceRowProps) {
+export function PlaceRow({ icon, label, address, onPress, last, distance, tone = 'neutral' }: PlaceRowProps) {
   return (
     <View>
       <Pressable
@@ -25,8 +27,8 @@ export function PlaceRow({ icon, label, address, onPress, last, distance }: Plac
         accessibilityRole="button"
         accessibilityLabel={`${label}, ${address}`}
       >
-        <View style={styles.iconWrap}>
-          <Feather name={icon} size={15} color={colors.ink600} />
+        <View style={[styles.iconWrap, tone === 'teal' ? { backgroundColor: h.tealWash } : null]}>
+          <Feather name={icon} size={18} color={tone === 'teal' ? h.tealText : h.ivory} />
         </View>
         <View style={styles.textCol}>
           <Text style={styles.label} numberOfLines={1}>{label}</Text>
@@ -40,12 +42,12 @@ export function PlaceRow({ icon, label, address, onPress, last, distance }: Plac
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm + 4 },
-  rowPressed: { opacity: 0.6 },
-  iconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  textCol: { flex: 1, gap: 1 },
-  label: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
-  address: { ...typography.caption, color: colors.ink400 },
-  distance: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold, flexShrink: 0 },
-  divider: { marginLeft: 40 + spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderLight, borderStyle: 'dashed' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16 },
+  rowPressed: { backgroundColor: '#F4F8F8' },
+  iconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: h.chip, alignItems: 'center', justifyContent: 'center' },
+  textCol: { flex: 1, gap: 2 },
+  label: { fontFamily: font.sb, fontSize: 15, color: h.ivory },
+  address: { fontFamily: font.r, fontSize: 12.5, color: h.muted },
+  distance: { fontFamily: font.sb, fontSize: 12.5, color: h.muted, flexShrink: 0, fontVariant: ['tabular-nums'] },
+  divider: { height: 1, backgroundColor: h.line07 },
 })
