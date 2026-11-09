@@ -355,19 +355,34 @@ export default function BookingFareScreen() {
 
           {/* Fixed footer within the sheet -- Book never drifts with list length. */}
           <View style={[styles.sheetFooter, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-            <Pressable
-              onPress={() => { setPaymentNote('Cash only for now'); setTimeout(() => setPaymentNote(null), 2000) }}
-              style={({ pressed }) => [styles.payBtn, pressed ? styles.pressedScale : null]}
-              accessibilityRole="button"
-              accessibilityLabel="Payment method: Cash"
-            >
-              <Feather name="credit-card" size={18} color={h.ivory} />
-              <Text style={styles.payText}>Cash</Text>
-              <Feather name="chevron-down" size={16} color={h.faint} style={styles.payChev} />
-            </Pressable>
+            {/* Idle (no offer on the ride): Cash and Offers share one row. Any other offer state keeps its full-width line below Cash. */}
+            <View style={styles.payRow}>
+              <Pressable
+                onPress={() => { setPaymentNote('Cash only for now'); setTimeout(() => setPaymentNote(null), 2000) }}
+                style={({ pressed }) => [styles.payBtn, pressed ? styles.pressedScale : null]}
+                accessibilityRole="button"
+                accessibilityLabel="Payment method: Cash"
+              >
+                <Feather name="credit-card" size={18} color={h.ivory} />
+                <Text style={styles.payText}>Cash</Text>
+                <Feather name="chevron-down" size={16} color={h.faint} style={styles.payChev} />
+              </Pressable>
+              {couponState.kind === 'idle' ? (
+                <Pressable
+                  onPress={() => setOfferSheetOpen(true)}
+                  style={({ pressed }) => [styles.payBtn, pressed ? styles.pressedScale : null]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Offers. Have a code? Add an offer code"
+                >
+                  <Feather name="tag" size={18} color={h.tealText} />
+                  <Text style={styles.payText} numberOfLines={1}>Offers</Text>
+                  <Feather name="chevron-right" size={16} color={h.faint} style={styles.payChev} />
+                </Pressable>
+              ) : null}
+            </View>
             {paymentNote ? <Text style={styles.paymentNote}>{paymentNote}</Text> : null}
             {priceBanner ? <PriceChangedBanner message={priceBanner} onDismiss={() => setPriceBanner(null)} /> : null}
-            <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} />
+            {couponState.kind !== 'idle' ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
             {bookError ? (
               <Text style={styles.error} accessibilityLiveRegion="polite">
                 {bookError}
@@ -436,7 +451,8 @@ const styles = StyleSheet.create({
   divider: { height: 0 },
   skeletonCard: { height: 92, borderRadius: 20, backgroundColor: h.chip, marginBottom: 12 },
   sheetFooter: { paddingHorizontal: 18, paddingTop: 12, borderTopWidth: 1, borderTopColor: h.line06 },
-  payBtn: { height: 48, borderRadius: 16, backgroundColor: h.chip, borderWidth: 1, borderColor: h.line06, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12 },
+  payRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  payBtn: { flex: 1, height: 48, borderRadius: 16, backgroundColor: h.chip, borderWidth: 1, borderColor: h.line06, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 },
   payText: { fontFamily: font.sb, fontSize: 14, color: h.ivory, flexShrink: 1 },
   payChev: { marginLeft: 'auto' },
   paymentNote: { fontFamily: font.m, fontSize: 12.5, color: h.muted, textAlign: 'center', marginBottom: 8 },
