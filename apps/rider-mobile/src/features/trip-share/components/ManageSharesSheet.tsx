@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated'
+import Animated, { FadeInDown, FadeOut, LinearTransition } from 'react-native-reanimated'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { Press, SlideModal, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Press, SlideModal, font, h } from '@ocar/mobile-shared'
 import { shareTitle, viewedText } from '../model'
 import type { TripShareState } from '../useTripShare'
 
@@ -37,21 +38,32 @@ export function ManageSharesSheet({ visible, onClose, share }: { visible: boolea
   return (
     <SlideModal visible={visible} onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]} accessibilityViewIsModal>
-        <View style={styles.handle} />
-        <View style={styles.headerRow}>
-          <Text style={styles.title} accessibilityRole="header">Who can see your trip</Text>
+      <View style={styles.sheet} accessibilityViewIsModal>
+        <LinearGradient colors={['#12A0B6', '#0B7F93', '#08566A']} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={styles.head}>
+          <View style={styles.handle} pointerEvents="none" />
           <Press onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close" scaleTo={0.9} style={styles.closeBtn}>
-            <Feather name="x" size={16} color={colors.ink600} />
+            <Feather name="x" size={17} color="#FFFFFF" />
           </Press>
-        </View>
+          <View style={styles.liveChip} accessibilityElementsHidden importantForAccessibility="no">
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>LIVE</Text>
+          </View>
+          <Text style={styles.title} accessibilityRole="header">Who can see your trip</Text>
+          <Text style={styles.lead}>{share.shares.length === 1 ? '1 link is active' : `${share.shares.length} links are active`}. Stop any link and it ends at once.</Text>
+        </LinearGradient>
 
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-          {share.shares.map((s) => (
-            <Animated.View key={s.id} entering={FadeIn.duration(220)} exiting={FadeOut.duration(160)} layout={LinearTransition.duration(220)} style={styles.row}>
+        <ScrollView style={styles.scroll} contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 18) + 6 }]} showsVerticalScrollIndicator={false}>
+          {share.shares.map((s, i) => (
+            <Animated.View key={s.id} entering={FadeInDown.duration(320).delay(80 + i * 60)} exiting={FadeOut.duration(160)} layout={LinearTransition.duration(220)} style={styles.row}>
+              <View style={[styles.badge, s.isSos ? { backgroundColor: h.dangerWash } : null]}>
+                <Feather name={s.isSos ? 'alert-triangle' : 'link-2'} size={18} color={s.isSos ? h.danger : h.tealText} />
+              </View>
               <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>{shareTitle(s)}</Text>
-                <Text style={styles.rowMeta}>{viewedText(s.viewCount)}</Text>
+                <Text style={styles.rowTitle} numberOfLines={1}>{shareTitle(s)}</Text>
+                <View style={styles.metaRow}>
+                  <Feather name="eye" size={13} color={s.viewCount > 0 ? h.tealText : h.faint} />
+                  <Text style={[styles.rowMeta, s.viewCount > 0 ? { color: h.tealText } : null]}>{viewedText(s.viewCount)}</Text>
+                </View>
               </View>
               <Press
                 onPress={() => void share.stop(s.id)}
@@ -69,7 +81,7 @@ export function ManageSharesSheet({ visible, onClose, share }: { visible: boolea
           {load === 'failed' ? (
             <View style={styles.row}>
               <Text style={[styles.rowTitle, styles.rowText]}>Could not load your links. Check your connection.</Text>
-              <Press onPress={read} accessibilityLabel="Try again" scaleTo={0.94} style={styles.stopBtn}><Text style={styles.retryText}>Retry</Text></Press>
+              <Press onPress={read} accessibilityLabel="Try again" scaleTo={0.94} style={styles.retryBtn}><Text style={styles.retryText}>Retry</Text></Press>
             </View>
           ) : null}
           {share.error ? <Text style={styles.error} accessibilityRole="alert">{share.error}</Text> : null}
@@ -82,7 +94,8 @@ export function ManageSharesSheet({ visible, onClose, share }: { visible: boolea
             hit={[styles.stopAllHit, busy ? styles.disabled : null]}
             style={styles.stopAll}
           >
-            <Text style={styles.stopAllText}>Stop all</Text>
+            <Feather name="slash" size={16} color={h.danger} />
+            <Text style={styles.stopAllText}>Stop sharing with everyone</Text>
           </Press>
         </ScrollView>
       </View>
@@ -92,27 +105,33 @@ export function ManageSharesSheet({ visible, onClose, share }: { visible: boolea
 
 const styles = StyleSheet.create({
   sheet: {
-    position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '80%',
-    backgroundColor: colors.surface, borderTopLeftRadius: radii['3xl'], borderTopRightRadius: radii['3xl'],
-    paddingHorizontal: spacing.lg, paddingTop: spacing.sm,
-    boxShadow: '0 -6px 32px rgba(14,143,163,0.10)', // DESIGN.md sheet shadow: teal-tinted, directional
+    position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '86%',
+    backgroundColor: h.surface, borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: 'hidden',
+    boxShadow: '0 -12px 32px rgba(20,23,26,0.18)',
   },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(14,143,163,0.15)', alignSelf: 'center', marginBottom: spacing.md }, // DESIGN.md: teal-tinted 40x4 handle
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
-  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
+  head: { paddingHorizontal: 18, paddingTop: 54, paddingBottom: 20 },
+  handle: { position: 'absolute', top: 10, alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.55)' },
+  closeBtn: { position: 'absolute', top: 14, right: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
+  liveChip: { position: 'absolute', top: 16, left: 18, flexDirection: 'row', alignItems: 'center', gap: 7, height: 28, paddingLeft: 10, paddingRight: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.32)' },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#5FE3A8' },
+  liveText: { fontFamily: font.xb, fontSize: 11.5, letterSpacing: 1.2, color: '#FFFFFF' },
+  title: { fontFamily: font.xb, fontSize: 22, letterSpacing: -0.4, color: '#FFFFFF' },
+  lead: { fontFamily: font.m, fontSize: 13, lineHeight: 18, color: 'rgba(255,255,255,0.86)', marginTop: 3 },
   scroll: { flexGrow: 0 },
-  body: { gap: spacing.sm, paddingBottom: spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 60, paddingLeft: spacing.md, borderRadius: radii.lg, backgroundColor: colors.surface2 },
-  rowText: { flex: 1 },
-  rowTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold, lineHeight: 22 },
-  rowMeta: { ...typography.caption, color: colors.ink600 },
-  stopBtn: { minWidth: 64, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md },
-  stopText: { ...typography.label, color: colors.error, fontFamily: fonts.bold },
-  retryText: { ...typography.label, color: colors.primaryDark, fontFamily: fonts.bold },
-  stopAllHit: { marginTop: spacing.sm },
-  stopAll: { minHeight: 48, borderRadius: radii.full, backgroundColor: colors.errorLight, alignItems: 'center', justifyContent: 'center' },
-  stopAllText: { ...typography.body, color: colors.error, fontFamily: fonts.bold },
-  error: { ...typography.body, color: colors.error, lineHeight: 22 },
+  body: { gap: 10, paddingHorizontal: 18, paddingTop: 16 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 68, paddingLeft: 14, paddingRight: 8, borderRadius: 20, backgroundColor: h.chip },
+  badge: { width: 40, height: 40, borderRadius: 20, backgroundColor: h.tealWash, alignItems: 'center', justifyContent: 'center' },
+  rowText: { flex: 1, minWidth: 0 },
+  rowTitle: { fontFamily: font.b, fontSize: 15, color: h.ivory },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  rowMeta: { fontFamily: font.m, fontSize: 12.5, color: h.muted, fontVariant: ['tabular-nums'] },
+  stopBtn: { minWidth: 64, height: 40, borderRadius: 20, backgroundColor: h.dangerWash, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  stopText: { fontFamily: font.b, fontSize: 13.5, color: h.danger },
+  retryBtn: { minWidth: 64, height: 40, borderRadius: 20, backgroundColor: h.tealWash, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  retryText: { fontFamily: font.b, fontSize: 13.5, color: h.tealText },
+  stopAllHit: { marginTop: 6 },
+  stopAll: { minHeight: 52, borderRadius: 18, borderWidth: 1.5, borderColor: 'rgba(194,59,59,0.3)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  stopAllText: { fontFamily: font.b, fontSize: 15, color: h.danger },
+  error: { fontFamily: font.m, fontSize: 14, lineHeight: 20, color: h.danger },
   disabled: { opacity: 0.5 },
 })
