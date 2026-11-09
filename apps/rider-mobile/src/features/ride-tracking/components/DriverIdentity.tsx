@@ -84,13 +84,15 @@ export function DriverRow({ view, photo, right }: { view: DriverIdentityView; ph
       <DriverAvatar view={view} photo={photo} size="md" />
       <View style={styles.rowInfo}>
         <Text style={styles.rowName} numberOfLines={1}>{view.name}</Text>
-        <View style={styles.rowMeta}>
-          {view.ratingText ? <><FontAwesome name="star" size={10} color="#E2A93B" /><Text style={styles.rowMetaStrong}>{view.ratingText}</Text><Text style={styles.rowMetaText}>·</Text></> : null}
-          <Text style={styles.rowMetaText} numberOfLines={1}>{view.tripsText}</Text>
-        </View>
+        {view.ratingText ? (
+          <View style={styles.rowMeta}>
+            <FontAwesome name="star" size={10} color="#E2A93B" /><Text style={styles.rowMetaStrong}>{view.ratingText}</Text><Text style={styles.rowMetaText}>·</Text>
+            <Text style={styles.rowMetaText} numberOfLines={1}>{view.tripsText}</Text>
+          </View>
+        ) : null}
         <View style={styles.rowMeta}>
           {view.swatch ? <View style={[styles.swatchSm, { backgroundColor: view.swatch }]} /> : null}
-          <Text style={[styles.rowMetaText, { flexShrink: 1 }]} numberOfLines={1}>{view.vehicleLine}{view.plate ? ` · ${view.plate}` : ''}</Text>
+          <Text style={[styles.rowMetaText, { flexShrink: 1 }]} numberOfLines={1}>{view.plate ? `${view.plate} · ` : ''}{view.vehicleLine}</Text>
         </View>
       </View>
       {right}
