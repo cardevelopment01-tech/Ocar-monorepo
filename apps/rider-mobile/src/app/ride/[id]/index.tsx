@@ -9,7 +9,7 @@ import { triggerSos } from '@/features/safety/api'
 import { useLocationStore } from '@/store/useLocationStore'
 import { useLiveLocation } from '@/features/home/useLiveLocation'
 import { SearchingBar } from '@/features/ride-tracking/components/SearchingBar'
-import { RideActions } from '@/features/ride-tracking/components/RideActions'
+import { TripDetailsRow } from '@/features/ride-tracking/components/TripDetailsRow'
 import { DriverCard } from '@/features/ride-tracking/components/DriverCard'
 import { MeetAtRow, PinBand } from '@/features/ride-tracking/components/DriverIdentity'
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
@@ -118,8 +118,8 @@ export default function RideTrackingScreen() {
   const [pickupUpdating, setPickupUpdating] = useState(false)
   const [pickupError, setPickupError] = useState<string | null>(null)
   const [pickupToast, setPickupToast] = useState(false)
-  // Open by default: pickup, drop and stops are the first thing a rider on a live trip looks for.
-  const [detailsExpanded, setDetailsExpanded] = useState(true)
+  // Collapsed by default, as in the approved design: the sheet stays calm and the details open in place from one row.
+  const [detailsExpanded, setDetailsExpanded] = useState(false)
   // Height of the docked sheet, so the map frames the trip (and the car) above it, not underneath.
   const [sheetHeight, setSheetHeight] = useState(0)
   // Opening "Trip details" adds content below the fold of the sheet; scroll it into view or the tap looks like it did
@@ -451,21 +451,25 @@ export default function RideTrackingScreen() {
           ) : null}
           {canShare ? <SharingBanner count={tripShare.shares.length} onManage={() => setManageOpen(true)} onStop={() => confirmStopAll(() => { void tripShare.stopAll().then((ok) => { if (!ok) Alert.alert('Could not stop sharing', 'Check your connection and try again. Your links are still active.') }) }, tripShare.shares.some((s) => s.isSos))} /> : null}
           {hasDriver ? (
-            <RideActions
+            <TripDetailsRow
+              open={detailsExpanded}
+              onToggle={() => setDetailsExpanded((v) => !v)}
+              hint={[canAddStop ? 'Add stop' : null, canCancel ? 'cancel' : null, !canAddStop && !canCancel ? 'Route and fare' : null].filter(Boolean).join(', ')}
               actions={[
-                ...(canShare ? [{ key: 'share', label: 'Share trip', short: 'Share', icon: 'share-2' as const, onPress: () => setShareOpen(true) }] : []),
-                { key: 'details', label: detailsExpanded ? 'Hide details' : 'Trip details', short: detailsExpanded ? 'Hide' : 'Details', icon: detailsExpanded ? 'chevron-up' : 'file-text', onPress: () => setDetailsExpanded((v) => !v) },
-                ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', short: 'Pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
-                ...(canAddStop ? [{ key: 'stop', label: 'Add stop', short: 'Stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),
-                ...(canCancel ? [{ key: 'cancel', label: 'Cancel ride', short: 'Cancel', icon: 'x-circle' as const, destructive: true, onPress: () => setShowCancelSheet(true) }] : []),
+                ...(canAddStop ? [{ key: 'stop', label: 'Add stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),
+                ...(canShare ? [{ key: 'share', label: 'Share live trip', icon: 'share' as const, onPress: () => setShareOpen(true) }] : []),
+                ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
               ]}
-            />
-          ) : null}
-          {detailsExpanded && hasDriver ? (
-            <View style={styles.detailsExpanded}>
+              cancel={canCancel ? {
+                note: ride.status === 'driver_arrived'
+                  ? 'Your driver has arrived, so a small cancellation fee may apply.'
+                  : 'No fee before your driver arrives. A small fee may apply after.',
+                onPress: () => setShowCancelSheet(true),
+              } : null}
+            >
               <TripDetailsCard ride={ride} fare={fare} />
               {ride.stops.length > 0 ? <StopTimeline stops={ride.stops} {...(canSkipStop ? { onSkip: handleSkipStop } : {})} /> : null}
-            </View>
+            </TripDetailsRow>
           ) : null}
 
         </ScrollView>
@@ -530,7 +534,6 @@ const styles = StyleSheet.create({
   cancelButtonText: { fontFamily: font.b, fontSize: 15, color: h.danger },
   editPickupLink: { alignItems: 'center', justifyContent: 'center', minHeight: 44 },
   editPickupLinkText: { fontFamily: font.b, fontSize: 13.5, color: h.tealText },
-  detailsExpanded: { gap: 12 },
   unreachableBanner: { gap: 6, backgroundColor: h.goldWash, borderRadius: 18, padding: 16 },
   unreachableTitle: { fontFamily: font.b, fontSize: 14.5, color: h.ivory },
   unreachableBody: { fontFamily: font.m, fontSize: 13.5, lineHeight: 20, color: h.muted },
