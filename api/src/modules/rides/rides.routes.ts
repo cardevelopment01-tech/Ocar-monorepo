@@ -152,8 +152,8 @@ router.post('/sessions/heartbeat', authenticate(), onlyDriver, async (req, res, 
     if (typeof raw !== 'string' && typeof raw !== 'number') throw httpError(422, 'sessionId is required', 'VALIDATION_ERROR')
     let sessionId: bigint
     try { sessionId = BigInt(raw) } catch { throw httpError(422, 'sessionId is invalid', 'VALIDATION_ERROR') }
-    await service.driverHeartbeat(req.driver!.id, sessionId)
-    res.json({ success: true })
+    const result = await service.driverHeartbeat(req.driver!.id, sessionId)
+    res.json({ success: true, sessionActive: result !== 'ended' })
   } catch (err) { next(err) }
 })
 

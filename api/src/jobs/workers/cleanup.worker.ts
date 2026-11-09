@@ -19,6 +19,7 @@ import {
   IDLE_HEARTBEAT_PAUSE_SECONDS,
   IDLE_HEARTBEAT_OFFLINE_MINUTES,
   POSITION_MAX_AGE_SECONDS,
+  SESSION_POSITION_HARD_LIMIT_SECONDS,
 } from '@/constants/limits'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
@@ -98,17 +99,22 @@ export const cleanupWorker = new Worker(
     for (const id of quiet90Ids) {
       const alive = (hb90.get(id) ?? 0) > Date.now() - IDLE_HEARTBEAT_PAUSE_SECONDS * 1000 || conn90.has(id)
       if (alive && !posOld.has(id)) continue
-      await pauseAvailability(BigInt(id))
-      // Remember that the sweep (not the driver) paused them, for this session, so a heartbeat after a network blip can resume them.
-      const session = await repo.getActiveSession(BigInt(id))
-      if (session) await redis.set(driverSweepPausedKey(id), String(session.id), 'EX', 6 * 3600).catch(() => undefined)
+      // Re-check right before acting: a fix or heartbeat can have landed while the lists above were being built.
+      if (!(await repo.isDriverStale(BigInt(id), IDLE_HEARTBEAT_PAUSE_SECONDS))) continue
+      // Pauses only a driver who is currently available, and leaves a marker only then, so a heartbeat can resume exactly the drivers the
+      // sweep paused (never one who paused on purpose).
+      const pausedSession = await repo.pauseIfAvailable(BigInt(id))
+      if (pausedSession) await redis.set(driverSweepPausedKey(id), pausedSession, 'EX', 6 * 3600).catch(() => undefined)
     }
     const quiet10Ids = quiet10.map((d) => d.driver_id)
     const hb10 = await lastHeartbeatMs(quiet10Ids)
     const conn10 = await connectedAmong(quiet10Ids.filter((id) => !((hb10.get(id) ?? 0) > Date.now() - IDLE_HEARTBEAT_OFFLINE_MINUTES * 60_000)))
+    // A position this old ends the session whatever the app says: a heartbeat or a connection shows the app is open, not that the driver can take a ride.
+    const hardLimit = new Set((await repo.findStaleOnlineDrivers(SESSION_POSITION_HARD_LIMIT_SECONDS)).map((d) => d.driver_id))
     for (const d of quiet10) {
       const alive = (hb10.get(d.driver_id) ?? 0) > Date.now() - IDLE_HEARTBEAT_OFFLINE_MINUTES * 60_000 || conn10.has(d.driver_id)
-      if (alive) continue
+      if (alive && !hardLimit.has(d.driver_id)) continue
+      if (!(await repo.isDriverStale(BigInt(d.driver_id), IDLE_HEARTBEAT_OFFLINE_MINUTES * 60))) continue
       await goOffline(BigInt(d.driver_id), 'stale_heartbeat')
       // Hardcoded copy, not a notification_templates row (unlike most other notification
       // types) — deliberately out of scope for this fix; revisit if ops needs to edit this wording.

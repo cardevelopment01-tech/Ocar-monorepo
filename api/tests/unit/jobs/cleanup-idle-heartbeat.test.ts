@@ -8,7 +8,8 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   findStuckDispatchRides:          vi.fn().mockResolvedValue([]),
   findStaleAcceptedOrArrivedRides: vi.fn().mockResolvedValue([]),
   findStaleOnlineDrivers:          vi.fn().mockResolvedValue([]),
-  getActiveSession:                vi.fn().mockResolvedValue({ id: '55' }),
+  isDriverStale:                   vi.fn().mockResolvedValue(true),
+  pauseIfAvailable:                vi.fn().mockResolvedValue('55'),
 }))
 vi.mock('@/modules/rides/rides.service', () => ({
   expireStaleRequestedRide:       vi.fn(),
@@ -47,7 +48,7 @@ describe('cleanup worker — in-progress ride sweep', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (cleanupWorker as any).__processor()
 
-    expect(pauseAvailability).not.toHaveBeenCalled()
+    expect(repo.pauseIfAvailable).not.toHaveBeenCalled()
     // Already flagged — flagRideForReview must not be called a second time
     expect(repo.flagRideForReview).not.toHaveBeenCalled()
   })
@@ -62,33 +63,29 @@ describe('cleanup worker — in-progress ride sweep', () => {
     await (cleanupWorker as any).__processor()
 
     expect(repo.flagRideForReview).toHaveBeenCalledWith(BigInt(2), 'gps_stale')
-    expect(pauseAvailability).not.toHaveBeenCalled()
+    expect(repo.pauseIfAvailable).not.toHaveBeenCalled()
   })
 })
 
 describe('cleanup worker — idle heartbeat sweep', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks(); vi.mocked(repo.isDriverStale).mockResolvedValue(true); vi.mocked(repo.pauseIfAvailable).mockResolvedValue('55' as never) })
 
   it('pauses a driver stale past the short tier without ending their session', async () => {
     vi.mocked(repo.findStaleInProgressRides).mockResolvedValue([])
-    vi.mocked(repo.findStaleOnlineDrivers)
-      .mockResolvedValueOnce([{ driver_id: '7' }] as never)  // short-tier call
-      .mockResolvedValueOnce([] as never)                     // long-tier call
+    vi.mocked(repo.findStaleOnlineDrivers).mockImplementation((async (secs: number) => (secs === IDLE_HEARTBEAT_PAUSE_SECONDS ? [{ driver_id: '7' }] : [])) as never)
 
     const { cleanupWorker } = await import('@/jobs/workers/cleanup.worker')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (cleanupWorker as any).__processor()
 
-    expect(pauseAvailability).toHaveBeenCalledWith(BigInt(7))
+    expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(7))
     expect(goOffline).not.toHaveBeenCalled()
     expect(notifyOwner).not.toHaveBeenCalled()
   })
 
   it('ends the session and notifies the driver once past the long tier', async () => {
     vi.mocked(repo.findStaleInProgressRides).mockResolvedValue([])
-    vi.mocked(repo.findStaleOnlineDrivers)
-      .mockResolvedValueOnce([{ driver_id: '7' }] as never)
-      .mockResolvedValueOnce([{ driver_id: '7' }] as never)
+    vi.mocked(repo.findStaleOnlineDrivers).mockImplementation((async (secs: number) => (secs <= IDLE_HEARTBEAT_OFFLINE_MINUTES * 60 ? [{ driver_id: '7' }] : [])) as never)
 
     const { cleanupWorker } = await import('@/jobs/workers/cleanup.worker')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,8 +112,8 @@ describe('cleanup worker — idle heartbeat sweep', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (cleanupWorker as any).__processor()
 
-    expect(pauseAvailability).toHaveBeenCalledTimes(1)
-    expect(pauseAvailability).toHaveBeenCalledWith(BigInt(7))
+    expect(repo.pauseIfAvailable).toHaveBeenCalledTimes(1)
+    expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(7))
     expect(goOffline).toHaveBeenCalledTimes(1)
     expect(goOffline).toHaveBeenCalledWith(BigInt(7), 'stale_heartbeat')
     expect(notifyOwner).toHaveBeenCalledTimes(1)
@@ -130,10 +127,9 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     await (cleanupWorker as any).__processor()
   }
   // findStaleOnlineDrivers is called for the 90 s pause tier, then the 10 min list (which is both the position cap and the offline tier).
-  const stale = (pause: string[], tenMin: string[]) => {
-    vi.mocked(repo.findStaleOnlineDrivers)
-      .mockResolvedValueOnce(pause.map((driver_id) => ({ driver_id })) as never)
-      .mockResolvedValueOnce(tenMin.map((driver_id) => ({ driver_id })) as never)
+  const stale = (pause: string[], tenMin: string[], hour: string[] = []) => {
+    vi.mocked(repo.findStaleOnlineDrivers).mockImplementation((async (secs: number) =>
+      (secs <= IDLE_HEARTBEAT_PAUSE_SECONDS ? pause : secs <= IDLE_HEARTBEAT_OFFLINE_MINUTES * 60 ? tenMin : hour).map((driver_id) => ({ driver_id }))) as never)
   }
   const heartbeats = (m: Record<string, number>) =>
     vi.mocked(redis.mget).mockImplementation((async (keys: string[]) => keys.map((k) => { const id = k.replace('driver:hb:', ''); return m[id] ? String(m[id]) : null })) as never)
@@ -146,7 +142,8 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     vi.mocked(repo.findStaleAcceptedOrArrivedRides).mockResolvedValue([])
     vi.mocked(isDriverSocketConnected).mockResolvedValue(false)
     vi.mocked(notifyOwner).mockResolvedValue(undefined as never)
-    vi.mocked(repo.getActiveSession).mockResolvedValue({ id: '55' } as never)
+    vi.mocked(repo.isDriverStale).mockResolvedValue(true)
+    vi.mocked(repo.pauseIfAvailable).mockResolvedValue('55' as never)
     vi.mocked(redis.set).mockResolvedValue('OK' as never)
     heartbeats({})
   })
@@ -155,7 +152,7 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     stale(['7'], [])
     heartbeats({ '7': Date.now() - 5_000 })
     await run()
-    expect(pauseAvailability).not.toHaveBeenCalled()
+    expect(repo.pauseIfAvailable).not.toHaveBeenCalled()
     expect(goOffline).not.toHaveBeenCalled()
   })
 
@@ -163,7 +160,7 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     stale(['7'], [])
     vi.mocked(isDriverSocketConnected).mockResolvedValue(true)
     await run()
-    expect(pauseAvailability).not.toHaveBeenCalled()
+    expect(repo.pauseIfAvailable).not.toHaveBeenCalled()
     expect(goOffline).not.toHaveBeenCalled()
   })
 
@@ -172,14 +169,14 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     heartbeats({ '7': Date.now() - 5_000 })
     vi.mocked(isDriverSocketConnected).mockResolvedValue(true)
     await run()
-    expect(pauseAvailability).toHaveBeenCalledWith(BigInt(7))
+    expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(7))
     expect(goOffline).not.toHaveBeenCalled()
   })
 
   it('no heartbeat and no connection: unchanged, paused then ended', async () => {
     stale(['8'], ['8'])
     await run()
-    expect(pauseAvailability).toHaveBeenCalledWith(BigInt(8))
+    expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(8))
     expect(goOffline).toHaveBeenCalledWith(BigInt(8), 'stale_heartbeat')
   })
 
@@ -187,14 +184,14 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     stale(['9'], [])
     heartbeats({ '9': Date.now() - 5 * 60_000 })
     await run()
-    expect(pauseAvailability).toHaveBeenCalledWith(BigInt(9))
+    expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(9))
   })
 
   it('a heartbeat 5 minutes old spares the offline end (the driver is paused for the old position, not ended)', async () => {
     stale(['9'], ['9'])
     heartbeats({ '9': Date.now() - 5 * 60_000 })
     await run()
-    expect(pauseAvailability).toHaveBeenCalledWith(BigInt(9))
+    expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(9))
     expect(goOffline).not.toHaveBeenCalled()
   })
 
@@ -202,7 +199,7 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     stale(['8'], ['8'])
     vi.mocked(redis.mget).mockRejectedValue(new Error('down') as never)
     await run()
-    expect(pauseAvailability).toHaveBeenCalledWith(BigInt(8))
+    expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(8))
     expect(goOffline).toHaveBeenCalledWith(BigInt(8), 'stale_heartbeat')
   })
 
@@ -223,5 +220,28 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     heartbeats({ '7': Date.now() - 5_000 })
     await run()
     expect(redis.set).not.toHaveBeenCalled()
+  })
+
+  it('a driver who had already paused on purpose (nothing to flip) gets no marker', async () => {
+    stale(['8'], [])
+    vi.mocked(repo.pauseIfAvailable).mockResolvedValue(null as never)
+    await run()
+    expect(redis.set).not.toHaveBeenCalled()
+  })
+
+  it('a driver who reported while the sweep was looking is left alone (re-check before acting)', async () => {
+    stale(['8'], ['8'])
+    vi.mocked(repo.isDriverStale).mockResolvedValue(false)
+    await run()
+    expect(repo.pauseIfAvailable).not.toHaveBeenCalled()
+    expect(goOffline).not.toHaveBeenCalled()
+  })
+
+  it('a position older than the hard limit ends the session even with a heartbeat or a connection', async () => {
+    stale(['7'], ['7'], ['7'])
+    heartbeats({ '7': Date.now() - 5_000 })
+    vi.mocked(isDriverSocketConnected).mockResolvedValue(true)
+    await run()
+    expect(goOffline).toHaveBeenCalledWith(BigInt(7), 'stale_heartbeat')
   })
 })

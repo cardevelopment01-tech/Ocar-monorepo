@@ -197,10 +197,10 @@ export function initSocketServer(httpServer: HttpServer): Server {
       // Liveness only (no position): see driverHeartbeat in rides.service.ts.
       // The app passes an ack callback so it can tell a delivered heartbeat from one lost on a half-dead connection (and then use HTTP).
       socket.on('driver:heartbeat', safeHandler(log, 'driver:heartbeat', (data?: { sessionId?: unknown }, ack?: unknown) => {
-        const reply = (ok: boolean) => { if (typeof ack === 'function') (ack as (r: { ok: boolean }) => void)({ ok }) }
+        const reply = (ok: boolean, sessionActive = true) => { if (typeof ack === 'function') (ack as (r: { ok: boolean; sessionActive: boolean }) => void)({ ok, sessionActive }) }
         const sessionId = parseId(data?.sessionId)
         if (sessionId === null) { reply(false); return }
-        driverHeartbeat(BigInt(user.sub), sessionId).then(() => reply(true)).catch((err: unknown) => { log.error({ err }, 'driver:heartbeat failed'); reply(false) })
+        driverHeartbeat(BigInt(user.sub), sessionId).then((r) => reply(true, r !== 'ended')).catch((err: unknown) => { log.error({ err }, 'driver:heartbeat failed'); reply(false) })
       }))
 
       // On reconnect, immediately re-deliver any assignments the driver may have

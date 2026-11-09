@@ -1,5 +1,5 @@
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
-import { readPersistedSessionId } from './persistedSession'
+import { readPersistedSessionId, clearPersistedSessionId } from './persistedSession'
 
 // The in-memory session id, or (in a bare background process after the app was killed, before the session is re-derived) the one on disk.
 async function resolveSessionId(): Promise<string | null> {
@@ -60,6 +60,9 @@ type HeartbeatDeps = {
   api: Pick<ReturnType<typeof getApi>, 'post'>
 }
 const HEARTBEAT_ACK_TIMEOUT_MS = 5000
+const HEARTBEAT_BACKOFF_START_MS = 3000
+const HEARTBEAT_BACKOFF_MAX_MS = 20_000
+let heartbeatBackoffMs = 0
 
 // `deps` is for tests only; the app resolves the socket and API lazily (see the file header).
 export async function emitHeartbeat(nowMs: number = Date.now(), deps?: HeartbeatDeps): Promise<void> {
@@ -70,24 +73,29 @@ export async function emitHeartbeat(nowMs: number = Date.now(), deps?: Heartbeat
   const socket = deps?.socket ?? getSocket()
   if (socket.connected) {
     // A socket that says "connected" can be half dead (a network blip, a sleeping radio): ask the server to confirm it got the heartbeat.
-    const delivered = await new Promise<boolean>((resolve) => {
-      socket.timeout(HEARTBEAT_ACK_TIMEOUT_MS).emit('driver:heartbeat', { sessionId }, (err: unknown, res?: { ok?: boolean }) => resolve(!err && res?.ok === true))
+    const reply = await new Promise<{ ok?: boolean; sessionActive?: boolean } | null>((resolve) => {
+      socket.timeout(HEARTBEAT_ACK_TIMEOUT_MS).emit('driver:heartbeat', { sessionId }, (err: unknown, res?: { ok?: boolean; sessionActive?: boolean }) => resolve(!err && res?.ok === true ? res : null))
     })
-    if (delivered) return
+    if (reply) { heartbeatBackoffMs = 0; if (reply.sessionActive === false) clearPersistedSessionId(); return }
   }
-  // No socket, or no confirmation: one HTTP call, best effort. If that fails too the next task run tries again at once.
+  // No socket, or no confirmation: one HTTP call, best effort.
   if (heartbeatHttpInFlight) return
   heartbeatHttpInFlight = true
   try {
-    await (deps?.api ?? getApi()).post('/api/v1/rides/sessions/heartbeat', { sessionId })
+    const res = await (deps?.api ?? getApi()).post('/api/v1/rides/sessions/heartbeat', { sessionId }) as { data?: { sessionActive?: boolean } } | undefined
+    heartbeatBackoffMs = 0
+    // The server has no live session for this driver: forget the saved id so the background task stops reporting for an ended session.
+    if (res?.data?.sessionActive === false) clearPersistedSessionId()
   } catch {
-    lastHeartbeatAtMs = 0
+    // Retry sooner than the normal interval (a short blip should not cost a whole 20 s), but back off while the network stays down.
+    heartbeatBackoffMs = Math.min(heartbeatBackoffMs ? heartbeatBackoffMs * 2 : HEARTBEAT_BACKOFF_START_MS, HEARTBEAT_BACKOFF_MAX_MS)
+    lastHeartbeatAtMs = nowMs - HEARTBEAT_MIN_INTERVAL_MS + heartbeatBackoffMs
   } finally {
     heartbeatHttpInFlight = false
   }
 }
 
-export function resetHeartbeatForTests(): void { lastHeartbeatAtMs = 0; heartbeatHttpInFlight = false }
+export function resetHeartbeatForTests(): void { lastHeartbeatAtMs = 0; heartbeatHttpInFlight = false; heartbeatBackoffMs = 0 }
 
 export async function emitLocationTick(fix: LocationFix): Promise<void> {
   const sessionId = await resolveSessionId()

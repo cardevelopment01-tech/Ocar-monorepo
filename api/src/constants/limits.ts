@@ -155,6 +155,9 @@ export const IDLE_HEARTBEAT_OFFLINE_MINUTES = 10
 /** A driver whose last position is older than this is paused even if their app still heartbeats or is connected: matching ranks by that
  *  position, so it must not be arbitrarily old. */
 export const POSITION_MAX_AGE_SECONDS = 10 * 60
+/** Hard ceiling: a driver with no usable position for this long has their session ended even if the app still heartbeats or is connected
+ *  (a dead GPS or a phone left on is not a driver who can take a ride). */
+export const SESSION_POSITION_HARD_LIMIT_SECONDS = 60 * 60
 export const HEARTBEAT_TTL_SECONDS = 15 * 60
 export const HEARTBEAT_MIN_INTERVAL_SECONDS = 5
 
