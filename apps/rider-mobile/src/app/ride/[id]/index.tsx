@@ -95,6 +95,13 @@ export default function RideTrackingScreen() {
   const [pickupError, setPickupError] = useState<string | null>(null)
   const [pickupToast, setPickupToast] = useState(false)
   const [detailsExpanded, setDetailsExpanded] = useState(false)
+  // Opening "Trip details" adds content below the fold of the sheet; scroll it into view or the tap looks like it did nothing.
+  const sheetScrollRef = useRef<ScrollView>(null)
+  useEffect(() => {
+    if (!detailsExpanded) return
+    const t = setTimeout(() => sheetScrollRef.current?.scrollToEnd({ animated: true }), 80)
+    return () => clearTimeout(t)
+  }, [detailsExpanded])
   // Stops whose "driver can't reach this" prompt the rider chose to keep; the timeline Skip still works.
   const [keptStops, setKeptStops] = useState<number[]>([])
   const [skippingStop, setSkippingStop] = useState(false)
@@ -285,6 +292,7 @@ export default function RideTrackingScreen() {
           <View style={styles.handle} />
         </Pressable>
         <ScrollView
+          ref={sheetScrollRef}
           style={styles.sheetScroll}
           contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
           showsVerticalScrollIndicator={false}
