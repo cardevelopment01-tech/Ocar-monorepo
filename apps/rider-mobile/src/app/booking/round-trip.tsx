@@ -4,7 +4,9 @@ import { useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { LinearGradient } from 'expo-linear-gradient'
+import { Button, font, h, spacing } from '@ocar/mobile-shared'
+import { IconButton } from '@/components/ui'
 import { useBookingDraftStore } from '@/features/booking/store'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { ScheduleSheet, formatPickupTime } from '@/features/booking/components/ScheduleSheet'
@@ -61,15 +63,7 @@ export default function RoundTripScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable
-          onPress={() => goBack(router)}
-          style={({ pressed }) => [styles.backButton, pressed ? styles.pressedScale : null]}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Feather name="arrow-left" size={17} color={colors.primaryDark} />
-        </Pressable>
+        <IconButton icon="arrow-left" label="Go back" onPress={() => goBack(router)} />
         <View style={styles.headerText}>
           <Text style={styles.title}>Round Trip</Text>
           <Text style={styles.subtitle}>Driver stays and brings you back</Text>
@@ -80,14 +74,14 @@ export default function RoundTripScreen() {
           accessibilityRole="button"
           accessibilityLabel="Who's travelling"
         >
-          <Feather name="user" size={12} color={colors.primaryDark} />
+          <Feather name="user" size={16} color={h.ivory} />
           <Text style={styles.riderPillText} numberOfLines={1}>{bookingForOther ? riderName : 'For me'}</Text>
         </Pressable>
       </View>
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
         <View style={styles.routeCard}>
-          <Feather name="map-pin" size={13} color={colors.ink600} />
+          <Feather name="map-pin" size={16} color={h.tealText} />
           <Text style={styles.routeText} numberOfLines={1}>{drop?.address ?? 'Destination'}</Text>
         </View>
 
@@ -98,11 +92,11 @@ export default function RoundTripScreen() {
         ) : null}
 
         <Pressable onPress={() => setScheduleSheetOpen(true)} style={styles.scheduleChip} accessibilityRole="button">
-          <Feather name="clock" size={12} color={colors.primaryDark} />
+          <Feather name="clock" size={14} color={h.tealText} />
           <Text style={styles.scheduleChipText}>{scheduledFor ? formatPickupTime(new Date(scheduledFor)) : 'Now'}</Text>
           {scheduledFor ? (
             <Pressable onPress={() => setScheduledFor(null)} hitSlop={8} accessibilityLabel="Reset to ride now">
-              <Feather name="x" size={12} color={colors.primaryDark} />
+              <Feather name="x" size={14} color={h.tealText} />
             </Pressable>
           ) : null}
         </Pressable>
@@ -118,17 +112,17 @@ export default function RoundTripScreen() {
         <View style={styles.hourCard}>
           <Text style={styles.hourLabel}>How long do you need the driver?</Text>
           <View style={styles.hourRow}>
-            {HOUR_OPTIONS.map((h) => {
-              const active = selectedHours === h
+            {HOUR_OPTIONS.map((hrs) => {
+              const active = selectedHours === hrs
               return (
                 <Pressable
-                  key={h}
-                  onPress={() => setSelectedHours(h)}
+                  key={hrs}
+                  onPress={() => setSelectedHours(hrs)}
                   style={[styles.hourChip, active ? styles.hourChipActive : null]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
                 >
-                  <Text style={[styles.hourChipText, active ? styles.hourChipTextActive : null]}>{h}h</Text>
+                  <Text style={[styles.hourChipText, active ? styles.hourChipTextActive : null]}>{hrs}h</Text>
                 </Pressable>
               )
             })}
@@ -147,14 +141,8 @@ export default function RoundTripScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-        <Pressable
-          onPress={handleProceed}
-          disabled={!canProceed}
-          style={({ pressed }) => [styles.proceedBtn, !canProceed ? styles.disabled : null, pressed && canProceed ? styles.pressedScale : null]}
-          accessibilityRole="button"
-        >
-          <Text style={styles.proceedText}>{buttonLabel}</Text>
-        </Pressable>
+        <LinearGradient pointerEvents="none" colors={['rgba(246,251,251,0)', h.canvas]} style={styles.fade} />
+        <Button variant="cta" label={buttonLabel} onPress={handleProceed} disabled={!canProceed} />
       </View>
 
       <RiderSheet
@@ -171,37 +159,32 @@ export default function RoundTripScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
-  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(20,23,26,0.08)', boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
-  pressedScale: { transform: [{ scale: 0.97 }] },
+  screen: { flex: 1, backgroundColor: h.canvas },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 8 },
   headerText: { flex: 1 },
-  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  subtitle: { ...typography.caption, color: colors.ink400, marginTop: 1 },
-  headerIcon: { width: 40, height: 40, borderRadius: 16, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface2, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, maxWidth: 110 },
-  riderPillText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.bold },
-  scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: colors.primarySubtle, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2 },
-  scheduleChipText: { ...typography.caption, color: colors.primaryDark, fontFamily: fonts.bold },
+  title: { fontFamily: font.b, fontSize: 20, letterSpacing: -0.2, color: h.ivory },
+  subtitle: { fontFamily: font.r, fontSize: 12.5, color: h.muted, marginTop: 1 },
+  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, paddingHorizontal: 14, borderRadius: 22, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, maxWidth: 130 },
+  riderPillText: { fontFamily: font.sb, fontSize: 14, color: h.ivory, flexShrink: 1 },
+  scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', minHeight: 40, backgroundColor: h.tealWash, borderRadius: 999, paddingHorizontal: 14 },
+  scheduleChipText: { fontFamily: font.sb, fontSize: 13, color: h.tealText },
   body: { flex: 1 },
-  bodyContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.md },
-  routeCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.md },
-  routeText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold, flex: 1 },
-  routeMeta: { ...typography.caption, color: colors.ink600 },
-  hourCard: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.borderLight, padding: spacing.md, gap: spacing.sm },
-  hourLabel: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
-  hourRow: { flexDirection: 'row', gap: spacing.xs },
-  hourChip: { flex: 1, paddingVertical: spacing.sm + 2, borderRadius: 12, backgroundColor: colors.primarySubtle, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center' },
-  hourChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  hourChipText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
-  hourChipTextActive: { color: colors.inkInverse },
-  hourHint: { ...typography.caption, color: colors.ink400 },
-  includedCard: { backgroundColor: colors.primarySubtle, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
-  includedRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
-  includedDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginTop: 6 },
-  includedText: { ...typography.caption, color: colors.primaryDark, fontFamily: fonts.medium, flex: 1 },
-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight, backgroundColor: colors.bg },
-  proceedBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 54, boxShadow: '0 10px 24px rgba(14,143,163,0.28)' },
-  disabled: { opacity: 0.5 },
-  proceedText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
+  bodyContent: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24, gap: 14 },
+  routeCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: h.surface, borderRadius: 20, borderWidth: 1, borderColor: h.line07, boxShadow: '0 2px 8px rgba(20,23,26,0.05)', padding: 16 },
+  routeText: { fontFamily: font.sb, fontSize: 15, color: h.ivory, flex: 1 },
+  routeMeta: { fontFamily: font.m, fontSize: 12.5, color: h.muted, marginHorizontal: 2, fontVariant: ['tabular-nums'] },
+  hourCard: { backgroundColor: h.surface, borderRadius: 22, borderWidth: 1, borderColor: h.line07, boxShadow: '0 2px 8px rgba(20,23,26,0.05)', padding: 16, gap: 12 },
+  hourLabel: { fontFamily: font.sb, fontSize: 14, color: h.ivory },
+  hourRow: { flexDirection: 'row', gap: 8 },
+  hourChip: { flex: 1, minHeight: 48, borderRadius: 14, backgroundColor: h.chip, borderWidth: 1.5, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  hourChipActive: { backgroundColor: h.tealCta, borderColor: h.tealCta },
+  hourChipText: { fontFamily: font.b, fontSize: 14, color: h.ivory, fontVariant: ['tabular-nums'] },
+  hourChipTextActive: { color: '#FFFFFF' },
+  hourHint: { fontFamily: font.m, fontSize: 12.5, color: h.muted },
+  includedCard: { backgroundColor: h.tealWash, borderRadius: 22, padding: 16, gap: 10 },
+  includedRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  includedDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: h.teal, marginTop: 7 },
+  includedText: { fontFamily: font.m, fontSize: 13, lineHeight: 19, color: h.tealText, flex: 1 },
+  fade: { position: 'absolute', left: 0, right: 0, top: -40, height: 40 },
+  footer: { paddingHorizontal: 18, paddingTop: 10, backgroundColor: h.canvas },
 })
