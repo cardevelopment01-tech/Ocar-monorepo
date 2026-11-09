@@ -46,10 +46,20 @@ describe('connection banner timing', () => {
     expect(seen).not.toContain('restored')
   })
 
-  it('a retry before the banner is shown does not skip ahead', () => {
+  it('a retry that starts before the banner is due is remembered: the banner opens as "reconnecting"', () => {
     const c = make(); c.setActive(true); c.setConnected(false)
     c.reconnectAttempt()
     expect(seen).toEqual([])
+    vi.advanceTimersByTime(SHOW_AFTER_MS)
+    expect(seen).toEqual(['reconnecting'])
+  })
+
+  it('a retry from an earlier outage is forgotten once the connection is back', () => {
+    const c = make(); c.setActive(true); c.setConnected(false)
+    c.reconnectAttempt(); c.setConnected(true)
+    c.setConnected(false)
+    vi.advanceTimersByTime(SHOW_AFTER_MS)
+    expect(seen).toEqual(['lost'])
   })
 
   it('shows nothing when the driver is not online or the app is in the background', () => {

@@ -28,6 +28,7 @@ export function createConnectionBannerController(
   let kind: ConnectionBannerKind = 'hidden'
   let connected = true
   let active = false
+  let retrying = false // the app often starts retrying within the first second, before the banner is due
   let showTimer: ReturnType<typeof setTimeout> | undefined
   let hideTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -37,6 +38,7 @@ export function createConnectionBannerController(
   const evaluate = () => {
     if (!active) { clearTimers(); set('hidden'); return }
     if (connected) {
+      retrying = false
       clearTimeout(showTimer); showTimer = undefined
       if (kind === 'lost' || kind === 'reconnecting') {
         set('restored')
@@ -48,13 +50,17 @@ export function createConnectionBannerController(
     // disconnected
     clearTimeout(hideTimer); hideTimer = undefined
     if (kind === 'restored') set('hidden')
-    if (kind === 'hidden' && showTimer === undefined) showTimer = setTimeout(() => { showTimer = undefined; if (!connected && active) set('lost') }, showAfterMs)
+    if (kind === 'hidden' && showTimer === undefined) showTimer = setTimeout(() => { showTimer = undefined; if (!connected && active) set(retrying ? 'reconnecting' : 'lost') }, showAfterMs)
   }
 
   return {
     setActive(next) { active = next; evaluate() },
     setConnected(next) { connected = next; evaluate() },
-    reconnectAttempt() { if (active && !connected && kind === 'lost') set('reconnecting') },
+    reconnectAttempt() {
+      if (!active || connected) return
+      retrying = true
+      if (kind === 'lost') set('reconnecting')
+    },
     dispose() { clearTimers() },
   }
 }

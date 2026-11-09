@@ -282,4 +282,14 @@ describe('cleanup worker — a driver whose app says "still here" is not silent'
     expect(asked).toContain(IDLE_HEARTBEAT_PAUSE_SECONDS)
     expect(asked).toContain(IDLE_HEARTBEAT_OFFLINE_MINUTES * 60)
   })
+
+  it('an offline period shorter than the pause is raised above it, so a driver is paused before they are ended', async () => {
+    vi.mocked(getConfigValue).mockImplementation((async (k: string, f: string) => (k === 'driver_idle_pause_seconds' ? '900' : k === 'driver_idle_offline_minutes' ? '5' : f)) as never)
+    stale(['8'], ['8'], ['8'])
+    await run()
+    const asked = vi.mocked(repo.findStaleOnlineDrivers).mock.calls.map((c) => c[0])
+    expect(asked).toContain(900)
+    expect(asked).toContain(960)
+    expect(asked).not.toContain(300)
+  })
 })

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import Animated, { Easing, FadeInUp, FadeOutUp, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated'
+import Animated, { Easing, useReducedMotion, FadeIn, FadeInUp, FadeOut, FadeOutUp, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated'
 import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useConnectionBanner } from './useConnectionBanner'
 import type { ConnectionBannerKind } from './connectionBannerController'
@@ -24,22 +24,23 @@ export function ConnectionBanner() {
   const insets = useSafeAreaInsets()
   const pulse = useSharedValue(1)
   const reconnecting = kind === 'reconnecting'
+  const reduceMotion = useReducedMotion()
 
   useEffect(() => {
-    if (reconnecting) pulse.value = withRepeat(withSequence(withTiming(0.45, { duration: 700, easing: Easing.inOut(Easing.quad) }), withTiming(1, { duration: 700, easing: Easing.inOut(Easing.quad) })), -1)
+    if (reconnecting && !reduceMotion) pulse.value = withRepeat(withSequence(withTiming(0.45, { duration: 700, easing: Easing.inOut(Easing.quad) }), withTiming(1, { duration: 700, easing: Easing.inOut(Easing.quad) })), -1)
     else pulse.value = withTiming(1, { duration: 150 })
-  }, [reconnecting, pulse])
+  }, [reconnecting, reduceMotion, pulse])
   const badgeStyle = useAnimatedStyle(() => ({ opacity: pulse.value }))
 
-  if (kind === 'hidden') return null
-  const c = COPY[kind]
+  const c = kind === 'hidden' ? null : COPY[kind]
 
+  // The outer layer stays mounted (empty and inert when hidden) so the capsule's exit animation can actually play.
   return (
     <View pointerEvents="none" style={[styles.layer, { top: insets.top + spacing.sm }]}>
-      <Animated.View
+      {c ? <Animated.View
         key={kind === 'restored' ? 'restored' : 'trouble'}
-        entering={FadeInUp.duration(280).easing(Easing.out(Easing.cubic))}
-        exiting={FadeOutUp.duration(220).easing(Easing.in(Easing.cubic))}
+        entering={(reduceMotion ? FadeIn : FadeInUp).duration(reduceMotion ? 120 : 280).easing(Easing.out(Easing.cubic))}
+        exiting={(reduceMotion ? FadeOut : FadeOutUp).duration(reduceMotion ? 100 : 220).easing(Easing.in(Easing.cubic))}
         accessibilityRole="alert"
         accessibilityLiveRegion="polite"
         accessibilityLabel={`${c.title}. ${c.body}`}
@@ -52,7 +53,7 @@ export function ConnectionBanner() {
           <Text style={styles.title} numberOfLines={1}>{c.title}</Text>
           <Text style={styles.body} numberOfLines={2}>{c.body}</Text>
         </View>
-      </Animated.View>
+      </Animated.View> : null}
     </View>
   )
 }

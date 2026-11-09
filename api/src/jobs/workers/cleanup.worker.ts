@@ -92,11 +92,15 @@ export const cleanupWorker = new Worker(
     }
     // Live values (admin settings, cached ~30 s), falling back to the defaults on a missing or unusable value.
     const intSetting = async (key: string, fallback: number, min: number, max: number) => {
-      const n = Number(await getConfigValue(key, String(fallback)))
-      return Number.isInteger(n) && n >= min && n <= max ? n : fallback
+      const raw = await getConfigValue(key, String(fallback))
+      const n = Number(raw)
+      if (Number.isInteger(n) && n >= min && n <= max) return n
+      log.warn({ key, value: raw }, 'idle setting out of range or not a whole number, using the default')
+      return fallback
     }
     const pauseSec = await intSetting('driver_idle_pause_seconds', IDLE_HEARTBEAT_PAUSE_SECONDS, 30, 900)
-    const offlineSec = (await intSetting('driver_idle_offline_minutes', IDLE_HEARTBEAT_OFFLINE_MINUTES, 5, 240)) * 60
+    // Offline must come after pause, or a silent driver would be ended without ever being paused (no resume marker, no pause step).
+    const offlineSec = Math.max((await intSetting('driver_idle_offline_minutes', IDLE_HEARTBEAT_OFFLINE_MINUTES, 5, 240)) * 60, pauseSec + 60)
     const posCapSec = Math.max(POSITION_MAX_AGE_SECONDS, pauseSec)
     const hardSec = Math.max(SESSION_POSITION_HARD_LIMIT_SECONDS, offlineSec)
     const quiet90 = await repo.findStaleOnlineDrivers(pauseSec)

@@ -63,6 +63,8 @@ const META: Record<string, Meta> = {
 
   driver_warning_suspend_threshold: { group: 'drivers', title: 'Warnings before auto-suspension', help: 'Warnings inside the window that automatically suspend a driver.', suffix: ' warnings' },
   driver_warning_window_days:       { group: 'drivers', title: 'Warning window', help: 'How far back warnings are counted.', suffix: ' days' },
+  driver_idle_pause_seconds:        { group: 'drivers', title: 'Pause a silent driver after', help: 'A driver whose app has gone quiet stops getting ride offers after this long. They resume on their own when the app is heard from again.', suffix: ' seconds' },
+  driver_idle_offline_minutes:      { group: 'drivers', title: 'End a silent driver’s session after', help: 'A driver silent for this long is taken offline and told so. Must be longer than the pause period (it is raised to pause + 1 minute if not).', suffix: ' minutes' },
 
   cashback_ride_percent:   { group: 'rewards', title: 'Cashback per ride', help: 'Cashback credited to riders on each completed ride.', suffix: '%' },
   cashback_expiry_days:    { group: 'rewards', title: 'Cashback expiry', help: 'Days before unused cashback credits expire.', suffix: ' days' },
