@@ -9,6 +9,8 @@ vi.mock('@/lib/storage', () => ({
   promotePendingUpload: vi.fn().mockResolvedValue('https://storage.test/drivers/1/daily-verification/test.jpg'),
   deleteFile: vi.fn().mockResolvedValue(undefined),
   getPresignedUrl: vi.fn().mockImplementation((url: string) => Promise.resolve(url)),
+  // Not an S3 URL, so scoring (when a mode turns it on) records "skipped" instead of calling Rekognition.
+  extractS3Key: vi.fn().mockReturnValue(null),
 }))
 
 const app = createApp()

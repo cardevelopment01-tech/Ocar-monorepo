@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Marker } from 'react-native-maps'
 import Svg, { Path, Line, Rect, Circle } from 'react-native-svg'
 import { colors } from '@ocar/mobile-shared'
@@ -20,14 +20,27 @@ export type CarMarkerProps = {
 // silhouette everywhere in the product, not a driver-mobile-specific redesign.
 // react-native-maps rotates the whole Marker natively (rotation + flat), so no
 // manual transform is needed here.
+// How long the marker's picture keeps being re-captured after it appears. The child is an SVG that has usually not painted
+// by the first render pass, and a marker frozen at that moment can keep a blank picture on some phones. Tracked briefly, then
+// frozen: rotating or moving the marker is native and needs no re-capture, so there is no steady CPU/battery cost.
+const SNAPSHOT_MS = 700
+
 function CarMarker({ position, heading = 0, headingKnown = true, opacity }: CarMarkerProps) {
+  const [track, setTrack] = useState(true)
+  // The picture is frozen after SNAPSHOT_MS, so re-open the window when what it shows changes (the car starts dimmed, with no
+  // heading yet, and turns solid): otherwise it stayed washed-out for the whole session.
+  useEffect(() => {
+    setTrack(true)
+    const t = setTimeout(() => setTrack(false), SNAPSHOT_MS)
+    return () => clearTimeout(t)
+  }, [headingKnown, opacity])
   return (
     <Marker
       coordinate={{ latitude: position[0], longitude: position[1] }}
       anchor={{ x: 0.5, y: 0.5 }}
       rotation={heading % 360}
       flat
-      tracksViewChanges={false}
+      tracksViewChanges={track}
       zIndex={10}
     >
       <Svg width={22} height={36} viewBox="0 0 32 52" style={{ opacity: opacity ?? (headingKnown ? 1 : 0.55) }}>

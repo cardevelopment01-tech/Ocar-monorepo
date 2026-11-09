@@ -39,6 +39,16 @@ describe('sendPush — tag/renotify/TTL', () => {
     })
   })
 
+  it('asks FCM not to let Google Play services show the notification (proxy deny) only when noProxy is set', async () => {
+    await sendPush(['tok1'], { title: 'Ride', body: 'New request', tag: 'ride-102', noProxy: true })
+    await sendPush(['tok1'], { title: 'Wallet', body: 'Low balance' })
+
+    const withProxy = sendEachForMulticast.mock.calls[0]?.[0] as { android: { notification: Record<string, unknown> } }
+    const without = sendEachForMulticast.mock.calls[1]?.[0] as { android: { notification: Record<string, unknown> } }
+    expect(withProxy.android.notification['proxy']).toBe('deny')
+    expect(without.android.notification).not.toHaveProperty('proxy')
+  })
+
   it('always sets android channel/sound/vibration; omits webpush when no tag is provided', async () => {
     await sendPush(['tok1'], { title: 'Wallet', body: 'Low balance' })
 

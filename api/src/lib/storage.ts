@@ -26,7 +26,7 @@ const S3_URL_PREFIX = `https://${config.S3_BUCKET_NAME}.s3.${config.S3_REGION}.a
 // after a migration, not match a specific historical value.
 const S3_URL_PATTERN = /^https:\/\/[^./]+\.s3\.[^./]+\.amazonaws\.com\/(.+)$/
 
-function extractS3Key(url: string): string | null {
+export function extractS3Key(url: string): string | null {
   return url.match(S3_URL_PATTERN)?.[1] ?? null
 }
 

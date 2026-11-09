@@ -13,12 +13,17 @@ interface SerializedRequest {
   remoteAddress?: string
 }
 
+// A live-trip link carries its secret in the path (/api/v1/public/trips/<token>). Logs ship to Grafana Cloud and an S3 archive for
+// months, so the token must never be written: it is replaced by ":token" (eng review D10).
+export const redactShareToken = (url: string | undefined): string | undefined =>
+  url?.replace(/(\/public\/trips\/)[^/?#]+/, '$1:token')
+
 export function serializeReq(req: SerializedRequest) {
   return {
     id: req.id,
     method: req.method,
     // No query string: admin-invites puts a real token there.
-    url: req.url?.split('?')[0],
+    url: redactShareToken(req.url?.split('?')[0]),
     // With `trust proxy` = 1 (app.ts) raw.ip is the client address from the ALB's X-Forwarded-For;
     // remoteAddress is the socket peer (the ALB) and is only a last resort.
     ip: req.raw?.ip ?? req.remoteAddress,

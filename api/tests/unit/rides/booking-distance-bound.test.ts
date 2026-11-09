@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const bookingClient = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [], rowCount: 0 })), release: vi.fn() }))
 vi.mock('@/modules/rides/rides.repository', () => ({
+  insertFareSnapshot:     vi.fn(),
   createRide:             vi.fn(),
   logStatusHistory:       vi.fn(),
   getActiveRideIdForUser: vi.fn(),
@@ -21,7 +23,7 @@ vi.mock('@/modules/geo/geo.service', () => ({
   snapTrailToRoads: vi.fn(),
 }))
 
-vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
+vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn(async () => bookingClient) } }))
 vi.mock('@/db/redis', () => ({ client: { incr: vi.fn(), expire: vi.fn(), del: vi.fn() } }))
 vi.mock('@/websocket/socket.server', () => ({
   socketEvents: { broadcastNewRide: vi.fn(), sendRideStatusUpdate: vi.fn() },

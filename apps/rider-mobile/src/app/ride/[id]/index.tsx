@@ -27,9 +27,17 @@ import { DriverCancelledBanner } from '@/features/ride-tracking/components/Drive
 import { useRideTracking } from '@/features/ride-tracking/useRideTracking'
 import { cancelRide, addStop, skipStop, updatePickup, type StopInput } from '@/features/ride-tracking/api'
 import { ASSIGNED_STATUSES, IN_PROGRESS_STATUSES, SEARCHING_STATUSES } from '@/features/ride-tracking/types'
+import { useNearbyDrivers } from '@/features/booking/useNearbyDrivers'
+import { useVehicleKinds } from '@/features/booking/useVehicleKinds'
+import { showWithinMetres } from '@/features/booking/liveCars'
 import type { StatusKey } from '@/features/ride-tracking/statusConfig'
 import { resolveBookingError } from '@/features/booking/api'
 import { PickupUpdatedToast } from '@/features/ride-tracking/components/Toasts'
+import { canShareRide } from '@/features/trip-share/model'
+import { useTripShare } from '@/features/trip-share/useTripShare'
+import { ShareTripSheet } from '@/features/trip-share/components/ShareTripSheet'
+import { ManageSharesSheet, confirmStopAll } from '@/features/trip-share/components/ManageSharesSheet'
+import { SharingBanner } from '@/features/trip-share/components/SharingBanner'
 
 // Mirrors api/src/modules/rides/rides.service.ts's PICKUP_EDITABLE_STATUSES --
 // once the driver has arrived, "where do I pick you up" no longer applies.
@@ -63,6 +71,17 @@ export default function RideTrackingScreen() {
     driverPos, driverHeading, driverHeadingKnown, pickup, drop, routePoints, eta, driverLocated, unreadChatCount,
     fareDrift, dismissFareDrift, upgradeCategory, retry,
   } = useRideTracking(rideId)
+  const canShare = ride ? canShareRide(ride) : false
+  const tripShare = useTripShare(rideId, canShare)
+
+  // While a ride is being matched ('requested' only: a scheduled ride is not matched yet) show the available cars around
+  // the pickup, like the fare screen does, so the rider sees that drivers are close. They go away once a driver is assigned.
+  const { kinds: vehicleKinds, slugs: vehicleSlugs } = useVehicleKinds()
+  const bookedCategoryId = ride?.categoryId != null && Number.isFinite(Number(ride.categoryId)) ? Number(ride.categoryId) : null
+  const nearbyCars = useNearbyDrivers(
+    ride ? rideId : null, ride?.originLat ?? null, ride?.originLng ?? null, ride?.status === 'requested',
+    showWithinMetres(ride?.rideType, bookedCategoryId === null ? null : vehicleSlugs.get(bookedCategoryId)), bookedCategoryId,
+  )
 
   // "Driver's location hasn't updated" must appear when updates STOP, so it needs a timer: a memo on
   // lastLocationAt only recomputed when a new update arrived, i.e. exactly when it was never true.
@@ -88,16 +107,25 @@ export default function RideTrackingScreen() {
   const [cancelling, setCancelling] = useState(false)
   const [showCancelSheet, setShowCancelSheet] = useState(false)
   const [addStopOpen, setAddStopOpen] = useState(false)
+  // Live trip sharing: the links for this trip. Called here (before any early return) so the hook order never changes.
+  const [shareOpen, setShareOpen] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
   const [addStopError, setAddStopError] = useState<string | null>(null)
   const [editPickupOpen, setEditPickupOpen] = useState(false)
   const live = useLiveLocation(locationGranted && editPickupOpen, { heading: false }).coords
   const [pickupUpdating, setPickupUpdating] = useState(false)
   const [pickupError, setPickupError] = useState<string | null>(null)
   const [pickupToast, setPickupToast] = useState(false)
-  const [detailsExpanded, setDetailsExpanded] = useState(false)
-  // Opening "Trip details" adds content below the fold of the sheet; scroll it into view or the tap looks like it did nothing.
+  // Open by default: pickup, drop and stops are the first thing a rider on a live trip looks for.
+  const [detailsExpanded, setDetailsExpanded] = useState(true)
+  // Height of the docked sheet, so the map frames the trip (and the car) above it, not underneath.
+  const [sheetHeight, setSheetHeight] = useState(0)
+  // Opening "Trip details" adds content below the fold of the sheet; scroll it into view or the tap looks like it did
+  // nothing. Details start open, so skip the first run and only react to a later open.
   const sheetScrollRef = useRef<ScrollView>(null)
+  const detailsMounted = useRef(false)
   useEffect(() => {
+    if (!detailsMounted.current) { detailsMounted.current = true; return }
     if (!detailsExpanded) return
     const t = setTimeout(() => sheetScrollRef.current?.scrollToEnd({ animated: true }), 80)
     return () => clearTimeout(t)
@@ -265,6 +293,13 @@ export default function RideTrackingScreen() {
         routePoints={routePoints}
         showDrop={drop != null}
         stops={ride.stops.filter((s) => s.status === 'pending').map((s): [number, number] => [s.lat, s.lng])}
+        coveredBottom={sheetHeight}
+        nearbyDrivers={nearbyCars}
+        driverLocated={driverLocated}
+        frameDrop={!isAssigned}
+        sheetPending={sheetHeight === 0}
+        vehicleKinds={vehicleKinds}
+        driverKind={(bookedCategoryId === null ? undefined : vehicleKinds.get(bookedCategoryId)) ?? 'sedan'}
       />
 
       <View style={[styles.mapOverlayTop, { paddingTop: insets.top + spacing.sm }]} pointerEvents="box-none">
@@ -287,7 +322,13 @@ export default function RideTrackingScreen() {
         anchor="top-right"
       />
 
-      <Animated.View style={[styles.sheet, sheetEntranceStyle]}>
+      <Animated.View
+        style={[styles.sheet, sheetEntranceStyle]}
+        onLayout={(e) => {
+          const height = Math.round(e.nativeEvent.layout.height)
+          setSheetHeight((prev) => (Math.abs(prev - height) >= 4 ? height : prev))
+        }}
+      >
         <Pressable onPress={() => hasDriver && setDetailsExpanded((v) => !v)} accessibilityRole="button" accessibilityLabel="Expand trip details" style={styles.handleHit}>
           <View style={styles.handle} />
         </Pressable>
@@ -391,9 +432,11 @@ export default function RideTrackingScreen() {
               onSkip={handleSkipStop}
             />
           ) : null}
+          {canShare ? <SharingBanner count={tripShare.shares.length} onManage={() => setManageOpen(true)} onStop={() => confirmStopAll(() => { void tripShare.stopAll().then((ok) => { if (!ok) Alert.alert('Could not stop sharing', 'Check your connection and try again. Your links are still active.') }) }, tripShare.shares.some((s) => s.isSos))} /> : null}
           {hasDriver ? (
             <RideActions
               actions={[
+                ...(canShare ? [{ key: 'share', label: 'Share trip', icon: 'share-2' as const, onPress: () => setShareOpen(true) }] : []),
                 { key: 'details', label: detailsExpanded ? 'Hide details' : 'Trip details', icon: detailsExpanded ? 'chevron-up' : 'file-text', onPress: () => setDetailsExpanded((v) => !v) },
                 ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
                 ...(canAddStop ? [{ key: 'stop', label: 'Add stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),
@@ -411,6 +454,8 @@ export default function RideTrackingScreen() {
         </ScrollView>
       </Animated.View>
 
+      <ShareTripSheet visible={shareOpen} onClose={() => setShareOpen(false)} share={tripShare} />
+      <ManageSharesSheet visible={manageOpen} onClose={() => setManageOpen(false)} share={tripShare} />
       <CancelSheet
         visible={showCancelSheet}
         feeWarning={ride.status === 'driver_arrived'}

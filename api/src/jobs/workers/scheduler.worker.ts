@@ -15,6 +15,7 @@ import { notifyDocumentExpiring, notifyDocumentExpired } from '@/modules/notific
 import { docLabel } from '@/modules/admin/admin.service'
 import { runAdminDigest } from '@/modules/analytics/admin-digest'
 import { sweepStaleSosAlerts, sweepBreachedDisputeSlas } from '@/modules/safety/safety.sweeps'
+import { endExpiredOffers, releaseStaleReservations } from '@/modules/offers/offers.worker'
 
 const log = createWorkerLogger('scheduler')
 
@@ -71,6 +72,16 @@ export const schedulerWorker = new Worker(
 
     if (job.name === 'sweep_dispute_sla') {
       await sweepBreachedDisputeSlas()
+      return
+    }
+
+    // Offers: give back reservations of rides that never ran, and end offers past their end time.
+    if (job.name === 'sweep_offer_reservations') {
+      await releaseStaleReservations()
+      return
+    }
+    if (job.name === 'sweep_offer_expiry') {
+      await endExpiredOffers()
       return
     }
 

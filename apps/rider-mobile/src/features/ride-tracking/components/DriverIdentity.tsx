@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather, FontAwesome } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
-import { font, h } from '@ocar/mobile-shared'
+import { font, h, PLATE_YELLOW } from '@ocar/mobile-shared'
 import { driverIdentity, type DriverIdentityView } from '@ocar/shared'
 import type { RideDetail } from '@ocar/mobile-shared'
 
@@ -149,8 +149,8 @@ const styles = StyleSheet.create({
   avatarInitials: { fontFamily: font.b, color: '#FFFFFF' },
   chip: { position: 'absolute', bottom: -2, right: -8, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: h.surface, borderRadius: 11, height: 22, paddingHorizontal: 7, boxShadow: '0 2px 6px rgba(20,23,26,0.16)' },
   chipText: { fontFamily: font.b, fontSize: 11.5, color: h.ivory, fontVariant: ['tabular-nums'] },
-  // Yellow like an Indian commercial (taxi) plate, so riders can tell it is a registered commercial vehicle.
-  plate: { flexShrink: 0, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8C927', borderRadius: 8, borderWidth: 1.5, borderColor: h.ivory, overflow: 'hidden' },
+  // Yellow commercial plate (the shared PLATE_YELLOW, same as the driver app).
+  plate: { flexShrink: 0, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', backgroundColor: PLATE_YELLOW, borderRadius: 8, borderWidth: 1.5, borderColor: h.ivory, overflow: 'hidden' },
   plateLg: { borderRadius: 10, borderWidth: 2 },
   plateStripeLg: { width: 26 },
   plateTextLg: { paddingHorizontal: 14, paddingVertical: 8, fontSize: 21, lineHeight: 28, letterSpacing: 1.4 },

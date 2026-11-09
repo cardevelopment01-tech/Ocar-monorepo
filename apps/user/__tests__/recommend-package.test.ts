@@ -16,8 +16,18 @@ describe('recommendPackage', () => {
   })
   it('falls back to the largest with overage when nothing fits', () => {
     expect(recommendPackage(PKGS, 150, 800)).toEqual({ packageId: 3, exceeds: true, overKm: 28, overMin: 75 })
-    // within the grace, nothing is chargeable
-    expect(recommendPackage(PKGS, 121, 722)).toMatchObject({ exceeds: true, overKm: 0, overMin: 0 })
+  })
+  it('a route inside the grace still fits the largest package, so nothing is flagged as over', () => {
+    expect(recommendPackage(PKGS, 121, 722)).toEqual({ packageId: 3, exceeds: false, overKm: 0, overMin: 0 })
+    expect(recommendPackage(PKGS, 123, 700)).toMatchObject({ packageId: 3, exceeds: true, overKm: 1, overMin: 0 })
+  })
+  it('treats a route a little past a limit as fitting it, because the server bills only beyond limit + grace', () => {
+    const small = [pkg(10, 1, 5, 100), pkg(11, 2, 10, 180)]
+    expect(recommendPackage(small, 5.7, 30)?.packageId).toBe(10) // 5.7 km is "the same as 5 km": no extra charge
+    expect(recommendPackage(small, 7, 30)?.packageId).toBe(10) // exactly limit + 2 km
+    expect(recommendPackage(small, 7.1, 30)?.packageId).toBe(11) // past the grace: the bigger package
+    expect(recommendPackage(small, 5, 65)?.packageId).toBe(10) // limit + 5 min
+    expect(recommendPackage(small, 5, 66)?.packageId).toBe(11)
   })
   it('returns null with no packages', () => {
     expect(recommendPackage([], 10, 10)).toBeNull()

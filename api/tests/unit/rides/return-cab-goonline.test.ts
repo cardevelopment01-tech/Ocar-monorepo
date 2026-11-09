@@ -10,6 +10,8 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   setDriverAvailability: vi.fn(),
 }))
 
+// The re-check gate (428 SPOT_CHECK_REQUIRED) has its own tests; here no driver has an open one.
+vi.mock('@/modules/drivers/driver-verification.service', () => ({ getBlockingChallenge: vi.fn().mockResolvedValue(null) }))
 vi.mock('@/modules/drivers/driver-verification.repository', () => ({
   getTodayStatus: vi.fn(),
 }))

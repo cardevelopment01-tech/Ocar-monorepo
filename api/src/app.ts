@@ -1,3 +1,6 @@
+import offersRouter from '@/modules/offers/offers.routes'
+import adminOffersRouter from '@/modules/offers/admin-offers.routes'
+import verificationReviewRouter from '@/modules/admin/verification-review.routes'
 import express, { Application, Router } from 'express'
 import helmet from 'helmet'
 import cors from 'cors'
@@ -29,6 +32,7 @@ import safetyRouter     from '@/modules/safety/safety.routes'
 import usersRouter      from '@/modules/users/users.routes'
 import savedPlacesRouter from '@/modules/saved-places/saved-places.routes'
 import emergencyContactsRouter from '@/modules/emergency-contacts/emergency-contacts.routes'
+import rideSharesRouter, { publicRouter as publicTripsRouter } from '@/modules/ride-shares/ride-shares.routes'
 import analyticsRouter  from '@/modules/analytics/analytics.routes'
 import notificationsRouter from '@/modules/notifications/notifications.routes'
 import templatesRouter from '@/modules/notifications/templates.routes'
@@ -111,6 +115,9 @@ export function createApp(): Application {
       // CORS-safelisted response header; the web driver and rider apps read it to correct a skewed
       // phone clock for the booked-time clock (native apps already can).
       exposedHeaders: ['Content-Disposition', 'Date'],
+      // Without this browsers cache a preflight for ~5 s, so the admin's 30 s polls and every new request shape paid an extra
+      // OPTIONS round trip (~60-80 ms). Chrome caps the value at 2 h, Firefox at 24 h.
+      maxAge: 7200,
     })
   )
 
@@ -174,6 +181,8 @@ export function createApp(): Application {
   apiRouter.use('/pricing', pricingRouter)
   apiRouter.use('/rides', ridesRouter)
   apiRouter.use('/rides', rideChatRouter)   // ride-chat: POST/GET/PATCH /rides/:id/messages
+  apiRouter.use('/rides', rideSharesRouter) // live trip sharing: POST/GET/DELETE /rides/:id/shares
+  apiRouter.use('/public', publicTripsRouter) // no auth: GET /public/trips/:token (the share link's data)
   apiRouter.use('/payments', paymentsRouter)
 apiRouter.use('/payments/settlements', settlementsRouter)
   apiRouter.use('/safety',    safetyRouter)
@@ -182,6 +191,9 @@ apiRouter.use('/payments/settlements', settlementsRouter)
   apiRouter.use('/emergency-contacts', emergencyContactsRouter)
   apiRouter.use('/admin/analytics', analyticsRouter)
   apiRouter.use('/admin/notification-templates', templatesRouter)
+  apiRouter.use('/admin/offers', adminOffersRouter)
+  apiRouter.use('/admin/verifications', verificationReviewRouter)
+  apiRouter.use('/offers', offersRouter)
   apiRouter.use('/admin/notifications', broadcastRouter)
   apiRouter.use('/account', accountRouter)
   apiRouter.use('/admin/system-config', systemConfigRouter)

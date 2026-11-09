@@ -32,6 +32,13 @@ locals {
       severity  = "warning"
       summary   = "More than 2% of API requests failed with a server error for 5m"
     }
+    "Database password rejected" = {
+      expr      = "sum(increase(pg_query_errors_total{__ENV__, code=\"28P01\"}[5m]))"
+      threshold = 0
+      for       = "1m"
+      severity  = "critical"
+      summary   = "Postgres refused the API's password (28P01): the managed RDS password rotated and the API is still using the old one. See docs/OPS_RUNBOOK.md, Database password rotation."
+    }
     "API server down" = {
       expr      = "min(up{__ENV__, instance=\"api:4000\"})"
       threshold = 1

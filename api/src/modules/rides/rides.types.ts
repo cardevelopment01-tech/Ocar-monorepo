@@ -36,6 +36,9 @@ export interface NearbyDriver {
 
 export interface Ride {
   id: bigint
+  /** Dispatch rules this ride was booked under (0 = original behaviour); stamped once at booking. */
+  dispatch_variant: number
+  dispatch_spread: number
   user_id: bigint
   driver_id: bigint | null
   session_id: bigint | null
@@ -99,6 +102,9 @@ export interface Ride {
   driver_current_lng: number | null
   payment_status: string | null
   resolved_by?: 'admin' | 'timeout' | null
+  /** Cash the driver collects and the rider-offer discount already taken off it (numeric strings). */
+  cash_due?: string | null
+  discount_amount?: string | null
   billing_mode_snapshot: BillingMode | null
 }
 
@@ -114,7 +120,7 @@ export type RideCore = Omit<Ride,
   | 'vehicle_number_plate' | 'vehicle_color' | 'vehicle_name' | 'vehicle_model' | 'vehicle_brand'
   | 'booked_category_name' | 'assigned_category_name'
   | 'driver_current_lat' | 'driver_current_lng'
-  | 'payment_status' | 'resolved_by'
+  | 'payment_status' | 'resolved_by' | 'cash_due' | 'discount_amount'
 >
 
 export interface StopInput {
@@ -161,6 +167,12 @@ export interface BookingRequest {
   returnAt?: string
   scheduledFor?: string
   paymentChannel?: 'cash' | 'online' | 'wallet'
+  /** A typed offer code. Ignored while offers are off; an invalid one fails the booking (OFFER_NOT_APPLICABLE). */
+  couponCode?: string
+  /** The payable the rider saw. A different server price answers 409 PRICE_CHANGED and books nothing. Auto offers need it. */
+  expectedPayable?: number
+  /** 'none' = the rider removed the automatic offer; an offer id = the one they picked. Absent = the best offer. */
+  autoOffer?: string
   /** Booking on behalf of someone else — omitted/undefined means "myself" */
   riderName?: string
   riderPhone?: string

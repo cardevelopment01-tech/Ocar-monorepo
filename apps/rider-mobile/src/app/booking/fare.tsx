@@ -5,8 +5,7 @@ import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { Button, ErrorState, font, h, shadow, spacing } from '@ocar/mobile-shared'
-import { Chip, IconButton, TicketBanner } from '@/components/ui'
-import { OffersSheet, type OfferCoupon } from '@/features/booking/components/OffersSheet'
+import { Chip, IconButton } from '@/components/ui'
 import { CategoryCard, type CategoryEta } from '@/features/booking/components/CategoryCard'
 import { SelectRideMap } from '@/features/booking/components/SelectRideMap'
 import { useFareEstimates } from '@/features/booking/hooks/useFareEstimates'
@@ -14,6 +13,13 @@ import { useBookingDraftStore } from '@/features/booking/store'
 import { formatPickupTime } from '@/lib/formatPickupTime'
 import { resolveSelectedCategory } from '@/features/booking/resolveSelectedCategory'
 import { createBooking, resolveBookingError } from '@/features/booking/api'
+import { CouponLine } from '@/features/offers/CouponLine'
+import { OfferSheet } from '@/features/offers/OfferSheet'
+import { PriceChangedBanner } from '@/features/offers/PriceChangedBanner'
+import { useOfferPreview } from '@/features/offers/useOfferPreview'
+import {
+  bookAmount, bookingOfferFields, couponLineState, formatRupees, parseOfferNotApplicable, parsePriceChanged, priceChangedMessage, savingsLabel,
+} from '@/features/offers/offerModel'
 import { socket } from '@/services/socket'
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -33,7 +39,6 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
 const MAP_HEIGHT_RATIO = 0.3
 
 const RIDE_TYPE_LABEL = { one_way: 'One way', round_trip: 'Round trip', rental: 'City ride' } as const
-const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
 
 // Module scope: an inline ItemSeparatorComponent is a new component type every render, so React
 // unmounted and remounted every separator whenever the nearby-driver poll re-rendered the screen.
@@ -77,11 +82,8 @@ export default function BookingFareScreen() {
   const [nearbyDrivers, setNearbyDrivers] = useState<Array<{ driverId: string; lat: number; lng: number; categoryId: number }>>([])
   const [refreshSignal, setRefreshSignal] = useState(0)
   const [paymentNote, setPaymentNote] = useState<string | null>(null)
-  // TODO(backend): coupons do not exist yet. The list stays empty until an offers endpoint exists, so nothing is ever
-  // applied and no discount is computed on the client; the sheet and banner below are UI only.
-  const coupons: OfferCoupon[] = []
-  const [offersOpen, setOffersOpen] = useState(false)
-  const [appliedCode, setAppliedCode] = useState<string | null>(null)
+  const [offerSheetOpen, setOfferSheetOpen] = useState(false)
+  const [priceBanner, setPriceBanner] = useState<string | null>(null)
 
   // Hide any category whose estimate fetch failed (e.g. no rate card for this
   // ride_type -- auto_rickshaw only has `rental`) once loading has settled;
@@ -112,13 +114,32 @@ export default function BookingFareScreen() {
   const selectedFare = effectiveSelected != null
     ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])?.breakdown.total
     : undefined
+  // Offers: the server prices the selected ride again whenever it changes (category, route, schedule, a typed code or
+  // the rider's choice). A failed check never blocks booking at the plain fare.
+  const offerRequest = useMemo(
+    () => (effectiveSelected != null && pickup && drop && distanceKm != null && durationMin != null
+      ? {
+          categoryId: effectiveSelected, rideType, distanceKm, durationMin, paymentChannel: 'cash' as const,
+          originLat: pickup.lat, originLng: pickup.lng, destinationLat: drop.lat, destinationLng: drop.lng,
+          ...(rideType === 'round_trip' && tripHours !== null ? { tripHours } : {}),
+          ...(stops.length > 0 ? { stopCount: stops.length } : {}),
+          ...(isReturnCab ? { isReturnCab: true } : {}),
+          ...(scheduledFor ? { scheduledFor } : {}),
+        }
+      : null),
+    [effectiveSelected, rideType, distanceKm, durationMin, pickup, drop, tripHours, stops.length, isReturnCab, scheduledFor],
+  )
+  const offers = useOfferPreview(offerRequest)
+  const couponState = couponLineState({ status: offers.status, preview: offers.preview, typedCode: offers.typedCode, fullPrice: selectedFare ?? null })
+  const payable = bookAmount(selectedFare ?? null, offers.preview)
+  const hasOffer = couponState.kind === 'applied' && payable != null && selectedFare != null && payable < selectedFare
   // Nearby cars only matter for a ride NOW. A ride booked for later is dispatched shortly before its time, so an empty
   // street at this moment must not stop the rider from booking it.
   const liveCheck = driversPolled && !scheduledFor
   const allUnavailable = liveCheck && visibleCategories.length > 0 && visibleCategories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
   const selectedNoCars = liveCheck && effectiveSelected != null && (driverEta[effectiveSelected]?.count ?? 0) === 0
-  const canBook = effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars
   const selectedName = visibleCategories.find((c) => c.id === effectiveSelected)?.displayName
+  const canBook = effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars && !offers.bookLocked
 
   // Available categories first, unavailable ones pushed to the bottom rather
   // than left interleaved -- categories list order otherwise comes straight
@@ -155,6 +176,7 @@ export default function BookingFareScreen() {
       if (scheduledFor) input.scheduledFor = scheduledFor
       if (riderName && riderPhone) { input.riderName = riderName; input.riderPhone = riderPhone }
       if (isReturnCab) input.isReturnCab = true
+      Object.assign(input, bookingOfferFields({ preview: offers.preview, typedCode: offers.typedCode, choice: offers.choice }))
 
       const result = await createBooking(input)
 
@@ -174,7 +196,18 @@ export default function BookingFareScreen() {
       resetDraft()
       router.replace(`/ride/${rideId}`)
     } catch (err) {
-      setBookError(resolveBookingError(err))
+      const changed = parsePriceChanged(err)
+      const refused = parseOfferNotApplicable(err)
+      if (changed) {
+        // Say what changed and why, re-check, and let the rider decide: never rebook on their behalf (design review D8).
+        setPriceBanner(priceChangedMessage(changed, offers.preview?.payable ?? null, offers.typedCode || offers.preview?.applied?.code || null))
+        offers.retry()
+      } else if (refused) {
+        setBookError(refused.message)
+        offers.retry()
+      } else {
+        setBookError(resolveBookingError(err))
+      }
     } finally {
       setBooking(false)
       bookInFlightRef.current = false
@@ -273,7 +306,7 @@ export default function BookingFareScreen() {
               ListHeaderComponent={
                 rideType === 'one_way' && !scheduledFor && returnCabCategories.size > 0 ? (
                   <View style={styles.returnCabSection}>
-                    <Text style={styles.returnCabLabel}>Return cab available</Text>
+                    <Text style={styles.returnCabLabel}>Return Cab Available</Text>
                     {visibleCategories
                       .filter((cat) => returnCabCategories.has(cat.id))
                       .map((cat) => {
@@ -306,12 +339,14 @@ export default function BookingFareScreen() {
                 return (
                   <CategoryCard
                     category={item}
-                    fareTotal={estimates[item.id]?.breakdown.total ?? null}
                     loading={loading && estimates[item.id] === undefined}
                     selected={!isReturnCab && effectiveSelected === item.id}
                     onPress={() => { setSelectedCategoryId(item.id); setIsReturnCab(false) }}
                     eta={driverEta[item.id] ?? null}
                     disabled={noCars}
+                    {...(hasOffer && !isReturnCab && effectiveSelected === item.id && offers.preview && payable != null
+                      ? { fareTotal: payable, grossFare: offers.preview.fareTotal, offerSavingText: `Save ${formatRupees(offers.preview.discount)}${offers.preview.applied?.code ? ` with ${offers.preview.applied.code}` : ''}` }
+                      : { fareTotal: estimates[item.id]?.breakdown.total ?? null })}
                   />
                 )
               }}
@@ -320,34 +355,19 @@ export default function BookingFareScreen() {
 
           {/* Fixed footer within the sheet -- Book never drifts with list length. */}
           <View style={[styles.sheetFooter, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-            {appliedCode ? (
-              <View style={styles.bannerWrap}>
-                <TicketBanner title={`${appliedCode} applied`} onRemove={() => setAppliedCode(null)} />
-              </View>
-            ) : null}
-            <View style={styles.payRow}>
-              <Pressable
-                onPress={() => { setPaymentNote('Cash only for now'); setTimeout(() => setPaymentNote(null), 2000) }}
-                style={({ pressed }) => [styles.payBtn, pressed ? styles.pressedScale : null]}
-                accessibilityRole="button"
-                accessibilityLabel="Payment method: Cash"
-              >
-                <Feather name="credit-card" size={18} color={h.ivory} />
-                <Text style={styles.payText}>Cash</Text>
-                <Feather name="chevron-down" size={16} color={h.faint} style={styles.payChev} />
-              </Pressable>
-              <Pressable
-                onPress={() => setOffersOpen(true)}
-                style={({ pressed }) => [styles.payBtn, appliedCode ? styles.offerOn : null, pressed ? styles.pressedScale : null]}
-                accessibilityRole="button"
-                accessibilityLabel="Offers"
-              >
-                <Feather name="tag" size={18} color={h.tealText} />
-                <Text style={[styles.payText, appliedCode ? { color: h.tealText, fontFamily: font.b } : null]} numberOfLines={1}>{appliedCode ?? 'Offers'}</Text>
-                <Feather name="chevron-right" size={16} color={h.faint} style={styles.payChev} />
-              </Pressable>
-            </View>
+            <Pressable
+              onPress={() => { setPaymentNote('Cash only for now'); setTimeout(() => setPaymentNote(null), 2000) }}
+              style={({ pressed }) => [styles.payBtn, pressed ? styles.pressedScale : null]}
+              accessibilityRole="button"
+              accessibilityLabel="Payment method: Cash"
+            >
+              <Feather name="credit-card" size={18} color={h.ivory} />
+              <Text style={styles.payText}>Cash</Text>
+              <Feather name="chevron-down" size={16} color={h.faint} style={styles.payChev} />
+            </Pressable>
             {paymentNote ? <Text style={styles.paymentNote}>{paymentNote}</Text> : null}
+            {priceBanner ? <PriceChangedBanner message={priceBanner} onDismiss={() => setPriceBanner(null)} /> : null}
+            <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} />
             {bookError ? (
               <Text style={styles.error} accessibilityLiveRegion="polite">
                 {bookError}
@@ -358,25 +378,30 @@ export default function BookingFareScreen() {
               label={
                 allUnavailable
                   ? 'No drivers available'
-                  : selectedFare != null
-                  ? `Book ${selectedName ?? ''}${selectedName ? ' · ' : '· '}${rupees(selectedFare)}`
+                  : payable != null
+                  ? `Book ${selectedName ?? ''}${selectedName ? ' · ' : '· '}${formatRupees(payable)}`
                   : 'Book'
               }
               onPress={() => void handleBook()}
               disabled={!canBook}
               loading={booking}
-              accessibilityLabel="Book this ride"
+              accessibilityLabel={hasOffer && payable != null && selectedFare != null ? `Book this ride, ${savingsLabel(selectedFare, payable)}` : 'Book this ride'}
+            />
+            <OfferSheet
+              visible={offerSheetOpen}
+              onClose={() => setOfferSheetOpen(false)}
+              applied={offers.preview?.applied ?? null}
+              alternatives={offers.preview?.alternatives ?? []}
+              ineligible={offers.preview?.ineligible ?? []}
+              codeMessage={couponState.kind === 'rejected' ? couponState.message : null}
+              checking={offers.status === 'loading'}
+              onApplyCode={offers.applyCode}
+              onChoose={offers.chooseOffer}
+              onRemove={offers.preview?.applied?.kind === 'auto' ? offers.removeAuto : offers.removeCode}
             />
           </View>
         </View>
       </View>
-      <OffersSheet
-        visible={offersOpen}
-        onClose={() => setOffersOpen(false)}
-        coupons={coupons}
-        appliedCode={appliedCode}
-        onApply={(code) => { setAppliedCode(code); setOffersOpen(false) }}
-      />
     </View>
   )
 }
@@ -385,17 +410,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: h.canvas },
   mapSection: { width: '100%' },
   headerRow: { position: 'absolute', left: 18, right: 18, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  breadcrumb: {
-    flex: 1,
-    height: 44,
-    backgroundColor: h.surface,
-    borderRadius: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    gap: 4,
-    boxShadow: shadow.sm,
-  },
+  breadcrumb: { flex: 1, height: 44, backgroundColor: h.surface, borderRadius: 22, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 4, boxShadow: shadow.sm },
   breadcrumbHalf: { flex: 1, minWidth: 0 },
   breadcrumbOrigin: { fontFamily: font.m, fontSize: 12.5, color: h.muted },
   breadcrumbDest: { fontFamily: font.b, fontSize: 12.5, color: h.ivory },
@@ -421,10 +436,7 @@ const styles = StyleSheet.create({
   divider: { height: 0 },
   skeletonCard: { height: 92, borderRadius: 20, backgroundColor: h.chip, marginBottom: 12 },
   sheetFooter: { paddingHorizontal: 18, paddingTop: 12, borderTopWidth: 1, borderTopColor: h.line06 },
-  bannerWrap: { marginBottom: 12 },
-  payRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
-  payBtn: { flex: 1, height: 48, borderRadius: 16, backgroundColor: h.chip, borderWidth: 1, borderColor: h.line06, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 },
-  offerOn: { backgroundColor: h.tealWash, borderColor: 'rgba(14,143,163,0.4)' },
+  payBtn: { height: 48, borderRadius: 16, backgroundColor: h.chip, borderWidth: 1, borderColor: h.line06, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12 },
   payText: { fontFamily: font.sb, fontSize: 14, color: h.ivory, flexShrink: 1 },
   payChev: { marginLeft: 'auto' },
   paymentNote: { fontFamily: font.m, fontSize: 12.5, color: h.muted, textAlign: 'center', marginBottom: 8 },

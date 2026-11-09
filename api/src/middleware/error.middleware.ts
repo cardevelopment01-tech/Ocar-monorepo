@@ -21,10 +21,12 @@ export const errorMiddleware: ErrorRequestHandler = (err, req, res, _next) => {
       ? { error: 'File size exceeds 5MB limit', code: 'FILE_TOO_LARGE', requestId }
       : { error: err.message, code: 'FILE_UPLOAD_ERROR', requestId }
   } else if (typeof (err as Error & { httpStatus?: number }).httpStatus === 'number') {
-    const appErr = err as Error & { httpStatus: number; appCode?: string; missing?: string[] }
+    const appErr = err as Error & { httpStatus: number; appCode?: string; missing?: string[]; details?: Record<string, unknown> }
     status = appErr.httpStatus
     body = { error: appErr.message, code: appErr.appCode, requestId }
     if (appErr.missing) body['missing'] = appErr.missing
+    // Safe, structured facts the client needs to recover (e.g. the new price on a 409 PRICE_CHANGED); never error text.
+    if (appErr.details) body['details'] = appErr.details
   } else if ((err as { type?: string }).type === 'entity.too.large') {
     // body-parser's own error (express.json/urlencoded limit) — carries `status`,
     // not this app's `httpStatus`, so it used to fall through to the 500 branch.

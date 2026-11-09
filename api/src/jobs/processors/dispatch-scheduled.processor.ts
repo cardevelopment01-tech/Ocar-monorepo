@@ -4,6 +4,8 @@ import { getFareEstimate } from '@/modules/pricing/pricing.service'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { socketEvents } from '@/websocket/socket.server'
 import type { BroadcastJobData } from './broadcast.processor'
+import { pool } from '@/db/client'
+import { finaliseDiscount } from '@/modules/offers/settlement'
 
 const FARE_DRIFT_DISCLOSURE_THRESHOLD = 0.10
 
@@ -58,9 +60,12 @@ export async function processDispatchScheduled(data: DispatchScheduledJobData): 
 
     const freshEstimate = await getFareEstimate(fareReq)
     await repo.updateFareSnapshotEstimate(rideId, freshEstimate)
+    // The discount was reserved on the old quote: re-derive it on the new one (it can shrink, never grow).
+    const newDiscount = await finaliseDiscount(pool, rideId)
 
-    const oldTotal = recomputeInput.total_estimated
-    const newTotal = freshEstimate.breakdown.total
+    // Disclose what the rider pays, not the gross fare: that is the number they were shown.
+    const oldTotal = Math.max(recomputeInput.total_estimated - (recomputeInput.discount_amount ?? 0), 0)
+    const newTotal = Math.max(freshEstimate.breakdown.total - newDiscount, 0)
     if (oldTotal > 0 && Math.abs(newTotal - oldTotal) / oldTotal > FARE_DRIFT_DISCLOSURE_THRESHOLD) {
       socketEvents.sendRideStatusUpdate(data.rideId, {
         status: 'requested',
@@ -86,15 +91,15 @@ export async function processDispatchScheduled(data: DispatchScheduledJobData): 
   await Promise.all([
     queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride', { ...jobData, broadcastRound: 1 },
-      { delay: 0, attempts: 2, removeOnComplete: true }
+      { jobId: `round-${rideId}-1`, delay: 0, attempts: 2, removeOnComplete: true }
     ),
     queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride', { ...jobData, broadcastRound: 2 },
-      { delay: 25_000, attempts: 1, removeOnComplete: true }
+      { jobId: `round-${rideId}-2`, delay: 25_000, attempts: 1, removeOnComplete: true }
     ),
     queues[QUEUE_NAMES.DISPATCH].add(
       'broadcast_ride', { ...jobData, broadcastRound: 3 },
-      { delay: 50_000, attempts: 1, removeOnComplete: true }
+      { jobId: `round-${rideId}-3`, delay: 50_000, attempts: 1, removeOnComplete: true }
     ),
   ])
 }

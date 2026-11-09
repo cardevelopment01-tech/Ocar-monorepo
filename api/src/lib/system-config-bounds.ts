@@ -29,14 +29,44 @@ const BOUNDS: Record<string, ConfigBounds> = {
   exotel_max_calls_per_ride:        { min: 1, max: 50 },
   exotel_call_time_limit_seconds:   { min: 30, max: 3_600 },
   exotel_daily_budget_inr:          { min: 0, max: 100_000 },
+  // The largest share of the eligible fare an offer may take off; driver-funded, so keep it at or under the normal commission.
+  offers_max_discount_percent:      { min: 0, max: 50 },
+  verification_face_pass_min:       { min: 1, max: 100 },
+  verification_face_review_min:     { min: 0, max: 100 },
+  verification_plate_max_edits:     { min: 0, max: 5 },
+  verification_plate_review_edits:  { min: 0, max: 5 },
+  verification_min_brightness:      { min: 0, max: 100 },
+  verification_min_sharpness:       { min: 0, max: 100 },
+  verification_retake_max:          { min: 1, max: 10 },
+  verification_review_daily_budget: { min: 1, max: 1_000 },
+  spot_check_rides_min:             { min: 1, max: 20 },
+  spot_check_rides_max:             { min: 1, max: 20 },
+  spot_check_long_ride_km:          { min: 1, max: 2_000 },
+  spot_check_long_ride_minutes:     { min: 1, max: 1_440 },
 }
 
 // Typed `string` in the table but really booleans — free text here would silently break the reader.
 const ALLOWED_VALUES: Record<string, readonly string[]> = {
   cash_collection_enabled: ['true', 'false'],
+  // Read as on only when exactly 'true': a typo must be refused, not left looking like an enabled switch.
+  dispatch_no_resend_enabled: ['true', 'false'],
+  dispatch_head_start_enabled: ['true', 'false'],
+  dispatch_spread_enabled: ['true', 'false'],
   // Anything but exactly 'true' reads as off, so a typo here would silently disable payments.
   mobile_payments_enabled: ['true', 'false'],
   app_update_enabled: ['true', 'false'],
+  // Read as on only when exactly 'true'; a typo would silently leave a kill switch looking off.
+  offers_enabled: ['true', 'false'],
+  offers_cash_discounts_enabled: ['true', 'false'],
+  // 'false' lifts the cash-discount driver-version guard (internal testing); anything else must be refused, not read as on.
+  offers_cash_guard_enforced: ['true', 'false'],
+  offers_cashback_enabled: ['true', 'false'],
+  // Read as on only when exactly 'true': a typo must be refused, not left looking like an enabled kill switch.
+  trip_share_enabled: ['true', 'false'],
+  // Anything else would silently read as off.
+  verification_mode: ['off', 'shadow', 'flag', 'block'],
+  // Read as on only when exactly 'true'; a typo must be refused, not left looking like an enabled re-check.
+  spot_check_enabled: ['true', 'false'],
 }
 
 // Version rows (app_update_<app>_<platform>_min|recommended): the policy compares major.minor.patch,
@@ -72,9 +102,13 @@ export function getConfigBounds(key: string): ConfigBounds | null {
   return BOUNDS[key] ?? null
 }
 
+// City ids the spread engine is on for: empty (off everywhere) or a comma list of ids, no spaces.
+const CITY_LIST_RE = /^(\d+(,\d+)*)?$/
+
 export function validateConfigBounds(key: string, value: string): string | null {
   const allowed = ALLOWED_VALUES[key]
   if (allowed && !allowed.includes(value)) return `value must be one of: ${allowed.join(', ')}`
+  if (key === 'dispatch_spread_city_ids' && !CITY_LIST_RE.test(value)) return 'value must be empty or city ids separated by commas, e.g. 1,2'
   if (VERSION_KEY_RE.test(key) && !VERSION_VALUE_RE.test(value)) return 'value must look like 1.2.3'
 
   const bounds = BOUNDS[key]

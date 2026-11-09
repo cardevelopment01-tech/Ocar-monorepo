@@ -4,7 +4,6 @@ import { Feather } from '@expo/vector-icons'
 import { Skeleton, VehicleIcon, font, h } from '@ocar/mobile-shared'
 import type { VehicleCategory } from '@ocar/mobile-shared'
 import { fleetImageFor } from '@/features/home/fleet'
-import { Chip } from '@/components/ui'
 
 export type CategoryEta = { count: number; etaMin: number }
 
@@ -24,10 +23,10 @@ export type CategoryCardProps = {
   // (apps/user/app/(main)/select-ride/page.tsx).
   variant?: 'standard' | 'returnCab'
   savingsText?: string
-  // TODO(backend): coupons don't exist yet. When a coupon is applied the parent passes the original fare and the
-  // amount saved (both computed by the server); the card only renders them.
-  originalFare?: number | null
-  couponSaving?: number | null
+  // Set on the selected card when an offer applies: the fare shown is then the payable, with this gross struck through
+  // above it and the saving as a line under the name (design review D3).
+  grossFare?: number | null
+  offerSavingText?: string | null
 }
 
 const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
@@ -36,20 +35,20 @@ const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
 // unavailable = greyed image, not selectable.
 function CategoryCardBase({
   category, fareTotal, loading, selected, onPress, eta, disabled = false, variant = 'standard', savingsText,
-  originalFare, couponSaving,
+  grossFare = null, offerSavingText = null,
 }: CategoryCardProps) {
   const noCars = disabled
   const active = selected && !noCars
   const isReturnCab = variant === 'returnCab'
   const img = fleetImageFor(category.slug)
-  const saved = !!couponSaving && couponSaving > 0
+  const struck = grossFare != null
   return (
     <Pressable
       onPress={onPress}
       disabled={noCars}
       style={({ pressed }) => [styles.row, active ? styles.rowOn : null, pressed && !noCars ? styles.rowPressed : null]}
       accessibilityRole="button"
-      accessibilityLabel={`${category.displayName}${fareTotal != null ? `, fare rupees ${Math.round(fareTotal)}` : ''}`}
+      accessibilityLabel={`${category.displayName}${fareTotal != null ? (grossFare != null ? `, was ${Math.round(grossFare)} rupees, now ${Math.round(fareTotal)} rupees` : `, fare rupees ${Math.round(fareTotal)}`) : ''}${offerSavingText ? `. ${offerSavingText}` : ''}`}
       accessibilityState={{ selected: active, disabled: noCars }}
     >
       <View style={[styles.imgBox, noCars ? styles.imgOff : null]}>
@@ -79,6 +78,7 @@ function CategoryCardBase({
         ) : eta && eta.etaMin > 0 ? (
           <Text style={[styles.sub, { color: h.tealText }]}>{eta.etaMin} min away</Text>
         ) : null}
+        {offerSavingText ? <Text style={styles.offerSaving}>{offerSavingText}</Text> : null}
       </View>
 
       <View style={styles.fareBlock}>
@@ -86,9 +86,8 @@ function CategoryCardBase({
           <Skeleton width={56} height={20} />
         ) : fareTotal != null ? (
           <>
-            {saved && originalFare != null ? <Text style={styles.old}>{rupees(originalFare)}</Text> : null}
+            {struck ? <Text style={styles.old} accessibilityElementsHidden importantForAccessibility="no">{rupees(grossFare!)}</Text> : null}
             <Text style={[styles.fare, noCars ? { color: h.faint } : null]}>{rupees(fareTotal)}</Text>
-            {saved ? <View style={styles.saveChip}><Chip label={`Save ${rupees(couponSaving!)}`} tone="teal" /></View> : null}
           </>
         ) : (
           <Text style={styles.fareUnavailable}>-</Text>
@@ -129,7 +128,7 @@ const styles = StyleSheet.create({
   fareBlock: { minWidth: 56, alignItems: 'flex-end' },
   old: { fontFamily: font.r, fontSize: 12, color: h.faint, textDecorationLine: 'line-through', fontVariant: ['tabular-nums'], marginBottom: 1 },
   fare: { fontFamily: font.xb, fontSize: 17, letterSpacing: -0.2, color: h.ivory, fontVariant: ['tabular-nums'] },
-  saveChip: { marginTop: 5 },
+  offerSaving: { fontFamily: font.b, fontSize: 12.5, color: h.tealText, marginTop: 3 },
   fareUnavailable: { fontFamily: font.m, fontSize: 15, color: h.faint },
 })
 

@@ -40,6 +40,14 @@ export const BACKGROUND_MATCH_GRACE_SECONDS = 60
 // Longer per-assignment response window for a backgrounded match than a live
 // one — realistic time to notice a push, tap it, and let the app reconnect.
 export const BACKGROUND_ACCEPT_WINDOW_SECONDS = 45
+// Dispatch phase 1 rides: a ride-request push cannot be delivered after its 30 s time-to-live, so a longer window only keeps a driver
+// "holding" an offer nothing can reach.
+export const BACKGROUND_ACCEPT_WINDOW_PHASE1_SECONDS = 30
+// Open offers one ride may have at once across rounds (twice a round's maximum), so backfilling around still-open offers cannot grow it.
+export const BROADCAST_MAX_LIVE_OFFERS = BROADCAST_MAX_DRIVERS * 2
+/** Dispatch experiment (variant 2): the nearest N drivers get a round-1 offer this long before the rest. */
+export const HEAD_START_COUNT = 2
+export const HEAD_START_MS = 2_500
 // Admin manual-assign: longer than a broadcast ping since the driver was
 // deliberately picked and deserves a beat to check the trip before responding.
 export const MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS = 30
@@ -54,6 +62,10 @@ export const SPEED_LIMIT_CITY_KMPH = 50
 export const SPEED_LIMIT_HIGHWAY_KMPH = 70
 
 export const DRIVER_MIN_WALLET_BALANCE = 500
+// First driver app build whose active-ride card shows the server's cash_due (and the rider-offer note).
+// Cash discounts must not be switched on until app_update_driver_android_min is at least this (Task 11 guard);
+// an older build would tell the driver to collect the undiscounted fare.
+export const CASH_DUE_MIN_DRIVER_VERSION = '1.2.0'
 export const CASHBACK_RIDE_PERCENT = 0.05
 export const CASHBACK_EXPIRY_DAYS = 30
 export const REFERRAL_REFERRER_BONUS = 100
@@ -127,6 +139,8 @@ export const PAGINATION_MAX_LIMIT = 100
 // requested_at, so advance-booking dispatch (which bumps updated_at when it
 // flips 'scheduled' -> 'requested') is never mistaken for stale.
 export const STALE_REQUESTED_MINUTES = 20
+/** Dispatch watchdog (variant >= 1 rides): rounds end by ~50 s and the longest offer window is 30 s, so past this with no live offer the dispatch is lost. */
+export const DISPATCH_WATCHDOG_SECONDS = 120
 export const STALE_ACCEPTED_HOURS = 3
 export const STALE_DRIVER_ARRIVED_HOURS = 1
 export const STALE_IN_PROGRESS_CEILING_HOURS = 12
@@ -152,3 +166,6 @@ export const ROUND_TRIP_OVERTIME_GRACE_MIN = 5
 export const ROUND_TRIP_OVERTIME_REVIEW_MIN = 60
 // Longest booking priced per hour; above this the per-day package applies (unchanged).
 export const ROUND_TRIP_HOURLY_MAX_HOURS = 24
+
+// Offers: how long the active-offer list and a looked-up code are cached (admin writes invalidate them).
+export const OFFERS_CACHE_TTL_SECONDS = 30

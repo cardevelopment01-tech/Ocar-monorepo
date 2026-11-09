@@ -111,3 +111,17 @@ html.overflow-hidden {
            text-text-secondary text-sm font-semibold hover:bg-surface-2 transition-all duration-150 cursor-pointer;
   }
 }
+
+/* Money/number fields are typed, not stepped: the +/- spinner moves by the step (0.01 on fares), which is useless. */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+@layer components {
+  /* Review panes (Verifications): a flat bordered surface, no hover lift. */
+  .panel { @apply rounded-2xl border border-border bg-surface shadow-card; }
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-danger text-white text-sm font-semibold
+           hover:opacity-90 transition-all duration-150 cursor-pointer disabled:opacity-50;
+  }
+}

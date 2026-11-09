@@ -11,6 +11,9 @@ const mockCreateRideAssignment = vi.fn()
 const mockUpdateRideStatus = vi.fn().mockResolvedValue({ id: 1n })
 const mockLogStatusHistory = vi.fn()
 
+vi.mock('@/modules/offers/settlement', () => ({ releaseForRide: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
+vi.mock('@/modules/geo/geo.service', () => ({ getRoute: vi.fn().mockRejectedValue(new Error('no route in this test')) }))
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideById: (...a: unknown[]) => mockGetRideById(...a),
   getRideStops: (...a: unknown[]) => mockGetRideStops(...a),

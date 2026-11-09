@@ -5,7 +5,7 @@ import { getApiErrorMessage, getCurrentOrLastKnownPosition } from '@ocar/mobile-
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { connectSocket } from '@/services/socket'
 import { startBackgroundTracking } from '@/services/location/backgroundTask'
-import { promptBatteryOptimizationOnce } from '@/services/batteryOptimization'
+import { promptOverlayPermissionOnce } from '@/features/floating-icon/promptOverlayPermission'
 import { goOnline as apiGoOnline } from './api'
 import type { VehicleInfo } from './types'
 
@@ -77,7 +77,8 @@ export function useConfirmGoOnline(
       await startBackgroundTracking()
       connectSocket()
       router.dismissTo('/(tabs)/home')
-      void promptBatteryOptimizationOnce()
+      // Asked once, the first time the driver goes online. A prompt that fails never blocks going online.
+      void promptOverlayPermissionOnce().catch(() => {})
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to go online. Please try again.'))
     } finally {

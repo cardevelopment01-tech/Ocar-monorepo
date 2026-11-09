@@ -4,6 +4,7 @@ import type { Request } from 'express'
 import { verifyAccessToken } from '@/lib/jwt'
 import { client as redis, withTimeout } from '@/db/redis'
 import { logger } from '@/lib/logger'
+import { sha256 } from '@/lib/hash'
 
 // Redis-backed store so limits are shared across all ASG instances instead
 // of each instance counting independently -- an in-memory MemoryStore (the
@@ -172,6 +173,85 @@ function payuSdkLimiter(prefix: string, max: number) {
 }
 export const payuHashLimiter = payuSdkLimiter('payuhash', 60)
 export const payuConfirmLimiter = payuSdkLimiter('payuconfirm', 20)
+
+// Offers (review decision D16). Previewing is cheap but runs the fare engine, so it is capped per principal per
+// minute. Guessing codes is the abuse case: 10 FAILED attempts per 10 minutes, counted per rider and per IP, so
+// rotating accounts from one address (or one account over many addresses) both hit a wall. A request counts as
+// failed only when the controller sets res.locals.codeGuessFailed (unknown code, not-assigned); successful previews
+// and the re-preview after a 409 PRICE_CHANGED never count. skip is injectable so a test can switch the limiter on.
+export function makeOffersPreviewLimiter(skip: () => boolean = skipInTest) {
+  const options: Parameters<typeof rateLimit>[0] = {
+    windowMs: 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip,
+    passOnStoreError: true,
+    keyGenerator: (req) => `offerspreview:${principalKey(req)}`,
+    message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
+  }
+  const store = skip === skipInTest ? redisStore('rl:offerspreview:') : undefined
+  if (store !== undefined) options.store = store
+  return rateLimit(options)
+}
+export const offersPreviewLimiter = makeOffersPreviewLimiter()
+
+// Public live-trip data endpoint (eng review D5). Anyone on the internet can call it, so the abuse that matters is guessing
+// tokens: only WRONG lookups (the controller sets res.locals.tripMiss for unknown, expired and malformed tokens) use up the
+// strict per-IP limit of 20 a minute, so relatives behind one office or carrier IP are never locked out by each other's
+// 5-second polling. A valid link is capped per token (180/min = 15 viewers polling every 5 s). The token is hashed before it
+// becomes a Redis key, so the raw token never sits in Redis either. skip is injectable so a test can switch the limiters on.
+export function makePublicTripLimiters(skip: () => boolean = skipInTest) {
+  const build = (prefix: string, max: number, key: (req: Request) => string, misses: boolean) => {
+    const options: Parameters<typeof rateLimit>[0] = {
+      windowMs: 60 * 1000,
+      max,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip,
+      passOnStoreError: true,
+      keyGenerator: (req) => `${prefix}:${key(req)}`,
+      message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
+    }
+    if (misses) {
+      options.skipSuccessfulRequests = true
+      options.requestWasSuccessful = (_req, res) => !res.locals['tripMiss']
+    }
+    const store = skip === skipInTest ? redisStore(`rl:${prefix}:`) : undefined
+    if (store !== undefined) options.store = store
+    return rateLimit(options)
+  }
+  return {
+    misses: build('pubmiss', 20, (req) => req.ip ?? 'unknown', true),
+    perToken: build('pubtok', 180, (req) => sha256(String(req.params['token'] ?? '')).slice(0, 16), false),
+  }
+}
+export const publicTripLimiters = makePublicTripLimiters()
+
+export function makeOffersCodeGuessLimiters(skip: () => boolean = skipInTest) {
+  const build = (prefix: string, key: (req: Request) => string) => {
+    const options: Parameters<typeof rateLimit>[0] = {
+      windowMs: 10 * 60 * 1000,
+      max: 10,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip,
+      skipSuccessfulRequests: true,
+      requestWasSuccessful: (_req, res) => !res.locals['codeGuessFailed'],
+      passOnStoreError: true,
+      keyGenerator: (req) => `${prefix}:${key(req)}`,
+      message: { error: 'Too many wrong codes. Try again later.', code: 'RATE_LIMIT_EXCEEDED' },
+    }
+    const store = skip === skipInTest ? redisStore(`rl:${prefix}:`) : undefined
+    if (store !== undefined) options.store = store
+    return rateLimit(options)
+  }
+  return [
+    build('offersguessuser', principalKey),
+    build('offersguessip', (req) => req.ip ?? 'unknown'),
+  ]
+}
+export const offersCodeGuessLimiters = makeOffersCodeGuessLimiters()
 
 // Per (principal, ride) masked-call throttle — real phone calls cost real
 // money per minute, so this is intentionally tighter than chat.

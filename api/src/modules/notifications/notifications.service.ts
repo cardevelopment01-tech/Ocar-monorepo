@@ -6,7 +6,7 @@ import type { NotifOwnerType } from './notifications.repository'
 import { renderTemplate } from './templates.service'
 import { logger } from '@/lib/logger'
 import { client as redis } from '@/db/redis'
-import { ridePushSentKey, rideEventPushKey } from '@/constants/redis-keys'
+import { ridePushSentKey, rideGoneKey, rideEventPushKey } from '@/constants/redis-keys'
 
 const log = logger.child({ module: 'notifications-service' })
 
@@ -36,12 +36,72 @@ export async function pushToTokens(tokens: string[], msg: PushMessage): Promise<
 // double-send. Shared by broadcast.processor.ts (immediate push for a
 // backgrounded match) and ack-check.processor.ts (fallback push for a driver
 // whose live socket emit never got acked).
+export interface RideRequestPushDetails {
+  rideType: string
+  isReturnCab?: boolean
+  estimatedFare: number
+  /** metres */
+  distanceToPickup: number
+  paymentChannel?: string
+  tripKm?: number
+  tripMin?: number
+}
+
+const RIDE_TYPE_LABEL: Record<string, string> = { one_way: 'One way', round_trip: 'Round trip', rental: 'Rental' }
+
+/** Title and body for a ride-request push: what a driver needs to decide at a glance, with no tap. */
+export function rideRequestPushText(pickup: string, drop: string, d: RideRequestPushDetails): { title: string; body: string } {
+  const type = d.isReturnCab ? 'Return cab' : (RIDE_TYPE_LABEL[d.rideType] ?? 'Ride')
+  const rounded = Math.max(10, Math.round(d.distanceToPickup / 10) * 10) // same floor as the spoken text
+  const away = rounded < 1000 ? `${rounded} m` : `${(rounded / 1000).toFixed(1)} km`
+  const fare = d.estimatedFare > 0 ? ` · ₹${Math.round(d.estimatedFare)}` : ''
+  return { title: `New ride request${fare}`, body: `${type} · ${away} away
+${pickup} → ${drop}` }
+}
+
+export type RideRequestGoneReason = 'accepted' | 'cancelled' | 'assigned'
+
+const GONE_TEXT: Record<RideRequestGoneReason, string> = {
+  accepted: 'Another driver accepted this ride.',
+  cancelled: 'The rider cancelled this ride.',
+  assigned: 'This ride was assigned to another driver.',
+}
+
+// Tells the drivers who were PUSHED a ride request (a backgrounded or locked phone has no live socket, so the socket's
+// ride:request_expired never reaches it) that the request is over. The push reuses the request's tag, so Android swaps
+// the ringing notification for this silent one and stops its sound at once; the 22 s alarm must never keep ringing for a
+// ride that is already taken. Only drivers we actually pushed are contacted, and only builds that created the silent
+// channel (an older build would drop this into Android's default, audible channel).
+export async function sendRideRequestGonePush(rideId: string, driverIds: string[], reason: RideRequestGoneReason): Promise<void> {
+  await Promise.all(driverIds.map(async (driverId) => {
+    try {
+      // Mark the request gone FIRST, then look for the ring push (which marks itself sent FIRST, then looks for this mark):
+      // whichever side runs second sees the other, so a ring can never go out after, or be missed by, its own cancellation.
+      await redis.set(rideGoneKey(rideId, driverId), '1', 'EX', 120)
+      if (!(await redis.exists(ridePushSentKey(rideId, driverId)))) return // never pushed (and now never will be)
+      const { v3 } = await repo.getDriverTokensByRideAlert(BigInt(driverId))
+      await pushToTokens(v3, {
+        title: 'Ride request ended',
+        body: GONE_TEXT[reason],
+        tag: `ride-${rideId}`,
+        ttlSeconds: 60,
+        data: { type: 'ride_request_gone', rideId, reason },
+        channelId: 'ride_gone_v1',
+        silent: true,
+      })
+    } catch (err) {
+      log.error({ err, rideId, driverId }, 'sendRideRequestGonePush failed')
+    }
+  }))
+}
+
 export async function sendRideRequestPushOnce(
   rideId: string,
   driverId: string,
   pickup: string,
   drop: string,
-  windowSeconds: number
+  windowSeconds: number,
+  details?: RideRequestPushDetails
 ): Promise<void> {
   const firstFire = await redis.set(
     ridePushSentKey(rideId, driverId), '1',
@@ -50,15 +110,54 @@ export async function sendRideRequestPushOnce(
   if (firstFire !== 'OK') return
 
   try {
-    const tokens = await repo.getTokensForOwner('driver', BigInt(driverId))
-    await pushToTokens(tokens, {
-      title: 'New ride request',
-      body: `${pickup} → ${drop}`,
-      tag: `ride-${rideId}`,
-      ttlSeconds: Math.min(windowSeconds, 30),
-      data: { type: 'ride_request', rideId },
-      channelId: 'ride_requests_v2',
-    })
+    if (await redis.exists(rideGoneKey(rideId, driverId))) return // the request ended before we got to send it
+    // noProxy: Google Play services must not show the ride request for the app without running it (the app speaks the summary).
+    const base = { tag: `ride-${rideId}`, ttlSeconds: Math.min(windowSeconds, 30), noProxy: true }
+    // Builds that have the loud channel get the long alarm-stream ring and the full details; older builds keep the
+    // channel they have (naming a channel the app lacks would land the push in Android's quiet fallback).
+    let tokens: { v3: string[]; legacy: string[] }
+    try {
+      tokens = await repo.getDriverTokensByRideAlert(BigInt(driverId))
+    } catch (err) {
+      // Nothing was sent: free the one-shot guard so ack-check's later fallback can still push this driver.
+      await redis.del(ridePushSentKey(rideId, driverId)).catch(() => {})
+      throw err
+    }
+    const { v3, legacy } = tokens
+    // Both groups at once: the request has a 20 s window, so the loud push must not wait behind the legacy one.
+    const sends: Promise<unknown>[] = [
+      pushToTokens(legacy, {
+        ...base,
+        title: 'New ride request',
+        body: `${pickup} → ${drop}`,
+        data: { type: 'ride_request', rideId },
+        channelId: 'ride_requests_v2',
+      }),
+    ]
+    if (v3.length > 0) {
+      const text = details ? rideRequestPushText(pickup, drop, details) : { title: 'New ride request', body: `${pickup} → ${drop}` }
+      const data: Record<string, string> = { type: 'ride_request', rideId, pickup, drop }
+      if (details) {
+        data['rideType'] = details.rideType
+        data['estimatedFare'] = String(Math.round(details.estimatedFare))
+        data['distanceToPickup'] = String(Math.round(details.distanceToPickup))
+        data['isReturnCab'] = details.isReturnCab ? 'true' : 'false'
+        if (details.paymentChannel) data['paymentChannel'] = details.paymentChannel
+        if (details.tripKm !== undefined) data['tripKm'] = String(details.tripKm)
+        if (details.tripMin !== undefined) data['tripMin'] = String(details.tripMin)
+      }
+      sends.push(pushToTokens(v3, {
+        ...base,
+        ...text,
+        data,
+        channelId: 'ride_requests_v3',
+        sound: { android: 'ride_request_long', ios: 'ride_request_long.wav' },
+        timeSensitive: true,
+      }))
+    }
+    await Promise.all(sends)
+    // Delivery tracking (see broadcast.processor.ts): a push went out for this offer.
+    log.info({ event: 'ride_offer_pushed', rideId, driverId, loudDevices: v3.length, legacyDevices: legacy.length }, 'ride request pushed')
   } catch (err) {
     log.error({ err }, 'sendRideRequestPushOnce failed')
   }

@@ -19,22 +19,6 @@ function initials(name: string | null) {
   return name.split(' ').map(p => p[0]).filter(Boolean).join('').slice(0, 2).toUpperCase()
 }
 
-function SkeletonRows({ cols }: { cols: number }) {
-  return (
-    <>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <tr key={i} className="border-b border-border-light last:border-b-0">
-          {Array.from({ length: cols }).map((_, j) => (
-            <td key={j} className="px-4 py-3">
-              <div className="h-4 bg-surface-2 rounded animate-pulse" style={{ width: j === 0 ? '140px' : '80px' }} />
-            </td>
-          ))}
-        </tr>
-      ))}
-    </>
-  )
-}
-
 const LIMIT = 20
 
 export default function UsersPage() {
@@ -161,17 +145,13 @@ export default function UsersPage() {
             }]}
           />
         </div>
-        {loading
-          ? <table className="w-full"><tbody><SkeletonRows cols={8} /></tbody></table>
-          : (
-            <DataTable
-              columns={columns as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
-              data={users as unknown as Record<string, unknown>[]}
-              onRowClick={row => setSelected(row as unknown as AdminUserItem)}
-              emptyMessage="No users found"
-            />
-          )
-        }
+        <DataTable
+          isLoading={loading}
+          columns={columns as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
+          data={users as unknown as Record<string, unknown>[]}
+          onRowClick={row => setSelected(row as unknown as AdminUserItem)}
+          emptyMessage="No users found"
+        />
         {pages > 1 && (
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-border-light">
             <p className="text-xs text-text-muted">{total} total</p>

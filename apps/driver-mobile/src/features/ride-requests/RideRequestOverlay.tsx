@@ -24,8 +24,11 @@ import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { GlassChip } from '@/features/go-online/components/ModeHero'
 import { acceptRideRequest, declineRideRequest } from './api'
-import { computeRemainingSeconds } from './countdown'
+import { computeRemainingSeconds, isTapArmed, TAP_GUARD_MS } from './countdown'
 import { useRideAlertSound } from './useRideAlertSound'
+import { ReadAlong, SpeakerBadge } from './ReadAlong'
+import { useAnnouncementStore } from '@/store/useAnnouncementStore'
+import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle)
 
@@ -68,6 +71,7 @@ export function RideRequestOverlay() {
   const [status, setStatus] = useState<'show' | Resolved>('show')
   const [seconds, setSeconds] = useState(0)
   const [isAccepting, setIsAccepting] = useState(false)
+  const [armed, setArmed] = useState(false) // Accept/Decline count only after TAP_GUARD_MS
   const [accepted, setAccepted] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -80,13 +84,17 @@ export function RideRequestOverlay() {
   const backdropOpacity = useSharedValue(0)
   const ringProgress = useSharedValue(1)
   const dragStartY = useSharedValue(0)
+  const actionsOpacity = useSharedValue(0.5)
 
   const rideId = pending?.rideId
   const resolved = status !== 'show'
   const isUrgent = !!pending && seconds <= WARNING_THRESHOLD_SECONDS && !resolved
 
   // Repeating alert while the request is live and unanswered.
-  useRideAlertSound(!!pending && !resolved)
+  useRideAlertSound(!!pending && !resolved, pending)
+  const voiceOn = useAlertPrefsStore((s) => s.voiceEnabled)
+  const speaking = useAnnouncementStore((s) => s.speaking)
+  const reading = useAnnouncementStore((s) => s.segment)
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach(clearTimeout)
@@ -115,11 +123,11 @@ export function RideRequestOverlay() {
   )
 
   const reject = useCallback(() => {
-    if (dismissedRef.current || pending?.rideId == null) return
+    if (dismissedRef.current || resolved || pending?.rideId == null || !isTapArmed(pending.receivedAtMs, Date.now())) return
     setStatus('rejected')
     void declineRideRequest(pending.rideId)
     animateOut(pending.rideId)
-  }, [animateOut, pending?.rideId])
+  }, [animateOut, resolved, pending?.rideId, pending?.receivedAtMs])
 
   const handleBack = useCallback((): boolean => {
     if (!pending) return false
@@ -137,6 +145,17 @@ export function RideRequestOverlay() {
     setAccepted(false)
     setIsAccepting(false)
     setError(null)
+    // Buttons wake up 700 ms after the card appears: dimmed until then, then a quick fade to full.
+    // One clock for the buttons and the handlers: the request's own receipt time.
+    const armIn = Math.max(0, TAP_GUARD_MS - (Date.now() - pending.receivedAtMs))
+    setArmed(armIn === 0)
+    actionsOpacity.set(armIn === 0 ? 1 : 0.5)
+    if (armIn > 0) {
+      schedule(() => {
+        setArmed(true)
+        actionsOpacity.set(withTiming(1, { duration: reduced ? 0 : 160, easing: EASE_OUT }))
+      }, armIn)
+    }
 
     // Deplete the ring across the whole accept window on the UI thread.
     ringProgress.set(1)
@@ -203,7 +222,7 @@ export function RideRequestOverlay() {
   }, [pending, handleBack])
 
   async function handleAccept() {
-    if (isAccepting || accepted || dismissedRef.current || !pending) return
+    if (isAccepting || accepted || dismissedRef.current || !pending || !isTapArmed(pending.receivedAtMs, Date.now())) return
     setIsAccepting(true)
     setError(null)
     try {
@@ -231,7 +250,7 @@ export function RideRequestOverlay() {
   const pan = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(!reduced && !resolved)
+        .enabled(!reduced && !resolved && armed) // a flick during the tap guard would slide the card away and decline nothing
         .onBegin(() => {
           dragStartY.set(sheetY.get())
         })
@@ -252,11 +271,12 @@ export function RideRequestOverlay() {
           }
         }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [height, reduced, resolved, reject],
+    [height, reduced, resolved, armed, reject],
   )
 
   const sheetStyle = useAnimatedStyle(() => ({ opacity: sheetOpacity.get(), transform: [{ translateY: sheetY.get() }] }))
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdropOpacity.get() }))
+  const actionsStyle = useAnimatedStyle(() => ({ opacity: actionsOpacity.get() }))
   const ringProps = useAnimatedProps(() => ({ strokeDashoffset: (1 - ringProgress.get()) * 100 }))
 
   // Staggered entrance for the info blocks -- never the actions row, which must be
@@ -332,16 +352,23 @@ export function RideRequestOverlay() {
             {/* Hero band: type, payment and the fare, the three things the accept decision hangs on. */}
             <LinearGradient colors={['#0B4A50', '#0E8FA3']} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={styles.band}>
               <View style={styles.handle} />
-              <Animated.View entering={entrances[0]} style={styles.bandInner}>
-                <View style={styles.chipRow}>
-                  <GlassChip icon={isRental ? 'clock' : isReturn ? 'corner-up-left' : 'arrow-right'} label={typeLabel} />
-                  {stopCount > 0 ? <GlassChip label={stopCount === 1 ? '1 stop' : `${stopCount} stops`} /> : null}
+              {voiceOn ? <SpeakerBadge speaking={speaking} /> : null}
+              <Animated.View entering={entrances[0]} style={[styles.bandInner, voiceOn ? styles.bandInnerVoice : null]}>
+                <View style={styles.chipBlock}>
+                  <ReadAlong active={reading === 'type'} tone="dark">
+                    <View style={styles.chipRow}>
+                      <GlassChip icon={isRental ? 'clock' : isReturn ? 'corner-up-left' : 'arrow-right'} label={typeLabel} />
+                      {stopCount > 0 ? <GlassChip label={stopCount === 1 ? '1 stop' : `${stopCount} stops`} /> : null}
+                    </View>
+                  </ReadAlong>
                 </View>
-                <View style={styles.fareRow} accessible accessibilityLabel={`Estimated fare ${Math.round(pending.estimatedFare)} rupees${payLabel ? `, ${payLabel}` : ''}`}>
-                  <Text style={styles.fare} maxFontSizeMultiplier={1.15}>₹{Math.round(pending.estimatedFare).toLocaleString('en-IN')}</Text>
-                  {payLabel ? <Text style={styles.pay}>{payLabel}</Text> : null}
-                </View>
-                <Text style={styles.fareNote}>Estimated fare</Text>
+                <ReadAlong active={reading === 'fare'} tone="dark">
+                  <View style={styles.fareRow} accessible accessibilityLabel={`Estimated fare ${Math.round(pending.estimatedFare)} rupees${pending.riderOffer ? ', rider offer applied' : ''}${payLabel ? `, ${payLabel}` : ''}`}>
+                    <Text style={styles.fare} maxFontSizeMultiplier={1.15}>₹{Math.round(pending.estimatedFare).toLocaleString('en-IN')}</Text>
+                    {payLabel ? <Text style={styles.pay}>{payLabel}</Text> : null}
+                  </View>
+                  <Text style={styles.fareNote}>{pending.riderOffer ? 'Estimated fare · Rider offer applied' : 'Estimated fare'}</Text>
+                </ReadAlong>
               </Animated.View>
             </LinearGradient>
 
@@ -353,6 +380,7 @@ export function RideRequestOverlay() {
                   <View style={styles.dotDrop} />
                 </View>
                 <View style={styles.legs}>
+                  <ReadAlong active={reading === 'pickup'} tone="light">
                   <View style={styles.leg}>
                     <View style={styles.legHeader}>
                       <Text style={styles.legLabel}>Pickup</Text>
@@ -361,7 +389,9 @@ export function RideRequestOverlay() {
                     <Text style={styles.place} numberOfLines={1}>{pickup.name}</Text>
                     {pickup.rest ? <Text style={styles.placeRest} numberOfLines={2}>{pickup.rest}</Text> : null}
                   </View>
+                  </ReadAlong>
                   <View style={styles.legDivider} />
+                  <ReadAlong active={reading === 'drop'} tone="light">
                   <View style={styles.leg}>
                     <View style={styles.legHeader}>
                       <Text style={styles.legLabel}>{dropLabel}</Text>
@@ -370,6 +400,7 @@ export function RideRequestOverlay() {
                     <Text style={styles.place} numberOfLines={1}>{dropName}</Text>
                     {dropRest ? <Text style={styles.placeRest} numberOfLines={2}>{dropRest}</Text> : null}
                   </View>
+                  </ReadAlong>
                 </View>
               </Animated.View>
 
@@ -395,10 +426,10 @@ export function RideRequestOverlay() {
 
               {/* Actions (never staggered -- reaction time matters) */}
               {showActions ? (
-                <View style={styles.actions}>
+                <Animated.View style={[styles.actions, actionsStyle]}>
                   <Pressable
                     onPress={reject}
-                    disabled={isAccepting}
+                    disabled={isAccepting || !armed}
                     accessibilityRole="button"
                     accessibilityLabel={`Decline ride request, ${secondsLeft} seconds remaining`}
                     style={({ pressed }) => [styles.decline, pressed && !isAccepting ? styles.pressed : null]}
@@ -425,9 +456,9 @@ export function RideRequestOverlay() {
 
                   <Pressable
                     onPress={() => void handleAccept()}
-                    disabled={isAccepting || accepted}
+                    disabled={isAccepting || accepted || !armed}
                     accessibilityRole="button"
-                    accessibilityState={{ disabled: isAccepting || accepted }}
+                    accessibilityState={{ disabled: isAccepting || accepted || !armed }}
                     accessibilityLabel={`Accept ride, ${secondsLeft} seconds remaining`}
                     style={({ pressed }) => [styles.acceptWrap, pressed && !isAccepting ? styles.pressed : null]}
                   >
@@ -441,7 +472,7 @@ export function RideRequestOverlay() {
                       <Text style={styles.acceptLabel}>{accepted ? 'Accepted' : 'Accept'}</Text>
                     </LinearGradient>
                   </Pressable>
-                </View>
+                </Animated.View>
               ) : null}
             </View>
           </Animated.View>
@@ -467,7 +498,9 @@ const styles = StyleSheet.create({
   band: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg - 2 },
   handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, marginTop: spacing.sm + 2, marginBottom: spacing.md, backgroundColor: 'rgba(255,255,255,0.4)' },
   bandInner: { gap: 2 },
-  chipRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap', marginBottom: spacing.sm },
+  bandInnerVoice: { paddingRight: 44 }, // room for the speaker badge in the corner
+  chipBlock: { alignSelf: 'flex-start', marginBottom: spacing.sm },
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   fareRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
   fare: { fontFamily: fonts.bold, fontSize: 48, lineHeight: 56, letterSpacing: -1.2, color: colors.inkInverse, fontVariant: ['tabular-nums'] },
   pay: { fontFamily: fonts.semibold, fontSize: 18, lineHeight: 24, color: 'rgba(255,255,255,0.92)' },

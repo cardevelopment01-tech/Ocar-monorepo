@@ -94,6 +94,13 @@ export type RideDetail = {
   surge_multiplier: string | null
   actual_km: string | null
   actual_min: string | null
+  // Rental only: the package the ride was booked on and what ran past it.
+  overage_km?: string | null
+  overage_min?: string | null
+  rental_extra_per_km?: string | null
+  rental_extra_per_min?: string | null
+  rental_km_limit?: string | null
+  rental_duration_minutes?: number | null
   cancellation_reason: string | null
   cancellation_reason_code: string | null
   user_rating_given: number | null
@@ -218,6 +225,9 @@ export const rideApi = {
     paymentChannel?: PaymentChannel
     riderName?: string
     riderPhone?: string
+    couponCode?: string
+    expectedPayable?: number
+    autoOffer?: string
   }): Promise<BookingResult> => {
     const body: Record<string, unknown> = {
       categoryId:    params.categoryId,
@@ -242,6 +252,9 @@ export const rideApi = {
     if (params.paymentChannel      !== undefined) body['paymentChannel']      = params.paymentChannel
     if (params.riderName           !== undefined) body['riderName']           = params.riderName
     if (params.riderPhone          !== undefined) body['riderPhone']          = params.riderPhone
+    if (params.couponCode          !== undefined) body['couponCode']          = params.couponCode
+    if (params.expectedPayable     !== undefined) body['expectedPayable']     = params.expectedPayable
+    if (params.autoOffer           !== undefined) body['autoOffer']           = params.autoOffer
     const res = await api.post('/api/v1/rides', body)
     return res.data as BookingResult
   },

@@ -49,6 +49,9 @@ export type BookingResult = {
   scheduledFor?: string
   estimatedFare: number
   surgeMultiplier: number
+  /** Present once offers exist: what an offer took off and what the rider pays. */
+  discount?: number
+  payable?: number
 }
 
 export type VehicleCategory = {
@@ -110,6 +113,10 @@ export type RideDetail = {
   assignedCategoryName: string | null
   totalEstimated: string | null
   totalFinal: string | null
+  // What the driver collects in cash (the payable once offers exist) and the rider-offer discount already
+  // taken off it. Absent from an older server: clients fall back to totalFinal/totalEstimated and no discount.
+  cashDue?: string | null
+  discountAmount?: string | null
   baseFare: string | null
   distanceFare: string | null
   timeFare: string | null
@@ -120,6 +127,14 @@ export type RideDetail = {
   surgeMultiplier: string | null
   actualKm: string | null
   actualMin: string | null
+  // Rental only (null otherwise): the package the ride was booked on and what ran past it, so the receipt can
+  // show package price / extra km / extra time as separate lines.
+  overageKm?: string | null
+  overageMin?: string | null
+  rentalExtraPerKm?: string | null
+  rentalExtraPerMin?: string | null
+  rentalKmLimit?: string | null
+  rentalDurationMinutes?: number | null
   requestedAt: string | null
   startedAt: string | null
   completedAt: string | null

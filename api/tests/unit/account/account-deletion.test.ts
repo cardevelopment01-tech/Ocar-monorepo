@@ -31,6 +31,8 @@ describe('deleteAccount', () => {
 
     expect(ran(/UPDATE users SET status = 'deleted', phone = 'deleted:' \|\| id, name = NULL, email = NULL/)).toBe(true)
     expect(ran(/DELETE FROM saved_places/)).toBe(true)
+    // Live trip links: the users row stays so a cascade never fires; they must be removed explicitly, in the same transaction.
+    expect(ran(/DELETE FROM ride_shares WHERE user_id/)).toBe(true)
     expect(ran(/DELETE FROM device_tokens/)).toBe(true)
     expect(ran(/DELETE FROM notification_logs/)).toBe(true)
     expect(ran(/UPDATE refresh_tokens SET revoked_at/)).toBe(true)
@@ -45,6 +47,7 @@ describe('deleteAccount', () => {
     expect(ran(/UPDATE drivers SET status = 'deleted'.*aadhaar_number = NULL.*license_number = NULL/)).toBe(true)
     expect(ran(/UPDATE driver_bank_accounts SET account_holder_name = 'deleted'/)).toBe(true)
     expect(ran(/DELETE FROM driver_location_snapshots/)).toBe(true)
+    expect(ran(/ride_shares/)).toBe(false)
     expect(ran(/driver_documents|driver_vehicle_documents/)).toBe(false)
     expect(redisDel).toHaveBeenCalledWith('auth:driver:4')
   })

@@ -45,8 +45,8 @@ type LocationState = {
   /** Make sure the foreground watcher is running and re-arm the "still looking" timer. Cheap and idempotent. */
   refresh: () => void
   /** A screen that needs a current location is on show: keep the watcher running until every holder has released. */
-  acquire: () => void
-  release: () => void
+  acquire: (precise?: boolean) => void
+  release: (precise?: boolean) => void
   /** Wipe the saved location (sign-out / forced logout). */
   clearSaved: () => void
 }
@@ -95,6 +95,8 @@ export const useLocationStore = create<LocationState>()(
       // address and the "still looking" cap lives there so it can be tested without React Native.
       let askedSettings = false
       let releaseTimer: ReturnType<typeof setTimeout> | undefined
+      let preciseConsumers = 0 // of those, the ones placing a pickup: they want GPS-grade accuracy
+      let preciseTimer: ReturnType<typeof setTimeout> | undefined
       let consumers = 0 // screens that currently need a live location (home, booking, map picker, ride's pickup editor)
       let appActive = true
       let wasBackground = false
@@ -104,9 +106,9 @@ export const useLocationStore = create<LocationState>()(
         get: () => get(),
         set: (patch) => set(patch),
         deps: {
-          watch: (onFix, onError) =>
+          watch: (onFix, onError, precise) =>
             Location.watchPositionAsync(
-              { accuracy: Location.Accuracy.Balanced, timeInterval: WATCH_INTERVAL_MS, distanceInterval: 0, mayShowUserSettingsDialog: false },
+              { accuracy: precise ? Location.Accuracy.High : Location.Accuracy.Balanced, timeInterval: WATCH_INTERVAL_MS, distanceInterval: 0, mayShowUserSettingsDialog: false },
               (l) => onFix(toFix(l, 'gps')),
               onError // the engine restarts the watcher
             ),
@@ -215,14 +217,27 @@ export const useLocationStore = create<LocationState>()(
 
         refresh: start,
 
-        acquire: () => {
+        acquire: (precise = false) => {
           clearTimeout(releaseTimer)
           consumers++
+          if (precise) {
+            preciseConsumers++
+            clearTimeout(preciseTimer)
+            engine.setPrecise(true)
+          }
           if (appActive) start()
         },
 
-        release: () => {
+        release: (precise = false) => {
           consumers = Math.max(0, consumers - 1)
+          if (precise) {
+            preciseConsumers = Math.max(0, preciseConsumers - 1)
+            // Pickup search -> map picker releases one a moment before the next acquires: do not restart the watcher in between.
+            if (preciseConsumers === 0) {
+              clearTimeout(preciseTimer)
+              preciseTimer = setTimeout(() => { if (preciseConsumers === 0) engine.setPrecise(false) }, 2_000)
+            }
+          }
           // Moving between screens releases one a moment before the next acquires: do not tear the watcher down in between.
           if (consumers === 0 && !launchHold) {
             clearTimeout(releaseTimer)
@@ -272,14 +287,14 @@ function whenHydrated(): Promise<void> {
 
 /** Keep the location watcher running while the calling screen is on show (and `enabled`). Nothing else starts it for long:
  *  the ride-tracking screen, for instance, does not hold it, so a trip does not poll GPS or the geocoder for hours. */
-export function useLocationTracking(enabled = true): void {
+export function useLocationTracking(enabled = true, precise = false): void {
   const focused = useIsFocused()
   useEffect(() => {
     if (!enabled || !focused) return
     const { acquire, release } = useLocationStore.getState()
-    acquire()
-    return release
-  }, [enabled, focused])
+    acquire(precise)
+    return () => release(precise)
+  }, [enabled, focused, precise])
 }
 
 /** One value for the home pill, ring dot, pulse, blue dot and the booking label (see freshnessOf). Computed on every

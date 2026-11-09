@@ -22,6 +22,8 @@ export interface AckCheckJobData {
   estimatedFare: number
   rideType: string
   isReturnCab: boolean
+  /** The broadcast round this offer belongs to; passed through to the card so the app can tell a re-send from a new offer. */
+  offerRound?: number
 }
 
 export async function processAckCheck(data: AckCheckJobData): Promise<void> {
@@ -52,6 +54,7 @@ export async function processAckCheck(data: AckCheckJobData): Promise<void> {
     expiresAt:        data.expiresAt,
     timeoutSeconds,
   }
+  if (data.offerRound !== undefined) payload['offerRound'] = data.offerRound
   if (data.destinationLat !== undefined) payload['destinationLat'] = data.destinationLat
   if (data.destinationLng !== undefined) payload['destinationLng'] = data.destinationLng
 
@@ -62,7 +65,12 @@ export async function processAckCheck(data: AckCheckJobData): Promise<void> {
   // this never fires for them. sendRideRequestPushOnce's own SET NX guard
   // means this is a no-op if broadcast.processor.ts already push-notified
   // this driver immediately (the backgrounded-match case).
-  await sendRideRequestPushOnce(data.rideId, data.driverId, data.pickup, data.drop, BROADCAST_WINDOW_SECONDS)
+  await sendRideRequestPushOnce(data.rideId, data.driverId, data.pickup, data.drop, BROADCAST_WINDOW_SECONDS, {
+    rideType: data.rideType,
+    isReturnCab: data.isReturnCab,
+    estimatedFare: data.estimatedFare,
+    distanceToPickup: data.distanceToPickup,
+  })
 
   if (expiresMs - Date.now() > ACK_RETRY_MS) {
     await queues[QUEUE_NAMES.DISPATCH].add(

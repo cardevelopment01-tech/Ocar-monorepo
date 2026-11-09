@@ -1,0 +1,23 @@
+diff --git a/android/src/main/java/com/rnmaps/maps/MapMarker.java b/android/src/main/java/com/rnmaps/maps/MapMarker.java
+index 3e0250f1b562480583656d8e5c0d2e166d15219c..7b7f611bad428d65fef188177d16af9b3ff6bd8b 100644
+--- a/android/src/main/java/com/rnmaps/maps/MapMarker.java
++++ b/android/src/main/java/com/rnmaps/maps/MapMarker.java
+@@ -357,12 +357,18 @@ public class MapMarker extends MapFeature {
+     }
+ 
+     public LatLng interpolate(float fraction, LatLng a, LatLng b) {
++        // Ocar patch: no start (or end) position means the marker is not on the map; never dereference it (this crashed the app).
++        if (a == null) return b;
++        if (b == null) return a;
+         double lat = (b.latitude - a.latitude) * fraction + a.latitude;
+         double lng = (b.longitude - a.longitude) * fraction + a.longitude;
+         return new LatLng(lat, lng);
+     }
+ 
+     public void animateToCoodinate(LatLng finalPosition, Integer duration) {
++        // Ocar patch: before the native marker exists (or after it was removed) the animator has no start position and the app
++        // crashes on its next animation frame (NullPointerException in interpolate). There is nothing to animate: do nothing.
++        if (marker == null || finalPosition == null) return;
+         TypeEvaluator<LatLng> typeEvaluator = new TypeEvaluator<LatLng>() {
+             @Override
+             public LatLng evaluate(float fraction, LatLng startValue, LatLng endValue) {

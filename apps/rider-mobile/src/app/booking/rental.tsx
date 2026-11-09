@@ -16,6 +16,11 @@ import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { ScheduleSheet, formatPickupTime } from '@/features/booking/components/ScheduleSheet'
 import { StopsList } from '@/features/booking/components/StopsList'
 import { sectionLabel } from '@/theme/homeTokens'
+import { CouponLine } from '@/features/offers/CouponLine'
+import { OfferSheet } from '@/features/offers/OfferSheet'
+import { PriceChangedBanner } from '@/features/offers/PriceChangedBanner'
+import { useOfferPreview } from '@/features/offers/useOfferPreview'
+import { bookAmount, bookingOfferFields, couponLineState, parseOfferNotApplicable, parsePriceChanged, priceChangedMessage, rentalPreviewRequest } from '@/features/offers/offerModel'
 
 const MAX_STOPS = 3
 
@@ -54,6 +59,23 @@ function PackageTierScroller({
   const arrowOpacity = useSharedValue(0)
   const [canScrollRight, setCanScrollRight] = useState(false)
 
+  // Bring the selected package (the best fit, unless the rider chose another) to the middle of the visible window. It needs three
+  // measurements (the chip, the window, the content), which arrive in any order, so each one asks to settle and it scrolls once all are in.
+  const chipLayouts = useRef<Record<number, { x: number; w: number }>>({})
+  const pendingCentre = useRef<number | null>(null)
+  const hasCentred = useRef(false)
+  const settle = useCallback(() => {
+    const id = pendingCentre.current
+    const chip = id === null ? undefined : chipLayouts.current[id]
+    if (!chip || layoutWidthRef.current === 0 || contentWidthRef.current === 0) return
+    const max = Math.max(0, contentWidthRef.current - layoutWidthRef.current)
+    const x = Math.min(max, Math.max(0, chip.x + chip.w / 2 - layoutWidthRef.current / 2))
+    pendingCentre.current = null
+    scrollRef.current?.scrollTo({ x, animated: hasCentred.current })
+    hasCentred.current = true
+  }, [])
+  useEffect(() => { pendingCentre.current = selectedPkgId; settle() }, [selectedPkgId, settle])
+
   const lastCanScroll = useRef<boolean | null>(null)
   const evaluate = useCallback(() => {
     const canScroll = contentWidthRef.current - offsetRef.current - layoutWidthRef.current > 4
@@ -83,8 +105,8 @@ function PackageTierScroller({
         contentContainerStyle={styles.tierRowContent}
         scrollEventThrottle={16}
         onScroll={onScroll}
-        onContentSizeChange={(w) => { contentWidthRef.current = w; evaluate() }}
-        onLayout={(e) => { layoutWidthRef.current = e.nativeEvent.layout.width; evaluate() }}
+        onContentSizeChange={(w) => { contentWidthRef.current = w; evaluate(); settle() }}
+        onLayout={(e) => { layoutWidthRef.current = e.nativeEvent.layout.width; evaluate(); settle() }}
       >
         {pkgs.map((pkg) => {
           const active = pkg.id === selectedPkgId
@@ -93,6 +115,7 @@ function PackageTierScroller({
             <Pressable
               key={pkg.id}
               onPress={() => onSelect(pkg.id)}
+              onLayout={(e) => { chipLayouts.current[pkg.id] = { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width }; settle() }}
               style={[styles.tierChip, active ? styles.tierChipActive : null]}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
@@ -165,6 +188,8 @@ export default function RentalScreen() {
   const [estimate, setEstimate] = useState<Awaited<ReturnType<typeof fetchFareEstimate>> | null>(null)
   const [estLoading, setEstLoading] = useState(false)
   const [booking, setBooking] = useState(false)
+  const [offerSheetOpen, setOfferSheetOpen] = useState(false)
+  const [priceBanner, setPriceBanner] = useState<string | null>(null)
   const [bookError, setBookError] = useState<string | null>(null)
   const bookInFlightRef = useRef(false)
 
@@ -266,7 +291,18 @@ export default function RentalScreen() {
   }
 
   const selectedPkg = openPackages.find((p) => p.id === selectedPkgId) ?? null
-  const canBook = openCatId !== null && selectedPkgId !== null && estimate !== null && !estLoading && !!drop && !booking
+  // Offers: the server prices the chosen package again whenever the package, vehicle, route or a typed code changes.
+  const offerRequest = useMemo(
+    () => (openCatId !== null && selectedPkgId !== null && pickup && drop
+      ? rentalPreviewRequest({ categoryId: openCatId, packageId: selectedPkgId, pickup, drop, stopCount: stops.length, scheduledFor })
+      : null),
+    [openCatId, selectedPkgId, pickup, drop, stops.length, scheduledFor],
+  )
+  const offers = useOfferPreview(offerRequest)
+  const selectedFare = estimate?.breakdown.total ?? null
+  const couponState = couponLineState({ status: offers.status, preview: offers.preview, typedCode: offers.typedCode, fullPrice: selectedFare })
+  const payable = bookAmount(selectedFare, offers.preview)
+  const canBook = openCatId !== null && selectedPkgId !== null && estimate !== null && !estLoading && !!drop && !booking && !offers.bookLocked
 
   async function handleBook() {
     if (!pickup || !drop || openCatId === null || selectedPkgId === null || bookInFlightRef.current) return
@@ -291,6 +327,7 @@ export default function RentalScreen() {
       if (stops.length > 0) input.stops = stops
       if (scheduledFor) input.scheduledFor = scheduledFor
       if (riderName && riderPhone) { input.riderName = riderName; input.riderPhone = riderPhone }
+      Object.assign(input, bookingOfferFields({ preview: offers.preview, typedCode: offers.typedCode, choice: offers.choice }))
 
       const result = await createBooking(input)
       socket.emit('join:ride', result.rideId)
@@ -298,7 +335,18 @@ export default function RentalScreen() {
       resetDraft()
       router.replace(`/ride/${rideId}`)
     } catch (err) {
-      setBookError(resolveBookingError(err))
+      const changed = parsePriceChanged(err)
+      const refused = parseOfferNotApplicable(err)
+      if (changed) {
+        // Say what changed, re-check, and let the rider decide: never rebook on their behalf.
+        setPriceBanner(priceChangedMessage(changed, offers.preview?.payable ?? null, offers.typedCode || offers.preview?.applied?.code || null))
+        offers.retry()
+      } else if (refused) {
+        setBookError(refused.message)
+        offers.retry()
+      } else {
+        setBookError(resolveBookingError(err))
+      }
     } finally {
       setBooking(false)
       bookInFlightRef.current = false
@@ -512,6 +560,8 @@ export default function RentalScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+        {priceBanner ? <PriceChangedBanner message={priceBanner} onDismiss={() => setPriceBanner(null)} /> : null}
+        {selectedPkg ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
         {bookError ? (
           <Text style={styles.error} accessibilityLiveRegion="polite">{bookError}</Text>
         ) : null}
@@ -530,12 +580,25 @@ export default function RentalScreen() {
                 : !selectedPkg
                 ? 'Select a package'
                 : estimate != null
-                ? `Book · ₹${Math.round(estimate.breakdown.total)}`
+                ? `Book · ₹${Math.round(payable ?? estimate.breakdown.total)}`
                 : 'Book'}
             </Text>
           )}
         </Pressable>
       </View>
+
+      <OfferSheet
+        visible={offerSheetOpen}
+        onClose={() => setOfferSheetOpen(false)}
+        applied={offers.preview?.applied ?? null}
+        alternatives={offers.preview?.alternatives ?? []}
+        ineligible={offers.preview?.ineligible ?? []}
+        codeMessage={couponState.kind === 'rejected' ? couponState.message : null}
+        checking={offers.status === 'loading'}
+        onApplyCode={offers.applyCode}
+        onChoose={offers.chooseOffer}
+        onRemove={offers.preview?.applied?.kind === 'auto' ? offers.removeAuto : offers.removeCode}
+      />
 
       <RiderSheet
         visible={riderSheetOpen}

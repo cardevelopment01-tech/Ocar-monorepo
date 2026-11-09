@@ -6,6 +6,8 @@ import { AppErrors } from '@/constants/errors'
 import { recordAuditLog } from '@/lib/audit-log'
 import { listConfig, getConfigById, getConfigValue, validateConfigValue, updateConfigValue } from '@/lib/system-config'
 import { validateConfigBounds, versionPairCheck } from '@/lib/system-config-bounds'
+import { openDiscountedRideCount } from '@/modules/offers/offers.repository'
+import { cashDiscountGuard } from '@/modules/offers/cash-discount-guard'
 
 const router: IRouter = Router()
 
@@ -36,6 +38,15 @@ router.patch('/:id', async (req, res, next) => {
       if (pairError) throw httpError(422, pairError, AppErrors.VALIDATION_ERROR.code)
     }
 
+    // Cash discounts change what a driver collects: refuse any save that would leave them on with old driver builds allowed.
+    const cashGuard = cashDiscountGuard(before.key, value, {
+      cashDiscounts: await getConfigValue('offers_cash_discounts_enabled', 'false'),
+      driverAndroidMin: await getConfigValue('app_update_driver_android_min', '0.0.0'),
+      updateGateEnabled: await getConfigValue('app_update_enabled', 'true'),
+      guardEnforced: await getConfigValue('offers_cash_guard_enforced', 'true'),
+    })
+    if (cashGuard) throw httpError(422, cashGuard, 'CASH_DISCOUNT_GUARD')
+
     const expected = req.body?.expectedUpdatedAt
     if (expected !== undefined && (typeof expected !== 'string' || Number.isNaN(Date.parse(expected)))) {
       throw httpError(422, 'expectedUpdatedAt must be an ISO timestamp', AppErrors.VALIDATION_ERROR.code)
@@ -57,7 +68,19 @@ router.patch('/:id', async (req, res, next) => {
       ipAddress: req.ip ?? null,
     })
 
-    res.json({ config: updated })
+    // Raising the commission while rides carry an offer discount charges commission on their discounted fare when they
+    // settle (commission is read at settlement). Warn, never block: the admin may well want exactly that.
+    const warnings: { code: string; openDiscountedRides: number; message: string }[] = []
+    if (before.key === 'commission_percent' && parseFloat(value) > parseFloat(before.value)) {
+      const open = await openDiscountedRideCount().catch(() => 0)
+      if (open > 0) {
+        warnings.push({
+          code: 'OPEN_DISCOUNTED_RIDES', openDiscountedRides: open,
+          message: `${open} ride${open === 1 ? '' : 's'} with a rider offer ${open === 1 ? 'is' : 'are'} not paid yet and will settle at the new commission rate.`,
+        })
+      }
+    }
+    res.json(warnings.length > 0 ? { config: updated, warnings } : { config: updated })
   } catch (err) { next(err) }
 })
 

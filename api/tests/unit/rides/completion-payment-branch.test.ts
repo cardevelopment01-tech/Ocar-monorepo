@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+vi.mock('@/modules/offers/settlement', () => ({
+  payableForRide: vi.fn(async (q: { query: (sql: string) => Promise<{ rows: { amount?: string }[] }> }) => {
+    const r = await q.query('fare')
+    return parseFloat(r.rows[0]?.amount ?? '0')
+  }),
+  finaliseDiscount: vi.fn(), settleOfferOnPayment: vi.fn(),
+}))
 vi.mock('@/db/client', () => ({
   pool: { query: vi.fn() },
   withTransaction: vi.fn((cb: (client: { query: ReturnType<typeof vi.fn> }) => unknown) =>

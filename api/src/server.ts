@@ -115,6 +115,9 @@ async function start(): Promise<void> {
     {},
     { repeat: { every: 5 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
   )
+  // Offers: stale reservations every 10 minutes, expiry every minute (cheap, indexed by status).
+  await schedulerQueue.add('sweep_offer_reservations', {}, { repeat: { every: 10 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true })
+  await schedulerQueue.add('sweep_offer_expiry', {}, { repeat: { every: 60 * 1000 }, removeOnComplete: true, removeOnFail: true })
 
   // Daily admin digest (CEO E2): one schedule shared by every instance (upsert is idempotent),
   // 09:00 IST; delivery dedupe lives in Redis (admin-digest.ts).
@@ -147,6 +150,12 @@ async function start(): Promise<void> {
     'purge_old_notifications',
     {},
     { repeat: { pattern: '0 4 * * *' }, removeOnComplete: true, removeOnFail: true } // daily at 4 AM
+  )
+  // Live trip links (and any contact phone numbers kept with them) are removed 30 days after the ride ends.
+  await partitionMaintenanceQueue.add(
+    'purge_ride_shares',
+    {},
+    { repeat: { pattern: '45 4 * * *' }, removeOnComplete: true, removeOnFail: true }
   )
   // refresh_tokens / otp_requests grew forever; expired and long-revoked rows are purged daily.
   await partitionMaintenanceQueue.add(

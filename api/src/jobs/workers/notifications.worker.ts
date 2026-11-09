@@ -5,6 +5,7 @@ import { sendSms } from '@/providers/sms.provider'
 import { sendEmail } from '@/lib/email'
 import * as notifService from '@/modules/notifications/notifications.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
+import { dltVariable, shareTokenFromUrl } from '@/modules/ride-shares/share-sms'
 import { workerPool as pool } from '@/db/client'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
@@ -149,12 +150,33 @@ export const notificationsWorker = new Worker(
                 WHERE c.user_id = $1`,
               [data.userId]
             )
+            // The live trip link: one share per alert, the same URL in every contact's text. null = the feature is off, the ride is
+            // gone or anything went wrong; every contact then gets exactly today's static-pin text.
+            let trackUrl: string | null = null
+            if (rows.length > 0) {
+              try {
+                const { createSosShare } = await import('@/modules/ride-shares/ride-shares.service')
+                trackUrl = await createSosShare(BigInt(data.rideId), BigInt(data.userId))
+              } catch (err) {
+                log.error({ err }, 'sos live link failed, using the static pin')
+              }
+            }
             for (const c of rows) {
               const logId = await notifService.logNotification({ jobName: 'sos_contact', recipientPhone: c.phone, payload: { rideId: data.rideId } })
               try {
-                const { body } = await renderTemplate('sos_contact', 'sms', {
-                  riderName: c.rider_name ?? 'Your contact', lat: String(data.lat), lng: String(data.lng),
-                })
+                const riderName = c.rider_name ?? 'Your contact'
+                let body: string | null = null
+                if (trackUrl) {
+                  try {
+                    body = (await renderTemplate('sos_contact_live', 'sms', { riderName: dltVariable(riderName), trackToken: shareTokenFromUrl(trackUrl) })).body
+                  } catch (err) {
+                    // Not approved/activated yet (ships inactive until its DLT template is approved): fall back to the static pin.
+                    log.warn({ err }, 'sos_contact_live unavailable, using the static pin')
+                  }
+                }
+                if (body === null) {
+                  body = (await renderTemplate('sos_contact', 'sms', { riderName, lat: String(data.lat), lng: String(data.lng) })).body
+                }
                 await sendSms(c.phone, body)
                 await notifService.markSent(logId)
               } catch (err) {
@@ -243,7 +265,7 @@ export const notificationsWorker = new Worker(
       let fareStr = ''
       try {
         const fareRes = await pool.query<{ amount: string }>(
-          `SELECT COALESCE(total_final, total_estimated)::numeric AS amount
+          `SELECT ocar_payable(COALESCE(total_final, total_estimated), discount_amount)::numeric AS amount
            FROM fare_snapshots WHERE ride_id = $1`,
           [BigInt(data.rideId)]
         )

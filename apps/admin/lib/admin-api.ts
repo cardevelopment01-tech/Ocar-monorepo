@@ -456,7 +456,10 @@ export interface AdminPaymentItem {
   id: string
   status: string
   channel: string
+  /** What the rider paid (the payable). Gross fare = amount + discount_amount. */
   amount: string
+  /** Offer discount taken off the gross fare; '0.00' when none. */
+  discount_amount?: string
   commission_amount: string
   driver_earning: string
   ride_id: string

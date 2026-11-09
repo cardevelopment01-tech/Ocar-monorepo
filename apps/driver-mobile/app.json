@@ -4,7 +4,7 @@
                  "slug":  "ocar-driver",
                  "scheme":  "ocardriver",
     "experiments": { "reactCompiler": true },
-                 "version":  "1.1.0",
+                 "version":  "1.2.0",
   "runtimeVersion": { "policy": "fingerprint" },
   "updates": { "fallbackToCacheTimeout": 0 },
                  "orientation":  "portrait",
@@ -12,7 +12,7 @@
                  "icon":  "./assets/brand/app-icon.png",
                  "android":  {
                                  "package":  "com.ocarindia.driver",
-                                 "versionCode":  1,
+                                 "versionCode":  3,
                                  "googleServicesFile":  "./google-services.json",
                                  "icon":  "./assets/brand/app-icon.png",
                                  "adaptiveIcon":  {
@@ -27,7 +27,7 @@
                                                      "FOREGROUND_SERVICE_LOCATION",
                                                      "POST_NOTIFICATIONS"
                                                  ],
-                                 "blockedPermissions":  ["android.permission.SYSTEM_ALERT_WINDOW", "android.permission.RECORD_AUDIO"],
+                                 "blockedPermissions":  ["android.permission.RECORD_AUDIO"],
                                  "allowBackup":  false,
                                  "config":  {
                                                 "googleMaps":  {
@@ -41,6 +41,7 @@
                              "config":  {
                                             "googleMapsApiKey":  "AIzaSyAAVGxzN9sRx8fOBOQxwITVIk8lPC6sGtM"
                                         },
+                             "entitlements":  { "com.apple.developer.usernotifications.time-sensitive": true },
                              "infoPlist":  {
                                                "UIBackgroundModes":  [
                                                                          "location",
@@ -96,7 +97,7 @@
                                  "@react-native-firebase/app",
     "@react-native-firebase/crashlytics",
     "@sentry/react-native/expo",
-                                 ["expo-notifications", { "icon": "./assets/brand/notification-icon.png", "color": "#0E8FA3" }],
+                                 ["expo-notifications", { "icon": "./assets/brand/notification-icon.png", "color": "#0E8FA3", "sounds": ["./assets/sounds/ride_request_long.wav"] }],
     "@react-native-firebase/messaging",
                                  "@react-native-community/datetimepicker",
                                  [

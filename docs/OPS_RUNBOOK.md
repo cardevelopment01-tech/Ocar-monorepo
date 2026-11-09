@@ -445,6 +445,26 @@ aws autoscaling start-instance-refresh \
   --preferences '{"MinHealthyPercentage":100,"MaxHealthyPercentage":100}'
 ```
 
+## Database password rotation (managed RDS master password)
+
+The RDS master password (`ocar_admin`) is created and rotated every 7 days by AWS (`manage_master_user_password` in `rds.tf`;
+secret `rds!db-...` in Secrets Manager). A rotation changes the password in place: open connections keep working, **new**
+connections that present the old one are refused with Postgres `28P01`. The first rotation on prd (5 Nov 2026, 04:09 UTC) did
+exactly that: the API's cached password was the old one and every call that needed a new connection
+returned 500 until the cache expired. Same class as `docs/INCIDENT_2026-08-25_PROD_DB_AUTH_OUTAGE.md`.
+
+**Setup (already in place on prd):** `/ocar/prd/api-env` has `DB_AUTH_MODE=secrets-manager` and no `DATABASE_URL`. `user_data.sh.tpl`
+derives `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_SECRET_ARN` from RDS at boot, so there is no copied password to go stale. The instance role
+can read the secret (`rds_secret_read`, `iam.tf`). A new environment must set `DB_AUTH_MODE=secrets-manager` in its api-env the same way.
+
+**How the API survives a rotation:** it reads the secret on each new connection with a 15 s cache (it was 5 min, which left up to 5 minutes
+of refused new connections after each rotation) and, on `28P01`, forgets the cache and retries once, so callers see nothing. Test on
+**stg first**: `aws secretsmanager rotate-secret --secret-id <stg secret arn>` (changes stg only), then confirm no 5xx and no `28P01`.
+Never `rds_iam` on `ocar_admin`.
+
+**If "Database password rejected" (alert) or `28P01` persists past a minute:** check `DB_AUTH_MODE` in api-env. If the env still uses a
+copied `DATABASE_URL`, put the current secret's password in it (`pnpm env:edit <env>`) and roll the active color.
+
 ## PayU collections
 
 PayU collects ride fares, driver wallet top-ups and package purchases
@@ -575,6 +595,89 @@ Action: look up the `mihpayid` in the PayU dashboard. Refund it there
 manually (duplicate / unknown / wrong amount), or, if it clearly belongs to a
 pending payment, attribute it by hand and record what you did. The API never
 guesses an owner.
+
+## Offers and coupons
+
+Design: `docs/superpowers/plans/2026-11-03-offers-and-coupons.md`. Money model: the rider pays the post-offer amount, the
+driver is paid that same amount (not the gross fare), and no commission is taken while `commission_percent` is 0. Offers
+only apply while `commission_percent` is 0 and never in package-billing cities, so restoring commission by hand stops new
+offers on its own. The commission holiday itself is switched on and off manually.
+
+**Switches** (`system_config`, Admin > Config; all default `'false'`):
+
+| Key | Effect |
+|---|---|
+| `offers_enabled` | Master switch. Off: preview answers `enabled:false`, the apps hide every coupon row, booking ignores offers. |
+| `offers_cash_discounts_enabled` | Lets cash rides get a discount. Saving it `true` is refused (422 `CASH_DISCOUNT_GUARD`) until the guard conditions hold; read the message. |
+| `offers_cash_guard_enforced` | Default `'true'`. Set `'false'` to lift the cash-discount driver-version guard for internal testing before the cash_due driver build (1.2.0) is in production. While lifted, a discounted cash ride reaching a driver on an older app shows that driver the undiscounted fare. Put it back to `'true'` (refused while cash discounts are on and the driver minimum is still low) before the public launch. |
+| `offers_cashback_enabled` | Cashback benefits. Leave off until riders can spend wallet credit. |
+| `offers_max_discount_percent` | Hard cap on any discount as a percent of the fare (default 15). |
+
+**Go-live order:** staging soak -> prod `offers_enabled=true` with cash discounts still off -> raise the driver app minimum
+version (`app_update_driver_android_min`) once the driver release that understands discounted fares is out -> only then
+`offers_cash_discounts_enabled=true`. Cashback last.
+
+**Kill switch:** set `offers_enabled` to `'false'`. In-flight reservations are released by the sweep (below); rides already
+booked keep their discount.
+
+**Metrics** (Grafana, `offers_*`):
+- `offers_redemptions_total{status}` - reserved / consumed / released / reversed.
+- `offers_preview_rejections_total{reason}` and `offers_reserve_refused_total{reason}` - spikes in `BUDGET_EXHAUSTED` or
+  `DISABLED` mean an offer ran out or was ended while riders still see it.
+- `offers_budget_remaining{offer}` - burn rate per offer.
+
+**Stuck reservations:** the `sweep_offer_reservations` job releases reservations whose ride never settled; `sweep_offer_expiry`
+ends offers past their end date. If an offer's budget looks too low, check for `reserved` rows older than the sweep window in
+`offer_redemptions` before raising the budget.
+
+**Changing an offer mid-flight:** edit through Admin > Offers (creates a new version; riders with the old price get a 409
+`PRICE_CHANGED` and see the new price, nothing is re-booked automatically).
+
+## Driver identity verification (selfie + number plate)
+
+Design: `docs/superpowers/specs/2026-11-02-driver-identity-verification-design.md`. Goal: stop one account being driven by
+several people. The daily selfie is matched to the onboarding selfie and the plate photo is read and compared with the
+registered plate, using AWS Rekognition. Everything ships **off**: deploying changes nothing for drivers.
+
+**Switches** (`system_config`, Admin > Config):
+
+| Key | Effect |
+|---|---|
+| `verification_mode` | `off` (today's behaviour), `shadow` (score and record only, drivers see nothing), `flag` (low scores queue for an admin, drivers keep working, an unusable photo is a retake), `block` (a selfie that does not match stops the driver until an admin clears it). |
+| `spot_check_enabled` | `'true'` turns on the re-check: after a random 2-3 rides, or a long one-way/round-trip ride, the driver is taken offline and must redo selfie + plate to go online. Only acts while `verification_mode` is not `off`. |
+| `spot_check_rides_min` / `_max` | The random "after N rides" range (default 2-3). |
+| `spot_check_long_ride_km` / `_minutes` | A completed one-way or round-trip ride at or above either always triggers a re-check (60 km / 90 min). |
+| `verification_face_pass_min` / `_review_min` | Similarity at or above pass = pass; between = admin review; below = mismatch. Start 90 / 75; **calibrate in shadow first**. |
+| `verification_retake_max` | Retakes of an unusable photo per day before it goes to an admin (3). In block mode also the number of mismatches before "An admin will review this". |
+
+`drivers.verification_mode_override` (`off|shadow|flag|block`) beats the global mode for one driver: use it to pilot on a
+single phone, or to exempt the seeded load-test drivers (`+918888%`), without touching everyone.
+
+**Go-live order (do not skip steps):**
+
+1. **IAM first.** The API's AWS identity needs `rekognition:DetectFaces`, `CompareFaces`, `DetectText` and read on the photo
+   bucket. Via the prd process only; any change here needs ops approval. Check with `aws rekognition detect-faces` against a
+   test object. Rekognition must be in the bucket's region (`S3_REGION`, ap-south-1).
+2. **Raise the driver app minimum version** (`app_update_driver_android_min`) to a build that has the consent card, the
+   "Quick safety check" screen and the retake messages, **before** `flag`, `block` or `spot_check_enabled`. An older build cannot
+   show the consent card or read the retake reasons and would see a generic error.
+3. **Shadow for at least 7 days.** Scores are stored but nothing is enforced. Read the similarity histogram in Admin >
+   Verifications > stats (`GET /api/v1/admin/verifications/stats`), then set the two thresholds so the review band yields about
+   20-30 cases a day (the admin budget).
+4. **Legal sign-off** on the consent wording and photo retention (the consent card says photos are kept "only as long as
+   these checks need them"; there is **no automatic deletion job yet**, so decide retention before `flag`).
+5. **Flag for about 2 weeks**, then enable `spot_check_enabled`. Admins work the queue in Admin > Verifications (J/K move,
+   O looks fine, M mismatch).
+6. **Block** only when the confirmed-ok vs confirmed-mismatch rates look right.
+
+**Roll back:** set `verification_mode` to `off`. A driver with an open re-check is released at once (an open challenge is
+ignored while verification is off). Nothing else needs undoing.
+
+**A driver says "I'm offline and can't verify"** (broken camera, no light): Admin > Verifications > **Open checks** > Waive
+check. They can then go online; the waiver is in the audit log.
+
+**If Rekognition is down:** the daily check still completes (scoring fails open) and the case is queued for review at the
+lowest priority; no driver is stopped by an outage.
 
 ## Updating an observability secret (Grafana Cloud alerting/SLO/synthetics)
 

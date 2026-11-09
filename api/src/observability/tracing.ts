@@ -5,6 +5,7 @@ import { resourceFromAttributes } from '@opentelemetry/resources'
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
 import { config } from '@/config'
 import { logger } from '@/lib/logger'
+import { redactShareToken } from '@/observability/http-log'
 
 // Exported so the test above can assert on it without booting the SDK
 // (booting it patches global modules — wrong thing to do in a unit test).
@@ -15,6 +16,19 @@ import { logger } from '@/lib/logger'
 // MUST-DO #4's security-boundary note.
 export const pgInstrumentationConfig = { enhancedDatabaseReporting: false }
 
+// A live-trip link carries its secret in the path, and the http instrumentation records that path as a span attribute that is
+// exported to Tempo. Rewrite those attributes (the route template, /public/trips/:token, is unaffected) before the span ends.
+export const httpInstrumentationConfig = {
+  requestHook: (span: { setAttribute: (k: string, v: string) => unknown }, req: object) => {
+    const url = (req as { url?: string }).url
+    if (!url || !url.includes('/public/trips/')) return
+    const path = redactShareToken(url)!
+    span.setAttribute('http.target', path)
+    span.setAttribute('url.path', path.split('?')[0]!)
+    span.setAttribute('http.url', redactShareToken(url)!)
+  },
+}
+
 const sdk = new NodeSDK({
   resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: 'ocar-api' }),
   traceExporter: new OTLPTraceExporter({
@@ -23,6 +37,7 @@ const sdk = new NodeSDK({
   instrumentations: [
     getNodeAutoInstrumentations({
       '@opentelemetry/instrumentation-pg': pgInstrumentationConfig,
+      '@opentelemetry/instrumentation-http': httpInstrumentationConfig,
       // GPS-ping-hot-path noise — see MUST-DO #3's level-gate note, same
       // reasoning applies to trace volume as it does to log volume.
       '@opentelemetry/instrumentation-fs': { enabled: false },

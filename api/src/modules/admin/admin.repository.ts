@@ -136,13 +136,14 @@ export interface DriverListFilters {
   cityIds?: number[];
   includeNoCity?: boolean;
   categoryIds?: number[];
-  /** Active/suspended drivers with a required document waiting for review (e.g. a newly required RC back). */
+  /** Active/suspended/docs_rejected drivers with a required document waiting for review (a newly required RC back, or a rejected document re-uploaded). */
   docsToReview?: boolean;
 }
 
 // A required document (identity, or any vehicle of the driver) waiting for an admin. Drivers who were approved
 // before a document became required (RC back) stay `active`, so they never enter the pending_approval queue;
-// this is what surfaces them. Constants only, safe to inline.
+// likewise a `docs_rejected` driver who re-uploads stays `docs_rejected` (re-upload only resets the document to
+// pending; the driver never passes through the submit step). This is what surfaces them. Constants only, safe to inline.
 const PENDING_REQUIRED_DOCS_SQL = `(
   EXISTS (SELECT 1 FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'pending'
           AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)}))
@@ -150,7 +151,9 @@ const PENDING_REQUIRED_DOCS_SQL = `(
              WHERE dv.driver_id = d.id AND dvd.status = 'pending'
              AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)}))
 )`;
-const DOCS_TO_REVIEW_SQL = `(d.status IN ('active', 'suspended') AND ${PENDING_REQUIRED_DOCS_SQL})`;
+// The one list of statuses the review queue covers: used by the filter, the card count and the per-row badge.
+const DOCS_REVIEW_STATUSES_SQL = `('active', 'suspended', 'docs_rejected')`;
+const DOCS_TO_REVIEW_SQL = `(d.status IN ${DOCS_REVIEW_STATUSES_SQL} AND ${PENDING_REQUIRED_DOCS_SQL})`;
 
 // A driver's current vehicle = the primary, non-blacklisted one (same predicate as
 // driver_vehicles_one_primary_idx), so a driver never appears twice.
@@ -235,7 +238,7 @@ export async function listDrivers(
          vc.display_name AS vehicle_category,
          (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id) AS docs_submitted,
          (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'approved') AS docs_approved,
-         CASE WHEN d.status IN ('active', 'suspended') THEN
+         CASE WHEN d.status IN ${DOCS_REVIEW_STATUSES_SQL} THEN
            (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'pending'
               AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)}))
            + (SELECT COUNT(*) FROM driver_vehicle_documents dvd JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
@@ -928,7 +931,7 @@ export async function listDriverPayments(
   // Page the bare payment ids first (single-table query, so the driver index is the obvious plan), then join.
   const dataRes = await pool.query(
     `SELECT p.id::text, p.status, p.channel, p.created_at,
-            p.amount::text, p.commission_amount::text, p.driver_earning::text,
+            p.amount::text, p.discount_amount::text, p.commission_amount::text, p.driver_earning::text,
             r.id::text AS ride_id,
             u.name AS user_name
      FROM (
@@ -1956,7 +1959,7 @@ export async function listAdminRateCards() {
     `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type,
             rc.city_id::int AS city_id, rc.rate_per_km, rc.rate_per_min, rc.min_fare,
             rc.return_rate_per_km, rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day,
-            rc.cancellation_fee, rc.stop_charge, rc.effective_from, rc.effective_to, rc.notes,
+            rc.cancellation_fee, rc.stop_charge, rc.base_fare, rc.effective_from, rc.effective_to, rc.notes,
             rc.created_by::int AS created_by, rc.created_at,
             vc.display_name AS category_name,
             vc.slug AS category_slug,
@@ -1974,7 +1977,7 @@ export async function listAdminRateCardHistory() {
   const res = await pool.query(
     `SELECT rch.id::int AS id, rch.rate_card_id::int AS rate_card_id,
             rch.rate_per_km, rch.rate_per_min, rch.min_fare, rch.return_rate_per_km, rch.hour_rate,
-            rch.stop_charge,
+            rch.stop_charge, rch.base_fare,
             rch.changed_by::int AS changed_by, rch.change_reason, rch.created_at,
             rch.city_id::int AS city_id,
             vc.display_name AS category_name,
@@ -2572,7 +2575,7 @@ export async function listAdminPayments(filters: {
   const dataRes = await pool.query(
     `${withMatches}SELECT
        p.id::text, p.status, p.channel, p.created_at,
-       p.amount::text, p.commission_amount::text, p.driver_earning::text,
+       p.amount::text, p.discount_amount::text, p.commission_amount::text, p.driver_earning::text,
        r.id::text AS ride_id,
        u.name AS user_name,
        d.full_name AS driver_name
@@ -2606,6 +2609,8 @@ export async function createAdminRateCard(data: {
   driverAllowancePerDay?: number | null;
   /** Flat fee per added stop. Omitted = carry the previous version's value forward (0 for a brand-new card). */
   stopCharge?: number;
+  /** Flat base fare added to every fare. Omitted = carry the previous version's value forward (0 for a brand-new card). */
+  baseFare?: number;
   cityId?: number | null;
   notes?: string | null;
   adminId: bigint;
@@ -2630,8 +2635,8 @@ export async function createAdminRateCard(data: {
         `INSERT INTO rate_card_history
            (rate_card_id, rate_per_km, rate_per_min, min_fare,
             return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-            city_id, changed_by, change_reason, stop_charge)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            city_id, changed_by, change_reason, stop_charge, base_fare)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           old.id,
           old.rate_per_km,
@@ -2645,6 +2650,7 @@ export async function createAdminRateCard(data: {
           data.adminId,
           data.notes ?? null,
           old.stop_charge,
+          old.base_fare,
         ],
       );
     }
@@ -2653,8 +2659,8 @@ export async function createAdminRateCard(data: {
       `INSERT INTO rate_cards
          (category_id, ride_type, rate_per_km, rate_per_min,
           min_fare, return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-          city_id, notes, created_by, stop_charge, cancellation_fee)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          city_id, notes, created_by, stop_charge, cancellation_fee, base_fare)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         data.categoryId,
@@ -2674,6 +2680,8 @@ export async function createAdminRateCard(data: {
         // Not editable in the admin form yet: carry the previous version's cancellation fee forward
         // (NULL = no fee) instead of dropping it to NULL on every rate edit.
         expired.rows[0]?.cancellation_fee ?? null,
+        // Same carry-forward for the flat base fare.
+        data.baseFare ?? Number(expired.rows[0]?.base_fare ?? 0),
       ],
     );
 

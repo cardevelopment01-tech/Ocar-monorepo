@@ -49,22 +49,6 @@ function Section({ title, defaultOpen = false, children }: { title: string; defa
   )
 }
 
-function SkeletonRows({ cols }: { cols: number }) {
-  return (
-    <>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <tr key={i} className="border-b border-border-light last:border-b-0">
-          {Array.from({ length: cols }).map((_, j) => (
-            <td key={j} className="px-4 py-3">
-              <div className="h-4 bg-surface-2 rounded animate-pulse" style={{ width: j === 0 ? '80px' : '90px' }} />
-            </td>
-          ))}
-        </tr>
-      ))}
-    </>
-  )
-}
-
 const LIMIT = 20
 
 function RidesPageContent() {
@@ -413,17 +397,13 @@ function RidesPageContent() {
             ]}
           />
         </div>
-        {loading
-          ? <table className="w-full"><tbody><SkeletonRows cols={9} /></tbody></table>
-          : (
-            <DataTable
-              columns={columns as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
-              data={rides as unknown as Record<string, unknown>[]}
-              onRowClick={row => setSelected(row as unknown as AdminRideItem)}
-              emptyMessage="No rides match your filters"
-            />
-          )
-        }
+        <DataTable
+          isLoading={loading}
+          columns={columns as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
+          data={rides as unknown as Record<string, unknown>[]}
+          onRowClick={row => setSelected(row as unknown as AdminRideItem)}
+          emptyMessage="No rides match your filters"
+        />
         {pages > 1 && (
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-border-light">
             <p className="text-xs text-text-muted"><span title={totalCapped ? CAPPED_TOTAL_HINT : undefined}>{formatTotal(total, totalCapped)}</span> total</p>

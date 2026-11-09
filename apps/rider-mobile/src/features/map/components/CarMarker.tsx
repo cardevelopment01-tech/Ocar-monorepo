@@ -1,7 +1,9 @@
-import { memo } from 'react'
-import { Marker } from 'react-native-maps'
-import Svg, { Path, Line, Rect, Circle } from 'react-native-svg'
-import { colors } from '@ocar/mobile-shared'
+import { memo, useEffect, useRef, useState } from 'react'
+import { Marker, type MapMarker } from 'react-native-maps'
+import { carStep } from '@/features/ride-tracking/nearbyCars'
+import { VehicleGlyph } from './VehicleGlyph'
+import type { VehicleKind } from '../vehicleKind'
+import { useMarkerSettled } from './useMarkerSettled'
 
 export type CarMarkerProps = {
   position: [number, number]
@@ -9,37 +11,79 @@ export type CarMarkerProps = {
   /** False until a real bearing has been derived from two GPS fixes -- renders
    *  at reduced opacity instead of a fake 0°/north snap (matches web's CarMarker). */
   headingKnown?: boolean
+  /** True once `position` is a real driver fix. Before that the car is only a stand-in (parked at the pickup), and the
+   *  first real fix must snap there: gliding would look like a car driving out of the pickup pin. */
+  animate?: boolean
+  /** The vehicle drawn (a sedan unless told otherwise). */
+  kind?: VehicleKind
+  /** Pass it (the map is ready) to let the car GLIDE between positions; leave it out and the car simply moves with `position`
+   *  (the fare screen's cars). Gliding waits until the native marker exists (see useMarkerSettled). */
+  ready?: boolean
 }
 
-// Matches web's CarMarker.tsx (apps/user/components/map/CarMarker.tsx) pixel-for-pixel:
-// same car silhouette, windshield, headlight/taillight dots. react-native-maps rotates
-// the whole Marker natively (rotation + flat), so no manual transform is needed here --
-// flat:true keeps the car aligned to true bearing instead of the device's map heading.
-function CarMarker({ position, heading = 0, headingKnown = true }: CarMarkerProps) {
+// How long the marker's picture keeps being re-captured after it appears (see below).
+const SNAPSHOT_MS = 700
+// The driver's position arrives about every 3 s; gliding a little under that keeps the car moving continuously.
+const GLIDE_MS = 2600
+
+// The assigned driver's car. react-native-maps rotates the whole Marker natively (rotation + flat), so no manual
+// transform is needed -- flat:true keeps the car aligned to true bearing instead of the device's map heading.
+//
+// Movement: the first position is the marker's own `coordinate`; later positions are native glides (`animateMarkerToCoordinate`),
+// so the car moves smoothly between pings without re-rendering per frame. A jump that is not driving (a stale fix, the
+// first real fix after the stand-in) snaps instead.
+//
+// tracksViewChanges: the marker's child is an SVG that has usually not painted by the first render pass, and a marker
+// frozen at that moment keeps a blank picture on some phones (the pickup/drop pins already avoid this the same way).
+// So it is tracked just long enough to paint once, then frozen: moving or turning the marker is native and needs no
+// re-capture, so there is no steady CPU/battery cost.
+function CarMarker({ position, heading = 0, headingKnown = true, animate = true, kind = 'sedan', ready }: CarMarkerProps) {
+  const glide = ready !== undefined
+  const settled = useMarkerSettled(ready === true)
+  const ref = useRef<MapMarker>(null)
+  const [start] = useState(position)
+  const last = useRef(position)
+  const primed = useRef(animate)
+  const [track, setTrack] = useState(true)
+
+  // The marker's picture is frozen after SNAPSHOT_MS, so anything the picture shows must re-open the window when it changes:
+  // the car starts dimmed (no heading yet) and turns solid -- without this it stayed washed-out grey for the whole trip.
+  useEffect(() => {
+    setTrack(true)
+    const t = setTimeout(() => setTrack(false), SNAPSHOT_MS)
+    return () => clearTimeout(t)
+  }, [headingKnown])
+
+  useEffect(() => {
+    if (!glide || !settled) return // not gliding, or the native marker may not exist yet: animating it now would crash the app
+    const step = carStep(last.current, position)
+    if (step.kind === 'stay') return
+    last.current = position
+    const to = { latitude: position[0], longitude: position[1] }
+    if (!animate) {
+      primed.current = false
+      ref.current?.animateMarkerToCoordinate(to, 1)
+      return
+    }
+    if (!primed.current || step.kind === 'snap') {
+      primed.current = true
+      ref.current?.animateMarkerToCoordinate(to, 1)
+      return
+    }
+    ref.current?.animateMarkerToCoordinate(to, GLIDE_MS)
+  }, [position, animate, glide, settled])
+
   return (
     <Marker
-      coordinate={{ latitude: position[0], longitude: position[1] }}
+      ref={ref}
+      coordinate={glide ? { latitude: start[0], longitude: start[1] } : { latitude: position[0], longitude: position[1] }}
       anchor={{ x: 0.5, y: 0.5 }}
       rotation={heading % 360}
       flat
-      tracksViewChanges={false}
+      tracksViewChanges={track}
       zIndex={10}
     >
-      <Svg width={22} height={36} viewBox="0 0 32 52" style={{ opacity: headingKnown ? 1 : 0.55 }}>
-        <Path
-          d="M4,20 C4,11 8,4 16,4 C24,4 28,11 28,20 L28,42 C28,48 23,51 16,51 C9,51 4,48 4,42 Z"
-          fill={colors.ink900}
-        />
-        <Path d="M8,8 L24,8 L25,18 L7,18 Z" fill="rgba(255,255,255,0.82)" />
-        <Line x1={8} y1={8} x2={24} y2={8} stroke="rgba(255,255,255,0.20)" strokeWidth={1} />
-        <Rect x={7} y={20} width={18} height={12} rx={2} fill="rgba(255,255,255,0.07)" />
-        <Line x1={5} y1={29} x2={27} y2={29} stroke="rgba(255,255,255,0.12)" strokeWidth={0.8} />
-        <Rect x={9} y={36} width={14} height={8} rx={2} fill="rgba(255,255,255,0.30)" />
-        <Circle cx={9} cy={7} r={2} fill="#FCD34D" />
-        <Circle cx={23} cy={7} r={2} fill="#FCD34D" />
-        <Circle cx={9} cy={47} r={1.5} fill="#F87171" opacity={0.8} />
-        <Circle cx={23} cy={47} r={1.5} fill="#F87171" opacity={0.8} />
-      </Svg>
+      <VehicleGlyph kind={kind} dim={!headingKnown} />
     </Marker>
   )
 }
@@ -48,5 +92,8 @@ export default memo(CarMarker, (a, b) =>
   a.position[0] === b.position[0] &&
   a.position[1] === b.position[1] &&
   (a.heading ?? 0) === (b.heading ?? 0) &&
-  (a.headingKnown ?? true) === (b.headingKnown ?? true)
+  (a.headingKnown ?? true) === (b.headingKnown ?? true) &&
+  (a.animate ?? true) === (b.animate ?? true) &&
+  a.ready === b.ready &&
+  a.kind === b.kind
 )

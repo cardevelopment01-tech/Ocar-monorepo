@@ -56,7 +56,8 @@ router.post('/devices', authenticate(), async (req, res, next) => {
     }
     const platform = typeof platformInput === 'string' ? platformInput : 'web'
 
-    await repo.upsertDeviceToken({ ownerType: owner.ownerType, ownerId: owner.ownerId, token, platform })
+    const rideAlertV3 = req.body?.rideAlertV3 === true
+    await repo.upsertDeviceToken({ ownerType: owner.ownerType, ownerId: owner.ownerId, token, platform, rideAlertV3 })
     res.status(204).send()
   } catch (err) { next(err) }
 })

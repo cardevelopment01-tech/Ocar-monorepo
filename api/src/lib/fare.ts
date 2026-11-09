@@ -8,6 +8,8 @@ export interface RateCardInput {
   rate_per_km: number
   rate_per_min: number
   min_fare: number
+  /** one_way/round_trip: flat amount added to the fare before surge. Omitted/0 = none. */
+  base_fare?: number | null
   return_rate_per_km?: number | null
   /** @deprecated for round_trip — see km_per_day / driver_allowance_per_day */
   hour_rate?: number | null
@@ -123,6 +125,8 @@ export function calculateFare(input: FareInput): FareBreakdown {
     ? rate_card.return_rate_per_km
     : rate_card.rate_per_km
 
+  const flat_base = round2(rate_card.base_fare ?? 0)
+
   // ── Round trip: guaranteed-minimum-km package + per-day driver allowance ──
   // Industry-standard outstation model (Ola Outstation / Uber Intercity):
   // billed for at least `days * km_per_day` regardless of actual km driven,
@@ -136,10 +140,10 @@ export function calculateFare(input: FareInput): FareBreakdown {
     const distance_fare = round2(estimated_km * per_km)
     const stop_fare     = round2(stop_count * charge_per_stop)
     const floored  = round2(Math.max(distance_fare, rate_card.min_fare))
-    const subtotal = round2(floored + waiting_fare + stop_fare)
+    const subtotal = round2(floored + flat_base + waiting_fare + stop_fare)
     const surge_fare = round2(subtotal * (surge_multiplier - 1))
     return {
-      base_fare: round2(Math.max(rate_card.min_fare - distance_fare, 0)),
+      base_fare: round2(flat_base + Math.max(rate_card.min_fare - distance_fare, 0)),
       distance_fare,
       time_fare: 0,
       stop_fare,
@@ -165,12 +169,13 @@ export function calculateFare(input: FareInput): FareBreakdown {
 
     const metered  = round2(distance_fare + overage_fare)
     const floored  = round2(Math.max(metered, rate_card.min_fare))
-    const subtotal = round2(floored + stop_fare + driver_allowance)
+    const subtotal = round2(floored + flat_base + stop_fare + driver_allowance)
     const surge_fare = round2(subtotal * (surge_multiplier - 1))
     const total      = round2(subtotal + surge_fare)
 
     return {
-      base_fare: 0,
+      // flat base + any min_fare top-up, so the lines add up to the total
+      base_fare: round2(flat_base + Math.max(rate_card.min_fare - metered, 0)),
       distance_fare,
       time_fare: 0,
       stop_fare,
@@ -190,12 +195,12 @@ export function calculateFare(input: FareInput): FareBreakdown {
 
   const metered   = round2(distance_fare + time_fare)
   const floored   = round2(Math.max(metered, rate_card.min_fare))
-  const subtotal  = round2(floored + stop_fare)
+  const subtotal  = round2(floored + flat_base + stop_fare)
   const surge_fare = round2(subtotal * (surge_multiplier - 1))
   const total      = round2(subtotal + surge_fare)
 
   return {
-    base_fare:     round2(Math.max(rate_card.min_fare - metered, 0)),
+    base_fare:     round2(flat_base + Math.max(rate_card.min_fare - metered, 0)),
     distance_fare,
     time_fare,
     stop_fare,

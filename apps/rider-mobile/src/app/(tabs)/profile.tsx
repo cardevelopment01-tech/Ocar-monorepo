@@ -16,7 +16,7 @@ import { teardownPushNotifications } from '@/services/notifications'
 import { fetchProfile, updateProfile, type ProfileStats } from '@/features/profile/api'
 import { Chip, GroupedList, IconButton, ListRow } from '@/components/ui'
 
-const ROUTES = { notifications: '/notification-settings', places: '/saved-places', safety: '/safety' } as const
+const ROUTES = { notifications: '/notification-settings', places: '/saved-places', safety: '/safety', offers: '/offers' } as const
 const SUPPORT_EMAIL = 'grievance@ocarindia.com'
 const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=Ocar%20rider%20support`
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0'
@@ -159,15 +159,11 @@ export default function ProfileScreen() {
             <Text style={styles.tileTitle}>Saved places</Text>
             <Text style={styles.tileSub}>Home, Work and more</Text>
           </Press>
-          {/* TODO(backend): no offers/coupons screen or API exists yet, so this tile is inert and says "Soon". */}
-          <View style={styles.tileHit}>
-            <View style={styles.tile}>
-              <View style={[styles.tileIcon, { backgroundColor: h.goldWash }]}><Feather name="tag" size={20} color="#8A5F12" /></View>
-              <Text style={styles.tileTitle}>Offers</Text>
-              <Text style={styles.tileSub}>Discounts for rides</Text>
-              <View style={styles.soon}><Chip label="Soon" tone="gold" /></View>
-            </View>
-          </View>
+          <Press onPress={go('offers')} scaleTo={0.98} label="Offers" hit={styles.tileHit} style={styles.tile}>
+            <View style={[styles.tileIcon, { backgroundColor: h.goldWash }]}><Feather name="tag" size={20} color="#8A5F12" /></View>
+            <Text style={styles.tileTitle}>Offers</Text>
+            <Text style={styles.tileSub}>Discounts for rides</Text>
+          </Press>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(140).duration(360)}>
@@ -288,7 +284,6 @@ const styles = StyleSheet.create({
   tileIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   tileTitle: { fontFamily: font.b, fontSize: 15, color: h.ivory, marginBottom: 2 },
   tileSub: { fontFamily: font.r, fontSize: 12.5, color: h.muted },
-  soon: { position: 'absolute', top: 14, right: 14 },
   sectionLabel: { ...sectionLabel, marginHorizontal: 2, marginTop: 14, marginBottom: 10 },
   signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(194,59,59,0.28)', marginTop: 10 },
   signOutText: { fontFamily: font.b, fontSize: 15, color: h.danger },

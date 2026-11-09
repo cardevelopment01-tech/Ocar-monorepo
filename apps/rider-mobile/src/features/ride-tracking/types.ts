@@ -12,6 +12,8 @@ export type RideDetailExtra = RideDetail & {
   driverCurrentLat: number | null
   driverCurrentLng: number | null
   userRatingGiven: number | null
+  // The booked vehicle category. The API sends bigint columns as strings, so it may arrive as a numeric string.
+  categoryId?: number | string | null
 }
 
 export const SEARCHING_STATUSES = new Set(['requested', 'scheduled'])

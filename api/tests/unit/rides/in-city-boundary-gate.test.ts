@@ -6,7 +6,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // "book an hourly rental instead" block on trip distance (IN_CITY_MAX_TRIP_DISTANCE_METRES). This test
 // pins that gate: short same-boundary trips are still blocked, long ones (Bhubaneswar<->Cuttack) are not.
 
+const bookingClient = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [], rowCount: 0 })), release: vi.fn() }))
 vi.mock('@/modules/rides/rides.repository', () => ({
+  insertFareSnapshot:     vi.fn(),
+  insertRideStops:        vi.fn(),
   createRide:            vi.fn(),
   logStatusHistory:      vi.fn(),
   createRideAssignment:  vi.fn(),
@@ -34,6 +37,7 @@ vi.mock('@/modules/payments/payments.service', () => ({
 // containing "boundary" (i.e. findContainingCity) reports the trip as in that city.
 vi.mock('@/db/client', () => ({
   pool: {
+    connect: vi.fn(async () => bookingClient),
     query: vi.fn((sql: string) =>
       sql.includes('boundary')
         ? Promise.resolve({ rows: [{ id: 1, name: 'Bhubaneswar' }], rowCount: 1 })

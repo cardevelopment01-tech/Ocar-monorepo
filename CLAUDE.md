@@ -100,6 +100,18 @@ grace (`ROUND_TRIP_OVERTIME_GRACE_MIN`). `isHourlyRoundTrip()` in `lib/fare.ts` 
 settlement. **Never change what an existing version computes** — add a version 3 instead. The clock facts clients show
 (`bookedUntil`, `overtimeGraceMin`, `overtimeRate`) come from `lib/trip-window.ts`; clients never hardcode the grace.
 
+### Offers: `payments.amount` is what the rider pays
+`fare_snapshots.total_*` stay the **gross** fare and carry `discount_amount`; `payments.amount` is the **payable**
+(`ocar_payable(gross, discount)` in SQL, `payableOf()`/`payableForRide()` in `offers/settlement.ts`). Commission, TDS, PayU
+amount matching, driver earnings, the cash the driver collects, and refund caps all read the payable, so they needed no
+change. Raw `COALESCE(total_final, total_estimated)` is the gross fare: anything rider- or driver-facing about money must go
+through `ocar_payable()` (`tests/unit/offers/payable-guard.test.ts` fails on an unclassified raw reader). Every statement
+that sets `total_final`/`total_estimated` must be followed by `finaliseDiscount()` (the same test enforces it): the discount
+can shrink with the final fare, never grow. The launch offer is **driver-funded**: it only applies while `commission_percent`
+is 0 (set by hand; no date logic) and outside package-billing cities; there is no wallet credit and no `promo_credit`.
+Plan and decisions: `docs/superpowers/plans/2026-11-03-offers-and-coupons.md`. Flags: `offers_enabled`,
+`offers_cash_discounts_enabled`, `offers_cashback_enabled` (all `'false'`), cap `offers_max_discount_percent`.
+
 ### City boundaries are admin-owned
 `cities.boundary` (Polygon, 4326) is edited by admins in the app (`/cities` → "Edit boundary",
 `/api/v1/admin/geo/cities/:id/boundary[/preview]`), not by migrations. **Never write
@@ -155,6 +167,29 @@ When table A needs FK to table B which doesn't exist yet:
 - Create column in A without FK constraint
 - In B's migration, add `ALTER TABLE A ADD CONSTRAINT ... FOREIGN KEY ...`
 Example: `fare_snapshots.ride_id` FK was added in 007 after `rides` was created.
+
+### Live trip sharing (`api/src/modules/ride-shares`)
+A rider shares a link (`<USER_APP_URL>/t/<token>`) that anyone can open without an app or login. Switch: `system_config.trip_share_enabled`
+(default `false`). Rules that must not drift:
+- **Hash-only tokens.** 128-bit random, only the SHA-256 is stored (`ride_shares.token_hash`), like refresh tokens. The server cannot show a link
+  again; the rider app keeps each created URL on the device.
+- **The public response is an allow-list.** `GET /api/v1/public/trips/:token` is built by `toPublicTrip()` from the narrow `getPublicTripRow()` query,
+  never from the full ride row; a test pins the exact key set. Never add fare, phone, OTP or payment data to it.
+- **The token lookup is never cached** (a revoke must work on the next poll); only the per-ride trip (2 s) and ETA (60 s, ride-keyed) are cached.
+- **Unknown, revoked and malformed tokens are one 404**; a link past ride end + 30 min or 7 days after creation is 410. Only unknown/malformed
+  tokens (404) use the strict per-IP limiter (20/min), never an expired or stopped link; valid links are capped per token (180/min). The
+  `no-store`/`noindex` headers are set by a middleware before the limiters, so a 429 is never cached.
+- **The request log and the trace redact the token** (`redactShareToken` in `observability/http-log.ts`; `httpInstrumentationConfig` in
+  `observability/tracing.ts` rewrites the http span attributes); keep the token out of every log, span attribute, metric label and Redis key. ALB
+  access logs, if ever enabled, record the raw path: exclude or redact `/api/v1/public/trips/` there.
+- **Account deletion keeps the users row**, so `ride_shares` cascades never fire: `deleteAccount` deletes the user's shares explicitly, and
+  `purge_ride_shares` (daily) is the backstop.
+- **SOS** links never count toward a rider's per-ride or hourly caps, and one is created only when `sos_contact_live` can render (it ships inactive)
+  and none was made for that ride in the last 10 minutes. The public page shows the ride's own vehicle (`rides.vehicle_id`). SOS texts carry a live link (`sos_contact_live`) only when a share could be created; otherwise the old static-pin `sos_contact` SMS goes out
+  unchanged (pinned by `tests/unit/notifications/sos-contacts-worker.test.ts`). The new SMS wordings (`trip_share`, `sos_contact_live`) ship
+  INACTIVE until their DLT templates are approved; activate them in admin then. The wording is fixed DLT text with the domain and `/t/` in it
+  and only the rider's first name and the link's token as variables (`share-sms.ts`); `docs/DLT_TEMPLATES_TRIP_SHARE.md` is the text to register, and a test
+  fails if the migration drifts from it.
 
 ### S3 document storage
 - `uploadFile(file, folder)` — uploads to S3, returns public URL in prod / MinIO URL in dev
@@ -262,6 +297,8 @@ Server initialised in `api/src/websocket/socket.server.ts`.
                                           bumps version), PATCH /:id/active (toggle)
 /api/v1/rides/:id/messages             — POST (send, rate-limited), GET (list), PATCH /read
                                           (mark read) — in-ride chat between rider and driver
+/api/v1/rides/:id/shares                — POST (create a live trip link; optional contactIds), GET (list), DELETE (stop all); DELETE /:id/shares/:shareId stops one
+/api/v1/public/trips/:token            — GET, no auth: the share link's data (allow-listed, rate-limited, no-store)
 /api/v1/rides/:id/stops                — POST (rider adds a stop; allowed accepted→returning, i.e. also on a
                                           round trip's return leg, until the driver reaches the drop)
 /api/v1/rides/:id/stops/:seq/skip      — POST, rider only: the only user action that skips a stop (the driver's
@@ -478,3 +515,17 @@ Key routing rules:
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore
 - Author a backlog-ready spec/issue → invoke /spec
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues (cardevelopment01-tech/Ocar-monorepo), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
