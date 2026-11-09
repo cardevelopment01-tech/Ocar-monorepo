@@ -21,7 +21,6 @@ import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { NextStopRow } from '@/features/ride-tracking/components/NextStopRow'
 import { TripDetailsCard } from '@/features/ride-tracking/components/TripDetailsCard'
 import { FareDriftToast, UpgradeToast } from '@/features/ride-tracking/components/Toasts'
-import { fleetImageFor } from '@/features/home/fleet'
 import { goBack } from '@/lib/goBack'
 import { IconButton } from '@/components/ui'
 import { TripSummary } from '@/features/trip-summary/TripSummary'
@@ -435,7 +434,6 @@ export default function RideTrackingScreen() {
               canCall={canCall}
               unreadChatCount={unreadChatCount}
               onOpenChat={() => router.push(`/ride/${rideId}/chat`)}
-              carImage={bookedCategoryId === null ? null : fleetImageFor(vehicleSlugs.get(bookedCategoryId) ?? '')}
             />
           ) : null}
 
@@ -455,11 +453,11 @@ export default function RideTrackingScreen() {
           {hasDriver ? (
             <RideActions
               actions={[
-                ...(canShare ? [{ key: 'share', label: 'Share trip', icon: 'share-2' as const, onPress: () => setShareOpen(true) }] : []),
-                { key: 'details', label: detailsExpanded ? 'Hide details' : 'Trip details', icon: detailsExpanded ? 'chevron-up' : 'file-text', onPress: () => setDetailsExpanded((v) => !v) },
-                ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
-                ...(canAddStop ? [{ key: 'stop', label: 'Add stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),
-                ...(canCancel ? [{ key: 'cancel', label: 'Cancel ride', icon: 'x-circle' as const, destructive: true, onPress: () => setShowCancelSheet(true) }] : []),
+                ...(canShare ? [{ key: 'share', label: 'Share trip', short: 'Share', icon: 'share-2' as const, onPress: () => setShareOpen(true) }] : []),
+                { key: 'details', label: detailsExpanded ? 'Hide details' : 'Trip details', short: detailsExpanded ? 'Hide' : 'Details', icon: detailsExpanded ? 'chevron-up' : 'file-text', onPress: () => setDetailsExpanded((v) => !v) },
+                ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', short: 'Pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
+                ...(canAddStop ? [{ key: 'stop', label: 'Add stop', short: 'Stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),
+                ...(canCancel ? [{ key: 'cancel', label: 'Cancel ride', short: 'Cancel', icon: 'x-circle' as const, destructive: true, onPress: () => setShowCancelSheet(true) }] : []),
               ]}
             />
           ) : null}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { font, h, getApiErrorMessage } from '@ocar/mobile-shared'
 import { triggerMaskedCall } from '../api'
@@ -14,8 +14,6 @@ export type DriverCardProps = {
   canCall: boolean
   unreadChatCount: number
   onOpenChat: () => void
-  /** The booked vehicle's render, drawn at the card's right edge. */
-  carImage?: ImageSourcePropType | null
 }
 
 // Who is coming, in the order a rider matches them against the car in front of them: photo + rating,
@@ -39,7 +37,7 @@ function callErrorMessage(err: unknown, firstName: string): string {
   }
 }
 
-export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOpenChat, carImage = null }: DriverCardProps) {
+export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOpenChat }: DriverCardProps) {
   const view = driverViewFromRide(ride)
   const upgradedTo = ride.bookedCategoryName && ride.assignedCategoryName && ride.bookedCategoryName !== ride.assignedCategoryName
     ? ride.assignedCategoryName : null
@@ -75,7 +73,7 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
           <DriverAvatar view={view} photo={ride.driverPhoto} size="lg" chip />
           <View style={styles.info}>
             <Text style={styles.name} numberOfLines={2}>{view.name}</Text>
-            <Text style={styles.meta} numberOfLines={3}>{view.vehicleLine}{view.tripsText ? ` · ${view.tripsText}` : ''}</Text>
+            <Text style={styles.meta} numberOfLines={3}>{view.vehicleLine}{(ride.driverTotalTrips ?? 0) > 0 ? ` · ${view.tripsText}` : ''}</Text>
             {view.verified ? (
               <View style={styles.verified}>
                 <Feather name="shield" size={12} color={h.live} />
@@ -85,13 +83,11 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
             {upgradedTo ? (
               <View style={styles.upgraded}><Text style={styles.upgradedText}>Upgraded to {upgradedTo}</Text></View>
             ) : null}
-            {/* In the text column so the plate's left edge lines up with the name above it. */}
             <View style={styles.plateInfo}>
               <PlateBadge plate={view.plate} />
             </View>
           </View>
         </View>
-        {carImage ? <Image source={carImage} style={styles.car} resizeMode="contain" accessibilityIgnoresInvertColors /> : null}
       </View>
 
       <View style={styles.actions}>
@@ -145,7 +141,6 @@ const styles = StyleSheet.create({
   upgraded: { alignSelf: 'flex-start', backgroundColor: '#DDF5EA', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, marginTop: 2 },
   upgradedText: { fontFamily: font.b, fontSize: 11, color: h.live },
   plateInfo: { alignItems: 'flex-start', marginTop: 6 },
-  car: { position: 'absolute', right: 0, bottom: 0, width: 72, height: 46 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
   message: { flex: 1.5, height: 50, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: h.tealWash },
   messageText: { fontFamily: font.b, fontSize: 14.5, color: h.tealText, flexShrink: 1 },

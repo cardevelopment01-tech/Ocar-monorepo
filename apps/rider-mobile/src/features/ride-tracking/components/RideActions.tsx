@@ -5,6 +5,8 @@ import { font, h, shadow } from '@ocar/mobile-shared'
 export type RideAction = {
   key: string
   label: string
+  /** Short text drawn under the icon when the full label does not fit; the full label stays the accessibility label. */
+  short?: string
   icon: React.ComponentProps<typeof Feather>['name']
   onPress: () => void
   destructive?: boolean
@@ -25,7 +27,7 @@ export function RideActions({ actions }: { actions: RideAction[] }) {
           style={({ pressed }) => [styles.tile, i < actions.length - 1 && styles.divider, pressed && styles.pressed]}
         >
           <Feather name={a.icon} size={19} color={a.destructive ? h.danger : h.tealText} />
-          <Text style={[styles.label, a.destructive && styles.labelDestructive]} numberOfLines={1}>{a.label}</Text>
+          <Text style={[styles.label, a.destructive && styles.labelDestructive]} numberOfLines={1}>{a.short ?? a.label}</Text>
         </Pressable>
       ))}
     </View>
