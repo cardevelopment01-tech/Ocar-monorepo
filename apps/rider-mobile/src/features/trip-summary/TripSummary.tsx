@@ -8,7 +8,7 @@ import { useRouter } from 'expo-router'
 import { Button, buildTripFacts, dropDisplay, font, h, maybeRequestReview, shadow, spacing } from '@ocar/mobile-shared'
 import { Chip, IconButton } from '@/components/ui'
 import { fetchProfile } from '@/features/profile/api'
-import { DriverAvatar, driverViewFromRide } from '@/features/ride-tracking/components/DriverIdentity'
+import { DriverAvatar, PlateBadge, driverViewFromRide } from '@/features/ride-tracking/components/DriverIdentity'
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
 import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { fetchRouteLeg } from '@/features/ride-tracking/api'
@@ -132,7 +132,8 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
             <Text style={styles.arriveTitle} accessibilityRole="header" numberOfLines={2}>
               {completed ? 'You have arrived' : ride.status === 'no_drivers' ? 'No drivers found' : 'Ride cancelled'}
             </Text>
-            <Text style={styles.sub} numberOfLines={2}>{[tripTitle(ride), facts.find((f) => f.key === 'distance')?.value, facts.find((f) => f.key === 'time')?.value, when].filter(Boolean).join(' · ')}</Text>
+            <Text style={styles.sub} numberOfLines={1}>{[tripTitle(ride), facts.find((f) => f.key === 'distance')?.value, facts.find((f) => f.key === 'time')?.value].filter(Boolean).join(' · ')}</Text>
+            {when ? <Text style={styles.sub} numberOfLines={1}>{when}</Text> : null}
           </View>
         </Animated.View>
 
@@ -276,7 +277,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
                 <Text style={styles.sub} numberOfLines={1}>
                   {driverView.ratingText ? `${driverView.ratingText} rating · ` : ''}{driverView.vehicleLine}
                 </Text>
-                {driverView.plate ? <Text style={styles.plate} numberOfLines={1}>{driverView.plate}</Text> : null}
+                <View style={styles.plateRow}><PlateBadge plate={driverView.plate} /></View>
               </View>
             </View>
             <RatingSection rideId={ride.id} driverName={driverView.name} existing={ride.userRatingGiven} onRated={handleRated} />
@@ -371,7 +372,7 @@ const styles = StyleSheet.create({
 
   driverRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   driverName: { fontFamily: font.b, fontSize: 16, color: h.ivory },
-  plate: { fontFamily: font.xb, fontSize: 13, letterSpacing: 1, color: h.ivory },
+  plateRow: { alignItems: 'flex-start', marginTop: 6 },
 
   rideId: { fontFamily: font.m, fontSize: 13, color: h.faint },
 
