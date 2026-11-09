@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { font, h, getApiErrorMessage } from '@ocar/mobile-shared'
 import { triggerMaskedCall } from '../api'
@@ -19,36 +19,54 @@ export type DriverCardProps = {
 // Who is coming, in the order a rider matches them against the car in front of them: photo + rating,
 // name, trips, verified; then "Colour Brand Model" with the number plate. The PIN (PinBand) and pickup
 // (MeetAtRow) sit above this card in the ride screen, same order as Uber/Rapido.
+// Server codes from api/src/modules/call-masking (409) + the per-ride rate limiter (429), in plain words.
+function callErrorMessage(err: unknown, firstName: string): string {
+  const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
+  switch (code) {
+    case 'MASKING_DISABLED':
+    case 'CALL_NOT_AVAILABLE':
+      return `Calling isn't available right now. You can message ${firstName} instead.`
+    case 'CALL_LIMIT_REACHED':
+      return `You've used all the call attempts for this ride. Message ${firstName} instead.`
+    case 'RATE_LIMIT_EXCEEDED':
+      return 'Too many call attempts. Wait a minute and try again.'
+    case 'CALL_FAILED':
+      return "We couldn't start the call. Please try again."
+    default:
+      return getApiErrorMessage(err, 'Could not connect the call')
+  }
+}
+
 export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOpenChat }: DriverCardProps) {
   const view = driverViewFromRide(ride)
   const upgradedTo = ride.bookedCategoryName && ride.assignedCategoryName && ride.bookedCategoryName !== ride.assignedCategoryName
     ? ride.assignedCategoryName : null
-  const [calling, setCalling] = useState(false)
+  // The call is a two-leg IVR: our API asks BulkSMSPlans, which rings THIS phone first and, once it is picked up,
+  // rings the driver and bridges the two. The API only confirms "request accepted" (no answered/connected webhook),
+  // so the honest states are: connecting (request in flight) -> ringing (we are calling you) -> idle again.
+  const [phase, setPhase] = useState<'idle' | 'connecting' | 'ringing'>('idle')
   const [callError, setCallError] = useState<string | null>(null)
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
   async function handleCall() {
-    if (calling || !canCall) return
-    setCalling(true)
+    if (phase !== 'idle' || !canCall) return
+    setPhase('connecting')
     setCallError(null)
     try {
       await triggerMaskedCall(rideId)
-      // The IVR rings this phone first, then bridges the other party. Hold the button disabled while
-      // that happens -- each extra tap re-dials both parties and burns the ride's call cap.
-      setCallError('Your phone will ring shortly')
-      timers.current.push(setTimeout(() => { setCallError(null); setCalling(false) }, 20000))
+      setPhase('ringing')
+      // Each extra tap re-dials both parties and burns the ride's call cap, so hold the button while the IVR works.
+      timers.current.push(setTimeout(() => setPhase('idle'), 20000))
     } catch (err) {
-      setCallError(getApiErrorMessage(err, 'Could not connect the call'))
-      timers.current.push(setTimeout(() => setCallError(null), 4000))
-      setCalling(false)
+      setCallError(callErrorMessage(err, view.firstName))
+      timers.current.push(setTimeout(() => setCallError(null), 6000))
+      setPhase('idle')
     }
   }
 
   return (
     <View accessibilityRole="summary" accessibilityLabel={`Driver ${view.name}`}>
-      {callError ? <Text style={styles.callError}>{callError}</Text> : null}
-
       <View style={styles.card}>
         {/* Who: photo with the rating hanging off it, name, trips, plate. */}
         <View style={styles.top}>
@@ -82,12 +100,29 @@ export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOp
           ) : null}
         </Pressable>
         {canCall ? (
-          <Pressable onPress={() => void handleCall()} disabled={calling} style={[styles.call, calling && styles.busy]} accessibilityRole="button" accessibilityLabel="Call driver">
-            <Feather name="phone" size={18} color={h.ivory} />
-            <Text style={styles.callText}>Call</Text>
+          <Pressable
+            onPress={() => void handleCall()}
+            disabled={phase !== 'idle'}
+            style={[styles.call, phase === 'ringing' ? styles.callRinging : null]}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: phase !== 'idle', busy: phase === 'connecting' }}
+            accessibilityLabel={phase === 'ringing' ? 'Calling you' : phase === 'connecting' ? 'Connecting the call' : 'Call driver'}
+          >
+            {phase === 'connecting' ? <ActivityIndicator size="small" color={h.ivory} /> : <Feather name={phase === 'ringing' ? 'phone-incoming' : 'phone'} size={18} color={phase === 'ringing' ? h.tealText : h.ivory} />}
+            <Text style={[styles.callText, phase === 'ringing' ? { color: h.tealText } : null]} numberOfLines={1}>
+              {phase === 'ringing' ? 'Calling you…' : phase === 'connecting' ? 'Connecting…' : 'Call'}
+            </Text>
           </Pressable>
         ) : null}
       </View>
+
+      {phase === 'ringing' ? (
+        <View style={styles.callNote} accessibilityLiveRegion="polite">
+          <Feather name="phone-incoming" size={15} color={h.tealText} />
+          <Text style={styles.callNoteText}>Pick up our call and we'll connect you to {view.firstName}.</Text>
+        </View>
+      ) : null}
+      {callError ? <Text style={styles.callError} accessibilityLiveRegion="polite">{callError}</Text> : null}
 
       {stale ? (
         <Text style={styles.staleNote} accessibilityLiveRegion="polite">Driver's location hasn't updated in a few minutes</Text>
@@ -112,9 +147,11 @@ const styles = StyleSheet.create({
   messageText: { fontFamily: font.b, fontSize: 14.5, color: h.tealText, flexShrink: 1 },
   call: { flex: 1, height: 50, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: h.chip },
   callText: { fontFamily: font.sb, fontSize: 14.5, color: h.ivory },
-  busy: { opacity: 0.5 },
+  callRinging: { backgroundColor: h.tealWash },
+  callNote: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10, backgroundColor: h.tealWash, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 14 },
+  callNoteText: { flex: 1, fontFamily: font.sb, fontSize: 13, lineHeight: 18, color: h.tealText },
   badge: { position: 'absolute', top: -4, right: 8, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: h.danger, alignItems: 'center', justifyContent: 'center' },
   badgeText: { fontSize: 10, fontFamily: font.b, color: '#FFFFFF' },
-  callError: { fontFamily: font.m, fontSize: 12.5, color: h.danger, marginBottom: 6 },
+  callError: { fontFamily: font.m, fontSize: 13, lineHeight: 18, color: h.danger, marginTop: 10 },
   staleNote: { fontFamily: font.m, fontSize: 12.5, color: h.goldInk, marginTop: 8 },
 })
