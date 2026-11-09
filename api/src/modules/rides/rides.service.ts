@@ -4,7 +4,7 @@ import { httpError, createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { client as redis } from '@/db/redis'
 import { withTimeout } from '@/lib/with-timeout'
-import { startOtpKey, endOtpKey, activeRideByDriverKey, rideAckKey } from '@/constants/redis-keys'
+import { startOtpKey, endOtpKey, activeRideByDriverKey, rideAckKey, driverHeartbeatKey, driverHeartbeatThrottleKey } from '@/constants/redis-keys'
 import { getPresignedUrl } from '@/lib/storage'
 import crypto from 'crypto'
 import { config } from '@/config'
@@ -35,6 +35,8 @@ import {
   MIN_TRIP_DISTANCE_METRES,
   MANUAL_ASSIGN_REQUEST_TIMEOUT_SECONDS,
   FORCE_ASSIGN_GRACE_MINUTES,
+  HEARTBEAT_TTL_SECONDS,
+  HEARTBEAT_MIN_INTERVAL_SECONDS,
 } from '@/constants/limits'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import type { BillingMode, BookingRequest, Ride, RideCore, StopInput } from './rides.types'
@@ -403,12 +405,20 @@ export function notifySessionEnded(driverId: bigint, now = Date.now()): boolean 
 }
 
 /**
- * Heartbeat from the driver app. Only refreshes the session's liveness: it never changes the driver's position or availability (a paused
- * driver stays paused until the normal resume path, which has its own checks). If the server already ended the session, tell the phone.
+ * Heartbeat from the driver app: "still here", without a position. Stored in Redis only (the app sends one every ~20 s) and read by the idle
+ * sweep. It never changes the driver's position or availability, so a paused driver stays paused until the normal resume path, which has
+ * its own checks. A heartbeat for a session id that is not the driver's current one is ignored; only a driver with no live session at all
+ * is told their session ended.
  */
 export async function driverHeartbeat(driverId: bigint, sessionId: bigint): Promise<void> {
-  const alive = await repo.touchSession(driverId, sessionId)
-  if (!alive) notifySessionEnded(driverId)
+  const id = driverId.toString()
+  // Server-side throttle: a client that loops (old, buggy or hostile) costs one Redis call, not a database read.
+  const first = await withTimeout(redis.set(driverHeartbeatThrottleKey(id), '1', 'EX', HEARTBEAT_MIN_INTERVAL_SECONDS, 'NX')).catch(() => 'OK')
+  if (first === null) return
+  const session = await repo.getActiveSession(driverId)
+  if (!session) { notifySessionEnded(driverId); return }
+  if (String(session.id) !== sessionId.toString()) return
+  await withTimeout(redis.set(driverHeartbeatKey(id), String(Date.now()), 'EX', HEARTBEAT_TTL_SECONDS)).catch(() => undefined)
 }
 
 export async function updateLocation(driverId: bigint, data: {

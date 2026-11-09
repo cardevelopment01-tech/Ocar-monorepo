@@ -8,7 +8,9 @@ import {
   goOffline,
 } from '@/modules/rides/rides.service'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
-import { socketEvents, hasLiveDriverSocket } from '@/websocket/socket.server'
+import { socketEvents, isDriverSocketConnected } from '@/websocket/socket.server'
+import { client as redis } from '@/db/redis'
+import { driverHeartbeatKey } from '@/constants/redis-keys'
 import {
   STALE_REQUESTED_MINUTES,
   DISPATCH_WATCHDOG_SECONDS,
@@ -16,6 +18,7 @@ import {
   STALE_DRIVER_ARRIVED_HOURS,
   IDLE_HEARTBEAT_PAUSE_SECONDS,
   IDLE_HEARTBEAT_OFFLINE_MINUTES,
+  POSITION_MAX_AGE_SECONDS,
 } from '@/constants/limits'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
@@ -68,15 +71,41 @@ export const cleanupWorker = new Worker(
     // this sweep only catches drivers who never got to report anything (real crash,
     // OS-killed process, battery death). Short tier pulls them out of the matching
     // pool; only the long tier actually ends the session.
-    // A driver whose app is connected right now is not silent, whatever their last location fix says (a fix can be dropped for poor
-    // accuracy while the driver sits still). Unknown presence counts as "not connected": the old behaviour.
-    const notConnected = async (id: string) => !(await hasLiveDriverSocket(id, false))
-    for (const d of await repo.findStaleOnlineDrivers(IDLE_HEARTBEAT_PAUSE_SECONDS)) {
-      if (!(await notConnected(d.driver_id))) continue
-      await pauseAvailability(BigInt(d.driver_id))
+    // A driver whose app says "still here" (a heartbeat in the last 90 s / 10 min, or a live connection right now) is not silent, even if
+    // their last location fix is old: a fix can be dropped for poor accuracy, or never come while the driver sits still. Two limits keep
+    // that from going too far: a position older than POSITION_MAX_AGE_SECONDS pauses the driver whatever the app says (matching ranks by
+    // that position), and an unknown presence answer counts as "not connected" (the old behaviour).
+    const lastHeartbeatMs = async (ids: string[]): Promise<Map<string, number>> => {
+      const out = new Map<string, number>()
+      if (ids.length === 0) return out
+      try {
+        const vals = await redis.mget(ids.map(driverHeartbeatKey))
+        vals.forEach((v, i) => { const n = Number(v); if (v && Number.isFinite(n)) out.set(ids[i]!, n) })
+      } catch { /* Redis down: no heartbeats known, old behaviour */ }
+      return out
     }
-    for (const d of await repo.findStaleOnlineDrivers(IDLE_HEARTBEAT_OFFLINE_MINUTES * 60)) {
-      if (!(await notConnected(d.driver_id))) continue
+    const connectedAmong = async (ids: string[]): Promise<Set<string>> => {
+      const flags = await Promise.all(ids.map((id) => isDriverSocketConnected(id)))
+      return new Set(ids.filter((_, i) => flags[i]))
+    }
+    const quiet90 = await repo.findStaleOnlineDrivers(IDLE_HEARTBEAT_PAUSE_SECONDS)
+    const quiet10 = await repo.findStaleOnlineDrivers(IDLE_HEARTBEAT_OFFLINE_MINUTES * 60)
+    const posOldList = POSITION_MAX_AGE_SECONDS === IDLE_HEARTBEAT_OFFLINE_MINUTES * 60 ? quiet10 : await repo.findStaleOnlineDrivers(POSITION_MAX_AGE_SECONDS)
+    const posOld = new Set(posOldList.map((d) => d.driver_id))
+    const quiet90Ids = quiet90.map((d) => d.driver_id)
+    const hb90 = await lastHeartbeatMs(quiet90Ids)
+    const conn90 = await connectedAmong(quiet90Ids.filter((id) => !posOld.has(id) && !((hb90.get(id) ?? 0) > Date.now() - IDLE_HEARTBEAT_PAUSE_SECONDS * 1000)))
+    for (const id of quiet90Ids) {
+      const alive = (hb90.get(id) ?? 0) > Date.now() - IDLE_HEARTBEAT_PAUSE_SECONDS * 1000 || conn90.has(id)
+      if (alive && !posOld.has(id)) continue
+      await pauseAvailability(BigInt(id))
+    }
+    const quiet10Ids = quiet10.map((d) => d.driver_id)
+    const hb10 = await lastHeartbeatMs(quiet10Ids)
+    const conn10 = await connectedAmong(quiet10Ids.filter((id) => !((hb10.get(id) ?? 0) > Date.now() - IDLE_HEARTBEAT_OFFLINE_MINUTES * 60_000)))
+    for (const d of quiet10) {
+      const alive = (hb10.get(d.driver_id) ?? 0) > Date.now() - IDLE_HEARTBEAT_OFFLINE_MINUTES * 60_000 || conn10.has(d.driver_id)
+      if (alive) continue
       await goOffline(BigInt(d.driver_id), 'stale_heartbeat')
       // Hardcoded copy, not a notification_templates row (unlike most other notification
       // types) — deliberately out of scope for this fix; revisit if ops needs to edit this wording.

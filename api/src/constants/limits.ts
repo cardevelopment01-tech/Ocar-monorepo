@@ -152,6 +152,11 @@ export const STALE_IN_PROGRESS_CEILING_HOURS = 12
 // end the session only after a much longer silence.
 export const IDLE_HEARTBEAT_PAUSE_SECONDS = 90
 export const IDLE_HEARTBEAT_OFFLINE_MINUTES = 10
+/** A driver whose last position is older than this is paused even if their app still heartbeats or is connected: matching ranks by that
+ *  position, so it must not be arbitrarily old. */
+export const POSITION_MAX_AGE_SECONDS = 10 * 60
+export const HEARTBEAT_TTL_SECONDS = 15 * 60
+export const HEARTBEAT_MIN_INTERVAL_SECONDS = 5
 
 export const RATE_CARD_CACHE_TTL_SECONDS = 3600 // 1h — money-affecting, short backstop TTL
 export const CONFIG_CACHE_TTL_SECONDS = 30 // kill switches — bounds worst-case staleness only; a real flip is invalidated immediately

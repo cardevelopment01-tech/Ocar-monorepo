@@ -1,3 +1,8 @@
+/** Last "still here" from a driver's app (ms epoch). Redis, not the database: it is written every ~20 s per online driver. */
+export const driverHeartbeatKey = (driverId: string): string => `driver:hb:${driverId}`
+/** Throttle: the server accepts at most one heartbeat per driver per few seconds, whatever the client sends. */
+export const driverHeartbeatThrottleKey = (driverId: string): string => `driver:hb:throttle:${driverId}`
+
 export const rideAckKey = (rideId: string, driverId: string): string =>
   `ride:ack:${rideId}:${driverId}`
 

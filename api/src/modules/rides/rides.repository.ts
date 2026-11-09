@@ -1129,16 +1129,6 @@ export async function setDriverAvailability(driverId: bigint, isAvailable: boole
 // Same staleSeconds param is reused
 // for both the short pause-from-pool tier and the longer force-offline tier —
 // see cleanup.worker.ts.
-// A driver's app says "still here" without a location fix (a fix can be dropped for poor accuracy or never arrive while the driver sits
-// still). Refreshes the session timestamp the idle sweep measures from. Returns false when the session is no longer online/on a trip.
-export async function touchSession(driverId: bigint, sessionId: bigint): Promise<boolean> {
-  const res = await pool.query(
-    `UPDATE driver_sessions SET updated_at = now() WHERE id = $1 AND driver_id = $2 AND status IN ('online', 'on_trip')`,
-    [sessionId, driverId]
-  )
-  return (res.rowCount ?? 0) > 0
-}
-
 export async function findStaleOnlineDrivers(staleSeconds: number): Promise<{ driver_id: string }[]> {
   const res = await pool.query<{ driver_id: string }>(
     `SELECT ds.driver_id::text

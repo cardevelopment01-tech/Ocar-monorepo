@@ -379,19 +379,32 @@ export async function isChatOpen(
 // pushing at once. Unknown counts as "yes" (a lookup that fails or takes longer than the cap must never turn into a push storm):
 // the caller then falls back to the shorter socket-ack wait.
 const SOCKET_PRESENCE_TIMEOUT_MS = 500
-export async function hasLiveDriverSocket(driverId: string, whenUnknown = true): Promise<boolean> {
+// How many live sockets the driver has anywhere in the cluster, or null when that could not be learned in time.
+async function driverSocketCount(driverId: string): Promise<number | null> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const sockets = await Promise.race([
       getIO().in(`driver:${driverId}`).fetchSockets(),
       new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), SOCKET_PRESENCE_TIMEOUT_MS) }),
     ])
-    return sockets === null ? whenUnknown : sockets.length > 0
+    return sockets === null ? null : sockets.length
   } catch {
-    return whenUnknown
+    return null
   } finally {
     clearTimeout(timer)
   }
+}
+
+// Dispatch: an unknown answer counts as connected (a push storm is worse than one redundant card).
+export async function hasLiveDriverSocket(driverId: string): Promise<boolean> {
+  const n = await driverSocketCount(driverId)
+  return n === null ? true : n > 0
+}
+
+// Idle sweep: an unknown answer counts as NOT connected (the sweep keeps its old behaviour rather than sparing a driver on a guess).
+export async function isDriverSocketConnected(driverId: string): Promise<boolean> {
+  const n = await driverSocketCount(driverId)
+  return n !== null && n > 0
 }
 
 // Real-time emits are best-effort side effects of whatever DB action triggered them
