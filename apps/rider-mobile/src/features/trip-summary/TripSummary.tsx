@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { Button, buildTripFacts, dropDisplay, font, h, maybeRequestReview, shadow, spacing } from '@ocar/mobile-shared'
-import { IconButton } from '@/components/ui'
+import { Chip, IconButton } from '@/components/ui'
 import { fetchProfile } from '@/features/profile/api'
 import { DriverAvatar, driverViewFromRide } from '@/features/ride-tracking/components/DriverIdentity'
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
@@ -94,13 +94,25 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
     <View style={styles.screen}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <IconButton icon="arrow-left" label="Back" onPress={back} />
-        <Text style={styles.headerTitle} accessibilityRole="header">Trip details</Text>
       </View>
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + (canGoBack ? spacing.lg : 96) }]}
         showsVerticalScrollIndicator={false}
       >
+        {/* Arrival header: a badge, what happened, and the trip in one line. */}
+        <View style={styles.arrive}>
+          <LinearGradient colors={completed ? ['#12A0B6', '#0A7788'] : ['#EE5A5E', '#C23B3B']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.badge, completed ? styles.badgeOk : styles.badgeBad]}>
+            <Feather name={completed ? 'check' : 'x'} size={26} color="#FFFFFF" />
+          </LinearGradient>
+          <View style={styles.flex}>
+            <Text style={styles.arriveTitle} accessibilityRole="header" numberOfLines={2}>
+              {completed ? 'You have arrived' : ride.status === 'no_drivers' ? 'No drivers found' : 'Ride cancelled'}
+            </Text>
+            <Text style={styles.sub} numberOfLines={2}>{[tripTitle(ride), facts.find((f) => f.key === 'distance')?.value, facts.find((f) => f.key === 'time')?.value, when].filter(Boolean).join(' · ')}</Text>
+          </View>
+        </View>
+
         {/* Route preview: non-interactive so it never fights the scroll. */}
         {hasMap ? (
           <View style={styles.map} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
@@ -116,68 +128,76 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
           </View>
         ) : null}
 
-        {/* Headline: what happened on the left, what it cost on the right. */}
-        <View style={styles.section}>
-          <LinearGradient colors={['#EEF8F9', '#FFFFFF']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.9 }} style={styles.heroTint} />
-          <View style={styles.headRow}>
-            <View style={styles.flex}>
-              <Text style={styles.title} numberOfLines={2}>{tripTitle(ride)}</Text>
-              {when ? <Text style={styles.sub}>{when}</Text> : null}
+        {/* The ticket: total, route strip, a perforation, the fare breakdown, total band, trip id. */}
+        {showFare || completed ? (
+          <View style={styles.ticket}>
+            <LinearGradient colors={['#EEF8F9', '#FFFFFF']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.8 }} style={styles.ticketTint} pointerEvents="none" />
+            <View style={styles.ticketTop}>
+              <View style={styles.flex}>
+                <Text style={styles.fareLabel}>{fareCaption ?? 'Total fare'}</Text>
+                {showFare ? (
+                  <Text style={styles.fare} maxFontSizeMultiplier={1.3} accessibilityLabel={`${fareCaption ?? 'Fare'} ${fareText}`}>{fareText}</Text>
+                ) : null}
+              </View>
+              {pay && pay.kind === 'paid' ? <Chip label={pay.text} tone="teal" icon="check" /> : null}
+              {pay && pay.kind === 'cash_due' ? <Chip label="Cash due" tone="gold" icon="clock" /> : null}
             </View>
-            {showFare ? (
-              <Text
-                style={styles.fare}
-                maxFontSizeMultiplier={1.3}
-                accessibilityLabel={`${fareCaption ?? 'Fare'} ${fareText}`}
-              >
-                {fareText}
-              </Text>
+            {pay && pay.kind === 'cash_due' ? (
+              <View style={styles.dueStrip} accessibilityRole="alert">
+                <Feather name="alert-circle" size={18} color={h.goldInk} />
+                <Text style={styles.dueText}>{pay.text}</Text>
+              </View>
             ) : null}
-          </View>
-          <View style={styles.statusRow}>
-            <View style={[styles.pill, completed ? styles.pillOk : styles.pillBad]}>
-              <Feather name={completed ? 'check' : 'x'} size={13} color={completed ? h.live : h.danger} />
-              <Text style={[styles.pillText, { color: completed ? h.live : h.danger }]}>{completed ? 'Completed' : ride.status === 'no_drivers' ? 'No drivers found' : 'Cancelled'}</Text>
+            <View style={styles.strip}>
+              <View style={styles.stripDotA} />
+              <Text style={styles.stripText} numberOfLines={1}>{(ride.originAddress ?? 'Pickup').split(',')[0]}</Text>
+              <Feather name="arrow-right" size={14} color={h.faint} />
+              <View style={styles.stripDotB} />
+              <Text style={styles.stripText} numberOfLines={1}>{(drop.value ?? 'Drop').split(',')[0]}</Text>
             </View>
-            {fareCaption ? <Text style={styles.sub}>{fareCaption}</Text> : null}
-            {/* The receipt's Payment row says this when there are fare rows; only repeat it when there are none. */}
-            {pay && pay.kind === 'paid' && invoice.rows.length === 0 ? <Text style={styles.sub}>{pay.text}</Text> : null}
-          </View>
-          {pay && pay.kind === 'cash_due' ? (
-            <View style={styles.dueStrip} accessibilityRole="alert">
-              <Feather name="alert-circle" size={18} color={h.goldInk} />
-              <Text style={styles.dueText}>{pay.text}</Text>
-            </View>
-          ) : null}
-        </View>
+            {drop.note ? <Text style={styles.stripNote}>{drop.note}</Text> : null}
 
-        {/* Route */}
-        <View style={styles.section}>
-          {/* One row per stop with its own marker, so the drop marker sits level with "Drop" however long the pickup is. */}
-          <View>
-          <View style={styles.routeRow}>
-            <View style={styles.markerCol}>
-              <View style={[styles.dot, styles.dotPickup]} />
-              <View style={styles.line} />
-            </View>
-            <View style={[styles.routeText, styles.pickupText]}>
-              <Text style={styles.routeLabel}>Pickup</Text>
-              <Text style={styles.routeValue} numberOfLines={3}>{ride.originAddress ?? 'Pickup location'}</Text>
+            {completed && invoice.rows.length > 0 ? (
+              <>
+                <View style={styles.perf} pointerEvents="none">
+                  <View style={[styles.notch, { left: -10 }]} />
+                  <View style={styles.perfLine} />
+                  <View style={[styles.notch, { right: -10 }]} />
+                </View>
+                <View style={styles.breakdown}>
+                  <Text style={styles.sectionTitle}>Fare breakdown</Text>
+                  {invoice.rows.map((row, i) => (
+                    <View key={row.key} style={[styles.brRow, i > 0 ? styles.brRuled : null]}>
+                      <Text style={styles.brLabel}>{row.label}</Text>
+                      <Text style={styles.brDetail} numberOfLines={2}>{row.detail ?? ''}</Text>
+                      <Text style={styles.brAmount} maxFontSizeMultiplier={1.3}>{row.negative ? `−${formatMoney(row.amount)}` : formatMoney(row.amount)}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>{invoice.discount > 0 ? 'You paid' : 'Total'}</Text>
+                  <Text style={styles.totalAmount} maxFontSizeMultiplier={1.3}>{formatMoney(invoice.total)}</Text>
+                </View>
+              </>
+            ) : null}
+            <View style={styles.ticketFoot}>
+              <Text style={styles.rideId} selectable>Trip ID #{ride.id}</Text>
+              {completed ? (
+                <Pressable onPress={() => emailSupport('receipt')} accessibilityRole="link" accessibilityLabel="Email a receipt request" hitSlop={8} style={styles.receiptLink}>
+                  <Feather name="download" size={15} color={h.tealText} />
+                  <Text style={styles.receiptLinkText}>Get receipt</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
-          <View style={styles.routeRow}>
-            <View style={styles.markerCol}>
-              <View style={[styles.dot, styles.dotDrop]} />
-            </View>
-            <View style={styles.routeText}>
-              <Text style={styles.routeLabel}>{drop.label}</Text>
-              <Text style={styles.routeValue} numberOfLines={3}>{drop.value}</Text>
-              {drop.note ? <Text style={styles.routeNote}>{drop.note}</Text> : null}
-            </View>
+        ) : null}
+
+        {/* Stops only: the ticket's strip already shows pickup -> drop. */}
+        {ride.stops.length > 0 ? (
+          <View style={styles.section}>
+            <StopTimeline stops={ride.stops} />
           </View>
-          </View>
-          {ride.stops.length > 0 ? <StopTimeline stops={ride.stops} /> : null}
-        </View>
+        ) : null}
 
         {/* When it ran and how far: start, end, distance, time taken. */}
         {facts.length > 0 ? (
@@ -191,34 +211,6 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
                 </View>
               ))}
             </View>
-          </View>
-        ) : null}
-
-        {/* Fare receipt: label and detail left, amount right in tabular figures. */}
-        {completed && invoice.rows.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Fare receipt</Text>
-            <View style={styles.receipt}>
-              {invoice.rows.map((row) => (
-                <View key={row.key} style={styles.receiptRow}>
-                  <View style={styles.flex}>
-                    <Text style={styles.receiptLabel}>{row.label}</Text>
-                    {row.detail ? <Text style={styles.receiptDetail}>{row.detail}</Text> : null}
-                  </View>
-                  <Text style={styles.receiptAmount} maxFontSizeMultiplier={1.3}>{row.negative ? `−${formatMoney(row.amount)}` : formatMoney(row.amount)}</Text>
-                </View>
-              ))}
-            </View>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>{invoice.discount > 0 ? 'You paid' : 'Total'}</Text>
-              <Text style={styles.totalAmount} maxFontSizeMultiplier={1.3}>{formatMoney(invoice.total)}</Text>
-            </View>
-            {pay ? (
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>Payment</Text>
-                <Text style={styles.receiptAmount}>{pay.kind === 'paid' ? pay.text : 'Cash, due to driver'}</Text>
-              </View>
-            ) : null}
           </View>
         ) : null}
 
@@ -270,18 +262,11 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
 
         {/* Help + ride id */}
         <View style={styles.listCard}>
-          {completed ? (
-            <Pressable onPress={() => emailSupport('receipt')} accessibilityRole="link" accessibilityLabel="Email a receipt request" style={styles.listRow}>
-              <Text style={styles.listLabel}>Download receipt</Text>
-              <Feather name="chevron-right" size={20} color={h.faint} />
-            </Pressable>
-          ) : null}
-          <Pressable onPress={() => emailSupport('help')} accessibilityRole="link" accessibilityLabel="Get help with this trip, email support" style={[styles.listRow, completed ? styles.ruled : null]}>
+          <Pressable onPress={() => emailSupport('help')} accessibilityRole="link" accessibilityLabel="Get help with this trip, email support" style={styles.listRow}>
             <Text style={styles.listLabel}>Get help with this trip</Text>
             <Feather name="chevron-right" size={20} color={h.faint} />
           </Pressable>
         </View>
-        <Text style={styles.rideId} selectable>Ride #{ride.id}</Text>
       </ScrollView>
 
       {!canGoBack ? (
@@ -299,7 +284,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: h.canvas },
   flex: { flex: 1, minWidth: 0 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingBottom: 12 },
-  headerTitle: { fontFamily: font.b, fontSize: 20, letterSpacing: -0.2, color: h.ivory },
   content: { paddingHorizontal: 18, gap: 14 },
   map: { height: MAP_HEIGHT, borderRadius: 24, overflow: 'hidden', backgroundColor: h.chip },
 
@@ -310,26 +294,41 @@ const styles = StyleSheet.create({
   headRow: { gap: 4 },
   title: { fontFamily: font.b, fontSize: 20, lineHeight: 26, color: h.ivory },
   sub: { fontFamily: font.m, fontSize: 13, color: h.muted },
-  fare: { fontFamily: font.xb, fontSize: 40, lineHeight: 46, letterSpacing: -1, color: h.ivory, fontVariant: ['tabular-nums'] },
+  fare: { fontFamily: font.xb, fontSize: 42, lineHeight: 48, letterSpacing: -1, color: h.ivory, fontVariant: ['tabular-nums'] },
+  arrive: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingTop: 4, paddingLeft: 8 },
+  badge: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  badgeOk: { boxShadow: '0 0 0 8px rgba(14,143,163,0.14), 0 10px 22px rgba(14,143,163,0.28)' },
+  badgeBad: { boxShadow: '0 0 0 8px rgba(194,59,59,0.12), 0 10px 22px rgba(194,59,59,0.26)' },
+  arriveTitle: { fontFamily: font.xb, fontSize: 24, lineHeight: 30, letterSpacing: -0.5, color: h.ivory },
+  ticket: { backgroundColor: h.surface, borderRadius: 26, borderWidth: 1, borderColor: h.line07, boxShadow: '0 6px 20px rgba(20,23,26,0.06)', paddingTop: 20 },
+  ticketTint: { position: 'absolute', top: 0, left: 0, right: 0, height: 150, borderTopLeftRadius: 26, borderTopRightRadius: 26 },
+  ticketTop: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20 },
+  fareLabel: { fontFamily: font.sb, fontSize: 13, color: h.muted },
+  strip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginTop: 14, marginBottom: 18, backgroundColor: h.chip, borderRadius: 16, paddingHorizontal: 14, height: 48 },
+  stripDotA: { width: 9, height: 9, borderRadius: 5, backgroundColor: h.teal },
+  stripDotB: { width: 9, height: 9, borderRadius: 3, backgroundColor: h.ivory },
+  stripText: { flex: 1, fontFamily: font.sb, fontSize: 13.5, color: h.ivory },
+  stripNote: { fontFamily: font.m, fontSize: 12.5, color: h.muted, marginHorizontal: 22, marginTop: -8, marginBottom: 12 },
+  perf: { height: 20, justifyContent: 'center' },
+  perfLine: { marginHorizontal: 14, borderTopWidth: 1.5, borderTopColor: h.line10, borderStyle: 'dashed' },
+  notch: { position: 'absolute', top: 0, width: 20, height: 20, borderRadius: 10, backgroundColor: h.canvas, borderWidth: 1, borderColor: h.line07 },
+  breakdown: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 4 },
+  brRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52 },
+  brRuled: { borderTopWidth: 1, borderTopColor: h.line06 },
+  brLabel: { fontFamily: font.sb, fontSize: 14.5, color: h.ivory, flexShrink: 0 },
+  brDetail: { flex: 1, textAlign: 'right', fontFamily: font.m, fontSize: 12.5, color: h.muted, fontVariant: ['tabular-nums'] },
+  brAmount: { minWidth: 64, textAlign: 'right', fontFamily: font.b, fontSize: 14.5, color: h.ivory, fontVariant: ['tabular-nums'] },
+  ticketFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, minHeight: 56 },
+  receiptLink: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 },
+  receiptLinkText: { fontFamily: font.b, fontSize: 14, color: h.tealText },
   statusRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, height: 26, borderRadius: 13 },
   pillOk: { backgroundColor: '#DDF5EA' },
   pillBad: { backgroundColor: h.dangerWash },
   pillText: { fontFamily: font.b, fontSize: 12 },
-  dueStrip: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: h.goldWash, borderRadius: 16, padding: 14 },
+  dueStrip: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: h.goldWash, borderRadius: 16, padding: 14, marginHorizontal: 20, marginTop: 14 },
   dueText: { fontFamily: font.b, fontSize: 14, color: h.ivory, flex: 1 },
 
-  routeRow: { flexDirection: 'row', gap: 14 },
-  markerCol: { width: 10, alignItems: 'center', paddingTop: 7 },
-  pickupText: { paddingBottom: 14 },
-  dot: { width: 10, height: 10 },
-  dotPickup: { borderRadius: 5, backgroundColor: h.teal, boxShadow: '0 0 0 3px rgba(14,143,163,0.18)' },
-  dotDrop: { borderRadius: 3, backgroundColor: h.ivory },
-  line: { width: 0, flex: 1, marginTop: 2, borderLeftWidth: 1.5, borderLeftColor: '#B3C0C3', borderStyle: 'dashed' },
-  routeText: { flex: 1, minWidth: 0 },
-  routeLabel: { fontFamily: font.sb, fontSize: 11.5, color: h.label },
-  routeValue: { fontFamily: font.b, fontSize: 14.5, lineHeight: 21, color: h.ivory },
-  routeNote: { fontFamily: font.m, fontSize: 12.5, color: h.muted },
 
   sectionTitle: { fontFamily: font.sb, fontSize: 14, color: h.ivory },
   receipt: { gap: 12 },
@@ -337,7 +336,7 @@ const styles = StyleSheet.create({
   receiptLabel: { fontFamily: font.sb, fontSize: 14.5, lineHeight: 21, color: h.ivory },
   receiptDetail: { fontFamily: font.m, fontSize: 12.5, color: h.muted },
   receiptAmount: { fontFamily: font.b, fontSize: 14.5, lineHeight: 21, color: h.ivory, fontVariant: ['tabular-nums'] },
-  totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, backgroundColor: h.tealWash, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, marginTop: 4 },
+  totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, backgroundColor: h.chip, paddingVertical: 18, paddingHorizontal: 20, marginTop: 6 },
   totalLabel: { fontFamily: font.b, fontSize: 16, color: h.ivory, flex: 1 },
   totalAmount: { fontFamily: font.xb, fontSize: 24, lineHeight: 30, letterSpacing: -0.4, color: h.ivory, fontVariant: ['tabular-nums'] },
 
@@ -351,7 +350,7 @@ const styles = StyleSheet.create({
   driverName: { fontFamily: font.b, fontSize: 16, color: h.ivory },
   plate: { fontFamily: font.xb, fontSize: 13, letterSpacing: 1, color: h.ivory },
 
-  rideId: { fontFamily: font.m, fontSize: 12.5, color: h.faint, textAlign: 'center', paddingVertical: 16 },
+  rideId: { fontFamily: font.m, fontSize: 13, color: h.faint },
 
   footer: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 18, paddingTop: 10, backgroundColor: h.canvas },
 })
