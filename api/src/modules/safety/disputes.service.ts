@@ -215,7 +215,7 @@ export async function getTripReplay(id: bigint) {
     try {
       const route = await geoService.getRoute(
         dispute.origin_lat, dispute.origin_lng,
-        dispute.destination_lat, dispute.destination_lng
+        dispute.destination_lat, dispute.destination_lng, { caller: 'dispute' }
       )
       plannedRoute = { polyline: route.polyline }
     } catch {

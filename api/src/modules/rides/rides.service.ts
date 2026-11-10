@@ -84,7 +84,7 @@ async function logEtaSnapshot(
   destLng: number,
 ): Promise<void> {
   try {
-    const route = await getRoute(originLat, originLng, destLat, destLng, { trafficAware: true })
+    const route = await getRoute(originLat, originLng, destLat, destLng, { trafficAware: true, caller: 'eta_snapshot' })
     const predicted = route.trafficDurationMin ?? route.durationMin
     await repo.insertEtaSnapshot(rideId, leg, predicted)
   } catch { /* best-effort instrumentation only */ }
@@ -672,7 +672,7 @@ export async function boundBookingDistance(data: BookingRequest, userId: bigint)
 
   let routed: { km: number; min: number } | null = null
   try {
-    const results = await Promise.all(legs.map(l => getRoute(l.from.lat, l.from.lng, l.to.lat, l.to.lng)))
+    const results = await Promise.all(legs.map(l => getRoute(l.from.lat, l.from.lng, l.to.lat, l.to.lng, { caller: 'booking_check' })))
     // Any degraded leg makes the sum no better than a straight-line guess: don't treat it as authoritative.
     if (results.every(r => r.source !== 'fallback')) {
       routed = { km: results.reduce((a, r) => a + r.distanceKm, 0), min: results.reduce((a, r) => a + r.durationMin, 0) }
