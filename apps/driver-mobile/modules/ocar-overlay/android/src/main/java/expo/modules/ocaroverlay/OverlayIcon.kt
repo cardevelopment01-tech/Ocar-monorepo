@@ -324,7 +324,7 @@ object OverlayIcon {
           val dx = (e.rawX - downX).toInt(); val dy = (e.rawY - downY).toInt()
           if (!moved && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) moved = true
           if (moved) {
-            showCloseTarget(app, wm)
+            if (dismissEnabled) showCloseTarget(app, wm) else hideCloseTarget(app) // a ride started mid-drag: take the X away
             val fingerX = startX + dx
             val fingerY = (startY + dy).coerceIn(0, screenHeight(app) - size)
             // Within reach of the X the icon is pulled onto it and the X grows and turns red, so the driver can feel it will close.
@@ -340,31 +340,35 @@ object OverlayIcon {
           true
         }
         MotionEvent.ACTION_CANCEL -> {
+          // A system gesture or another window took the touch: settle the icon like a normal release so it is never left mid-screen.
           hideCloseTarget(app)
+          if (moved) settle(app, wm, v, lp, size)
           true
         }
         MotionEvent.ACTION_UP -> {
-          if (moved && closeArmed) {
+          // dismissEnabled is checked again here: a ride may have been accepted while the icon was being dragged.
+          if (moved && closeArmed && dismissEnabled) {
             dismiss(app)
             return@setOnTouchListener true
           }
           hideCloseTarget(app)
-          if (!moved) {
-            bringToFront(app)
-          } else {
-            val target = if (lp.x + size / 2 < screenWidth(app) / 2) dp(app, MARGIN_DP) else screenWidth(app) - size - dp(app, MARGIN_DP)
-            ValueAnimator.ofInt(lp.x, target).apply {
-              duration = 150
-              addUpdateListener { a -> lp.x = a.animatedValue as Int; try { wm.updateViewLayout(v, lp) } catch (_: Exception) {} }
-              start()
-            }
-            app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_Y, lp.y).apply()
-          }
+          if (!moved) bringToFront(app) else settle(app, wm, v, lp, size)
           true
         }
         else -> false
       }
     }
+  }
+
+  /** Snap to the nearer screen edge and remember the height. */
+  private fun settle(app: Context, wm: WindowManager, v: View, lp: WindowManager.LayoutParams, size: Int) {
+    val target = if (lp.x + size / 2 < screenWidth(app) / 2) dp(app, MARGIN_DP) else screenWidth(app) - size - dp(app, MARGIN_DP)
+    ValueAnimator.ofInt(lp.x, target).apply {
+      duration = 150
+      addUpdateListener { a -> lp.x = a.animatedValue as Int; try { wm.updateViewLayout(v, lp) } catch (_: Exception) {} }
+      start()
+    }
+    app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_Y, lp.y).apply()
   }
 
   private fun screenWidth(app: Context): Int = app.resources.displayMetrics.widthPixels

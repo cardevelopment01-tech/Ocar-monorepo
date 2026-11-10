@@ -23,8 +23,10 @@ class OcarOverlayModule : Module() {
     /** The driver dropped the icon on the X. The app stops the location service, then calls exitApp. */
     Events("onIconDismissed")
 
-    OnCreate { OverlayIcon.onDismissed = { sendEvent("onIconDismissed") } }
-    OnDestroy { OverlayIcon.onDismissed = null }
+    // On a JS reload the new module instance can be created before the old one is destroyed: clear the listener only if it is still ours.
+    val dismissListener: () -> Unit = { sendEvent("onIconDismissed") }
+    OnCreate { OverlayIcon.onDismissed = dismissListener }
+    OnDestroy { if (OverlayIcon.onDismissed === dismissListener) OverlayIcon.onDismissed = null }
 
     /** Turns the drag-to-close X on or off (it is off while the driver is on a ride). */
     Function("setDismissEnabled") { on: Boolean -> OverlayIcon.dismissEnabled = on }

@@ -75,7 +75,13 @@ export function useFloatingIcon(): void {
   // icon on it closes Ocar and the location service; the driver is not taken offline (the server ends the session after its period).
   useEffect(() => {
     if (!overlay.available) return
-    const apply = () => overlay.setDismissEnabled(useDriverSessionStore.getState().activeRide === null)
+    let last: boolean | null = null
+    const apply = () => {
+      const on = useDriverSessionStore.getState().activeRide === null
+      if (on === last) return // the session store changes often; cross the native bridge only when the answer changes
+      last = on
+      overlay.setDismissEnabled(on)
+    }
     apply()
     const unsubscribe = useDriverSessionStore.subscribe(apply)
     const stopListening = overlay.onDismissed(() => { void closeOcar({ stopTracking: stopBackgroundTracking, exitApp: () => overlay.exitApp() }) })
