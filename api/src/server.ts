@@ -157,6 +157,12 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '45 4 * * *' }, removeOnComplete: true, removeOnFail: true }
   )
+  // Shadow ETA samples (migration 136) are kept 90 days.
+  await partitionMaintenanceQueue.add(
+    'purge_eta_shadow',
+    {},
+    { repeat: { pattern: '15 4 * * *' }, removeOnComplete: true, removeOnFail: true }
+  )
   // refresh_tokens / otp_requests grew forever; expired and long-revoked rows are purged daily.
   await partitionMaintenanceQueue.add(
     'purge_auth_tables',

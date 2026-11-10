@@ -59,6 +59,9 @@ export type RouteResult = {
   source: 'google' | 'osrm' | 'fallback'
   /** Present only when the request set trafficAware and Google returned live-traffic data. */
   trafficDurationMin?: number
+  /** The same two durations in seconds, for callers that need more than whole-minute precision (the shadow ETA). */
+  durationSec?: number
+  trafficDurationSec?: number
   /** Present only when the request set withSteps. */
   steps?: RouteStep[]
   /** Congestion segments for rendering a traffic-tinted route line. Present only when
@@ -226,6 +229,7 @@ function mapManeuver(m?: string): string | undefined {
 
 // Routes API durations are protobuf strings like "1234s"; proto3 omits zero values.
 const durationMin = (d?: string): number => Math.round((d ? parseFloat(d) : 0) / 60)
+const durationSec = (d?: string): number => Math.round(d ? parseFloat(d) : 0)
 
 // One Routes API call returns distance, ETA (with and without traffic), turn-by-turn
 // steps and per-segment congestion together — replaces the old Directions call plus a
@@ -289,8 +293,12 @@ async function computeRoute(
     durationMin: durationMin(trafficAware ? route.staticDuration : route.duration),
     polyline,
     source: 'google',
+    durationSec: durationSec(trafficAware ? route.staticDuration : route.duration),
   }
-  if (opts?.trafficAware) result.trafficDurationMin = durationMin(route.duration)
+  if (opts?.trafficAware) {
+    result.trafficDurationMin = durationMin(route.duration)
+    result.trafficDurationSec = durationSec(route.duration)
+  }
 
   if (opts?.withSteps) {
     const steps = route.legs?.[0]?.steps ?? []
@@ -375,11 +383,13 @@ export async function getRoute(
         const result: RouteResult = {
           distanceKm: Math.round((leg.distance.value / 1000) * 10) / 10,
           durationMin: Math.round(leg.duration.value / 60),
+          durationSec: Math.round(leg.duration.value),
           polyline: body.routes[0].overview_polyline.points,
           source: 'google',
         }
         if (leg.duration_in_traffic) {
           result.trafficDurationMin = Math.round(leg.duration_in_traffic.value / 60)
+          result.trafficDurationSec = Math.round(leg.duration_in_traffic.value)
         }
         if (opts?.withSteps) {
           const lastIdx = leg.steps.length - 1

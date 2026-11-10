@@ -25,6 +25,9 @@ export const walletTopupOrderKey = (orderId: string): string => `wallet:topup_or
 export const ridePaymentOrderKey = (orderId: string): string => `ride:payment_order:${orderId}`
 
 export const activeRideByDriverKey = (driverId: string): string => `ride:active_by_driver:${driverId}`
+export const activeRideByUserKey = (userId: string): string => `ride:active_by_user:${userId}`
+// The route of a ride's current leg, kept for the shadow ETA comparison (limits.ts ETA_SHADOW_*).
+export const etaShadowLegKey = (rideId: string): string => `ride:eta_shadow_leg:${rideId}`
 
 export function configKey(key: string): string {
   return `ref:v1:config:${key}`

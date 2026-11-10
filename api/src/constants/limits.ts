@@ -80,6 +80,18 @@ export const NOTIFICATION_UNREAD_RETENTION_DAYS = 90
 // Backstop under whatever cadence callers refetch at (e.g. driver nav polling) —
 // see docs/MAP_NAVIGATION_AUDIT_AND_PROPOSAL.md Phase 1 item 3 cost math.
 export const ROUTE_CACHE_TTL_SECONDS = 90
+
+// Shadow ETA (migration 136, docs/superpowers/plans/2026-11-10-google-maps-cost.md phase B).
+// How long a ride leg's route is kept for the comparison: longer than any single leg, short enough to vanish the same day.
+export const ETA_SHADOW_LEG_TTL_SECONDS = 6 * 60 * 60
+// At most one 'ours' sample per ride this often, and one 'google' sample per ride this often.
+export const ETA_SHADOW_SAMPLE_MS = 30_000
+export const ETA_SHADOW_GOOGLE_SAMPLE_MS = 20_000
+// A rider's route request counts as being for the stored leg when its destination is this close to the leg's destination.
+export const ETA_SHADOW_DEST_MATCH_M = 150
+export const ETA_SHADOW_RETENTION_DAYS = 90
+// A rider's active ride id, cached briefly because it is asked on every tracking refresh.
+export const ACTIVE_RIDE_USER_CACHE_SEC = 10
 // Driver turn-by-turn reroute tuning (apps/driver/src/lib/useTurnByTurn.ts mirrors
 // these locally — the driver app can't import server constants — keep both in sync).
 export const OFF_ROUTE_THRESHOLD_METRES = 40
