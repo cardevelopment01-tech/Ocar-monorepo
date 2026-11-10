@@ -111,7 +111,9 @@ export default function BookingFareScreen() {
   }, [nearbyDrivers, visibleCategories, pickup])
 
   // Cars only matter for a ride NOW (same rule as liveCheck below): a card with none nearby is never the default pick.
-  const noCarIds = driversPolled && !scheduledFor ? visibleCategories.filter((c) => (driverEta[c.id]?.count ?? 0) === 0).map((c) => c.id) : []
+  // Not while a return cab is picked: those cards stay tappable with no standard cars nearby, and swapping the category under a
+  // return-cab flag would price and book the wrong ride.
+  const noCarIds = driversPolled && !scheduledFor && !isReturnCab ? visibleCategories.filter((c) => (driverEta[c.id]?.count ?? 0) === 0).map((c) => c.id) : []
   const effectiveSelected = resolveSelectedCategory(visibleCategories.map((c) => c.id), selectedCategoryId, noCarIds)
   const selectedFare = effectiveSelected != null
     ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])?.breakdown.total
