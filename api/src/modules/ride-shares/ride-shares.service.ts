@@ -167,7 +167,7 @@ async function etaFor(rideId: bigint, row: Awaited<ReturnType<typeof repo.getPub
   const to = phase === 'driver_on_way' ? { lat: row.origin_lat, lng: row.origin_lng } : row.destination_lat != null && row.destination_lng != null ? { lat: row.destination_lat, lng: row.destination_lng } : null
   if (!to) return null
   try {
-    const route = await getRoute(row.driver_lat, row.driver_lng, to.lat, to.lng)
+    const route = await getRoute(row.driver_lat, row.driver_lng, to.lat, to.lng, { caller: 'ride_share' })
     if (route.source === 'fallback') { await redis.set(key, NO_ETA, 'EX', ETA_CACHE_SECONDS).catch(() => undefined); return null }
     const eta: CachedEta = { etaMin: Math.max(1, Math.round(route.trafficDurationMin ?? route.durationMin)), route: route.polyline, at: now.getTime() }
     await redis.set(key, JSON.stringify(eta), 'EX', ETA_CACHE_SECONDS).catch(() => undefined)

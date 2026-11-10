@@ -34,7 +34,7 @@ async function withRoadDistance<T extends { lat: number; lng: number; distance_m
   return Promise.all(drivers.map(async (d) => {
     try {
       const route = await Promise.race([
-        getRoute(d.lat, d.lng, toLat, toLng),
+        getRoute(d.lat, d.lng, toLat, toLng, { caller: 'dispatch' }),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), ROAD_DISTANCE_TIMEOUT_MS)),
       ])
       if (!route || route.source === 'fallback' || !(route.distanceKm > 0)) return d

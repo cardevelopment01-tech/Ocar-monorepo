@@ -70,6 +70,7 @@ export async function getRoute(req: Request, res: Response, next: NextFunction):
       withSteps: req.query['withSteps'] === 'true',
       trafficAware: req.query['trafficAware'] === 'true',
       withTrafficIntervals: req.query['withTrafficIntervals'] === 'true',
+      caller: 'http', // set here, never read from the request
     }
     if (language) opts.language = language
     res.json(await service.getRoute(oLat, oLng, dLat, dLng, opts))

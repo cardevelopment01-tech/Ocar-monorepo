@@ -1,5 +1,7 @@
 import { config } from '@/config'
 import { logger } from '@/lib/logger'
+import { googleFetch } from './google-fetch'
+import type { GoogleApi, GoogleCaller } from '@/observability/google-metrics'
 
 const BASE = 'https://maps.googleapis.com/maps/api'
 const ROUTES_API_BASE = 'https://routes.googleapis.com/directions/v2:computeRoutes'
@@ -78,18 +80,20 @@ export type RouteOptions = {
    *  logEtaSnapshot) that only need trafficDurationMin/durationMin — it costs latency
    *  and a higher billing tier for data they never use. */
   withTrafficIntervals?: boolean
+  /** Who asked, for the call counter only (see google-metrics.ts). Set by the server; never part of the cache key or the request to Google. */
+  caller?: GoogleCaller
 }
 
 function stripHtml(s: string): string {
   return s.replace(/<[^>]+>/g, '')
 }
 
-async function gmapsGet(path: string, params: Record<string, string>): Promise<unknown> {
+async function gmapsGet(api: GoogleApi, caller: GoogleCaller, path: string, params: Record<string, string>): Promise<unknown> {
   const url = new URL(`${BASE}${path}`)
   url.searchParams.set('key', config.GOOGLE_MAPS_API_KEY)
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
   // Bound every upstream call — without this a slow Google response hangs the request.
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) })
+  const res = await googleFetch(api, caller, url.toString(), { signal: AbortSignal.timeout(5000) })
   if (!res.ok) throw Object.assign(new Error('Google Maps request failed'), { httpStatus: 502 })
   return res.json()
 }
@@ -116,7 +120,7 @@ export async function autocomplete(
     params['radius'] = '300000'
   }
 
-  const data = gmapsGet('/place/autocomplete/json', params) as Promise<{
+  const data = gmapsGet('autocomplete', 'http', '/place/autocomplete/json', params) as Promise<{
     status: string
     predictions: Array<{
       place_id: string
@@ -145,7 +149,7 @@ export async function placeDetails(placeId: string): Promise<PlaceDetail> {
     throw Object.assign(new Error('Maps not configured'), { httpStatus: 503 })
   }
 
-  const body = await gmapsGet('/place/details/json', {
+  const body = await gmapsGet('place_details', 'http', '/place/details/json', {
     place_id: placeId,
     fields: 'geometry,name,formatted_address',
     language: 'en',
@@ -182,7 +186,7 @@ export function stripPlusCode(address: string): string {
 export async function reverseGeocode(lat: number, lng: number): Promise<string> {
   if (!config.GOOGLE_MAPS_API_KEY) return `${lat.toFixed(5)}, ${lng.toFixed(5)}`
 
-  const body = await gmapsGet('/geocode/json', {
+  const body = await gmapsGet('geocode', 'http', '/geocode/json', {
     latlng: `${lat},${lng}`,
     language: 'en',
   }) as { status: string; results: Array<{ formatted_address: string }> }
@@ -256,7 +260,8 @@ async function computeRoute(
   }
   if (opts?.withTrafficIntervals) fields.push('routes.travelAdvisory.speedReadingIntervals')
 
-  const res = await fetch(ROUTES_API_BASE, {
+  const api: GoogleApi = opts?.withTrafficIntervals ? 'routes_traffic_intervals' : trafficAware ? 'routes_traffic_aware' : 'routes_traffic_unaware'
+  const res = await googleFetch(api, opts?.caller ?? 'other', ROUTES_API_BASE, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -350,7 +355,7 @@ export async function getRoute(
       }
       if (opts?.trafficAware) params['departure_time'] = 'now'
 
-      const body = await gmapsGet('/directions/json', params) as {
+      const body = await gmapsGet('directions', opts?.caller ?? 'other', '/directions/json', params) as {
         status: string
         routes: Array<{
           overview_polyline: { points: string }
@@ -456,7 +461,7 @@ export async function snapToRoads(
     url.searchParams.set('path', points.map(p => `${p.lat},${p.lng}`).join('|'))
     url.searchParams.set('interpolate', 'true')
     url.searchParams.set('key', config.GOOGLE_MAPS_API_KEY)
-    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) })
+    const res = await googleFetch('roads', 'trail_snap', url.toString(), { signal: AbortSignal.timeout(5000) })
     if (!res.ok) return points
 
     const body = await res.json() as {

@@ -1,10 +1,11 @@
-import { Registry, collectDefaultMetrics, Histogram, Gauge, Counter } from 'prom-client'
+import { Histogram, Gauge, Counter } from 'prom-client'
 import { pool, workerPool, analyticsPool } from '@/db/client'
 import { queues } from '@/jobs/queues'
 import { logger } from '@/lib/logger'
+import { register } from './registry'
+import './google-metrics' // registers the Google call counters on the same registry
 
-export const register = new Registry()
-collectDefaultMetrics({ register })
+export { register }
 
 export const httpRequestDuration = new Histogram({
   name: 'http_request_duration_seconds',
