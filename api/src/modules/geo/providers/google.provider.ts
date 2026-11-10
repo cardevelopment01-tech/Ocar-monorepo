@@ -1,6 +1,6 @@
 import { config } from '@/config'
 import { logger } from '@/lib/logger'
-import { googleFetch } from './google-fetch'
+import { googleFetch, noteGoogleStatus } from './google-fetch'
 import type { GoogleApi, GoogleCaller } from '@/observability/google-metrics'
 
 const BASE = 'https://maps.googleapis.com/maps/api'
@@ -95,7 +95,9 @@ async function gmapsGet(api: GoogleApi, caller: GoogleCaller, path: string, para
   // Bound every upstream call — without this a slow Google response hangs the request.
   const res = await googleFetch(api, caller, url.toString(), { signal: AbortSignal.timeout(5000) })
   if (!res.ok) throw Object.assign(new Error('Google Maps request failed'), { httpStatus: 502 })
-  return res.json()
+  const body = await res.json()
+  noteGoogleStatus(api, (body as { status?: unknown } | null)?.status)
+  return body
 }
 
 export async function autocomplete(
@@ -261,6 +263,7 @@ async function computeRoute(
   if (opts?.withTrafficIntervals) fields.push('routes.travelAdvisory.speedReadingIntervals')
 
   const api: GoogleApi = opts?.withTrafficIntervals ? 'routes_traffic_intervals' : trafficAware ? 'routes_traffic_aware' : 'routes_traffic_unaware'
+  // The Routes API reports failures as HTTP errors (counted as http_error), unlike the legacy APIs' `status` field.
   const res = await googleFetch(api, opts?.caller ?? 'other', ROUTES_API_BASE, {
     method: 'POST',
     headers: {

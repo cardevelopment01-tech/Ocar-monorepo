@@ -103,6 +103,41 @@ describe('what the provider counts', () => {
   })
 })
 
+describe('legacy API failures hidden in a 200 response', () => {
+  it('counts OVER_QUERY_LIMIT and REQUEST_DENIED, which googleFetch sees as ok', async () => {
+    fetchMock
+      .mockResolvedValueOnce(res({ status: 'OVER_QUERY_LIMIT', results: [] }))
+      .mockResolvedValueOnce(res({ status: 'REQUEST_DENIED', predictions: [] }))
+    await reverseGeocode(1, 2)
+    await expect(autocomplete('x')).rejects.toThrow()
+    expect(await count('google_maps_calls_total', { api: 'geocode', outcome: 'ok' })).toBe(1)
+    expect(await count('google_maps_api_status_total', { api: 'geocode', status: 'OVER_QUERY_LIMIT' })).toBe(1)
+    expect(await count('google_maps_api_status_total', { api: 'autocomplete', status: 'REQUEST_DENIED' })).toBe(1)
+  })
+
+  it('does not count the normal answers, and an unknown status becomes OTHER (the label set stays closed)', async () => {
+    fetchMock
+      .mockResolvedValueOnce(res({ status: 'ZERO_RESULTS', results: [] }))
+      .mockResolvedValueOnce(res({ status: 'OK', results: [{ formatted_address: 'A' }] }))
+      .mockResolvedValueOnce(res({ status: 'SOMETHING_NEW_FROM_GOOGLE', results: [] }))
+    await reverseGeocode(1, 2); await reverseGeocode(1, 2); await reverseGeocode(1, 2)
+    expect(await count('google_maps_api_status_total', { api: 'geocode', status: 'ZERO_RESULTS' })).toBe(0)
+    expect(await count('google_maps_api_status_total', { api: 'geocode', status: 'OK' })).toBe(0)
+    expect(await count('google_maps_api_status_total', { api: 'geocode', status: 'OTHER' })).toBe(1)
+    expect(await count('google_maps_api_status_total', { api: 'geocode', status: 'SOMETHING_NEW_FROM_GOOGLE' })).toBe(0)
+  })
+
+  it('a Directions fallback that says over quota is counted, and the route still falls through to OSRM or the straight-line answer', async () => {
+    fetchMock
+      .mockResolvedValueOnce(res({}, false))                                   // Routes API HTTP error
+      .mockResolvedValueOnce(res({ status: 'OVER_QUERY_LIMIT', routes: [] }))  // Directions says quota
+      .mockRejectedValueOnce(new Error('osrm down'))                           // OSRM
+    const r = await providerGetRoute(1, 1, 2, 2, { caller: 'other' })
+    expect(['osrm', 'fallback']).toContain(r.source)
+    expect(await count('google_maps_api_status_total', { api: 'directions', status: 'OVER_QUERY_LIMIT' })).toBe(1)
+  })
+})
+
 describe('route cache counter (geo.service)', () => {
   it('counts a cache hit without calling Google', async () => {
     vi.mocked(getJSON).mockResolvedValueOnce({ distanceKm: 1, durationMin: 1, polyline: 'c', source: 'google' } as never)
