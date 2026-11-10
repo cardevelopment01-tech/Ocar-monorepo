@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { classifyApiCall, routeOf, scrubUrl, userKey } from './scrub'
+import { classifyApiCall, isExpectedAuthRejection, routeOf, scrubUrl, userKey } from './scrub'
+
+describe('isExpectedAuthRejection', () => {
+  it('is true only for an axios error that answered 401', () => {
+    expect(isExpectedAuthRejection({ isAxiosError: true, response: { status: 401 } })).toBe(true)
+    expect(isExpectedAuthRejection({ isAxiosError: true, response: { status: 403 } })).toBe(false)
+    expect(isExpectedAuthRejection({ isAxiosError: true, response: { status: 500 } })).toBe(false)
+    expect(isExpectedAuthRejection({ isAxiosError: true })).toBe(false) // network error: no response
+    expect(isExpectedAuthRejection({ response: { status: 401 } })).toBe(false) // not an axios error
+    expect(isExpectedAuthRejection(new Error('401'))).toBe(false)
+    expect(isExpectedAuthRejection(null)).toBe(false)
+    expect(isExpectedAuthRejection('401')).toBe(false)
+  })
+})
 
 describe('telemetry scrub', () => {
   it('drops query and fragment', () => {
