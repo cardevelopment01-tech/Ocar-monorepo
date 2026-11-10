@@ -24,6 +24,13 @@ export function isExpectedAuthRejection(err: unknown): boolean {
   return e.isAxiosError === true && e.response?.status === 401
 }
 
+// Only an UNCAUGHT rejection is dropped. A 401 that code deliberately reports with captureException (mechanism is not
+// `onunhandledrejection`) still reaches Sentry, so a real auth regression that a screen reports is not hidden.
+export function shouldDropSentryEvent(event: { exception?: { values?: Array<{ mechanism?: { type?: string } }> } }, originalException: unknown): boolean {
+  const unhandled = event.exception?.values?.some((v) => v.mechanism?.type === 'onunhandledrejection') === true
+  return unhandled && isExpectedAuthRejection(originalException)
+}
+
 export const SLOW_MS = 3000
 
 // What a finished API call is worth reporting as. 404 is ignored: "no active ride" and similar are normal answers.
