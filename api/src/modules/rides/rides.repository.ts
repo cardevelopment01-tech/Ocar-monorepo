@@ -1274,15 +1274,21 @@ export async function createRideAssignment(data: {
   broadcastRound: number
   driverLat?: number
   driverLng?: number
+  /** Dispatch phase 0 record of what the offer looked like (migration 135). All optional: admin assignment and old callers send none. */
+  log?: { straightM: number; shownM: number; radiusM: number; rank: number; reach: 'live' | 'background' | 'no_socket'; fastStep: number }
 }) {
+  const l = data.log
   await pool.query(
     `INSERT INTO ride_assignments
        (ride_id, driver_id, session_id, expires_at,
-        broadcast_round, driver_lat, driver_lng)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+        broadcast_round, driver_lat, driver_lng,
+        straight_m, shown_m, radius_m, rank, reach, fast_step)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (ride_id, driver_id) DO UPDATE
        SET status = 'offered', expires_at = EXCLUDED.expires_at,
            session_id = EXCLUDED.session_id, broadcast_round = EXCLUDED.broadcast_round,
+           straight_m = EXCLUDED.straight_m, shown_m = EXCLUDED.shown_m, radius_m = EXCLUDED.radius_m,
+           rank = EXCLUDED.rank, reach = EXCLUDED.reach, fast_step = EXCLUDED.fast_step,
            responded_at = NULL, cancelled_at = NULL, acked_at = NULL
        -- Re-offer in a later broadcast round: reopen a declined/expired/cancelled row, else
        -- acceptAssignment (needs status = 'offered') rejects the fresh card with
@@ -1297,8 +1303,47 @@ export async function createRideAssignment(data: {
       data.rideId, data.driverId, data.sessionId,
       data.expiresAt, data.broadcastRound,
       data.driverLat ?? null, data.driverLng ?? null,
+      l?.straightM ?? null, l?.shownM ?? null, l?.radiusM ?? null, l?.rank ?? null, l?.reach ?? null, l?.fastStep ?? null,
     ]
   )
+}
+
+/** One row per broadcast round that did work (migration 135). Callers wrap this: a failed write must never stop a dispatch. */
+export async function insertDispatchRound(row: {
+  rideId: bigint; round: number; radiusM: number; widestRadiusM: number; fastStep: number; categoryIds: number[]
+  found: number; offered: number; liveSkipped: number; declinedSkipped: number; otherSkipped: number
+  outcome: 'offered' | 'empty' | 'closed'; diag: Record<string, number> | null
+}): Promise<void> {
+  await pool.query(
+    `INSERT INTO dispatch_rounds
+       (ride_id, round, radius_m, widest_radius_m, fast_step, category_ids, found, offered,
+        live_skipped, declined_skipped, other_skipped, outcome, diag)
+     VALUES ($1,$2,$3,$4,$5,$6::int[],$7,$8,$9,$10,$11,$12,$13)`,
+    [row.rideId, row.round, row.radiusM, row.widestRadiusM, row.fastStep, row.categoryIds, row.found, row.offered,
+     row.liveSkipped, row.declinedSkipped, row.otherSkipped, row.outcome, row.diag ? JSON.stringify(row.diag) : null]
+  )
+}
+
+/**
+ * Why few or nobody was found: of the drivers with an online session inside the radius (any category), how many each rule would
+ * have taken out. A driver can count under several reasons. Read-only; one indexed spatial query.
+ */
+export async function getDispatchDiag(params: { lat: number; lng: number; radiusMetres: number; categoryIds: bigint[] }): Promise<Record<string, number>> {
+  const res = await pool.query<Record<string, number>>(
+    `SELECT count(*)::int AS online_in_radius,
+            count(*) FILTER (WHERE dls.is_available = false)::int AS paused,
+            count(*) FILTER (WHERE NOT (ds.category_id = ANY($3::bigint[])))::int AS other_category,
+            count(*) FILTER (WHERE now() - dls.recorded_at > interval '10 minutes')::int AS stale_position,
+            count(*) FILTER (WHERE ds.mode <> 'standard')::int AS not_standard_mode,
+            count(*) FILTER (WHERE d.status <> 'active')::int AS driver_not_active
+       FROM driver_location_snapshots dls
+       JOIN driver_sessions ds ON ds.id = dls.session_id
+       JOIN drivers d ON d.id = ds.driver_id
+      WHERE ds.status = 'online'
+        AND ST_DWithin(dls.location, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography, $4)`,
+    [params.lat, params.lng, params.categoryIds, params.radiusMetres]
+  )
+  return res.rows[0] ?? {}
 }
 
 export async function acceptAssignment(

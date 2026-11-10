@@ -3,7 +3,9 @@ import * as repo from '@/modules/rides/rides.repository'
 import { pool } from '@/db/client'
 import { releaseForRide } from '@/modules/offers/settlement'
 import { driverFare } from '@/modules/offers/driver-fare'
-import { BROADCAST_WINDOW_SECONDS, BROADCAST_MAX_DRIVERS, BROADCAST_MAX_LIVE_OFFERS, HEAD_START_COUNT, HEAD_START_MS, BACKGROUND_ACCEPT_WINDOW_SECONDS, BACKGROUND_ACCEPT_WINDOW_PHASE1_SECONDS, maxPickupRadiusMetres } from '@/constants/limits'
+import { BROADCAST_WINDOW_SECONDS, BROADCAST_MAX_DRIVERS, BROADCAST_MAX_LIVE_OFFERS, HEAD_START_COUNT, HEAD_START_MS, BACKGROUND_ACCEPT_WINDOW_SECONDS, BACKGROUND_ACCEPT_WINDOW_PHASE1_SECONDS, BROADCAST_ROUND_MAX, BROADCAST_ROUND_STEP_METRES, maxPickupRadiusMetres } from '@/constants/limits'
+import { fastRoundSteps } from './ladder'
+import { fastRoundsEnabled, decisionLogEnabled, recordRound } from './dispatch-metrics'
 import { rideAckKey } from '@/constants/redis-keys'
 import { client as redis } from '@/db/redis'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
@@ -118,10 +120,17 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     // per-assignment response window. Always false for return-cab matches,
     // which don't select is_available (unaffected by this feature).
     isBackgrounded: boolean
+    // Dispatch phase 0 record: the radius that found this driver (default: the round's own radius).
+    radiusM?: number
   }> = []
 
   const slug = data.rideType === 'rental' ? await repo.getCategorySlug(categoryId) : null
   const cap = maxPickupRadiusMetres(data.rideType, slug, data.tripHours, data.broadcastRound)
+  const roundRadius = Math.min(cap, data.radiusMetres ?? cap)
+  // Dispatch phase 0 (migration 135): what the round did, recorded at the end. Both helpers answer "off" on any failure.
+  const logOn = phase1 && await decisionLogEnabled()
+  let widestRadius = roundRadius
+  let fastStep = 0
 
   if (data.isReturnCab && data.destinationLat != null && data.destinationLng != null) {
     const returnDrivers = await repo.findReturnCabDrivers({
@@ -217,7 +226,42 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     }
   }
 
+  // Dispatch fast rounds: a round that found nobody widens at once (more categories, then +1 km steps, never past round 3's radius)
+  // instead of leaving the ride to wait for the next round's timer. Off unless the switch is on; never for return-cab matches or a job
+  // that carries its own radius.
+  if (!drivers.length && maxThisRound > 0 && phase1 && !data.isReturnCab && data.radiusMetres == null && await fastRoundsEnabled()) {
+    const capMax = maxPickupRadiusMetres(data.rideType, slug, data.tripHours, BROADCAST_ROUND_MAX)
+    const steps = fastRoundSteps(data.broadcastRound, roundRadius, capMax, BROADCAST_ROUND_STEP_METRES)
+    const fallbackIds = steps.some((s) => !s.exactOnly) && data.broadcastRound === 1 ? await repo.getEligibleDriverCategoryIds(categoryId) : categoryIds
+    for (const [i, step] of steps.entries()) {
+      const found = await repo.findNearbyDrivers({
+        lat: data.originLat, lng: data.originLng, categoryIds: step.exactOnly ? [categoryId] : fallbackIds, maxDrivers: maxThisRound,
+        radiusMetres: step.radiusMetres, minWalletBalance,
+        ...(skipDriverIds.length > 0 ? { excludeDriverIds: skipDriverIds } : {}),
+      })
+      widestRadius = Math.max(widestRadius, step.radiusMetres)
+      if (!found.length) continue
+      for (const sd of found) {
+        drivers.push({
+          driver_id: BigInt(sd.driver_id), session_id: BigInt(sd.session_id), lat: sd.lat, lng: sd.lng,
+          distance_metres: sd.distance_metres, isBackgrounded: sd.is_available === false, radiusM: step.radiusMetres,
+        })
+      }
+      fastStep = i + 1
+      log.info({ event: 'ride_offer_fast_round', rideId: data.rideId, round: data.broadcastRound, step: fastStep, radiusMetres: step.radiusMetres, exactOnly: step.exactOnly, picked: drivers.length }, 'empty round widened')
+      break
+    }
+  }
+
+  // What this round skipped, for the record (spread also skips busy drivers and those already offered).
+  const skippedCounts = { liveSkipped: liveDriverIds.length, declinedSkipped: declinedDriverIds.length, otherSkipped: spread ? new Set([...busyDriverIds, ...offeredBefore.map((o) => o.driver_id)].map(String)).size : 0 }
+
   if (!drivers.length) {
+    const closing = data.broadcastRound >= 3 && !(phase1 && liveDriverIds.length > 0)
+    await recordRound({
+      rideId, round: data.broadcastRound, radiusM: roundRadius, widestRadiusM: widestRadius, fastStep, categoryIds,
+      found: 0, offered: 0, ...skippedCounts, outcome: closing ? 'closed' : 'empty', diagFor: { lat: data.originLat, lng: data.originLng },
+    }, logOn)
     if (data.broadcastRound >= 3 && phase1 && liveDriverIds.length > 0) {
       // Dispatch phase 1: nobody new to offer, but earlier offers are still open and must be allowed to be answered. Look again shortly;
       // once they lapse (at most one window) this branch closes the ride as before.
@@ -248,6 +292,8 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     return
   }
 
+  // Phase 0 record: the straight-line distance and the nearest-first rank, before the shown (road) distance replaces the former.
+  const straightById = new Map(drivers.map((d, i) => [d.driver_id.toString(), { straightM: Math.round(d.distance_metres), rank: i + 1 }]))
   drivers = await withRoadDistance(drivers, data.originLat, data.originLng)
 
   // Sends the offers for `list` now: windows start now, assignments, ack keys, socket cards and pushes. Called once for the whole
@@ -272,8 +318,10 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
 
     // Create all assignments in parallel — sequential awaits here were the source of
     // stacking delay (driver N had to wait for N-1 DB round-trips before getting the socket).
-    await Promise.all(driversWithWindow.map(driver =>
-      repo.createRideAssignment({
+    await Promise.all(driversWithWindow.map(driver => {
+      const id = driver.driver_id.toString()
+      const seen = straightById.get(id)
+      return repo.createRideAssignment({
         rideId,
         driverId:       driver.driver_id,
         sessionId:      driver.session_id,
@@ -281,8 +329,12 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
         broadcastRound: data.broadcastRound,
         driverLat:      driver.lat,
         driverLng:      driver.lng,
+        ...(logOn && seen ? { log: {
+          straightM: seen.straightM, shownM: Math.round(driver.distance_metres), radiusM: Math.round(driver.radiusM ?? roundRadius), rank: seen.rank,
+          reach: driver.isBackgrounded ? 'background' as const : offline.has(id) ? 'no_socket' as const : 'live' as const, fastStep,
+        } } : {}),
       })
-    ))
+    }))
 
     // Delivery tracking for the closed-app ride request work (docs/superpowers/plans/2026-11-05-driver-app-closed-ride-alert-overlay.md,
     // phase 0). Structured log lines, not columns: join them to ride_assignments outcomes by rideId + driverId in Loki or Athena.
@@ -398,6 +450,12 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     if (still?.status === 'requested') await sendOffers(drivers.slice(HEAD_START_COUNT))
     else log.info({ rideId: data.rideId }, 'head start: ride no longer open, rest not offered')
   }
+
+  await recordRound({
+    rideId, round: data.broadcastRound, radiusM: roundRadius, widestRadiusM: widestRadius, fastStep, categoryIds,
+    found: drivers.length, offered: drivers.length, ...skippedCounts, outcome: 'offered',
+    ...(drivers.length < maxThisRound ? { diagFor: { lat: data.originLat, lng: data.originLng } } : {}),
+  }, logOn)
 
   log.info(
     { rideId: data.rideId, broadcastRound: data.broadcastRound, driverCount: drivers.length },
