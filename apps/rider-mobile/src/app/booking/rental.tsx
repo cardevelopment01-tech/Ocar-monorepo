@@ -444,7 +444,7 @@ export default function RentalScreen() {
 
                 <View style={styles.vehInfo}>
                   <View style={styles.vehNameRow}>
-                    <Text style={styles.vehName}>{cat.displayName}</Text>
+                    <Text style={styles.vehName} numberOfLines={1}>{cat.displayName}</Text>
                     {premium ? (
                       <View style={styles.premiumBadge}>
                         <Feather name="star" size={8} color={h.gold} />
@@ -554,7 +554,28 @@ export default function RentalScreen() {
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         {priceBanner ? <PriceChangedBanner message={priceBanner} onDismiss={() => setPriceBanner(null)} /> : null}
-        {selectedPkg ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
+        {selectedPkg && couponState.kind !== 'idle' && couponState.kind !== 'off' ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
+        {/* Same pair as the fare screen: Cash, and Offers beside it when no offer is on the ride. */}
+        {selectedPkg && (couponState.kind === 'idle' || couponState.kind === 'off') ? (
+          <View style={styles.payRow}>
+            <View style={styles.payBtn} accessible accessibilityLabel="Payment method: Cash">
+              <Feather name="credit-card" size={18} color={h.ivory} />
+              <Text style={styles.payText}>Cash</Text>
+            </View>
+            {couponState.kind === 'idle' ? (
+              <Pressable
+                onPress={() => setOfferSheetOpen(true)}
+                style={({ pressed }) => [styles.payBtn, pressed ? styles.pressedScale : null]}
+                accessibilityRole="button"
+                accessibilityLabel="Offers. Have a code? Add an offer code"
+              >
+                <Feather name="tag" size={18} color={h.tealText} />
+                <Text style={styles.payText} numberOfLines={1}>Offers</Text>
+                <Feather name="chevron-right" size={16} color={h.faint} style={styles.payChev} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
         {bookError ? (
           <Text style={styles.error} accessibilityLiveRegion="polite">{bookError}</Text>
         ) : null}
@@ -635,7 +656,11 @@ const styles = StyleSheet.create({
   iconWrapOpen: { backgroundColor: h.chip },
   vehInfo: { flex: 1, gap: 2, minWidth: 0 },
   vehNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  vehName: { fontSize: 16, fontFamily: font.b, color: h.ivory },
+  vehName: { fontSize: 15, fontFamily: font.b, color: h.ivory, flexShrink: 1 },
+  payRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  payBtn: { flex: 1, height: 48, borderRadius: 16, backgroundColor: h.chip, borderWidth: 1, borderColor: h.line06, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 },
+  payText: { fontFamily: font.sb, fontSize: 14, color: h.ivory, flexShrink: 1 },
+  payChev: { marginLeft: 'auto' },
   premiumBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FBF3E6', borderRadius: 9999, paddingHorizontal: 7, paddingVertical: 2 },
   premiumBadgeText: { fontSize: 12, fontFamily: font.sb, color: '#8A6323' },
   vehSeatsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },

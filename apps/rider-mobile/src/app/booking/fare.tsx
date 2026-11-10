@@ -110,7 +110,9 @@ export default function BookingFareScreen() {
     return result
   }, [nearbyDrivers, visibleCategories, pickup])
 
-  const effectiveSelected = resolveSelectedCategory(visibleCategories.map((c) => c.id), selectedCategoryId)
+  // Cars only matter for a ride NOW (same rule as liveCheck below): a card with none nearby is never the default pick.
+  const noCarIds = driversPolled && !scheduledFor ? visibleCategories.filter((c) => (driverEta[c.id]?.count ?? 0) === 0).map((c) => c.id) : []
+  const effectiveSelected = resolveSelectedCategory(visibleCategories.map((c) => c.id), selectedCategoryId, noCarIds)
   const selectedFare = effectiveSelected != null
     ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])?.breakdown.total
     : undefined
