@@ -15,6 +15,22 @@ export function userKey(role: 'driver' | 'rider', id: string | number | bigint):
   return `${role}:${id}`
 }
 
+// A request that came back 401 and nobody caught. The shared api client already ends the session and sends the user to sign-in on
+// an auth failure, so a leftover rejected 401 is an expected end state, not a bug worth a Sentry alert. Every API call (401
+// included) is still counted in PostHog as `api_error` by reportApiCall, so it stays visible there.
+export function isExpectedAuthRejection(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false
+  const e = err as { isAxiosError?: unknown; response?: { status?: unknown } }
+  return e.isAxiosError === true && e.response?.status === 401
+}
+
+// Only an UNCAUGHT rejection is dropped. A 401 that code deliberately reports with captureException (mechanism is not
+// `onunhandledrejection`) still reaches Sentry, so a real auth regression that a screen reports is not hidden.
+export function shouldDropSentryEvent(event: { exception?: { values?: Array<{ mechanism?: { type?: string } }> } }, originalException: unknown): boolean {
+  const unhandled = event.exception?.values?.some((v) => v.mechanism?.type === 'onunhandledrejection') === true
+  return unhandled && isExpectedAuthRejection(originalException)
+}
+
 export const SLOW_MS = 3000
 
 // What a finished API call is worth reporting as. 404 is ignored: "no active ride" and similar are normal answers.

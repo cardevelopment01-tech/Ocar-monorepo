@@ -1,5 +1,35 @@
 import { describe, expect, it } from 'vitest'
-import { classifyApiCall, routeOf, scrubUrl, userKey } from './scrub'
+import { classifyApiCall, isExpectedAuthRejection, routeOf, scrubUrl, shouldDropSentryEvent, userKey } from './scrub'
+
+describe('shouldDropSentryEvent', () => {
+  const err401 = { isAxiosError: true, response: { status: 401 } }
+  const event = (type: string) => ({ exception: { values: [{ mechanism: { type } }] } })
+  it('drops an uncaught 401 only', () => {
+    expect(shouldDropSentryEvent(event('onunhandledrejection'), err401)).toBe(true)
+  })
+  it('keeps a 401 that code deliberately reported', () => {
+    expect(shouldDropSentryEvent(event('generic'), err401)).toBe(false)
+    expect(shouldDropSentryEvent({}, err401)).toBe(false)
+  })
+  it('keeps every other uncaught error', () => {
+    expect(shouldDropSentryEvent(event('onunhandledrejection'), { isAxiosError: true, response: { status: 500 } })).toBe(false)
+    expect(shouldDropSentryEvent(event('onunhandledrejection'), new Error('x'))).toBe(false)
+    expect(shouldDropSentryEvent(event('onunhandledrejection'), undefined)).toBe(false)
+  })
+})
+
+describe('isExpectedAuthRejection', () => {
+  it('is true only for an axios error that answered 401', () => {
+    expect(isExpectedAuthRejection({ isAxiosError: true, response: { status: 401 } })).toBe(true)
+    expect(isExpectedAuthRejection({ isAxiosError: true, response: { status: 403 } })).toBe(false)
+    expect(isExpectedAuthRejection({ isAxiosError: true, response: { status: 500 } })).toBe(false)
+    expect(isExpectedAuthRejection({ isAxiosError: true })).toBe(false) // network error: no response
+    expect(isExpectedAuthRejection({ response: { status: 401 } })).toBe(false) // not an axios error
+    expect(isExpectedAuthRejection(new Error('401'))).toBe(false)
+    expect(isExpectedAuthRejection(null)).toBe(false)
+    expect(isExpectedAuthRejection('401')).toBe(false)
+  })
+})
 
 describe('telemetry scrub', () => {
   it('drops query and fragment', () => {
