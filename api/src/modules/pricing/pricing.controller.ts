@@ -15,18 +15,31 @@ export async function getRateCards(req: Request, res: Response, next: NextFuncti
   } catch (err) { next(err) }
 }
 
+// null = no city given; undefined = a city_id that is not a number (the caller answers 400).
+function parseCityId(raw: unknown): number | null | undefined {
+  if (typeof raw !== 'string' || raw === '') return null
+  return /^\d{1,9}$/.test(raw) ? parseInt(raw, 10) : undefined // whole digits only: '12abc', '1e3', '-1' are rejected, not read as 12, 1, -1
+}
+
 export async function getRentalPackages(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const categoryId = parseInt(req.params['categoryId']!, 10)
-    const cityIdRaw = req.query['city_id']
-    let cityId: number | null = null
-    if (typeof cityIdRaw === 'string' && cityIdRaw !== '') {
-      cityId = parseInt(cityIdRaw, 10)
-      if (isNaN(cityId)) {
-        res.status(400).json({ error: 'Invalid city_id', code: 'VALIDATION_ERROR' })
-        return
-      }
+    const cityId = parseCityId(req.query['city_id'])
+    if (cityId === undefined) {
+      res.status(400).json({ error: 'Invalid city_id', code: 'VALIDATION_ERROR' })
+      return
     }
     res.json(await service.getRentalPackages(categoryId, cityId))
+  } catch (err) { next(err) }
+}
+
+export async function getAllRentalPackages(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const cityId = parseCityId(req.query['city_id'])
+    if (cityId === undefined) {
+      res.status(400).json({ error: 'Invalid city_id', code: 'VALIDATION_ERROR' })
+      return
+    }
+    res.json(await service.getAllRentalPackages(cityId))
   } catch (err) { next(err) }
 }
