@@ -55,6 +55,8 @@ const ALLOWED_VALUES: Record<string, readonly string[]> = {
   dispatch_no_resend_enabled: ['true', 'false'],
   dispatch_head_start_enabled: ['true', 'false'],
   dispatch_spread_enabled: ['true', 'false'],
+  dispatch_fast_rounds_enabled: ['true', 'false'],
+  dispatch_decision_log_enabled: ['true', 'false'],
   // Anything but exactly 'true' reads as off, so a typo here would silently disable payments.
   mobile_payments_enabled: ['true', 'false'],
   app_update_enabled: ['true', 'false'],
