@@ -334,7 +334,6 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     await Promise.all(driversWithWindow.map(driver => {
       const id = driver.driver_id.toString()
       const seen = straightById.get(id)
-      offeredCount++
       return repo.createRideAssignment({
         rideId,
         driverId:       driver.driver_id,
@@ -347,7 +346,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
           straightM: seen.straightM, shownM: Math.round(driver.distance_metres), radiusM: Math.round(driver.radiusM ?? roundRadius), rank: seen.rank,
           reach: driver.isBackgrounded ? 'background' as const : offline.has(id) ? 'no_socket' as const : 'live' as const, fastStep,
         } } : {}),
-      })
+      }).then((created) => { offeredCount++; return created }) // counted once the assignment exists, not when it is attempted
     }))
 
     // Delivery tracking for the closed-app ride request work (docs/superpowers/plans/2026-11-05-driver-app-closed-ride-alert-overlay.md,
