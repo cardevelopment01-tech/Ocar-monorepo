@@ -122,6 +122,10 @@ export async function getRateCardHistory() {
   return repo.getRateCardHistory()
 }
 
+export async function getAllRentalPackages(cityId: number | null) {
+  return repo.getRentalPackagesAllCategories(cityId)
+}
+
 export async function getRentalPackages(categoryId: number, cityId: number | null) {
   return repo.getRentalPackagesByCategory(categoryId, cityId)
 }

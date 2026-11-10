@@ -112,6 +112,26 @@ async function fetchRentalPackageFromDb(packageId: number) {
   return res.rows[0] ?? null
 }
 
+// Same rule as getRentalPackagesByCategory (a city's own package beats the global one with the same duration and km), for every
+// category at once, so a client that shows all categories makes one call instead of one per category.
+export async function getRentalPackagesAllCategories(cityId: number | null) {
+  const res = await pool.query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (rp.category_id, rp.duration_minutes, rp.km_limit)
+              rp.*, vc.display_name AS category_name, c.name AS city_name
+       FROM rental_packages rp
+       JOIN vehicle_categories vc ON vc.id = rp.category_id
+       LEFT JOIN cities c ON c.id = rp.city_id
+       WHERE rp.is_active = true
+         AND (rp.city_id = $1 OR rp.city_id IS NULL)
+       ORDER BY rp.category_id, rp.duration_minutes, rp.km_limit, rp.city_id NULLS LAST
+     ) t
+     ORDER BY t.category_id, t.display_order, t.duration_minutes`,
+    [cityId]
+  )
+  return res.rows
+}
+
 export async function getRentalPackagesByCategory(categoryId: number, cityId: number | null) {
   const res = await pool.query(
     `SELECT * FROM (

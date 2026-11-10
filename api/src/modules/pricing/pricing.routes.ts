@@ -10,6 +10,9 @@ router.post('/estimate', authenticate(), controller.estimateFare)
 // Public: current rate cards
 router.get('/rate-cards', controller.getRateCards)
 
+// Public: rental packages for every category in one call (the rider rental screen shows all of them)
+router.get('/rental-packages', controller.getAllRentalPackages)
+
 // Public: rental packages for a category
 router.get('/rental-packages/:categoryId', controller.getRentalPackages)
 
