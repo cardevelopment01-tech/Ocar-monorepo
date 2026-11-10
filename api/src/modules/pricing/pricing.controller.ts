@@ -18,8 +18,7 @@ export async function getRateCards(req: Request, res: Response, next: NextFuncti
 // null = no city given; undefined = a city_id that is not a number (the caller answers 400).
 function parseCityId(raw: unknown): number | null | undefined {
   if (typeof raw !== 'string' || raw === '') return null
-  const n = parseInt(raw, 10)
-  return Number.isNaN(n) ? undefined : n
+  return /^\d{1,9}$/.test(raw) ? parseInt(raw, 10) : undefined // whole digits only: '12abc', '1e3', '-1' are rejected, not read as 12, 1, -1
 }
 
 export async function getRentalPackages(req: Request, res: Response, next: NextFunction): Promise<void> {

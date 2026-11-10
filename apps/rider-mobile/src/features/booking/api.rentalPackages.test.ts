@@ -31,8 +31,16 @@ describe('fetchAllRentalPackages', () => {
     expect(get).toHaveBeenCalledWith('/api/v1/pricing/rental-packages', { params: {} })
   })
 
-  it('falls back to one call per category when the one-call route fails (older server)', async () => {
-    get.mockRejectedValueOnce(new Error('404'))
+  it('does not retry per category on a timeout or a 5xx (that would multiply load on a struggling API)', async () => {
+    get.mockRejectedValueOnce({ response: { status: 503 } })
+    expect(await fetchAllRentalPackages([1, 2], 25)).toEqual({})
+    get.mockRejectedValueOnce(new Error('timeout'))
+    expect(await fetchAllRentalPackages([1, 2], 25)).toEqual({})
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('falls back to one call per category when the server has no one-call route (older server, 404)', async () => {
+    get.mockRejectedValueOnce({ response: { status: 404 } })
     get.mockResolvedValueOnce({ data: [{ id: 5, category_id: 1 }] })
     get.mockRejectedValueOnce(new Error('boom'))
     const out = await fetchAllRentalPackages([1, 2], 25)

@@ -44,9 +44,13 @@ describe('GET /api/v1/pricing/rental-packages', () => {
     expect((all.body as Array<{ is_active: boolean }>).every((r) => r.is_active)).toBe(true)
   })
 
-  it('rejects a city_id that is not a number', async () => {
-    const res = await request(app).get('/api/v1/pricing/rental-packages?city_id=abc')
-    expect(res.status).toBe(400)
-    expect(res.body.code).toBe('VALIDATION_ERROR')
+  it('rejects a city_id that is not whole digits, on both routes', async () => {
+    for (const bad of ['abc', '12abc', '1e3', '-1']) {
+      for (const path of ['/api/v1/pricing/rental-packages', '/api/v1/pricing/rental-packages/1']) {
+        const res = await request(app).get(`${path}?city_id=${bad}`)
+        expect(res.status, `${path}?city_id=${bad}`).toBe(400)
+        expect(res.body.code).toBe('VALIDATION_ERROR')
+      }
+    }
   })
 })
