@@ -112,6 +112,23 @@ describe('with the log off', () => {
     expect(a.straight_m).toBeNull()
     expect(a.rank).toBeNull()
   })
+
+  it('a later offer that carries no record keeps what the earlier offer recorded', async () => {
+    await setFlag('dispatch_decision_log_enabled', 'true')
+    const id = await book()
+    await broadcast(id, 1)
+    const first = await offer(id)
+    expect(first.rank).toBe(1)
+    await setFlag('dispatch_decision_log_enabled', 'false')
+    // No-resend leaves a still-open offer alone, so let the first one lapse before the next round re-offers it.
+    await pool.query(`UPDATE ride_assignments SET expires_at = now() - interval '1 minute' WHERE ride_id = $1`, [id])
+    await broadcast(id, 2)
+    const again = await offer(id)
+    expect(again.broadcast_round).toBe(2)
+    expect(again.rank).toBe(1)
+    expect(again.straight_m).toBe(first.straight_m)
+    expect(again.reach).toBe(first.reach)
+  })
 })
 
 describe('fast rounds, end to end', () => {

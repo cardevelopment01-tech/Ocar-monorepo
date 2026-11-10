@@ -22,8 +22,18 @@ export type RoundRecord = {
   diagFor?: { lat: number; lng: number }
 }
 
+/** The log may cost a dispatch at most this long: past it the write carries on unawaited and the round moves on. */
+const RECORD_BUDGET_MS = 1_000
+
 export async function recordRound(rec: RoundRecord, enabled: boolean): Promise<void> {
   if (!enabled) return
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const budget = new Promise<void>((resolve) => { timer = setTimeout(resolve, RECORD_BUDGET_MS) })
+  await Promise.race([write(rec), budget])
+  clearTimeout(timer)
+}
+
+async function write(rec: RoundRecord): Promise<void> {
   try {
     let diag: Record<string, number> | null = null
     if (rec.diagFor) {

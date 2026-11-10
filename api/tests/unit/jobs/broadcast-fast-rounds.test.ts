@@ -169,3 +169,66 @@ describe('decision log', () => {
     expect(vi.mocked(recordRound).mock.calls.at(-1)![1]).toBe(false)
   })
 })
+
+describe('review fixes', () => {
+  it('a spread ride widening falls back to leaving out only the open offers, so spreading never costs a ride', async () => {
+    vi.mocked(repo.getRideById).mockResolvedValue({ status: 'requested', dispatch_variant: 1, dispatch_spread: 1 } as never)
+    vi.mocked(repo.getLiveOfferDriverIds).mockResolvedValue([5n])
+    vi.mocked(repo.getBusyDriverIds).mockResolvedValue([6n])
+    vi.mocked(repo.getOfferedDrivers).mockResolvedValue([{ driver_id: 7n, status: 'expired' }] as never)
+    // Every search that also leaves out busy and already-offered drivers is empty; the one leaving out only open offers finds driver 7.
+    vi.mocked(repo.findNearbyDrivers).mockImplementation((async (p: { excludeDriverIds?: bigint[] }) =>
+      (p.excludeDriverIds ?? []).length === 1 ? [drv(7, 3000)] : []) as never)
+    await processBroadcast(data(2))
+    expect(socketEvents.sendRideRequest).toHaveBeenCalledTimes(1)
+    expect(lastRecord()).toMatchObject({ outcome: 'offered', found: 1 })
+  })
+
+  it('a non-spread ride widening also retries without the decliners, like the normal search does', async () => {
+    vi.mocked(repo.getDeclinedDriverIds).mockResolvedValue([8n])
+    vi.mocked(repo.findNearbyDrivers).mockImplementation((async (p: { excludeDriverIds?: bigint[] }) =>
+      (p.excludeDriverIds ?? []).length === 0 ? [drv(8, 3000)] : []) as never)
+    await processBroadcast(data(2))
+    expect(socketEvents.sendRideRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it('round 3 that defers because offers are still live records nothing (it runs again and records then)', async () => {
+    vi.mocked(repo.getLiveOfferDriverIds).mockResolvedValue([5n])
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValue([])
+    await processBroadcast(data(3))
+    expect(recordRound).not.toHaveBeenCalled()
+    expect(repo.updateRideStatusCAS).not.toHaveBeenCalled()
+  })
+
+  it('"closed" is recorded only when the ride was really closed (a driver may have accepted a moment before)', async () => {
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValue([])
+    vi.mocked(repo.updateRideStatusCAS).mockResolvedValueOnce(null as never)
+    await processBroadcast(data(3))
+    expect(recordRound).not.toHaveBeenCalled()
+  })
+
+  it('the record names the widest categories searched, and counts only the offers actually made', async () => {
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValueOnce([]).mockResolvedValueOnce([drv(1, 2000), drv(2, 2100)] as never)
+    await processBroadcast(data(1))
+    expect(lastRecord().categoryIds).toEqual([1n, 2n])
+    expect(lastRecord()).toMatchObject({ found: 2, offered: 2 })
+  })
+
+  it('head start: when the ride is taken during the head start only the first two offers are counted', async () => {
+    vi.useFakeTimers()
+    vi.mocked(repo.getRideById).mockResolvedValueOnce({ status: 'requested', dispatch_variant: 2 } as never).mockResolvedValueOnce({ status: 'accepted' } as never)
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValue([1, 2, 3, 4].map((i) => drv(i, 1000 + i)) as never)
+    const run = processBroadcast(data(1))
+    await vi.advanceTimersByTimeAsync(3000)
+    await run
+    vi.useRealTimers()
+    expect(lastRecord()).toMatchObject({ found: 4, offered: 2 })
+  })
+
+  it('the record is written even if sending the offers fails', async () => {
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValue([drv(1, 800)] as never)
+    vi.mocked(repo.createRideAssignment).mockRejectedValueOnce(new Error('db down'))
+    await expect(processBroadcast(data(1))).rejects.toThrow('db down')
+    expect(recordRound).toHaveBeenCalledTimes(1)
+  })
+})

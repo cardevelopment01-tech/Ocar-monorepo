@@ -1287,8 +1287,10 @@ export async function createRideAssignment(data: {
      ON CONFLICT (ride_id, driver_id) DO UPDATE
        SET status = 'offered', expires_at = EXCLUDED.expires_at,
            session_id = EXCLUDED.session_id, broadcast_round = EXCLUDED.broadcast_round,
-           straight_m = EXCLUDED.straight_m, shown_m = EXCLUDED.shown_m, radius_m = EXCLUDED.radius_m,
-           rank = EXCLUDED.rank, reach = EXCLUDED.reach, fast_step = EXCLUDED.fast_step,
+           -- A re-offer that carries no record (switch off, admin assignment) keeps what an earlier offer recorded.
+           straight_m = COALESCE(EXCLUDED.straight_m, ride_assignments.straight_m), shown_m = COALESCE(EXCLUDED.shown_m, ride_assignments.shown_m),
+           radius_m = COALESCE(EXCLUDED.radius_m, ride_assignments.radius_m), rank = COALESCE(EXCLUDED.rank, ride_assignments.rank),
+           reach = COALESCE(EXCLUDED.reach, ride_assignments.reach), fast_step = COALESCE(EXCLUDED.fast_step, ride_assignments.fast_step),
            responded_at = NULL, cancelled_at = NULL, acked_at = NULL
        -- Re-offer in a later broadcast round: reopen a declined/expired/cancelled row, else
        -- acceptAssignment (needs status = 'offered') rejects the fresh card with
