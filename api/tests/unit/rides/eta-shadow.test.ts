@@ -163,6 +163,22 @@ describe('recordShadowPing', () => {
     expect(calls()).toHaveLength(2)
   })
 
+  it('a ping before the leg exists only delays the next try by a few seconds, not a whole sampling gap', async () => {
+    await recordShadowPing('55', 20, 85.1, 100_000)                  // no leg yet
+    expect(repo.insertEtaShadow).not.toHaveBeenCalled()
+    // Stored by another instance a moment later: written straight to Redis, so this process's own memory is not cleared (as storeShadowLeg would).
+    store.set('ride:eta_shadow_leg:55', JSON.stringify({ leg: 'to_destination', polyline: POLY, baselineSec: BASELINE_SEC, destLat: DEST.lat, destLng: DEST.lng, storedAt: 1 }))
+    await recordShadowPing('55', 20, 85.1, 106_000)                  // 6 s after the first ping
+    expect(calls()).toHaveLength(1)
+  })
+
+  it('a vehicle that has reached the destination is not sampled: waiting there is not travel time', async () => {
+    await recordShadowPing('7', 20, 85.2, 100_000)
+    expect(repo.insertEtaShadow).not.toHaveBeenCalled()
+    await recordShadowPing('7', 20, 85.1995, 140_000) // about 50 m short of it
+    expect(repo.insertEtaShadow).not.toHaveBeenCalled()
+  })
+
   it('a corrupt stored value is ignored', async () => {
     store.set('ride:eta_shadow_leg:7', '{not json')
     await expect(recordShadowPing('7', 20, 85.1, 200_000)).resolves.toBeUndefined()
@@ -202,6 +218,20 @@ describe('recordShadowGoogle', () => {
     await recordShadowGoogle(5n, DEST, answer, 1_021_000)
     expect(calls()).toHaveLength(2)
     expect(repo.getActiveRideIdForUser).toHaveBeenCalledTimes(1) // the second and third come from the short cache
+  })
+
+  it('a request for another destination does not use up the sampling slot of the tracking refresh that follows it', async () => {
+    await recordShadowGoogle(5n, { lat: 20.05, lng: 85.2 }, answer, 1_000_000)  // some other route: not noted
+    await recordShadowGoogle(5n, DEST, answer, 1_002_000)                         // 2 s later, the real one: noted
+    expect(calls()).toHaveLength(1)
+  })
+
+  it('"no ride" is not remembered: a rider who has just booked, or whose next leg has just started, is not missed', async () => {
+    vi.mocked(repo.getActiveRideIdForUser).mockResolvedValueOnce(null).mockResolvedValue('7')
+    await recordShadowGoogle(8n, DEST, answer, 1_000_000)
+    await recordShadowGoogle(8n, DEST, answer, 1_001_000)
+    expect(repo.getActiveRideIdForUser).toHaveBeenCalledTimes(2)
+    expect(calls()).toHaveLength(1)
   })
 
   it('failures are swallowed', async () => {

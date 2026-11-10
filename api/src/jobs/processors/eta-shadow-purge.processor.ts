@@ -15,8 +15,8 @@ export async function processPurgeEtaShadow(): Promise<number> {
   for (let i = 0; i < MAX_BATCHES; i++) {
     const res = await pool.query(
       `DELETE FROM ride_eta_shadow
-        WHERE id IN (SELECT id FROM ride_eta_shadow WHERE at < now() - ($1 || ' days')::interval LIMIT ${BATCH})`,
-      [ETA_SHADOW_RETENTION_DAYS]
+        WHERE id IN (SELECT id FROM ride_eta_shadow WHERE at < now() - make_interval(days => $1) LIMIT $2)`,
+      [ETA_SHADOW_RETENTION_DAYS, BATCH]
     )
     total += res.rowCount ?? 0
     if ((res.rowCount ?? 0) < BATCH) break

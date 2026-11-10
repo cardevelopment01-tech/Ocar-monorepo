@@ -25,6 +25,7 @@ WITH legs AS (
     FROM ride_eta_shadow e
     JOIN legs l ON l.ride_id = e.ride_id AND l.leg = e.leg
    WHERE l.leg_start IS NOT NULL AND l.leg_end IS NOT NULL AND e.at >= l.leg_start AND e.at < l.leg_end
+     AND COALESCE(e.remaining_m, 1000) >= 100  -- a vehicle at the destination waiting for the passenger or the end PIN is not travelling
 ), estimates AS (
   SELECT ride_id, leg, 'ours_blend' AS estimate, eta_sec AS est_sec, true_remaining_sec FROM samples WHERE kind = 'ours' AND COALESCE(off_route_m, 0) <= 100
   UNION ALL

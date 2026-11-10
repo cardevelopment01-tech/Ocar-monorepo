@@ -203,6 +203,9 @@ describe('the report', () => {
     await ins('ours', 5, 9999, 9999, 400)    // off route: left out of the ours rows
     await ins('google', 5, 420, null, null)  // true 300 s left: 120 s long
     await ins('google', 10, 660, null, null) // true 600 s left: 60 s long
+    // A vehicle already at the destination (50 m left) waiting for the end of the leg: not travel time, must not count.
+    await pool.query(`INSERT INTO ride_eta_shadow (ride_id, leg, kind, at, eta_sec, eta_base_sec, remaining_m, off_route_m)
+      VALUES ($1, 'to_pickup', 'ours', now() - interval '10 minutes' - interval '5 minutes', 5, 5, 50, 3)`, [rideId])
 
     const r1 = await pool.query(statements[0]!)
     const at = (estimate: string, bucket: string) => r1.rows.find((r) => r.estimate === estimate && r.bucket === bucket && r.leg === 'to_pickup')
@@ -215,9 +218,9 @@ describe('the report', () => {
     expect(Number(at('google', '10 min').bias_min)).toBeCloseTo(1.0, 1)
 
     const r2 = await pool.query(statements[1]!)
-    expect(r2.rows.find((r) => r.leg === 'to_pickup' && r.kind === 'ours')).toMatchObject({ samples: '3', rides: '1' })
+    expect(r2.rows.find((r) => r.leg === 'to_pickup' && r.kind === 'ours')).toMatchObject({ samples: '4', rides: '1' }) // all logged samples: the report's error rows leave out the off-route one and the one at the destination
     const r3 = await pool.query(statements[2]!)
-    expect(r3.rows.find((r) => r.leg === 'to_pickup')).toMatchObject({ ours_samples: '3', off_route_samples: '1' })
+    expect(r3.rows.find((r) => r.leg === 'to_pickup')).toMatchObject({ ours_samples: '4', off_route_samples: '1' })
   })
 
   it('leaves out rides with stops', async () => {

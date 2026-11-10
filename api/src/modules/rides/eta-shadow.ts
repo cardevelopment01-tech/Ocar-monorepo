@@ -37,6 +37,9 @@ export function resetShadowMemo(): void { switchMemo = null; states.clear(); las
 
 // ── per-process memory: the decoded route and the speed state of each ride, and when each ride was last sampled ──
 const MAX_TRACKED = 5_000
+const NO_LEG_RETRY_MS = 5_000
+// A vehicle within this distance of the leg's destination has arrived: what follows (waiting for the passenger or the end PIN) is not travel time.
+const ARRIVED_M = 100
 const states = new Map<string, LegState>()
 const lastOursAt = new Map<string, number>()
 const lastGoogleAt = new Map<string, number>()
@@ -91,7 +94,11 @@ export async function recordShadowPing(rideId: string, lat: number, lng: number,
     if (nowMs - (lastOursAt.get(rideId) ?? -Infinity) < ETA_SHADOW_SAMPLE_MS) return
     remember(lastOursAt, rideId, nowMs) // claimed before any await, so two quick pings cannot both sample
     const stored = await readLeg(rideId)
-    if (!stored) return
+    if (!stored) {
+      // No leg yet (or it was stored by another instance a moment ago): look again in a few seconds, not after a full sampling gap.
+      remember(lastOursAt, rideId, nowMs - ETA_SHADOW_SAMPLE_MS + NO_LEG_RETRY_MS)
+      return
+    }
     const state = stateFor(rideId, stored)
     if (!state) return
     const dtS = state.eta.prevAtMs === null ? 0 : (nowMs - state.eta.prevAtMs) / 1000
@@ -102,6 +109,7 @@ export async function recordShadowPing(rideId: string, lat: number, lng: number,
     if (!eta) return
     // An off-route position says nothing about progress: the sample is logged (with its distance) but the speed state is not advanced by it.
     if (!progress.offRoute) state.eta = eta.state
+    if (eta.remainingM < ARRIVED_M && !progress.offRoute) return
     await repo.insertEtaShadow({
       rideId: BigInt(rideId), leg: state.leg, kind: 'ours', etaSec: eta.etaBlendSec, etaBaseSec: eta.etaBaseSec,
       remainingM: eta.remainingM, offRouteM: progress.distM,
@@ -114,9 +122,11 @@ export async function recordShadowPing(rideId: string, lat: number, lng: number,
 async function activeRideIdForUser(userId: bigint): Promise<string | null> {
   const key = activeRideByUserKey(userId.toString())
   const cached = await withTimeout(redis.get(key)).catch(() => null)
-  if (cached !== null) return cached === '' ? null : cached
+  if (cached) return cached
   const id = await repo.getActiveRideIdForUser(userId)
-  await withTimeout(redis.set(key, id ?? '', 'EX', ACTIVE_RIDE_USER_CACHE_SEC)).catch(() => undefined)
+  // Only a ride is remembered, never "no ride": a rider who has just booked, or whose next leg has just started, must not be missed for
+  // the length of the cache. (The stored-leg check below rejects an id that is a few seconds out of date.)
+  if (id) await withTimeout(redis.set(key, id, 'EX', ACTIVE_RIDE_USER_CACHE_SEC)).catch(() => undefined)
   return id
 }
 
@@ -135,10 +145,12 @@ export async function recordShadowGoogle(
     const rideId = await activeRideIdForUser(userId)
     if (!rideId) return
     if (nowMs - (lastGoogleAt.get(rideId) ?? -Infinity) < ETA_SHADOW_GOOGLE_SAMPLE_MS) return
-    remember(lastGoogleAt, rideId, nowMs)
     const stored = await readLeg(rideId)
     if (!stored) return
+    // Only a request for the stored leg's destination counts, and only then is the sampling gap claimed: a quote or some other route
+    // request must not use up the slot of the tracking refresh that follows it.
     if (haversineM([dest.lat, dest.lng], [stored.destLat, stored.destLng]) > ETA_SHADOW_DEST_MATCH_M) return
+    remember(lastGoogleAt, rideId, nowMs)
     // What the rider's app shows is Google's live-traffic minutes; seconds are used when the response carries them.
     const etaSec = result.trafficDurationSec ?? (result.trafficDurationMin ?? result.durationMin) * 60
     await repo.insertEtaShadow({ rideId: BigInt(rideId), leg: stored.leg, kind: 'google', etaSec, remainingM: result.distanceKm * 1000 })
