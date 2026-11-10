@@ -6,6 +6,8 @@ import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
+import { stopBackgroundTracking } from '@/services/location/backgroundTask'
+import { closeOcar } from './closeOcar'
 import { shouldShowIcon, shouldAutoOpen, speedKmhFromMps, onPendingChange, type AppStateName } from './policy'
 
 // Mounted once at the root layout, next to useRideRequestListener. Android only; a build without the native module does nothing.
@@ -68,6 +70,17 @@ export function useFloatingIcon(): void {
     // which hides or shows the icon as needed; going offline or switching the icon off do exactly that.
     return () => { sub.remove() }
   }, [iconEnabled, hydrated, isOnline, isAuthenticated])
+
+  // Drag-to-close: the X is offered only while there is no ride (closing the app mid-ride would stop its tracking). Dropping the
+  // icon on it closes Ocar and the location service; the driver is not taken offline (the server ends the session after its period).
+  useEffect(() => {
+    if (!overlay.available) return
+    const apply = () => overlay.setDismissEnabled(useDriverSessionStore.getState().activeRide === null)
+    apply()
+    const unsubscribe = useDriverSessionStore.subscribe(apply)
+    const stopListening = overlay.onDismissed(() => { void closeOcar({ stopTracking: stopBackgroundTracking, exitApp: () => overlay.exitApp() }) })
+    return () => { unsubscribe(); stopListening() }
+  }, [])
 
   // A new request while Ocar is in the background.
   useEffect(() => {

@@ -20,6 +20,18 @@ class OcarOverlayModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("OcarOverlay")
 
+    /** The driver dropped the icon on the X. The app stops the location service, then calls exitApp. */
+    Events("onIconDismissed")
+
+    OnCreate { OverlayIcon.onDismissed = { sendEvent("onIconDismissed") } }
+    OnDestroy { OverlayIcon.onDismissed = null }
+
+    /** Turns the drag-to-close X on or off (it is off while the driver is on a ride). */
+    Function("setDismissEnabled") { on: Boolean -> OverlayIcon.dismissEnabled = on }
+
+    /** Stop the location service and end the app's process. Used after the app has stopped its own location tracking. */
+    Function("exitApp") { OverlayIcon.exitApp(context) }
+
     /** The driver has allowed Ocar to display over other apps. */
     Function("hasPermission") { OverlayIcon.hasPermission(context) }
 

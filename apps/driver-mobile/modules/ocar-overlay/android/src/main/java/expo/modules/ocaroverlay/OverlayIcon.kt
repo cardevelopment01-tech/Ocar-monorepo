@@ -10,13 +10,16 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import android.widget.ImageView
 import android.widget.FrameLayout
+import android.widget.TextView
 
 /**
  * The floating Ocar icon: a small draggable circle drawn over other apps while the driver is online and Ocar is not in front.
@@ -42,6 +45,23 @@ object OverlayIcon {
   private var alertOn = false
   private var alertAnimator: ValueAnimator? = null
   private var alertTimeout: Runnable? = null
+
+  // Drag-to-close: while the icon is being dragged a round "X" target appears at the bottom centre. Dropping the icon on it closes
+  // the icon, the app and the location service. It does NOT take the driver offline: the server ends a silent session by itself
+  // after the offline period, and reopening Ocar picks the driver up again.
+  private const val CLOSE_BOTTOM_DP = 56
+  private const val CLOSE_SIZE_DP = 64
+  private const val CLOSE_RADIUS_DP = 84 // how near the icon's centre must come to the target's centre to "catch" it
+  // If the app side has not stopped the location service and called exitApp by then, the native side closes everything itself.
+  private const val EXIT_FALLBACK_MS = 2_500L
+  private var closeTarget: FrameLayout? = null
+  private var closeTargetParams: WindowManager.LayoutParams? = null
+  private var closeArmed = false
+  private var exitFallback: Runnable? = null
+  /** Off while the driver is on a ride: closing the app mid-ride would stop the ride's tracking, so no target is offered then. */
+  @Volatile var dismissEnabled = true
+  /** Set by the module while the JS side is alive. It stops the location service and then calls [exitApp]. */
+  @Volatile var onDismissed: (() -> Unit)? = null
 
   fun hasPermission(context: Context): Boolean = Settings.canDrawOverlays(context)
 
@@ -199,6 +219,96 @@ object OverlayIcon {
     view = null
     badge = null
     params = null
+    hideCloseTarget(app)
+  }
+
+  private fun showCloseTarget(app: Context, wm: WindowManager) {
+    if (closeTarget != null || !dismissEnabled) return
+    val size = dp(app, CLOSE_SIZE_DP)
+    val x = TextView(app).apply {
+      text = "✕"
+      setTextColor(0xFFFFFFFF.toInt())
+      textSize = 24f
+      gravity = Gravity.CENTER
+      importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+    val circle = FrameLayout(app).apply {
+      background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xCC14171A.toInt()) }
+      elevation = dp(app, 8).toFloat()
+      alpha = 0f
+      scaleX = 0.8f
+      scaleY = 0.8f
+      addView(x, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+    }
+    val lp = WindowManager.LayoutParams(
+      size, size,
+      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+      // Display only: it never takes a touch, so the drag keeps going to the icon underneath the finger.
+      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+      PixelFormat.TRANSLUCENT
+    ).apply {
+      gravity = Gravity.TOP or Gravity.START
+      this.x = screenWidth(app) / 2 - size / 2
+      this.y = closeCenterY(app) - size / 2
+    }
+    try {
+      wm.addView(circle, lp)
+      closeTarget = circle
+      closeTargetParams = lp
+      closeArmed = false
+      circle.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(160).setInterpolator(DecelerateInterpolator()).start()
+    } catch (_: Exception) {
+      closeTarget = null
+      closeTargetParams = null
+    }
+  }
+
+  private fun hideCloseTarget(app: Context) {
+    val t = closeTarget ?: return
+    closeTarget = null
+    closeTargetParams = null
+    closeArmed = false
+    val wm = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    t.animate().cancel()
+    try { wm.removeView(t) } catch (_: Exception) {}
+  }
+
+  private fun setCloseArmed(armed: Boolean, haptic: View) {
+    if (armed == closeArmed) return
+    closeArmed = armed
+    val t = closeTarget ?: return
+    (t.background as? GradientDrawable)?.setColor(if (armed) 0xFFE5252A.toInt() else 0xCC14171A.toInt())
+    val s = if (armed) 1.25f else 1f
+    t.animate().scaleX(s).scaleY(s).setDuration(120).start()
+    if (armed) haptic.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+  }
+
+  private fun closeCenterY(app: Context): Int = screenHeight(app) - dp(app, CLOSE_BOTTOM_DP) - dp(app, CLOSE_SIZE_DP) / 2
+
+  /** The driver dropped the icon on the X. */
+  private fun dismiss(app: Context) {
+    remove(app) // icon, any alert and the target go
+    val listener = onDismissed
+    if (listener == null) { exitApp(app); return }
+    // The app side is alive: let it stop the location service cleanly, then it calls exitApp. If it does not (the JS thread is stuck),
+    // close from here after a short wait so the driver's drag is never ignored.
+    val fallback = Runnable { exitApp(app) }
+    exitFallback?.let { main.removeCallbacks(it) }
+    exitFallback = fallback
+    main.postDelayed(fallback, EXIT_FALLBACK_MS)
+    try { listener() } catch (_: Exception) {}
+  }
+
+  /** Stop the location service and end the app's process. The service is stopped first: it asks Android to restart it after a kill. */
+  fun exitApp(context: Context) {
+    val app = context.applicationContext
+    exitFallback?.let { main.removeCallbacks(it) }
+    exitFallback = null
+    try {
+      val service = Class.forName("expo.modules.location.services.LocationTaskService")
+      app.stopService(Intent(app, service))
+    } catch (_: Exception) {}
+    android.os.Process.killProcess(android.os.Process.myPid())
   }
 
   /** Drag anywhere; a short, still touch is a tap. On release the icon snaps to the nearer screen edge and remembers its height. */
@@ -214,13 +324,31 @@ object OverlayIcon {
           val dx = (e.rawX - downX).toInt(); val dy = (e.rawY - downY).toInt()
           if (!moved && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) moved = true
           if (moved) {
-            lp.x = startX + dx
-            lp.y = (startY + dy).coerceIn(0, screenHeight(app) - size)
+            showCloseTarget(app, wm)
+            val fingerX = startX + dx
+            val fingerY = (startY + dy).coerceIn(0, screenHeight(app) - size)
+            // Within reach of the X the icon is pulled onto it and the X grows and turns red, so the driver can feel it will close.
+            val tx = screenWidth(app) / 2
+            val ty = closeCenterY(app)
+            val ddx = (fingerX + size / 2 - tx).toDouble(); val ddy = (fingerY + size / 2 - ty).toDouble()
+            val near = closeTarget != null && kotlin.math.sqrt(ddx * ddx + ddy * ddy) <= dp(app, CLOSE_RADIUS_DP)
+            setCloseArmed(near, v)
+            lp.x = if (near) tx - size / 2 else fingerX
+            lp.y = if (near) ty - size / 2 else fingerY
             try { wm.updateViewLayout(v, lp) } catch (_: Exception) {}
           }
           true
         }
+        MotionEvent.ACTION_CANCEL -> {
+          hideCloseTarget(app)
+          true
+        }
         MotionEvent.ACTION_UP -> {
+          if (moved && closeArmed) {
+            dismiss(app)
+            return@setOnTouchListener true
+          }
+          hideCloseTarget(app)
           if (!moved) {
             bringToFront(app)
           } else {
