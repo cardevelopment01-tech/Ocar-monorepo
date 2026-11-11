@@ -135,6 +135,13 @@ export default function BookingFareScreen() {
   )
   const offers = useOfferPreview(offerRequest)
   const couponState = couponLineState({ status: offers.status, preview: offers.preview, typedCode: offers.typedCode, fullPrice: selectedFare ?? null })
+  // Each car or ride change restarts the offers check, which flips the state to 'loading' for a moment. Lay the footer out by the last SETTLED
+  // answer instead, so the Offers button and the message row do not flash in and out (and nothing flashes at all while offers are off).
+  const settledKind = useRef<typeof couponState.kind | null>(null)
+  if (couponState.kind !== 'loading') settledKind.current = couponState.kind
+  const layoutKind = couponState.kind === 'loading' ? settledKind.current : couponState.kind
+  const showCouponLine = couponState.kind !== 'idle' && couponState.kind !== 'off'
+    && !(couponState.kind === 'loading' && (layoutKind === 'idle' || layoutKind === 'off' || layoutKind === null))
   const payable = bookAmount(selectedFare ?? null, offers.preview)
   const hasOffer = couponState.kind === 'applied' && payable != null && selectedFare != null && payable < selectedFare
   // Nearby cars only matter for a ride NOW. A ride booked for later is dispatched shortly before its time, so an empty
@@ -371,7 +378,7 @@ export default function BookingFareScreen() {
                 <Text style={styles.payText}>Cash</Text>
                 <Feather name="chevron-down" size={16} color={h.faint} style={styles.payChev} />
               </Pressable>
-              {couponState.kind === 'idle' ? (
+              {layoutKind === 'idle' ? (
                 <Pressable
                   onPress={() => setOfferSheetOpen(true)}
                   style={({ pressed }) => [styles.payBtn, pressed ? styles.pressedScale : null]}
@@ -386,7 +393,7 @@ export default function BookingFareScreen() {
             </View>
             {paymentNote ? <Text style={styles.paymentNote}>{paymentNote}</Text> : null}
             {priceBanner ? <PriceChangedBanner message={priceBanner} onDismiss={() => setPriceBanner(null)} /> : null}
-            {couponState.kind !== 'idle' ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
+            {showCouponLine ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
             {bookError ? (
               <Text style={styles.error} accessibilityLiveRegion="polite">
                 {bookError}
@@ -403,6 +410,7 @@ export default function BookingFareScreen() {
               }
               onPress={() => void handleBook()}
               disabled={!canBook}
+              keepLookWhenDisabled={offers.bookLocked && effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars}
               loading={booking}
               accessibilityLabel={hasOffer && payable != null && selectedFare != null ? `Book this ride, ${savingsLabel(selectedFare, payable)}` : 'Book this ride'}
             />

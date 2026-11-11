@@ -125,7 +125,7 @@ export default function AddStopScreen() {
         {showSuggestions ? (
           <>
             <Text style={styles.sectionFirst}>Results</Text>
-            {loading ? (
+            {loading && results.length === 0 ? (
               <View style={styles.hintRow}>
                 <ActivityIndicator size="small" color={h.tealCta} />
                 <Text style={styles.hint}>Searching…</Text>

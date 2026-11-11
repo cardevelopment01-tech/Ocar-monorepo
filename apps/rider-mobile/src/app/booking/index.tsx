@@ -411,7 +411,7 @@ export default function BookingPickersScreen() {
       {/* Scrollable middle: results only. Header above and footer below never move. */}
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
         {showSuggestions ? (
-          loading ? (
+          loading && results.length === 0 ? (
             <View style={styles.hintRow}>
               <ActivityIndicator size="small" color={h.teal} />
               <Text style={styles.hint}>Searching…</Text>
