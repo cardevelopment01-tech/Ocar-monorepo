@@ -51,7 +51,8 @@ function CategoryCardBase({
       accessibilityLabel={`${category.displayName}${fareTotal != null ? (grossFare != null ? `, was ${Math.round(grossFare)} rupees, now ${Math.round(fareTotal)} rupees` : `, fare rupees ${Math.round(fareTotal)}`) : ''}${offerSavingText ? `. ${offerSavingText}` : ''}`}
       accessibilityState={{ selected: active, disabled: noCars }}
     >
-      <View style={[styles.imgBox, noCars ? styles.imgOff : null]}>
+      {/* collapsable={false}: the opacity/grayscale of imgOff would otherwise make this wrapper appear and vanish as noCars flips, and Fabric then moves the Image between parents in one mount batch ("child already has a parent" crash on Android). */}
+      <View collapsable={false} style={[styles.imgBox, noCars ? styles.imgOff : null]}>
         {img ? (
           <Image source={img} style={styles.vehicleImg} resizeMode="contain" accessibilityIgnoresInvertColors />
         ) : (
