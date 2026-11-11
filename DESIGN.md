@@ -503,6 +503,9 @@ A comet-taper arc: a 120-degree rotating arc with a gradient from opaque head to
 | 2026-11-09 | Section labels are sentence case, never tracked all-caps (Cancel sheet, rental tray, Safety) | Enforces the No Eyebrow Rule that older rider screens still broke. |
 | 2026-11-09 | Commercial number plates render yellow (`PLATE_YELLOW`) on the rider app | Lets riders recognise a registered commercial vehicle. |
 | 2026-11-09 | Rider motion rules: no spring on anything a rider must read (Ride PIN fades only); chat bubbles fade in over 160 ms; celebratory springs only on Trip complete; every loop honours reduced motion | Requested during review: the PIN and chat bubbles must not jiggle. |
+| 2026-11-11 | Rental package tiles and their Best fit badge use the rose set (`h.rose`, `roseWash`, `roseLine`, `roseSelected`, `roseInk`); it appears nowhere else | The approved Rental design makes rose the package colour (brief section 7 item 7). Kept to one control so it never reads as a brand colour. |
+| 2026-11-11 | Rental overage estimate counts km and minutes only beyond the package limit plus the server's grace (2 km, 5 min) | Settlement bills only past limit + grace (`rentalOverage` in `api/src/lib/fare.ts`), so an estimate that ignored the grace would promise charges the rider never pays. Labelled as an estimate. |
+| 2026-11-11 | One `MAX_STOPS` constant (`features/booking/constants.ts`) drives every stop counter, cap and the store's safety net; it stays 3 | The designs show 8 but the API caps a ride at 3. Raising it is a backend change first (see DESIGN_BRIEF section 6). |
 
 **Layout**
 - Do not nest cards inside cards.
