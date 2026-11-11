@@ -8,9 +8,9 @@
 export type Padding = { top: number; right: number; bottom: number; left: number }
 
 /** Space kept between the sheet's top edge and the lowest thing on the map, so a pin or car is not cut by the edge. */
-export const SHEET_BREATHING_PX = 28
+export const SHEET_BREATHING_PX = 48
 /** However tall the sheet is, at least this share of the map's height stays available for framing the trip. */
-export const MIN_VISIBLE_FRACTION = 0.2
+export const MIN_VISIBLE_FRACTION = 0.1
 /** A sheet that grows or shrinks by less than this is not worth re-framing the camera for. */
 export const SHEET_RESIZE_STEP_PX = 24
 

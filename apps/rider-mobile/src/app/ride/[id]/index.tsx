@@ -302,6 +302,8 @@ export default function RideTrackingScreen() {
       <RideMapView
         pickup={pickup}
         {...(showSafetyPill ? { pickupLabel: 'Your pickup' } : {})}
+        // Clear the status bar, the back button / Safety pill row and the Your pickup tag above the pin.
+        edgePadding={{ top: insets.top + 100, right: 60, bottom: 80, left: 60 }}
         drop={drop}
         driverPos={hasDriver ? driverPos : null}
         driverHeading={driverHeading}

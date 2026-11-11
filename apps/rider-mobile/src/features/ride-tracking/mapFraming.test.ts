@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SHEET_BREATHING_PX, framePoints, framingPadding, isInVisibleBand, sheetHeightBucket } from './mapFraming'
+import { MIN_VISIBLE_FRACTION, SHEET_BREATHING_PX, framePoints, framingPadding, isInVisibleBand, sheetHeightBucket } from './mapFraming'
 
 // Value: protects=the rider's live map never frames the car under the bottom sheet (the reported "only the pickup pin, no
 // car"); fails_when=the camera padding ignores the sheet or the in-view check counts the covered strip as visible;
@@ -20,12 +20,12 @@ describe('framingPadding', () => {
   })
 
   it('never lowers the padding below the default for a short sheet', () => {
-    expect(framingPadding(base, 40, 800).bottom).toBe(80)
+    expect(framingPadding(base, 20, 800).bottom).toBe(80)
   })
 
   it('leaves a usable band when the sheet is very tall', () => {
     const p = framingPadding(base, 760, 800)
-    expect(800 - p.top - p.bottom).toBeGreaterThanOrEqual(800 * 0.2 - 1)
+    expect(800 - p.top - p.bottom).toBeGreaterThanOrEqual(800 * MIN_VISIBLE_FRACTION - 1)
   })
 
   it('does not collapse when the map height is not known yet', () => {
