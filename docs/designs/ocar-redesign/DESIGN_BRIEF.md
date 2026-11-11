@@ -25,6 +25,7 @@ Live canvas (private, owner only): https://claude.ai/artifact/AQT8tBhX1gwQZKVVmW
 | 6 | `Chat.dc.html` Chat | default, quick reply sent | `src/app/ride/[id]/chat.tsx` | message fetch/send, socket events, unread handling |
 | 7 | `Complete.dc.html` Trip complete and rating | top, scrolled | `features/trip-summary/TripSummary.tsx`, `RatingSection.tsx`, `tripSummaryModel.ts` | `submitRating`, `fetchRatingTags`, summary model math |
 | 8 | `Account.dc.html` Account | top, scrolled, sign out sheet | `src/app/(tabs)/profile.tsx`, `saved-places.tsx`, `notification-settings.tsx`, `safety.tsx`, `features/profile/ScreenHeader.tsx` | profile PATCH merge logic, sign out, delete account, version label |
+| 9 | `Rental.dc.html` Rental packages ("City Rides"), `RentalStops.dc.html` Plan your stops (up to 8), `RentalAddStop.dc.html` Add a stop | default, package slider, overage estimate, luxury row open, offers sheet, coupon applied, 8 stops summary, stops editor with 5 and 8 stops, add stop empty and search | `src/app/booking/rental.tsx` (`PackageTierScroller` stays a horizontal scroller but gets snap, peek and auto scroll), `features/booking/components/StopsList.tsx` (becomes a summary row plus the editor screen), `ScheduleSheet.tsx`, `RiderSheet.tsx`, add-stop search screen | `fetchVehicleCategories`, `fetchRentalPackages`, `fetchRoute`, `recommendPackage`, `fetchFareEstimate`, `createBooking`, stops store actions (`removeStop`, `swapStop`), `MAX_STOPS` (raise from 3 to 8 only after checking the API allows it), schedule and rider sheets, one open category at a time |
 
 The bottom tab bar (`features/home/FloatingTabBar.tsx` and the shared one) already matches the design; only touch it if a screenshot differs.
 
@@ -59,6 +60,7 @@ Colors
 | live green `#25B87A` | `h.live` |
 | danger `#C23B3B` (text, outline), `#EE5A5E` to `#C23B3B` gradient (SOS), wash `#FCEBEC` | add `h.danger`, `h.dangerWash` |
 | hairlines | existing `h.line06` to `h.line13` |
+| rose `#D23F6D`, badge gradient `#E5588A` to `#C93566`, blush `#FDF1F4`, line `#F4D2DC`, selected `#FFE6EE`, ink `#8E1F47`, sub text `#7B5663` | add `h.rose`, `h.roseWash`, `h.roseLine`, `h.roseInk` (rental package tiles only) |
 
 Type: Plus Jakarta Sans only. Weights 400, 500, 600, 700 are loaded in `useAppFonts()`. The design also uses 800 for big numerals (fare totals, ETA, "12 min left"): add `PlusJakartaSans_800ExtraBold` to `useAppFonts()` and `font.xb`. Use `fontVariant: ['tabular-nums']` on every price, time and distance.
 Sizes in use: 28/800 page title (tab roots), 20/700 header title, 32/800 hero numeral, 36/800 total, 21/800 option price, 17 to 18/800 price, 16 to 16.5/700 card title, 15/600 row title, 14 to 14.5/600 to 700 body and buttons, 12.5/500 secondary, 12/600 chips. Nothing below 12.
@@ -77,7 +79,9 @@ Gradients: avatar `#12A0B6` to `#0A7788` (145deg), gold `#F6DC9A` to `#D6A552`, 
 - `Chip` / `Pill` (tealWash, chip, gold variants).
 - `BottomSheet` (r30 top corners, 36x4 handle, `md` shadow) plus `Scrim`. The existing `SlideModal` may already cover this.
 - `ExpandableSection` (max-height reveal, chevron rotate 180deg, `ease.sheet`, 450ms).
-- `RouteTimeline` (teal dot, dashed connector, ink square; optional "Add stop" dashed pill).
+- `RouteTimeline` (teal dot, connector line, ink square; numbered amber stop dots; optional trailing action).
+- `SnapSlider` (horizontal ScrollView, snapToInterval, peek, scroll to selected on open) used for rental package tiles.
+- `PackageTile` (rose blush, selected ring, Best fit badge) and a small gold `Premium` chip.
 - `DriverCard` (avatar with gold ring, rating badge hanging below the avatar, name, car and trips, plate chip, car image).
 - `TicketBanner` (coupon applied: gradient wash, gold border, round notches, dashed divider before Remove).
 - `ReceiptRow` (label, gray detail, tabular amount at width 64).
@@ -95,6 +99,9 @@ Gradients: avatar `#12A0B6` to `#0A7788` (145deg), gold `#F6DC9A` to `#D6A552`, 
 6. Chat: quick reply chips append a rider message. Header shows driver, ETA and plate.
 7. Trip complete: receipt card (total, paid chip, route strip, perforated divider, breakdown rows, total band, trip id, Get receipt), rating card (stars, tags that change by score, tip segmented control). CTA reads `Submit rating` or `Submit and tip X`.
 8. Account: profile hero (avatar gold ring, name, phone, edit), rides and rating strip, Saved places and Offers tiles, grouped Preferences and Support lists, outlined Sign out with confirmation sheet, Delete account as quiet text.
+9. Rental (City Rides). Route card: Now chip, distance and time, then pickup, ONE summary row for stops (`N stops`, first two short names, `+N`, `Edit`, and a round `+` button), then drop. The card never grows with the number of stops. `Edit` opens Plan your stops, `+` opens Add a stop (disabled at 8). Vehicles are one vertical list, exactly one open at a time. The open vehicle shows `Choose a package` as a HORIZONTAL SLIDER (any number of packages): 96px tiles, snap to start, 10px gap, the next tile peeks about 18px so riders know it scrolls, `N packages` with a chevron on the label row. Edge arrows: while more tiles exist to the right, a white 32px circle with a teal chevron sits on the right edge over a 64px white fade, and tapping it scrolls forward about two tiles; once the user scrolls away from the start, the same arrow appears on the left (48px fade). Each arrow fades out (opacity .2s) when that end is reached. This is the existing `PackageTierScroller` fade plus arrow, now in both directions. On open, and when the selection changes, scroll so the selected tile is the second visible one (best fit is selected by default, so it is always on screen). Tiles are blush pink with hours, km and price; the selected tile has a rose border and ring; the `recommendPackage` tile carries a rose `Best fit` badge overlapping its top edge. Under the slider: two columns, `Included` (`60 km · 6 hrs`) and `After that` (`₹10/km · ₹2/min`, teal). Then one estimate line from the real route: if the trip fits, a teal check line `Your trip is about 43.3 km and 1h 39m. It fits this package, so no extra charges are expected.`; if not, a gold line that names the km and minutes over, the estimated extra (km over x km rate + minutes over x minute rate) and says it is billed after the ride. The CTA always shows the package fare only. The premium category (slug `luxury`) is an ordinary row in the same list, same card and same package panel as the others, with a small gold `Premium` chip (star icon) after the seat count. No showcase, no separate section. Bottom bar: Cash button and Offers button side by side (Offers shows the code once applied), then `Book <vehicle> · <price>` with the struck old price when a coupon applies. The offers sheet is the same one as Choose a ride.
+10. Plan your stops: header with `n of 8` chip (turns gold at 8), an estimate strip (`Estimated trip` distance and time, and the live `Best fit` package), one list card: pickup (teal dot), numbered stops (amber circles, `Stop n` label, address, move later and remove buttons, 36px targets), drop (ink square). `Add a stop` (outline, disabled at 8 with an explanatory line) and `Done` sit in a sticky bar. The list scrolls inside the page, so 8 stops never break the layout. Use the existing `swapStop` and `removeStop`.
+11. Add a stop: header with `Stop n of 8` chip, a focused search field, then `Select on map`, Home and Work chips, Recent and Popular lists. Typing swaps the lists for `Results` with the matched part bold in teal and a distance on the right. Tapping a row adds the stop and returns to Plan your stops.
 
 ## 6. Feature gaps (checked against the repo on the day this pack was made)
 
@@ -108,7 +115,11 @@ Does NOT exist, build UI only and stub:
 - "Fare locked" message: only show if the fare estimate is actually locked at booking.
 - Driver trips count, "Share live trip", "Change drop" mid-trip: check the ride payload and existing actions; hide what is not supported.
 - Account: the design removes the wallet entirely. Remove it from the UI only (profile currently shows a Wallet stat). Do not delete the data fetching without asking.
-- Auto Rickshaw and City Ride vehicle rows are not in the design yet (the design shows Hatchback, Sedan, SUV). Keep the existing categories from `fleet.ts` and style them with the same card.
+- Rental stops up to 8: the API caps a ride at `MAX_STOPS_PER_RIDE = 3` (`api/src/constants/limits.ts`, enforced in `rides.service.ts`, and `rides.service.ts` has a stop ordering routine that assumes a small count). The mobile `MAX_STOPS` in `rental.tsx` is 3 as well. The designs show 8. Do the UI against a single `MAX_STOPS` constant, and raise the limit on the backend first (check the ordering routine, fare and ETA math for 8) before raising it in the app. Until then the app simply hits the limit at 3 and the design still holds.
+- Rental `RentalPackage` already has `packageFare`, `extraPerKm`, `extraPerMin`, `kmLimit`, `durationMinutes`: the Included and After that columns and the overage estimate need no new API. Estimated extra = km over x `extraPerKm` + minutes over x `extraPerMin` (client side estimate, label it estimated).
+- Premium: only a `Premium` chip next to the seats on the existing `luxury` category row (`isPremiumSlug`). Nothing else changes for it.
+- Package tiles show the price of each tier (`packageFare`), which the current tile does not.
+- Auto Rickshaw, Luxury and Van rows are designed on the Rental screen only (using the real icons from `packages/mobile-shared/src/assets/vehicles`). The Choose a ride screen still shows Hatchback, Sedan, SUV: keep the existing categories from `fleet.ts` and style them with the same card.
 
 ## 7. Intentional deltas from `DESIGN.md`
 
@@ -119,6 +130,7 @@ The approved designs differ from the current `DESIGN.md` in these places. The de
 4. Hero numerals use Plus Jakarta Sans 800 instead of Space Grotesk.
 5. Danger red is `#C23B3B` for outlined actions and SOS, not `#EF4444`.
 6. Tracked all-caps labels were removed from the design already, so no delta there.
+7. Rose pink (`#D23F6D` border and badge gradient `#E5588A` to `#C93566`, blush `#FDF1F4` tile, border `#F4D2DC`, selected tile `#FFE6EE`, ink on selected `#8E1F47`) is used only for rental package tiles and their `Best fit` badge. Add `h.rose`, `h.roseWash`, `h.roseLine`, `h.roseInk`. It was a product call, not a brand colour, so keep it out of every other screen.
 
 ## 8. Acceptance checklist per screen
 

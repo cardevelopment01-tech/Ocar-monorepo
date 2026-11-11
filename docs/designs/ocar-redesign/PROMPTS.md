@@ -7,7 +7,7 @@ Run from `C:\ocar`. Paste one at a time. Approve each plan before the next step.
 ```
 Read CLAUDE.md, DESIGN.md and docs/designs/ocar-redesign/DESIGN_BRIEF.md. Then look at every file in docs/designs/ocar-redesign/screens and every PNG in docs/designs/ocar-redesign/screenshots.
 Do not write code yet. Produce a plan:
-1. For each of the 8 design screens, confirm the repo files to restyle (the brief has a map, correct it if wrong).
+1. For each of the 9 design screens, confirm the repo files to restyle (the brief has a map, correct it if wrong).
 2. For each screen, list the existing logic, hooks, stores, socket events and navigation params that must stay untouched.
 3. List which brief section 6 features exist or are missing, after checking the code yourself.
 4. List every place the design differs from DESIGN.md (brief section 7) and any I missed.
@@ -47,6 +47,7 @@ Screen 4 (Driver on the way) from screens/Driver.dc.html
 Screen 5 (On trip with SOS) from screens/Ride.dc.html
 Screen 6 (Chat) from screens/Chat.dc.html
 Screen 7 (Trip complete and rating) from screens/Complete.dc.html
+Screen 9 (Rental packages, Plan your stops, Add a stop) from screens/Rental.dc.html, screens/RentalStops.dc.html and screens/RentalAddStop.dc.html
 ```
 
 Account goes first because it has the least live logic, so it proves the tokens and components before you touch the booking and ride flow.

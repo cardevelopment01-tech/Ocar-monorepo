@@ -1,23 +1,146 @@
 {
   "v": 3,
-  "createdOnFiles": { "v": 1, "at": "2026-11-08T19:40:00Z" },
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-08T19:40:00Z"
+  },
   "title": "Ocar Rider Flow Redesign",
-  "launch": { "view": "canvas" },
+  "launch": {
+    "view": "canvas"
+  },
   "pages": [],
   "boards": {
-    "Main.dc.html": { "x": 0, "y": 0, "w": 390, "h": 844, "title": "1 · Plan your trip", "is_interactive": true, "radius": 36 },
-    "TripType.dc.html": { "x": 470, "y": 0, "w": 390, "h": 844, "title": "2 · Trip type and fare", "is_interactive": true, "radius": 36 },
-    "Vehicles.dc.html": { "x": 940, "y": 0, "w": 390, "h": 844, "title": "3 · Choose a ride", "is_interactive": true, "radius": 36 },
-    "VehiclesCoupon.dc.html": { "x": 1410, "y": 0, "w": 390, "h": 844, "title": "3b · Coupon applied", "is_interactive": true, "radius": 36 },
-    "Driver.dc.html": { "x": 1880, "y": 0, "w": 390, "h": 844, "title": "4 · Driver on the way", "is_interactive": true, "radius": 36 },
-    "Ride.dc.html": { "x": 2350, "y": 0, "w": 390, "h": 844, "title": "5 · On trip, with SOS", "is_interactive": true, "radius": 36 },
-    "Chat.dc.html": { "x": 2820, "y": 0, "w": 390, "h": 844, "title": "6 · Chat with driver", "is_interactive": true, "radius": 36 },
-    "Complete.dc.html": { "x": 3290, "y": 0, "w": 390, "h": 844, "title": "7 · Trip complete + rating", "is_interactive": true, "radius": 36 },
-    "Account.dc.html": { "x": 3760, "y": 0, "w": 390, "h": 844, "title": "8 · Account", "is_interactive": true, "radius": 36 }
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "1 · Plan your trip",
+      "is_interactive": true,
+      "radius": 36
+    },
+    "TripType.dc.html": {
+      "x": 470,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "2 · Trip type and fare",
+      "is_interactive": true,
+      "radius": 36
+    },
+    "Vehicles.dc.html": {
+      "x": 940,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "3 · Choose a ride",
+      "is_interactive": true,
+      "radius": 36
+    },
+    "VehiclesCoupon.dc.html": {
+      "x": 1410,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "3b · Coupon applied",
+      "is_interactive": true,
+      "radius": 36
+    },
+    "Rental.dc.html": {
+      "x": 1880,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "3c · Rental packages",
+      "is_interactive": true,
+      "radius": 36
+    },
+    "RentalStops.dc.html": {
+      "x": 2350,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "3d · Plan your stops (up to 8)",
+      "is_interactive": true,
+      "radius": 36
+    },
+    "RentalAddStop.dc.html": {
+      "x": 2820,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "3e · Add a stop",
+      "is_interactive": true,
+      "radius": 36
+    },
+    "Driver.dc.html": {
+      "x": 3290,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "4 · Driver on the way",
+      "is_interactive": true,
+      "radius": 36
+    },
+    "Ride.dc.html": {
+      "x": 3760,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "5 · On trip, with SOS",
+      "is_interactive": true,
+      "radius": 36
+    },
+    "Chat.dc.html": {
+      "x": 4230,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "6 · Chat with driver",
+      "is_interactive": true,
+      "radius": 36
+    },
+    "Complete.dc.html": {
+      "x": 4700,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "7 · Trip complete + rating",
+      "is_interactive": true,
+      "radius": 36
+    },
+    "Account.dc.html": {
+      "x": 5170,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "8 · Account",
+      "is_interactive": true,
+      "radius": 36
+    }
   },
-  "order": ["Main.dc.html", "TripType.dc.html", "Vehicles.dc.html", "VehiclesCoupon.dc.html", "Driver.dc.html", "Ride.dc.html", "Chat.dc.html", "Complete.dc.html", "Account.dc.html"],
+  "order": [
+    "Main.dc.html",
+    "TripType.dc.html",
+    "Vehicles.dc.html",
+    "VehiclesCoupon.dc.html",
+    "Rental.dc.html",
+    "RentalStops.dc.html",
+    "RentalAddStop.dc.html",
+    "Driver.dc.html",
+    "Ride.dc.html",
+    "Chat.dc.html",
+    "Complete.dc.html",
+    "Account.dc.html"
+  ],
   "notes": {
-    "title": { "x": 0, "y": -260, "text": "Rider flow, redesigned", "kind": "title1", "maxW": 4150 }
+    "title": {
+      "x": 0,
+      "y": -260,
+      "text": "Rider flow, redesigned",
+      "kind": "title1",
+      "maxW": 5560
+    }
   },
   "designSystems": []
 }
