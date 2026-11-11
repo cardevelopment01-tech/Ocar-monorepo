@@ -111,7 +111,7 @@ const rail = StyleSheet.create({
   up: { top: 0, bottom: '50%' },
 })
 const sum = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 44 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },
   main: { flex: 1, minWidth: 0, alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 12 },
   pressed: { opacity: 0.7 },
   dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: h.gold, boxShadow: '0 0 0 3px #FFFFFF' },

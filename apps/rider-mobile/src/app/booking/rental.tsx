@@ -286,12 +286,12 @@ export default function RentalScreen() {
             {trip ? <Text style={styles.tripMeta}>{`${trip.km} km · ~${formatDuration(trip.min)}`}</Text> : null}
           </View>
 
-          <View style={[styles.routeRow, { height: 38 }]}>
+          <View style={[styles.routeRow, { minHeight: 38 }]}>
             <RouteRail line="down"><View style={styles.pickupDot} /></RouteRail>
             <Text style={styles.routeText} numberOfLines={1}>{pickup?.address ?? 'Pickup location'}</Text>
           </View>
           <StopsSummaryRow stops={stops} maxStops={MAX_STOPS} onEdit={() => router.push('/booking/plan-stops')} onAdd={() => router.push('/booking/add-stop')} />
-          <View style={[styles.routeRow, { height: 38 }]}>
+          <View style={[styles.routeRow, { minHeight: 38 }]}>
             <RouteRail line="up"><View style={styles.dropDot} /></RouteRail>
             <Text style={styles.routeText} numberOfLines={1}>{drop?.address ?? 'Destination'}</Text>
           </View>
@@ -345,11 +345,11 @@ export default function RentalScreen() {
                   ) : pkgsLoading ? (
                     <Skeleton width={56} height={16} />
                   ) : isOpen && selectedPkg ? (
-                    <Text style={styles.vehFare}>{formatRupees(selectedPkg.packageFare)}</Text>
+                    <Text style={styles.vehFare} numberOfLines={1}>{formatRupees(selectedPkg.packageFare)}</Text>
                   ) : fromFare != null ? (
                     <>
-                      <Text style={styles.vehFrom}>from</Text>
-                      <Text style={styles.vehFare}>{formatRupees(fromFare)}</Text>
+                      <Text style={styles.vehFrom} numberOfLines={1}>from</Text>
+                      <Text style={styles.vehFare} numberOfLines={1}>{formatRupees(fromFare)}</Text>
                     </>
                   ) : null}
                 </View>
@@ -399,7 +399,7 @@ export default function RentalScreen() {
                             <View style={styles.incSep} />
                             <View style={styles.incCol}>
                               <Text style={styles.incLabel}>After that</Text>
-                              <Text style={[styles.incValue, { color: h.tealText }]} numberOfLines={1}>{`${formatRupees(selectedPkg.extraPerKm)}/km · ${formatRupees(selectedPkg.extraPerMin)}/min`}</Text>
+                              <Text style={[styles.incValue, { color: h.tealText }]}>{`${formatRupees(selectedPkg.extraPerKm)}/km · ${formatRupees(selectedPkg.extraPerMin)}/min`}</Text>
                             </View>
                           </View>
                           {estimate != null && estimate.surgeMultiplier > 1 ? (
@@ -553,7 +553,8 @@ const styles = StyleSheet.create({
   vehSeats: { fontFamily: font.sb, fontSize: 12.5, color: h.muted },
   premiumChip: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 22, paddingHorizontal: 6, borderRadius: 11, backgroundColor: '#FBF1D9' },
   premiumChipText: { fontFamily: font.b, fontSize: 12, color: '#7A5410' },
-  vehFareBlock: { width: 62, alignItems: 'flex-end', justifyContent: 'center' },
+  // minWidth, not width: a larger price or bigger text grows this block and the name column gives way, instead of the price wrapping.
+  vehFareBlock: { minWidth: 62, flexShrink: 0, alignItems: 'flex-end', justifyContent: 'center' },
   vehFrom: { fontSize: 12, fontFamily: font.m, color: h.label },
   vehFare: { fontSize: 17, fontFamily: font.xb, letterSpacing: -0.2, color: h.ivory, fontVariant: ['tabular-nums'] },
   vehNoPkgs: { fontSize: 12, fontFamily: font.sb, color: h.faint },

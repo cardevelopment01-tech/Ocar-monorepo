@@ -69,7 +69,7 @@ export function Button({ label, variant = 'primary', loading = false, success = 
         {loading ? <ActivityIndicator color={cta ? '#fff' : h.tealText} /> : (
           <View style={styles.row}>
             {icon ? <Feather name={icon} size={17} color={cta ? '#fff' : h.tealText} /> : null}
-            <Text style={[styles.ctaLabel, { color: cta ? '#fff' : h.tealText }]}>{label}</Text>
+            <Text style={[styles.ctaLabel, { color: cta ? '#fff' : h.tealText }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{label}</Text>
             {strikeLabel ? <Text style={styles.ctaStrike}>{strikeLabel}</Text> : null}
           </View>
         )}
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
   },
   cta: { height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
   soft: { height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
-  ctaLabel: { fontSize: 16, fontFamily: fonts.bold, fontVariant: ['tabular-nums'] },
+  ctaLabel: { fontSize: 16, fontFamily: fonts.bold, fontVariant: ['tabular-nums'], flexShrink: 1 },
   ctaStrike: { fontSize: 13.5, fontFamily: fonts.semibold, color: 'rgba(255,255,255,0.62)', textDecorationLine: 'line-through', marginLeft: 4, fontVariant: ['tabular-nums'] },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
 })

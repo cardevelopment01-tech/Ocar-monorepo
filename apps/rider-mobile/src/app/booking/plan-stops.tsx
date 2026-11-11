@@ -150,7 +150,8 @@ const styles = StyleSheet.create({
   countText: { fontFamily: font.b, fontSize: 13, color: h.tealText, fontVariant: ['tabular-nums'] },
   countTextFull: { color: '#7A5410' },
 
-  strip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 14, marginHorizontal: 2 },
+  // wraps: on a narrow phone or with larger text the Best fit pill drops under the trip line instead of crowding it
+  strip: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', columnGap: 12, rowGap: 10, marginTop: 20, marginBottom: 14, marginHorizontal: 2 },
   stripLabel: { fontFamily: font.m, fontSize: 12.5, color: h.label },
   stripValue: { fontFamily: font.b, fontSize: 15, color: h.ivory, marginTop: 2, fontVariant: ['tabular-nums'] },
   bestPill: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 36, paddingLeft: 14, paddingRight: 6, borderRadius: 18, backgroundColor: h.roseWash, borderWidth: 1, borderColor: h.roseLine },
@@ -159,7 +160,7 @@ const styles = StyleSheet.create({
   bestValueText: { fontFamily: font.xb, fontSize: 12.5, color: '#FFFFFF', fontVariant: ['tabular-nums'] },
 
   list: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line07, borderRadius: 22, paddingVertical: 6, paddingHorizontal: 16, boxShadow: '0 2px 8px rgba(20,23,26,0.05), inset 0 1px 0 rgba(255,255,255,0.9)' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 58 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 58, paddingVertical: 4 },
   rowBorder: { borderTopWidth: 1, borderTopColor: 'rgba(20,23,26,0.05)' },
   rowText: { flex: 1, minWidth: 0 },
   rowLabel: { fontFamily: font.sb, fontSize: 12, color: h.label },
