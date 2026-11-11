@@ -23,7 +23,7 @@ import { CouponLine } from '@/features/offers/CouponLine'
 import { OfferSheet } from '@/features/offers/OfferSheet'
 import { PriceChangedBanner } from '@/features/offers/PriceChangedBanner'
 import { useOfferPreview } from '@/features/offers/useOfferPreview'
-import { bookAmount, bookingOfferFields, formatRupees, couponLineState, parseOfferNotApplicable, parsePriceChanged, priceChangedMessage, rentalPreviewRequest } from '@/features/offers/offerModel'
+import { bookAmount, bookingOfferFields, formatRupees, type CouponLineState, couponLineState, parseOfferNotApplicable, parsePriceChanged, priceChangedMessage, rentalPreviewRequest } from '@/features/offers/offerModel'
 
 // Luxury is an ordinary row in the list; it only carries a small gold Premium chip after the seat count.
 function isPremiumSlug(slug: string) {
@@ -184,8 +184,20 @@ export default function RentalScreen() {
   const selectedFare = estimate?.breakdown.total ?? null
   const couponState = couponLineState({ status: offers.status, preview: offers.preview, typedCode: offers.typedCode, fullPrice: selectedFare })
   const payable = bookAmount(selectedFare, offers.preview)
+  // Every package or vehicle change restarts the offers check, so the state flips to 'loading' for a moment each time. The
+  // footer must not follow that: remember the last settled answer and lay out by it, so the Offers button, its label and
+  // the message row stay put (and an off-offers server never flashes the button in and out).
+  const settledKind = useRef<CouponLineState['kind'] | null>(null)
+  const settledApplied = useRef<{ label: string } | null>(null)
+  if (couponState.kind !== 'loading') {
+    settledKind.current = couponState.kind
+    settledApplied.current = couponState.kind === 'applied' ? { label: couponState.auto ? 'Best offer' : (couponState.offer.code ?? couponState.offer.name) } : null
+  }
+  const layoutKind = couponState.kind === 'loading' ? settledKind.current : couponState.kind
+  const offersAvailable = layoutKind !== null && layoutKind !== 'off'
   const appliedOffer = couponState.kind === 'applied' ? couponState.offer : null
-  const offerLabel = appliedOffer ? (couponState.kind === 'applied' && couponState.auto ? 'Best offer' : (appliedOffer.code ?? appliedOffer.name)) : 'Offers'
+  const shownApplied = couponState.kind === 'loading' ? settledApplied.current : (couponState.kind === 'applied' ? settledApplied.current : null)
+  const offerLabel = shownApplied ? shownApplied.label : 'Offers'
   const openCategoryName = categories.find((c) => c.id === openCatId)?.displayName ?? ''
   const canBook = openCatId !== null && selectedPkgId !== null && estimate !== null && !estLoading && !!drop && !booking && !offers.bookLocked
 
@@ -430,7 +442,7 @@ export default function RentalScreen() {
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         {priceBanner ? <PriceChangedBanner message={priceBanner} onDismiss={() => setPriceBanner(null)} /> : null}
         {/* Loading / refused / failed checks keep their message line; an applied offer shows in the Offers button and the Book price. */}
-        {openCatId !== null && (couponState.kind === 'loading' || couponState.kind === 'rejected' || couponState.kind === 'error') ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
+        {openCatId !== null && ((couponState.kind === 'loading' && offersAvailable) || couponState.kind === 'rejected' || couponState.kind === 'error') ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
         {/* Cash and Offers side by side. Offers is absent while offers are off, and shows the code once one applies. */}
         {openCatId !== null ? (
           <View style={styles.payRow}>
@@ -439,15 +451,15 @@ export default function RentalScreen() {
               <Text style={styles.payText}>Cash</Text>
               <Feather name="chevron-down" size={14} color={h.faint} style={styles.payChev} />
             </View>
-            {couponState.kind !== 'off' ? (
+            {offersAvailable ? (
               <Pressable
                 onPress={() => setOfferSheetOpen(true)}
-                style={({ pressed }) => [styles.payBtn, appliedOffer ? styles.payBtnOn : null, pressed ? styles.pressedScale : null]}
+                style={({ pressed }) => [styles.payBtn, shownApplied ? styles.payBtnOn : null, pressed ? styles.pressedScale : null]}
                 accessibilityRole="button"
-                accessibilityLabel={appliedOffer ? `Offer ${offerLabel} applied. Change offer` : 'Offers. Have a code? Add an offer code'}
+                accessibilityLabel={shownApplied ? `Offer ${offerLabel} applied. Change offer` : 'Offers. Have a code? Add an offer code'}
               >
                 <Feather name="tag" size={18} color={h.tealText} />
-                <Text style={[styles.payText, appliedOffer ? styles.payTextOn : null]} numberOfLines={1}>{offerLabel}</Text>
+                <Text style={[styles.payText, shownApplied ? styles.payTextOn : null]} numberOfLines={1}>{offerLabel}</Text>
                 <Feather name="chevron-right" size={14} color={h.faint} style={styles.payChev} />
               </Pressable>
             ) : null}
@@ -470,7 +482,7 @@ export default function RentalScreen() {
           {...(appliedOffer && estimate != null && selectedFare != null && payable != null && payable < selectedFare ? { strikeLabel: formatRupees(selectedFare) } : {})}
           onPress={() => void handleBook()}
           disabled={!canBook}
-          keepLookWhenDisabled={!!drop && openCatId !== null && !booking && !offers.bookLocked && (estLoading || selectedPkgId === null)}
+          keepLookWhenDisabled={!!drop && openCatId !== null && !booking && (estLoading || selectedPkgId === null || offers.bookLocked)}
           loading={booking}
         />
       </View>
