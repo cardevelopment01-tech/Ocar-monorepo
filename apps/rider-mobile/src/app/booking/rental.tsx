@@ -63,6 +63,8 @@ export default function RentalScreen() {
   const [userPickedPkg, setUserPickedPkg] = useState(false)
   const [estimate, setEstimate] = useState<Awaited<ReturnType<typeof fetchFareEstimate>> | null>(null)
   const [estLoading, setEstLoading] = useState(false)
+  // Which vehicle and package the estimate in state is for, so the Book button never shows the previous vehicle's price while the new one loads.
+  const [estimateKey, setEstimateKey] = useState<string | null>(null)
   const [booking, setBooking] = useState(false)
   const [offerSheetOpen, setOfferSheetOpen] = useState(false)
   const [priceBanner, setPriceBanner] = useState<string | null>(null)
@@ -149,7 +151,7 @@ export default function RentalScreen() {
     }
     if (originCityId !== null) input.cityId = originCityId
     fetchFareEstimate(input)
-      .then((est) => { if (!cancelled) setEstimate(est) })
+      .then((est) => { if (!cancelled) { setEstimate(est); setEstimateKey(`${openCatId}:${selectedPkgId}`) } })
       .catch(() => { if (!cancelled) setEstimate(null) })
       .finally(() => { if (!cancelled) setEstLoading(false) })
     return () => { cancelled = true }
@@ -166,7 +168,11 @@ export default function RentalScreen() {
     setSelectedPkgId(null)
   }
 
-  const selectedPkg = openPackages.find((p) => p.id === selectedPkgId) ?? null
+  // What the screen SHOWS as selected. The logic below still waits for selectedPkgId, but switching vehicles resets it to
+  // null for a moment before the effect picks the best fit again; showing that gap made the tray, the Cash and Offers
+  // row and the Book button blink on every switch. This mirrors that effect, so the right package shows at once.
+  const shownPkgId = selectedPkgId ?? (!userPickedPkg && tripReady && openPackages.length > 0 ? (recommendation?.packageId ?? openPackages[0]!.id) : null)
+  const selectedPkg = openPackages.find((p) => p.id === shownPkgId) ?? null
   // Offers: the server prices the chosen package again whenever the package, vehicle, route or a typed code changes.
   const offerRequest = useMemo(
     () => (openCatId !== null && selectedPkgId !== null && pickup && drop
@@ -366,7 +372,7 @@ export default function RentalScreen() {
                       </View>
                       <PackageSlider
                         tiles={pkgs.map((p) => ({ id: p.id, hours: formatDuration(p.durationMinutes), km: `${p.kmLimit} km`, price: formatRupees(p.packageFare) }))}
-                        selectedId={selectedPkgId}
+                        selectedId={shownPkgId}
                         bestId={recommendation?.packageId ?? null}
                         onSelect={(id) => { setUserPickedPkg(true); setSelectedPkgId(id) }}
                       />
@@ -424,9 +430,9 @@ export default function RentalScreen() {
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         {priceBanner ? <PriceChangedBanner message={priceBanner} onDismiss={() => setPriceBanner(null)} /> : null}
         {/* Loading / refused / failed checks keep their message line; an applied offer shows in the Offers button and the Book price. */}
-        {selectedPkg && (couponState.kind === 'loading' || couponState.kind === 'rejected' || couponState.kind === 'error') ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
+        {openCatId !== null && (couponState.kind === 'loading' || couponState.kind === 'rejected' || couponState.kind === 'error') ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
         {/* Cash and Offers side by side. Offers is absent while offers are off, and shows the code once one applies. */}
-        {selectedPkg ? (
+        {openCatId !== null ? (
           <View style={styles.payRow}>
             <View style={styles.payBtn} accessible accessibilityLabel="Payment method: Cash">
               <Feather name="credit-card" size={18} color={h.ivory} />
@@ -457,13 +463,14 @@ export default function RentalScreen() {
               ? 'Add a drop-off to continue'
               : !selectedPkg
               ? 'Select a package'
-              : estimate != null
+              : estimate != null && estimateKey === `${openCatId}:${selectedPkgId}`
               ? `Book ${openCategoryName} · ${formatRupees(payable ?? estimate.breakdown.total)}`
               : `Book ${openCategoryName}`
           }
           {...(appliedOffer && estimate != null && selectedFare != null && payable != null && payable < selectedFare ? { strikeLabel: formatRupees(selectedFare) } : {})}
           onPress={() => void handleBook()}
           disabled={!canBook}
+          keepLookWhenDisabled={!!drop && openCatId !== null && !booking && !offers.bookLocked && (estLoading || selectedPkgId === null)}
           loading={booking}
         />
       </View>

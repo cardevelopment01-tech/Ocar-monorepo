@@ -22,9 +22,11 @@ export type ButtonProps = Omit<PressableProps, 'style'> & {
   icon?: React.ComponentProps<typeof Feather>['name']
   // 'cta' only: the price before an offer, shown struck through after the label ("Book Sedan · ₹600 ₹750").
   strikeLabel?: string
+  // 'cta' only: stay at full strength while disabled. For a button that is only waiting a moment (a price loading), so it does not dim and brighten on every change.
+  keepLookWhenDisabled?: boolean
 }
 
-export function Button({ label, variant = 'primary', loading = false, success = false, icon, strikeLabel, disabled = false, ...pressableProps }: ButtonProps) {
+export function Button({ label, variant = 'primary', loading = false, success = false, icon, strikeLabel, keepLookWhenDisabled = false, disabled = false, ...pressableProps }: ButtonProps) {
   const isDisabled = !!disabled || loading || success
   // Loading/success still read as "the brand button, mid-action" -- only an
   // explicit `disabled` prop should gray the gradient out.
@@ -49,7 +51,7 @@ export function Button({ label, variant = 'primary', loading = false, success = 
 
   if (variant === 'cta' || variant === 'soft') {
     const cta = variant === 'cta'
-    const dim = !!disabled && !loading && !success
+    const dim = !!disabled && !loading && !success && !keepLookWhenDisabled
     return (
       <Pressable
         accessibilityRole="button"

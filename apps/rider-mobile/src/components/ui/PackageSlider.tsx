@@ -57,6 +57,8 @@ export function PackageSlider({
   const opR = useSharedValue(0)
   const [canL, setCanL] = useState(false)
   const [canR, setCanR] = useState(false)
+  // Hidden until the first placement, so a freshly opened row never shows its tiles from the start and then jumps.
+  const [ready, setReady] = useState(false)
 
   const evaluate = useCallback(() => {
     const l = offset.current > 4
@@ -77,12 +79,13 @@ export function PackageSlider({
     offset.current = x
     ref.current?.scrollTo({ x, animated: placed.current })
     placed.current = true
+    setReady(true)
     evaluate()
   }, [evaluate])
 
   const selIndex = tiles.findIndex((t) => t.id === selectedId)
   useEffect(() => {
-    if (selIndex < 0) return
+    if (selIndex < 0) { setReady(true); return }
     wanted.current = selIndex
     settle()
   }, [selIndex, settle])
@@ -93,7 +96,7 @@ export function PackageSlider({
   const by = (dir: 1 | -1) => ref.current?.scrollTo({ x: Math.max(0, offset.current + dir * STEP * 2), animated: true })
 
   return (
-    <View>
+    <View style={ready ? null : s.hidden}>
       <ScrollView
         ref={ref}
         horizontal
@@ -134,6 +137,7 @@ export function PackageSlider({
 }
 
 const s = StyleSheet.create({
+  hidden: { opacity: 0 },
   row: { gap: GAP, paddingHorizontal: PAD, paddingTop: 22, paddingBottom: 8 },
   tile: { width: TILE_W, height: 92, borderRadius: 16, backgroundColor: h.roseWash, borderWidth: 1, borderColor: h.roseLine, alignItems: 'center', justifyContent: 'center' },
   tileOn: { backgroundColor: h.roseSelected, borderWidth: 1.5, borderColor: h.rose, boxShadow: '0 0 0 4px rgba(210,63,109,0.12)' },
