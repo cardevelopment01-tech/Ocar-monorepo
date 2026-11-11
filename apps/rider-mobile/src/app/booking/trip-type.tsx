@@ -139,13 +139,13 @@ export default function TripTypeScreen() {
           ]}
         />
 
-        {/* Only what is true: a one-way fare is fixed at booking; a round trip's booked fare is fixed and only time past the booked hours is added. */}
+        {/* Only what is true: a one-way fare is fixed at booking; a round trip's booked fare is fixed, and extra km beyond the quoted route plus time past the booked hours (after a short grace) are added at settlement. */}
         <View style={styles.lockRow}>
           <Feather name="lock" size={16} color={h.tealText} />
           <Text style={styles.lockText}>
             {choice === 'one_way'
               ? 'Your fare is locked when you book.'
-              : 'Your fare is locked when you book. Only time past your booked hours is added.'}
+              : 'Your fare is locked when you book. Extra km beyond your route and time past your booked hours are added after the trip.'}
           </Text>
         </View>
       </ScrollView>
