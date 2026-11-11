@@ -11,8 +11,8 @@ import { useBookingDraftStore } from '@/features/booking/store'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { ScheduleSheet, formatPickupTime } from '@/features/booking/components/ScheduleSheet'
 import { StopsList } from '@/features/booking/components/StopsList'
+import { MAX_STOPS } from '@/features/booking/constants'
 
-const MAX_STOPS = 3
 
 const HOUR_OPTIONS = [4, 6, 8, 10, 12] as const
 

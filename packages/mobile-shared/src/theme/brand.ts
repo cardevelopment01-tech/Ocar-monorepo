@@ -26,6 +26,12 @@ export const h = {
   goldInk: '#3E2A05',
   danger: '#C23B3B',
   dangerWash: '#FCEBEC',
+  // Rose: rental package tiles and their Best fit badge only (brief section 7 item 7). Keep it out of every other screen.
+  rose: '#D23F6D',
+  roseWash: '#FDF1F4',
+  roseLine: '#F4D2DC',
+  roseSelected: '#FFE6EE',
+  roseInk: '#8E1F47',
   // hairlines used across the file (border / divider alphas)
   line06: 'rgba(20,23,26,0.06)',
   line07: 'rgba(20,23,26,0.07)',

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { RideType } from './api'
+import { MAX_STOPS } from './constants'
 
 export type BookingPlace = { address: string; lat: number; lng: number }
 
@@ -27,7 +28,7 @@ interface BookingDraftState {
   rideTypeDeclared: boolean
   /** Round-trip only -- how many hours the driver stays, chosen on /booking/round-trip. */
   tripHours: number | null
-  /** Round-trip/rental only, up to 3 -- matches web's stops[] URL-param carrying. */
+  /** Round-trip/rental only, up to MAX_STOPS -- matches web's stops[] URL-param carrying. */
   stops: BookingPlace[]
   /** ISO string, null means "now" -- matches web's PickupTimeChip/scheduledFor. */
   scheduledFor: string | null
@@ -49,8 +50,6 @@ interface BookingDraftState {
   clearRider: () => void
   reset: () => void
 }
-
-const MAX_STOPS = 3
 
 // Ephemeral, in-memory only -- the booking draft doesn't need to survive an
 // app kill (crash-recovery mid-ride is handled separately via
