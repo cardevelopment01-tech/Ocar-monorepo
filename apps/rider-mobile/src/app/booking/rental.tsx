@@ -528,10 +528,11 @@ const styles = StyleSheet.create({
   iconWrap: { width: 68, height: 52, borderRadius: 14, backgroundColor: '#F4F5F1', alignItems: 'center', justifyContent: 'center' },
   vehInfo: { flex: 1, minWidth: 0 },
   vehName: { fontSize: 16, fontFamily: font.b, color: h.ivory },
-  vehSeatsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
+  // wraps so the Premium chip drops under the seat count on a narrow phone instead of running under the price
+  vehSeatsRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 6, rowGap: 4, marginTop: 5 },
   seatsWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   vehSeats: { fontFamily: font.sb, fontSize: 12.5, color: h.muted },
-  premiumChip: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 22, paddingHorizontal: 8, borderRadius: 11, backgroundColor: '#FBF1D9' },
+  premiumChip: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 22, paddingHorizontal: 6, borderRadius: 11, backgroundColor: '#FBF1D9' },
   premiumChipText: { fontFamily: font.b, fontSize: 12, color: '#7A5410' },
   vehFareBlock: { width: 62, alignItems: 'flex-end', justifyContent: 'center' },
   vehFrom: { fontSize: 12, fontFamily: font.m, color: h.label },
