@@ -20,9 +20,11 @@ export type ButtonProps = Omit<PressableProps, 'style'> & {
   // one with the label; hidden automatically during loading/success since
   // those already have their own icon (spinner / checkmark).
   icon?: React.ComponentProps<typeof Feather>['name']
+  // 'cta' only: the price before an offer, shown struck through after the label ("Book Sedan · ₹600 ₹750").
+  strikeLabel?: string
 }
 
-export function Button({ label, variant = 'primary', loading = false, success = false, icon, disabled = false, ...pressableProps }: ButtonProps) {
+export function Button({ label, variant = 'primary', loading = false, success = false, icon, strikeLabel, disabled = false, ...pressableProps }: ButtonProps) {
   const isDisabled = !!disabled || loading || success
   // Loading/success still read as "the brand button, mid-action" -- only an
   // explicit `disabled` prop should gray the gradient out.
@@ -66,6 +68,7 @@ export function Button({ label, variant = 'primary', loading = false, success = 
           <View style={styles.row}>
             {icon ? <Feather name={icon} size={17} color={cta ? '#fff' : h.tealText} /> : null}
             <Text style={[styles.ctaLabel, { color: cta ? '#fff' : h.tealText }]}>{label}</Text>
+            {strikeLabel ? <Text style={styles.ctaStrike}>{strikeLabel}</Text> : null}
           </View>
         )}
       </Pressable>
@@ -122,7 +125,8 @@ const styles = StyleSheet.create({
   },
   cta: { height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
   soft: { height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
-  ctaLabel: { fontSize: 15, fontFamily: fonts.bold },
+  ctaLabel: { fontSize: 16, fontFamily: fonts.bold, fontVariant: ['tabular-nums'] },
+  ctaStrike: { fontSize: 13.5, fontFamily: fonts.semibold, color: 'rgba(255,255,255,0.62)', textDecorationLine: 'line-through', marginLeft: 4, fontVariant: ['tabular-nums'] },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
 })
 
