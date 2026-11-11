@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import Animated, { FadeInDown, FadeOut, LinearTransition } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -7,11 +7,12 @@ import { Feather } from '@expo/vector-icons'
 import { Press, SlideModal, font, h } from '@ocar/mobile-shared'
 import { shareTitle, viewedText } from '../model'
 import type { TripShareState } from '../useTripShare'
+import { confirmDialog } from '@/components/ui/confirm'
 
 /** Confirms before stopping every link (one tap on a single link stops just that link, no confirmation). */
 export function confirmStopAll(onConfirm: () => void, includesSos = false): void {
   const sos = includesSos ? ' This includes the live link your emergency contacts received when you pressed SOS.' : ''
-  Alert.alert('Stop sharing?', `Everyone you shared this trip with will no longer be able to follow it.${sos}`, [
+  confirmDialog('Stop sharing?', `Everyone you shared this trip with will no longer be able to follow it.${sos}`, [
     { text: 'Keep sharing', style: 'cancel' },
     { text: 'Stop all', style: 'destructive', onPress: onConfirm },
   ])

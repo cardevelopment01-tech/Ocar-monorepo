@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import Animated, { useAnimatedStyle } from 'react-native-reanimated'
 import { Button, Input, Text, colors, fonts, font, h, sectionLabel, shadow, mapSaveError, useKeyboardOffset, spacing, typography } from '@ocar/mobile-shared'
 import { ScreenHeader } from '@/features/profile/ScreenHeader'
 import { addEmergencyContact, deleteEmergencyContact, fetchEmergencyContacts, type EmergencyContact } from '@/features/profile/api'
+import { confirmDialog } from '@/components/ui/confirm'
 
 const MAX_CONTACTS = 3
 
@@ -46,7 +47,7 @@ export default function SafetyScreen() {
   }
 
   function confirmRemove(c: EmergencyContact) {
-    Alert.alert('Remove contact?', `${c.name} will no longer be alerted if you press SOS.`, [
+    confirmDialog('Remove contact?', `${c.name} will no longer be alerted if you press SOS.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',

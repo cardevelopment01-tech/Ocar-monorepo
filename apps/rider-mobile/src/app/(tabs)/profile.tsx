@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -15,6 +15,7 @@ import { EMAIL_ERROR, isPlausibleEmail } from '@/utils/email'
 import { teardownPushNotifications } from '@/services/notifications'
 import { fetchProfile, updateProfile, type ProfileStats } from '@/features/profile/api'
 import { Chip, GroupedList, IconButton, ListRow } from '@/components/ui'
+import { confirmDialog } from '@/components/ui/confirm'
 
 const ROUTES = { notifications: '/notification-settings', places: '/saved-places', safety: '/safety', offers: '/offers' } as const
 const SUPPORT_EMAIL = 'grievance@ocarindia.com'
@@ -94,7 +95,7 @@ export default function ProfileScreen() {
   }
 
   function confirmDeleteAccount() {
-    Alert.alert('Delete your account?', DELETE_ACCOUNT_WARNING, [
+    confirmDialog('Delete your account?', DELETE_ACCOUNT_WARNING, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => void deleteAccountNow() },
     ])
@@ -104,7 +105,7 @@ export default function ProfileScreen() {
     try {
       await requestAccountDeletion(api)
     } catch (err) {
-      Alert.alert('Could not delete your account', getApiErrorMessage(err, 'Please try again, or contact support.'))
+      confirmDialog('Could not delete your account', getApiErrorMessage(err, 'Please try again, or contact support.'))
       return
     }
     // The server already removed this device's push token; this clears the local FCM registration too.
@@ -112,7 +113,7 @@ export default function ProfileScreen() {
     clearAuth()
   }
 
-  const openSupport = () => void Linking.openURL(SUPPORT_MAILTO).catch(() => Alert.alert('Email us', SUPPORT_EMAIL))
+  const openSupport = () => void Linking.openURL(SUPPORT_MAILTO).catch(() => confirmDialog('Email us', SUPPORT_EMAIL))
   const go = (r: keyof typeof ROUTES) => () => router.push(ROUTES[r] as never)
 
   return (
@@ -191,7 +192,7 @@ export default function ProfileScreen() {
           <Pressable onPress={confirmDeleteAccount} style={styles.deleteBtn} accessibilityRole="button">
             <Text style={styles.deleteText}>Delete account</Text>
           </Pressable>
-          <Text style={styles.version} onLongPress={() => { sendTestError('rider'); Alert.alert('Monitoring test', 'Test error sent.') }}>Ocar v{APP_VERSION}</Text>
+          <Text style={styles.version} onLongPress={() => { sendTestError('rider'); confirmDialog('Monitoring test', 'Test error sent.') }}>Ocar v{APP_VERSION}</Text>
         </Animated.View>
       </ScrollView>
 

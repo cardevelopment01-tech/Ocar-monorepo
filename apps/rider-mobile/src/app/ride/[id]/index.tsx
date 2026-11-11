@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -40,6 +40,7 @@ import { useTripShare } from '@/features/trip-share/useTripShare'
 import { ShareTripSheet } from '@/features/trip-share/components/ShareTripSheet'
 import { ManageSharesSheet, confirmStopAll } from '@/features/trip-share/components/ManageSharesSheet'
 import { SharingBanner } from '@/features/trip-share/components/SharingBanner'
+import { confirmDialog } from '@/components/ui/confirm'
 
 // Mirrors api/src/modules/rides/rides.service.ts's PICKUP_EDITABLE_STATUSES --
 // once the driver has arrived, "where do I pick you up" no longer applies.
@@ -150,7 +151,7 @@ export default function RideTrackingScreen() {
 
   // One tap must not throw away a search that may be seconds from matching, so ask first.
   function confirmCancelSearch() {
-    Alert.alert('Cancel this request?', "We'll stop looking for a driver. You can book again any time.", [
+    confirmDialog('Cancel this request?', "We'll stop looking for a driver. You can book again any time.", [
       { text: 'Keep waiting', style: 'cancel' },
       { text: 'Cancel request', style: 'destructive', onPress: () => void cancelSearch() },
     ])
@@ -209,7 +210,7 @@ export default function RideTrackingScreen() {
   }
 
   function handleSkipStop(stop: { sequence: number; address?: string | null }) {
-    Alert.alert('Skip this stop?', `${stop.address ?? `Stop ${stop.sequence}`} will be removed from your trip. Any stop charge already added to your fare stays.`, [
+    confirmDialog('Skip this stop?', `${stop.address ?? `Stop ${stop.sequence}`} will be removed from your trip. Any stop charge already added to your fare stays.`, [
       { text: 'Keep stop', style: 'cancel' },
       { text: 'Skip stop', style: 'destructive', onPress: () => runSkip(stop.sequence) },
     ])
@@ -449,7 +450,7 @@ export default function RideTrackingScreen() {
               onSkip={handleSkipStop}
             />
           ) : null}
-          {canShare ? <SharingBanner count={tripShare.shares.length} onManage={() => setManageOpen(true)} onStop={() => confirmStopAll(() => { void tripShare.stopAll().then((ok) => { if (!ok) Alert.alert('Could not stop sharing', 'Check your connection and try again. Your links are still active.') }) }, tripShare.shares.some((s) => s.isSos))} /> : null}
+          {canShare ? <SharingBanner count={tripShare.shares.length} onManage={() => setManageOpen(true)} onStop={() => confirmStopAll(() => { void tripShare.stopAll().then((ok) => { if (!ok) confirmDialog('Could not stop sharing', 'Check your connection and try again. Your links are still active.') }) }, tripShare.shares.some((s) => s.isSos))} /> : null}
           {hasDriver ? (
             <TripDetailsRow
               open={detailsExpanded}

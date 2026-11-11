@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { Button, Input, Text, fonts, h, shadow, mapSaveError, spacing, typography } from '@ocar/mobile-shared'
@@ -8,6 +8,7 @@ import { createSavedPlace, deleteSavedPlace, updateSavedPlace } from '@/features
 import { fetchSavedPlaces, type SavedPlace } from '@/features/booking/api'
 import { PlaceAutocompleteField } from '@/features/booking/components/PlaceAutocompleteField'
 import type { BookingPlace } from '@/features/booking/store'
+import { confirmDialog } from '@/components/ui/confirm'
 
 type Kind = SavedPlace['kind']
 type Editing = { kind: Kind; existing: SavedPlace | null }
@@ -63,7 +64,7 @@ export default function SavedPlacesScreen() {
   }
 
   function confirmRemove(p: SavedPlace) {
-    Alert.alert(`Remove ${p.label}?`, p.address, [
+    confirmDialog(`Remove ${p.label}?`, p.address, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',

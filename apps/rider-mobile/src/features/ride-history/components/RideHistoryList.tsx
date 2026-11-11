@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useNavClearance } from '@/features/home/FloatingTabBar'
 import { geo } from '@/theme/homeTokens'
@@ -10,6 +10,7 @@ import { UpcomingCard } from './UpcomingCard'
 import { ActiveRideCard } from './ActiveRideCard'
 import { filterRidesByTab } from '../filterRidesByTab'
 import type { HistoryTab, UpcomingRide } from '../types'
+import { confirmDialog } from '@/components/ui/confirm'
 
 const TABS: { id: HistoryTab; label: string }[] = [
   { id: 'upcoming', label: 'Upcoming' },
@@ -101,7 +102,7 @@ export function RideHistoryList() {
             <UpcomingCard
               ride={item}
               onOpen={() => openRide(item.id)}
-              onCancel={() => Alert.alert('Cancel this ride?', 'Your scheduled pickup will be cancelled.', [
+              onCancel={() => confirmDialog('Cancel this ride?', 'Your scheduled pickup will be cancelled.', [
                 { text: 'Keep ride', style: 'cancel' },
                 { text: 'Cancel ride', style: 'destructive', onPress: () => void cancelUpcoming(item.id) },
               ])}
