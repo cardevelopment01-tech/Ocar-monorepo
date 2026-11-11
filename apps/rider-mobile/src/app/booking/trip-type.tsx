@@ -138,6 +138,16 @@ export default function TripTypeScreen() {
             { label: 'Same driver' },
           ]}
         />
+
+        {/* Only what is true: a one-way fare is fixed at booking; a round trip's booked fare is fixed and only time past the booked hours is added. */}
+        <View style={styles.lockRow}>
+          <Feather name="lock" size={16} color={h.tealText} />
+          <Text style={styles.lockText}>
+            {choice === 'one_way'
+              ? 'Your fare is locked when you book.'
+              : 'Your fare is locked when you book. Only time past your booked hours is added.'}
+          </Text>
+        </View>
       </ScrollView>
 
       <LinearGradient pointerEvents="none" colors={['rgba(246,251,251,0)', h.canvas]} style={styles.fade} />
@@ -206,6 +216,8 @@ function TypeCard({ on, onPress, icon, title, sub, badge, loading, est, unit, st
 }
 
 const styles = StyleSheet.create({
+  lockRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 22, marginHorizontal: 4 },
+  lockText: { flex: 1, fontFamily: font.m, fontSize: 12.5, lineHeight: 18, color: h.muted },
   screen: { flex: 1, backgroundColor: h.canvas },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingTop: 12 },
   title: { fontFamily: font.b, fontSize: 20, letterSpacing: -0.2, color: h.ivory, flex: 1 },

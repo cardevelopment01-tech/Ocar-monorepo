@@ -16,6 +16,8 @@ const NO_CARS: readonly NearbyCar[] = []
 
 export type RideMapViewProps = {
   pickup: [number, number]
+  /** A tag over the pickup pin, e.g. "Your pickup" while the driver is on the way. */
+  pickupLabel?: string
   drop: [number, number] | null
   driverPos: [number, number] | null
   driverHeading?: number
@@ -53,7 +55,7 @@ export type RideMapViewProps = {
 // drop/driver now use the same custom SVG markers as web (CarMarker/LocationPin)
 // instead of react-native-maps' default OS pin -- see the input-consistency +
 // premiumness pass this replaced.
-function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS, driverLocated = true, frameDrop = true, sheetPending = false, vehicleKinds, driverKind = 'sedan' }: RideMapViewProps) {
+function RideMapViewBase({ pickup, pickupLabel, drop, driverPos, driverHeading, driverHeadingKnown, routePoints, showDrop, stops = [], edgePadding = { top: 80, right: 60, bottom: 80, left: 60 }, coveredBottom = 0, nearbyDrivers = NO_CARS, driverLocated = true, frameDrop = true, sheetPending = false, vehicleKinds, driverKind = 'sedan' }: RideMapViewProps) {
   const mapRef = useRef<MapView>(null)
   // Same react-native-maps gotcha as SelectRideMap: fitToCoordinates called
   // before the native view's onMapReady fires silently no-ops, leaving the
@@ -173,7 +175,7 @@ function RideMapViewBase({ pickup, drop, driverPos, driverHeading, driverHeading
         loadingEnabled
         {...OCAR_MAP_PROPS}
       >
-        <LocationPin position={pickup} variant="pickup" />
+        <LocationPin position={pickup} variant="pickup" {...(pickupLabel ? { label: pickupLabel } : {})} />
         {stops.map(([lat, lng], i) => (
           <LocationPin key={`stop-${i}-${lat}-${lng}`} position={[lat, lng]} variant="stop" />
         ))}

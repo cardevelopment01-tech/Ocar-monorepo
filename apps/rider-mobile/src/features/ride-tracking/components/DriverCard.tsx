@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { font, h, getApiErrorMessage } from '@ocar/mobile-shared'
-import { triggerMaskedCall } from '../api'
+import { font, h } from '@ocar/mobile-shared'
+import { useMaskedCall } from '../useMaskedCall'
 import type { RideDetailExtra } from '../types'
 import { DriverAvatar, PlateBadge, driverViewFromRide } from './DriverIdentity'
 
@@ -19,51 +18,11 @@ export type DriverCardProps = {
 // Who is coming, in the order a rider matches them against the car in front of them: photo + rating,
 // name, trips, verified; then "Colour Brand Model" with the number plate. The PIN (PinBand) and pickup
 // (MeetAtRow) sit above this card in the ride screen, same order as Uber/Rapido.
-// Server codes from api/src/modules/call-masking (409) + the per-ride rate limiter (429), in plain words.
-function callErrorMessage(err: unknown, firstName: string): string {
-  const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
-  switch (code) {
-    case 'MASKING_DISABLED':
-    case 'CALL_NOT_AVAILABLE':
-      return `Calling isn't available right now. You can message ${firstName} instead.`
-    case 'CALL_LIMIT_REACHED':
-      return `You've used all the call attempts for this ride. Message ${firstName} instead.`
-    case 'RATE_LIMIT_EXCEEDED':
-      return 'Too many call attempts. Wait a minute and try again.'
-    case 'CALL_FAILED':
-      return "We couldn't start the call. Please try again."
-    default:
-      return getApiErrorMessage(err, 'Could not connect the call')
-  }
-}
-
 export function DriverCard({ ride, stale, rideId, canCall, unreadChatCount, onOpenChat }: DriverCardProps) {
   const view = driverViewFromRide(ride)
   const upgradedTo = ride.bookedCategoryName && ride.assignedCategoryName && ride.bookedCategoryName !== ride.assignedCategoryName
     ? ride.assignedCategoryName : null
-  // The call is a two-leg IVR: our API asks BulkSMSPlans, which rings THIS phone first and, once it is picked up,
-  // rings the driver and bridges the two. The API only confirms "request accepted" (no answered/connected webhook),
-  // so the honest states are: connecting (request in flight) -> ringing (we are calling you) -> idle again.
-  const [phase, setPhase] = useState<'idle' | 'connecting' | 'ringing'>('idle')
-  const [callError, setCallError] = useState<string | null>(null)
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
-  useEffect(() => () => timers.current.forEach(clearTimeout), [])
-
-  async function handleCall() {
-    if (phase !== 'idle' || !canCall) return
-    setPhase('connecting')
-    setCallError(null)
-    try {
-      await triggerMaskedCall(rideId)
-      setPhase('ringing')
-      // Each extra tap re-dials both parties and burns the ride's call cap, so hold the button while the IVR works.
-      timers.current.push(setTimeout(() => setPhase('idle'), 20000))
-    } catch (err) {
-      setCallError(callErrorMessage(err, view.firstName))
-      timers.current.push(setTimeout(() => setCallError(null), 6000))
-      setPhase('idle')
-    }
-  }
+  const { phase, callError, handleCall } = useMaskedCall(rideId, canCall, view.firstName)
 
   return (
     <View accessibilityRole="summary" accessibilityLabel={`Driver ${view.name}`}>

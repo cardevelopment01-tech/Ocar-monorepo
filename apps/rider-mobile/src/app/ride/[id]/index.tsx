@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -20,6 +21,7 @@ import { EditPickupSheet } from '@/features/ride-tracking/components/EditPickupS
 import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { NextStopRow } from '@/features/ride-tracking/components/NextStopRow'
 import { TripDetailsCard } from '@/features/ride-tracking/components/TripDetailsCard'
+import { SafetyToolkitSheet } from '@/features/ride-tracking/components/SafetyToolkitSheet'
 import { FareDriftToast, UpgradeToast } from '@/features/ride-tracking/components/Toasts'
 import { goBack } from '@/lib/goBack'
 import { IconButton } from '@/components/ui'
@@ -112,6 +114,8 @@ export default function RideTrackingScreen() {
   const [addStopOpen, setAddStopOpen] = useState(false)
   // Live trip sharing: the links for this trip. Called here (before any early return) so the hook order never changes.
   const [shareOpen, setShareOpen] = useState(false)
+  const [toolkitOpen, setToolkitOpen] = useState(false)
+  const [sosSignal, setSosSignal] = useState(0)
   const [manageOpen, setManageOpen] = useState(false)
   const [addStopError, setAddStopError] = useState<string | null>(null)
   const [editPickupOpen, setEditPickupOpen] = useState(false)
@@ -279,6 +283,8 @@ export default function RideTrackingScreen() {
   const pendingStops = ride.stops.filter((s) => s.status === 'pending')
   const nextStop = canSkipStop ? pendingStops[0] : undefined
   const canCancel = ride.status === 'accepted' || ride.status === 'driver_arrived'
+  // Before pickup the red SOS button gives way to the calmer Safety pill (its toolkit opens the SOS sheet in one tap); on the trip itself SOS is always there.
+  const showSafetyPill = ride.status === 'accepted' || ride.status === 'driver_arrived'
   const canEditPickup = PICKUP_EDITABLE_STATUSES.has(ride.status)
   const fare = ride.totalFinal != null
     ? `₹${Math.round(parseFloat(ride.totalFinal))}`
@@ -295,6 +301,7 @@ export default function RideTrackingScreen() {
           a form, not a live trip). Sheet below docks over it. */}
       <RideMapView
         pickup={pickup}
+        {...(showSafetyPill ? { pickupLabel: 'Your pickup' } : {})}
         drop={drop}
         driverPos={hasDriver ? driverPos : null}
         driverHeading={driverHeading}
@@ -323,6 +330,18 @@ export default function RideTrackingScreen() {
         {addStopError ? <Text style={styles.addStopError}>{addStopError}</Text> : null}
       </View>
 
+      {showSafetyPill ? (
+        <Pressable
+          onPress={() => setToolkitOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Safety tools"
+          style={({ pressed }) => [styles.safetyPill, { top: insets.top + spacing.sm }, pressed ? styles.safetyPillPressed : null]}
+        >
+          <Feather name="shield" size={16} color={h.tealText} />
+          <Text style={styles.safetyPillText}>Safety</Text>
+        </Pressable>
+      ) : null}
+
       <SOSButton
         enabled
         onTrigger={async () => {
@@ -337,6 +356,8 @@ export default function RideTrackingScreen() {
         }}
         anchor="top-right"
         look="redesign"
+        hideButton={showSafetyPill}
+        openSignal={sosSignal}
         {...(canShare ? { onShareTrip: () => setShareOpen(true) } : {})}
       />
 
@@ -476,6 +497,13 @@ export default function RideTrackingScreen() {
         </ScrollView>
       </Animated.View>
 
+      <SafetyToolkitSheet
+        visible={toolkitOpen}
+        onClose={() => setToolkitOpen(false)}
+        onEmergency={() => setSosSignal((n) => n + 1)}
+        {...(canShare ? { onShareTrip: () => setShareOpen(true) } : {})}
+        onContacts={() => router.push('/safety')}
+      />
       <ShareTripSheet visible={shareOpen} onClose={() => setShareOpen(false)} share={tripShare} />
       <ManageSharesSheet visible={manageOpen} onClose={() => setManageOpen(false)} share={tripShare} />
       <CancelSheet
@@ -540,6 +568,9 @@ const styles = StyleSheet.create({
   unreachableBody: { fontFamily: font.m, fontSize: 13.5, lineHeight: 20, color: h.muted },
   unreachableActions: { gap: 8, marginTop: 6 },
   backRow: { alignSelf: 'flex-start' },
+  safetyPill: { position: 'absolute', right: spacing.md, zIndex: 10, height: 44, paddingHorizontal: 16, borderRadius: 22, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: h.surface, boxShadow: '0 4px 14px rgba(20,23,26,0.14)' },
+  safetyPillPressed: { transform: [{ scale: 0.97 }] },
+  safetyPillText: { fontFamily: font.sb, fontSize: 14, color: h.ivory },
   tripPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 9, height: 44, paddingLeft: 14, paddingRight: 16, borderRadius: 22, backgroundColor: h.surface, boxShadow: '0 4px 14px rgba(20,23,26,0.14)' },
   tripPillDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#1FA971', boxShadow: '0 0 0 4px rgba(31,169,113,0.18)' },
   tripPillText: { fontFamily: font.b, fontSize: 14, color: h.ivory },

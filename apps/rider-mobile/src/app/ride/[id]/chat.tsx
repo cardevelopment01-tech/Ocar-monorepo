@@ -10,6 +10,7 @@ import { IconButton } from '@/components/ui'
 import { ChatBackdrop } from '@/features/ride-tracking/components/ChatBackdrop'
 import { socket } from '@/services/socket'
 import { DriverRow, driverViewFromRide } from '@/features/ride-tracking/components/DriverIdentity'
+import { useMaskedCall } from '@/features/ride-tracking/useMaskedCall'
 import type { RideDetailExtra } from '@/features/ride-tracking/types'
 import { fetchChatMessages, fetchRide, markChatRead, sendChatMessage, type ChatMessage } from '@/features/ride-tracking/api'
 
@@ -21,6 +22,14 @@ const CANNED_REPLIES = [
 ]
 
 const CLOSED_STATUSES = new Set(['completed', 'cancelled', 'no_drivers'])
+// The live line under the driver's name in the chat header. The minutes-away number lives on the ride screen (it is computed from
+// the driver's live position), so here it is the plain status.
+const CHAT_STATUS: Record<string, string> = {
+  accepted: 'Driver is on the way',
+  driver_arrived: 'Driver has arrived',
+  in_progress: 'Trip in progress',
+  returning: 'Returning to pickup',
+}
 
 // Local send-lifecycle overlay on top of the server message shape --
 // 'sending'/'failed' are client-only, the server never reports them.
@@ -77,6 +86,9 @@ export default function RideChatScreen() {
   const lastSeenIdRef = useRef<string | undefined>(undefined)
   const mountedRef = useRef(true)
   const isClosed = rideStatus !== null && CLOSED_STATUSES.has(rideStatus)
+  // The same statuses the ride screen allows a call in.
+  const canCall = rideStatus === 'accepted' || rideStatus === 'driver_arrived' || rideStatus === 'in_progress' || rideStatus === 'returning'
+  const { phase, callError, handleCall } = useMaskedCall(rideId, canCall, driverViewFromRide(driverRide).firstName)
 
   useRoomJoin(socket, rideId)
 
@@ -215,8 +227,25 @@ export default function RideChatScreen() {
       <ChatBackdrop />
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <IconButton icon="arrow-left" label="Back" onPress={() => goBack(router, { pathname: '/ride/[id]', params: { id: rideId } })} />
-        <DriverRow view={driverViewFromRide(driverRide)} photo={driverRide?.driverPhoto ?? null} />
+        <DriverRow
+          view={driverViewFromRide(driverRide)}
+          photo={driverRide?.driverPhoto ?? null}
+          status={rideStatus ? CHAT_STATUS[rideStatus] ?? null : null}
+          right={canCall ? (
+            <Pressable
+              onPress={() => void handleCall()}
+              disabled={phase !== 'idle'}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: phase !== 'idle', busy: phase === 'connecting' }}
+              accessibilityLabel={phase === 'ringing' ? 'Calling you' : phase === 'connecting' ? 'Connecting the call' : 'Call driver'}
+              style={({ pressed }) => [styles.callBtn, pressed ? styles.pressedScale : null]}
+            >
+              {phase === 'connecting' ? <ActivityIndicator size="small" color={h.tealText} /> : <Feather name={phase === 'ringing' ? 'phone-incoming' : 'phone'} size={18} color={h.tealText} />}
+            </Pressable>
+          ) : null}
+        />
       </View>
+      {callError ? <Text style={styles.callError} accessibilityLiveRegion="polite">{callError}</Text> : null}
 
       {loading ? (
         <View style={styles.centered}>
@@ -339,6 +368,8 @@ const Bubble = memo(function Bubble({ msg, onRetry }: { msg: LocalMessage; onRet
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: h.canvas },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingBottom: 12 },
+  callBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: h.tealWash, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  callError: { fontFamily: font.m, fontSize: 12.5, lineHeight: 18, color: h.danger, paddingHorizontal: 18, paddingBottom: 8 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl, gap: 12 },
   emptyIconWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: h.tealWash, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontFamily: font.sb, fontSize: 14.5, color: h.muted, textAlign: 'center' },

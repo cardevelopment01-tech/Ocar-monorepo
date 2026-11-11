@@ -78,12 +78,18 @@ export function VehicleLine({ view, swatch = true, lines = 1 }: { view: DriverId
 }
 
 // Compact identity for chat header / rate: avatar, name, "★ 4.9 · 1,240 trips", vehicle + plate.
-export function DriverRow({ view, photo, right }: { view: DriverIdentityView; photo: string | null; right?: ReactNode }) {
+export function DriverRow({ view, photo, right, status }: { view: DriverIdentityView; photo: string | null; right?: ReactNode; /** A live line under the name, e.g. "Driver is on the way" (green dot, teal text). */ status?: string | null }) {
   return (
     <View style={styles.row}>
       <DriverAvatar view={view} photo={photo} size="md" />
       <View style={styles.rowInfo}>
         <Text style={styles.rowName} numberOfLines={1}>{view.name}</Text>
+        {status ? (
+          <View style={styles.rowMeta}>
+            <View style={styles.liveDot} />
+            <Text style={styles.rowStatus} numberOfLines={1}>{status}</Text>
+          </View>
+        ) : null}
         {view.ratingText ? (
           <View style={styles.rowMeta}>
             <FontAwesome name="star" size={10} color="#E2A93B" /><Text style={styles.rowMetaStrong}>{view.ratingText}</Text><Text style={styles.rowMetaText}>·</Text>
@@ -166,6 +172,8 @@ const styles = StyleSheet.create({
   row: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
   rowInfo: { flex: 1, minWidth: 0, gap: 1 },
   rowName: { fontFamily: font.b, fontSize: 15, color: h.ivory },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: h.live },
+  rowStatus: { fontFamily: font.sb, fontSize: 12.5, color: h.tealText, flexShrink: 1 },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   rowMetaStrong: { fontFamily: font.b, fontSize: 12, color: h.muted },
   rowMetaText: { fontFamily: font.r, fontSize: 12, color: h.muted },

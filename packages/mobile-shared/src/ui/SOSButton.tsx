@@ -25,6 +25,10 @@ export type SOSButtonProps = {
   look?: 'redesign'
   /** Redesign look only: when set, the sheet offers "Share live trip with contacts" and calls this (after closing the sheet). */
   onShareTrip?: () => void
+  /** Hide the floating button but keep its sheet (opened through `openSignal`), for screens that offer another way in. */
+  hideButton?: boolean
+  /** Raise this number to open the sheet from outside. */
+  openSignal?: number
 }
 
 type Phase = 'idle' | 'sending' | 'sent' | 'error' | 'rate_limited'
@@ -38,7 +42,7 @@ const OPEN_LABEL = 'Emergency SOS, double tap for safety options'
  * stray touch cannot page the safety team. The alert is sent by holding the red button for about a
  * second; calling the emergency number is one tap and always available.
  */
-export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = 'bottom-right', offset, look, onShareTrip }: SOSButtonProps) {
+export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = 'bottom-right', offset, look, onShareTrip, hideButton = false, openSignal = 0 }: SOSButtonProps) {
   const rd = look === 'redesign'
   const insets = useSafeAreaInsets()
   const [open, setOpen] = useState(false)
@@ -55,6 +59,10 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
     pulse.set(withRepeat(withTiming(1, { duration: 2200, easing: Easing.out(Easing.quad) }), -1, false))
   }, [rd, pulse])
   const ringStyle = useAnimatedStyle(() => ({ opacity: 0.45 * (1 - pulse.get()), transform: [{ scale: 1 + 0.7 * pulse.get() }] }))
+
+  useEffect(() => {
+    if (openSignal > 0) setOpen(true)
+  }, [openSignal])
 
   useEffect(() => {
     if (!open) {
@@ -90,7 +98,7 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
 
   return (
     <>
-      <View style={[styles.wrap, anchorStyle]} pointerEvents="box-none">
+      <View style={[styles.wrap, anchorStyle, hideButton ? styles.hidden : null]} pointerEvents="box-none">
         {rd ? (
           <Pressable
             onPress={() => setOpen(true)}
@@ -212,6 +220,7 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
 
 const styles = StyleSheet.create({
   wrap: { position: 'absolute', right: spacing.md, zIndex: 10, alignItems: 'flex-end', gap: spacing.xs },
+  hidden: { display: 'none' },
   circle: { width: 56, height: 56, borderRadius: radii.full, backgroundColor: colors.error, alignItems: 'center', justifyContent: 'center', ...shadows.buttonPrimary },
   pressed: { transform: [{ scale: 0.96 }] },
   icon: { ...typography.label, color: colors.inkInverse, fontFamily: fonts.bold },

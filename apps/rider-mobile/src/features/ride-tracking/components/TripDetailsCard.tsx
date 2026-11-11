@@ -16,6 +16,8 @@ export type TripDetailsCardProps = {
 export function TripDetailsCard({ ride, fare }: TripDetailsCardProps) {
   // The real drop address for every ride type (a rental books one too); the package is a caption, never a stand-in.
   const drop = dropDisplay(ride)
+  // A one-way fare is fixed at booking, until the rider adds a stop (which adds its stop charge).
+  const fareLocked = ride.rideType === 'one_way' && ride.stops.length === 0
 
   return (
     <View style={styles.row}>
@@ -44,7 +46,7 @@ export function TripDetailsCard({ ride, fare }: TripDetailsCardProps) {
       </View>
       {fare ? (
         <View style={styles.fareCol}>
-          <Text style={styles.label}>Est. fare</Text>
+          <Text style={styles.label}>{fareLocked ? 'Fare locked' : 'Est. fare'}</Text>
           <Text style={styles.fareValue}>{fare}</Text>
         </View>
       ) : null}

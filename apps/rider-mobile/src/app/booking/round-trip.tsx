@@ -12,6 +12,7 @@ import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { ScheduleSheet, formatPickupTime } from '@/features/booking/components/ScheduleSheet'
 import { StopsList } from '@/features/booking/components/StopsList'
 import { MAX_STOPS } from '@/features/booking/constants'
+import { formatDuration } from '@/features/booking/format'
 
 
 const HOUR_OPTIONS = [4, 6, 8, 10, 12] as const
@@ -52,6 +53,10 @@ export default function RoundTripScreen() {
   const [scheduleSheetOpen, setScheduleSheetOpen] = useState(false)
 
   const canProceed = selectedHours !== null
+  // Booked hours cover both legs of driving and the wait between them, so what is left after the driving is the wait.
+  // An estimate (stops and traffic move it), so it is worded "About".
+  const waitMin = selectedHours !== null && durationMin !== null ? selectedHours * 60 - 2 * durationMin : null
+  const waitText = waitMin === null ? 'Rest of your hours' : waitMin >= 15 ? `About ${formatDuration(Math.round(waitMin / 5) * 5)}` : 'Mostly driving'
   const buttonLabel = selectedHours === null ? 'Choose how many hours' : `Continue · ${selectedHours}h round trip`
 
   function handleProceed() {
@@ -130,6 +135,19 @@ export default function RoundTripScreen() {
           <Text style={styles.hourHint}>Minimum 4 hours · Driver stays with you throughout</Text>
         </View>
 
+        {selectedHours !== null ? (
+          <View style={styles.tileRow}>
+            <View style={styles.tile}>
+              <Text style={styles.tileLabel}>Return by</Text>
+              <Text style={styles.tileValue} numberOfLines={2}>{formatPickupTime(new Date((scheduledFor ? new Date(scheduledFor).getTime() : Date.now()) + selectedHours * 3_600_000))}</Text>
+            </View>
+            <View style={styles.tile}>
+              <Text style={styles.tileLabel}>Driver waits</Text>
+              <Text style={styles.tileValue} numberOfLines={2}>{waitText}</Text>
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.includedCard}>
           {INCLUDED.map((text) => (
             <View key={text} style={styles.includedRow}>
@@ -181,6 +199,10 @@ const styles = StyleSheet.create({
   hourChipText: { fontFamily: font.b, fontSize: 14, color: h.ivory, fontVariant: ['tabular-nums'] },
   hourChipTextActive: { color: '#FFFFFF' },
   hourHint: { fontFamily: font.m, fontSize: 12.5, color: h.muted },
+  tileRow: { flexDirection: 'row', gap: 10 },
+  tile: { flex: 1, backgroundColor: h.surface, borderRadius: 18, borderWidth: 1, borderColor: h.line07, boxShadow: '0 2px 8px rgba(20,23,26,0.05)', paddingVertical: 12, paddingHorizontal: 14 },
+  tileLabel: { fontFamily: font.sb, fontSize: 11.5, color: h.label, marginBottom: 3 },
+  tileValue: { fontFamily: font.b, fontSize: 14, color: h.ivory },
   includedCard: { backgroundColor: h.tealWash, borderRadius: 22, padding: 16, gap: 10 },
   includedRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   includedDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: h.teal, marginTop: 7 },
