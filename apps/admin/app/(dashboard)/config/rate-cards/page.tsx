@@ -114,7 +114,7 @@ function UpdateRateDialog({
     setLoading(true); setError('')
     try {
       await pricingApi.createRateCard({
-        category_id: card.category_id, ride_type: card.ride_type, trip_mode: card.trip_mode,
+        category_id: card.category_id, ...modeToCardFields(cardMode(card)),
         city_id: form.city_id ? parseInt(form.city_id, 10) : null,
         rate_per_km: parseFloat(form.rate_per_km), rate_per_min: parseFloat(form.rate_per_min),
         min_fare: parseFloat(form.min_fare),

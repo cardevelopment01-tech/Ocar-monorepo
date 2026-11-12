@@ -1,6 +1,6 @@
 'use client'
-import { cardMode } from '@/lib/rate-card-mode'
 import React from 'react'
+import { cardMode } from '@/lib/rate-card-mode'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'

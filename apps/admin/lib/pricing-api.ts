@@ -26,6 +26,8 @@ export interface RateCard {
 }
 
 export interface RateCardHistoryRow {
+  /** 'city' for a version of the City Ride card; the API sends it so history can tell the two one-way cards apart. */
+  trip_mode?: 'standard' | 'city'
   id: number
   rate_card_id: number | null
   category_name: string
