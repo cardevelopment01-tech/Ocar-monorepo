@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persistSessionId, clearPersistedSessionId } from '@/services/location/persistedSession'
 
 // Not persisted -- re-derived on every app start via GET /sessions/current and
 // GET /rides/me/active (CEO review decision: reuse the server's own source of
@@ -37,7 +38,8 @@ export const useDriverSessionStore = create<DriverSessionState>()((set) => ({
   destinationCityName: null,
   activeRide: null,
 
-  setOnline: (session) =>
+  setOnline: (session) => {
+    persistSessionId(session.id)
     set({
       sessionId: session.id,
       isOnline: true,
@@ -45,10 +47,13 @@ export const useDriverSessionStore = create<DriverSessionState>()((set) => ({
       categoryId: session.categoryId,
       mode: session.mode ?? 'standard',
       destinationCityName: session.destinationCityName ?? null,
-    }),
+    })
+  },
 
-  setOffline: () =>
-    set({ sessionId: null, isOnline: false, vehicleId: null, categoryId: null, mode: null, destinationCityName: null, activeRide: null }),
+  setOffline: () => {
+    clearPersistedSessionId()
+    set({ sessionId: null, isOnline: false, vehicleId: null, categoryId: null, mode: null, destinationCityName: null, activeRide: null })
+  },
 
   setActiveRide: (ride) => set({ activeRide: ride }),
 }))

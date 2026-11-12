@@ -9,7 +9,7 @@ import { Button, Skeleton, VehicleIcon, font, h } from '@ocar/mobile-shared'
 import { IconButton } from '@/components/ui'
 import { PackageSlider } from '@/components/ui/PackageSlider'
 import type { RentalPackage, VehicleCategory } from '@ocar/mobile-shared'
-import { createBooking, fetchRentalPackages, fetchRoute, fetchVehicleCategories, fetchFareEstimate, resolveBookingError } from '@/features/booking/api'
+import { createBooking, fetchAllRentalPackages, fetchRoute, fetchVehicleCategories, fetchFareEstimate, resolveBookingError } from '@/features/booking/api'
 import { estimateOverage, recommendPackage } from '@/features/booking/recommendPackage'
 import { MAX_STOPS } from '@/features/booking/constants'
 import { formatDuration } from '@/features/booking/format'
@@ -102,11 +102,7 @@ export default function RentalScreen() {
   // Fetch every category's packages in parallel whenever the category list or city changes.
   const loadAllPackages = useCallback(async (cats: VehicleCategory[], cityId: number | null) => {
     setPkgsLoading(true)
-    const entries = await Promise.allSettled(
-      cats.map(async (cat) => [cat.id, await fetchRentalPackages(cat.id, cityId)] as const)
-    )
-    const next: Record<number, RentalPackage[]> = {}
-    for (const r of entries) if (r.status === 'fulfilled') next[r.value[0]] = r.value[1]
+    const next = await fetchAllRentalPackages(cats.map((c) => c.id), cityId)
     setPackagesByCat(next)
     setPkgsLoading(false)
   }, [])

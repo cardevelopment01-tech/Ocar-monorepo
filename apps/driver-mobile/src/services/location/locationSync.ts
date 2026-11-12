@@ -1,4 +1,10 @@
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
+import { readPersistedSessionId, clearPersistedSessionId } from './persistedSession'
+
+// The in-memory session id, or (in a bare background process after the app was killed, before the session is re-derived) the one on disk.
+async function resolveSessionId(): Promise<string | null> {
+  return useDriverSessionStore.getState().sessionId ?? (await readPersistedSessionId())
+}
 
 // `socket` and `api` are required lazily inside emitLocationTick, not imported
 // at module scope -- backgroundTask.ts (which imports this module) is itself
@@ -43,8 +49,65 @@ let httpInFlight = false
 let httpBackoffMs = 0
 let httpRetryAt = 0
 
+// "Still here" without a position. The location task can run with a fix that is dropped for poor accuracy, or a driver can sit still, and
+// the server only learns the driver is alive from a position; this tells it directly. Rate-limited (the task runs every 3 s on a ride).
+const HEARTBEAT_MIN_INTERVAL_MS = 20_000
+let lastHeartbeatAtMs = 0
+let heartbeatHttpInFlight = false
+
+type HeartbeatDeps = {
+  socket: Pick<ReturnType<typeof getSocket>, 'connected' | 'timeout'>
+  api: Pick<ReturnType<typeof getApi>, 'post'>
+}
+// The server has no live session for this driver: forget it everywhere (disk and memory) so nothing keeps reporting for an ended session.
+function forgetSession(): void {
+  clearPersistedSessionId()
+  useDriverSessionStore.getState().setOffline?.()
+}
+
+const HEARTBEAT_ACK_TIMEOUT_MS = 5000
+const HEARTBEAT_BACKOFF_START_MS = 3000
+const HEARTBEAT_BACKOFF_MAX_MS = 20_000
+let heartbeatBackoffMs = 0
+let nextHeartbeatAtMs = 0
+
+// `deps` is for tests only; the app resolves the socket and API lazily (see the file header).
+export async function emitHeartbeat(nowMs: number = Date.now(), deps?: HeartbeatDeps): Promise<void> {
+  const sessionId = await resolveSessionId()
+  if (!sessionId) return
+  if (nowMs - lastHeartbeatAtMs < HEARTBEAT_MIN_INTERVAL_MS || nowMs < nextHeartbeatAtMs) return
+  lastHeartbeatAtMs = nowMs
+  const socket = deps?.socket ?? getSocket()
+  if (socket.connected) {
+    // A socket that says "connected" can be half dead (a network blip, a sleeping radio): ask the server to confirm it got the heartbeat.
+    const reply = await new Promise<{ ok?: boolean; sessionActive?: boolean } | null>((resolve) => {
+      socket.timeout(HEARTBEAT_ACK_TIMEOUT_MS).emit('driver:heartbeat', { sessionId }, (err: unknown, res?: { ok?: boolean; sessionActive?: boolean }) => resolve(!err && res?.ok === true ? res : null))
+    })
+    if (reply) { heartbeatBackoffMs = 0; if (reply.sessionActive === false) forgetSession(); return }
+  }
+  // No socket, or no confirmation: one HTTP call, best effort.
+  if (heartbeatHttpInFlight) return
+  heartbeatHttpInFlight = true
+  try {
+    const res = await (deps?.api ?? getApi()).post('/api/v1/rides/sessions/heartbeat', { sessionId }) as { data?: { sessionActive?: boolean } } | undefined
+    heartbeatBackoffMs = 0
+    // The server has no live session for this driver: forget the saved id so the background task stops reporting for an ended session.
+    if (res?.data?.sessionActive === false) forgetSession()
+  } catch {
+    // Retry sooner than the normal interval (a short blip should not cost a whole 20 s), but back off while the network stays down.
+    heartbeatBackoffMs = Math.min(heartbeatBackoffMs ? heartbeatBackoffMs * 2 : HEARTBEAT_BACKOFF_START_MS, HEARTBEAT_BACKOFF_MAX_MS)
+    // Measured from the failure (after the ack wait and the request), not from when the call started.
+    nextHeartbeatAtMs = (deps ? nowMs : Date.now()) + heartbeatBackoffMs
+    lastHeartbeatAtMs = 0
+  } finally {
+    heartbeatHttpInFlight = false
+  }
+}
+
+export function resetHeartbeatForTests(): void { lastHeartbeatAtMs = 0; heartbeatHttpInFlight = false; heartbeatBackoffMs = 0; nextHeartbeatAtMs = 0 }
+
 export async function emitLocationTick(fix: LocationFix): Promise<void> {
-  const sessionId = useDriverSessionStore.getState().sessionId
+  const sessionId = await resolveSessionId()
   if (!sessionId) return // not online -- nothing to report against
 
   const socket = getSocket()

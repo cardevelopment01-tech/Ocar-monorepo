@@ -8,7 +8,7 @@ import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import { rideAckKey } from '@/constants/redis-keys'
 import { getPendingAssignmentsForDriver, markOfferAcked } from '@/modules/rides/rides.repository'
-import { updateLocation } from '@/modules/rides/rides.service'
+import { updateLocation, driverHeartbeat } from '@/modules/rides/rides.service'
 import { logger } from '@/lib/logger'
 import { isDriverSessionReplaced } from '@/middleware/auth.middleware'
 import { initNearbyBus } from './nearby-bus'
@@ -194,6 +194,15 @@ export function initSocketServer(httpServer: HttpServer): Server {
         })
       }))
 
+      // Liveness only (no position): see driverHeartbeat in rides.service.ts.
+      // The app passes an ack callback so it can tell a delivered heartbeat from one lost on a half-dead connection (and then use HTTP).
+      socket.on('driver:heartbeat', safeHandler(log, 'driver:heartbeat', (data?: { sessionId?: unknown }, ack?: unknown) => {
+        const reply = (ok: boolean, sessionActive = true) => { if (typeof ack === 'function') (ack as (r: { ok: boolean; sessionActive: boolean }) => void)({ ok, sessionActive }) }
+        const sessionId = parseId(data?.sessionId)
+        if (sessionId === null) { reply(false); return }
+        driverHeartbeat(BigInt(user.sub), sessionId).then((r) => reply(true, r !== 'ended')).catch((err: unknown) => { log.error({ err }, 'driver:heartbeat failed'); reply(false) })
+      }))
+
       // On reconnect, immediately re-deliver any assignments the driver may have
       // missed while their socket was down (messages are not buffered by Socket.io).
       void getPendingAssignmentsForDriver(BigInt(user.sub))
@@ -372,19 +381,32 @@ export async function isChatOpen(
 // pushing at once. Unknown counts as "yes" (a lookup that fails or takes longer than the cap must never turn into a push storm):
 // the caller then falls back to the shorter socket-ack wait.
 const SOCKET_PRESENCE_TIMEOUT_MS = 500
-export async function hasLiveDriverSocket(driverId: string): Promise<boolean> {
+// How many live sockets the driver has anywhere in the cluster, or null when that could not be learned in time.
+async function driverSocketCount(driverId: string): Promise<number | null> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const sockets = await Promise.race([
       getIO().in(`driver:${driverId}`).fetchSockets(),
       new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), SOCKET_PRESENCE_TIMEOUT_MS) }),
     ])
-    return sockets === null ? true : sockets.length > 0
+    return sockets === null ? null : sockets.length
   } catch {
-    return true
+    return null
   } finally {
     clearTimeout(timer)
   }
+}
+
+// Dispatch: an unknown answer counts as connected (a push storm is worse than one redundant card).
+export async function hasLiveDriverSocket(driverId: string): Promise<boolean> {
+  const n = await driverSocketCount(driverId)
+  return n === null ? true : n > 0
+}
+
+// Idle sweep: an unknown answer counts as NOT connected (the sweep keeps its old behaviour rather than sparing a driver on a guess).
+export async function isDriverSocketConnected(driverId: string): Promise<boolean> {
+  const n = await driverSocketCount(driverId)
+  return n !== null && n > 0
 }
 
 // Real-time emits are best-effort side effects of whatever DB action triggered them

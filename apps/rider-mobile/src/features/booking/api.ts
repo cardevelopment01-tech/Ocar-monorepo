@@ -211,6 +211,27 @@ export async function fetchRentalPackages(categoryId: number, cityId?: number | 
   return camelizeKeys<RentalPackage[]>(res.data)
 }
 
+// Every category's packages in one call, grouped by category id. The per-category route stays for older servers: if the
+// one-call route is missing (404/405, an older server), fall back to one call per category. Any other failure (timeout, 5xx, no
+// network) returns no packages, as a failed category always did: retrying 5x on top of a struggling API would make it worse.
+export async function fetchAllRentalPackages(categoryIds: number[], cityId?: number | null): Promise<Record<number, RentalPackage[]>> {
+  try {
+    const res = await api.get<unknown[]>('/api/v1/pricing/rental-packages', { params: cityId != null ? { city_id: cityId } : {} })
+    const rows = camelizeKeys<Array<RentalPackage & { categoryId: number }>>(res.data)
+    const byCat: Record<number, RentalPackage[]> = {}
+    for (const id of categoryIds) byCat[id] = []
+    for (const r of rows) (byCat[r.categoryId] ??= []).push(r)
+    return byCat
+  } catch (err) {
+    const status = (err as { response?: { status?: number } } | null)?.response?.status
+    if (status !== 404 && status !== 405) return {}
+    const entries = await Promise.allSettled(categoryIds.map(async (id) => [id, await fetchRentalPackages(id, cityId)] as const))
+    const byCat: Record<number, RentalPackage[]> = {}
+    for (const e of entries) if (e.status === 'fulfilled') byCat[e.value[0]] = e.value[1]
+    return byCat
+  }
+}
+
 // BookingRequest (api/src/modules/rides/rides.types.ts) is already camelCase
 // end to end -- no snake_case conversion needed on the way in.
 export type CreateBookingInput = {

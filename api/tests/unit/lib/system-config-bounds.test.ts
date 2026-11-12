@@ -33,7 +33,7 @@ describe('validateConfigBounds', () => {
 })
 
 describe('dispatch switches', () => {
-  it.each(['dispatch_no_resend_enabled', 'dispatch_head_start_enabled', 'dispatch_spread_enabled'])('%s accepts only true or false', (key) => {
+  it.each(['dispatch_no_resend_enabled', 'dispatch_head_start_enabled', 'dispatch_spread_enabled', 'dispatch_fast_rounds_enabled', 'dispatch_decision_log_enabled'])('%s accepts only true or false', (key) => {
     expect(validateConfigBounds(key, 'true')).toBeNull()
     expect(validateConfigBounds(key, 'false')).toBeNull()
     expect(validateConfigBounds(key, 'yes')).not.toBeNull()
@@ -42,5 +42,14 @@ describe('dispatch switches', () => {
   it('dispatch_spread_city_ids is empty or a comma list of ids', () => {
     for (const ok of ['', '1', '1,2,13']) expect(validateConfigBounds('dispatch_spread_city_ids', ok)).toBeNull()
     for (const bad of ['1, 2', 'a', '1,', ',1', '1;2']) expect(validateConfigBounds('dispatch_spread_city_ids', bad)).not.toBeNull()
+  })
+})
+
+describe('idle driver settings', () => {
+  it('accepts values inside the range and refuses typos', () => {
+    expect(validateConfigBounds('driver_idle_pause_seconds', '90')).toBeNull()
+    expect(validateConfigBounds('driver_idle_pause_seconds', '9')).not.toBeNull()
+    expect(validateConfigBounds('driver_idle_offline_minutes', '60')).toBeNull()
+    expect(validateConfigBounds('driver_idle_offline_minutes', '6000')).not.toBeNull()
   })
 })

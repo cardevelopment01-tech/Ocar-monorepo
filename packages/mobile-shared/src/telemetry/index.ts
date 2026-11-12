@@ -7,7 +7,7 @@ import {
   setUserId,
 } from '@react-native-firebase/crashlytics'
 import type { ApiCallInfo } from '../api/client'
-import { classifyApiCall, routeOf, scrubUrl, userKey } from './scrub'
+import { classifyApiCall, routeOf, scrubUrl, shouldDropSentryEvent, userKey } from './scrub'
 
 export { routeOf, scrubUrl, userKey }
 
@@ -46,6 +46,9 @@ export function initTelemetry(cfg: TelemetryConfig): void {
         sendDefaultPii: false,
         // 10% of sessions are traced (app start, slow screens, slow requests). Errors are always kept.
         tracesSampleRate: 0.1,
+        beforeSend(event, hint) {
+          return shouldDropSentryEvent(event, hint?.originalException) ? null : event
+        },
         beforeBreadcrumb(crumb) {
           const url = crumb.data?.['url']
           if (typeof url === 'string') crumb.data = { ...crumb.data, url: scrubUrl(url) }

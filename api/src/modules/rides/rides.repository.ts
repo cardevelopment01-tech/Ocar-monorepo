@@ -1129,6 +1129,52 @@ export async function setDriverAvailability(driverId: bigint, isAvailable: boole
 // Same staleSeconds param is reused
 // for both the short pause-from-pool tier and the longer force-offline tier —
 // see cleanup.worker.ts.
+// Can a driver the idle sweep paused be put back? Only an approved driver with an online session whose position is not older than the cap
+// (matching ranks by that position; a fresh fix resumes them on its own).
+export async function canResumeAfterSweep(driverId: bigint, maxPositionAgeSeconds: number): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT 1 FROM drivers d
+     JOIN driver_sessions ds ON ds.driver_id = d.id AND ds.status = 'online'
+     JOIN driver_location_snapshots dls ON dls.driver_id = d.id
+     WHERE d.id = $1 AND d.status = 'active'
+       AND GREATEST(dls.recorded_at, ds.updated_at) > now() - ($2 || ' seconds')::interval
+       AND NOT EXISTS (SELECT 1 FROM rides r WHERE r.driver_id = d.id AND r.status IN ('accepted','driver_arrived','in_progress','returning'))`,
+    [driverId, maxPositionAgeSeconds]
+  )
+  return (res.rowCount ?? 0) > 0
+}
+
+export async function hasActiveRide(driverId: bigint): Promise<boolean> {
+  const res = await pool.query(`SELECT 1 FROM rides WHERE driver_id = $1 AND status IN ('accepted','driver_arrived','in_progress','returning') LIMIT 1`, [driverId])
+  return (res.rowCount ?? 0) > 0
+}
+
+// The idle sweep re-checks a driver right before acting on them: a fix or heartbeat can land between building the list and acting.
+export async function isDriverStale(driverId: bigint, staleSeconds: number): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT 1 FROM driver_sessions ds
+     JOIN driver_location_snapshots dls ON dls.driver_id = ds.driver_id
+     WHERE ds.driver_id = $1 AND ds.status = 'online'
+       AND now() - GREATEST(dls.recorded_at, ds.updated_at) > ($2 || ' seconds')::interval`,
+    [driverId, staleSeconds]
+  )
+  return (res.rowCount ?? 0) > 0
+}
+
+// The sweep's pause: flips availability off ONLY for a driver who is currently available, and says which session it was. A driver who had
+// already paused on purpose is left alone and gets no marker (a heartbeat must never undo a deliberate pause).
+export async function pauseIfAvailable(driverId: bigint): Promise<string | null> {
+  const res = await pool.query<{ session_id: string }>(
+    `UPDATE driver_location_snapshots dls SET is_available = false, updated_at = now()
+     FROM driver_sessions ds
+     WHERE dls.driver_id = $1 AND ds.driver_id = dls.driver_id AND ds.status = 'online' AND dls.is_available = true
+       AND NOT EXISTS (SELECT 1 FROM rides r WHERE r.driver_id = dls.driver_id AND r.status IN ('accepted','driver_arrived','in_progress','returning'))
+     RETURNING ds.id::text AS session_id`,
+    [driverId]
+  )
+  return res.rows[0]?.session_id ?? null
+}
+
 export async function findStaleOnlineDrivers(staleSeconds: number): Promise<{ driver_id: string }[]> {
   const res = await pool.query<{ driver_id: string }>(
     `SELECT ds.driver_id::text
@@ -1228,15 +1274,23 @@ export async function createRideAssignment(data: {
   broadcastRound: number
   driverLat?: number
   driverLng?: number
+  /** Dispatch phase 0 record of what the offer looked like (migration 135). All optional: admin assignment and old callers send none. */
+  log?: { straightM: number; shownM: number; radiusM: number; rank: number; reach: 'live' | 'background' | 'no_socket'; fastStep: number }
 }) {
+  const l = data.log
   await pool.query(
     `INSERT INTO ride_assignments
        (ride_id, driver_id, session_id, expires_at,
-        broadcast_round, driver_lat, driver_lng)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+        broadcast_round, driver_lat, driver_lng,
+        straight_m, shown_m, radius_m, rank, reach, fast_step)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      ON CONFLICT (ride_id, driver_id) DO UPDATE
        SET status = 'offered', expires_at = EXCLUDED.expires_at,
            session_id = EXCLUDED.session_id, broadcast_round = EXCLUDED.broadcast_round,
+           -- A re-offer that carries no record (switch off, admin assignment) keeps what an earlier offer recorded.
+           straight_m = COALESCE(EXCLUDED.straight_m, ride_assignments.straight_m), shown_m = COALESCE(EXCLUDED.shown_m, ride_assignments.shown_m),
+           radius_m = COALESCE(EXCLUDED.radius_m, ride_assignments.radius_m), rank = COALESCE(EXCLUDED.rank, ride_assignments.rank),
+           reach = COALESCE(EXCLUDED.reach, ride_assignments.reach), fast_step = COALESCE(EXCLUDED.fast_step, ride_assignments.fast_step),
            responded_at = NULL, cancelled_at = NULL, acked_at = NULL
        -- Re-offer in a later broadcast round: reopen a declined/expired/cancelled row, else
        -- acceptAssignment (needs status = 'offered') rejects the fresh card with
@@ -1251,8 +1305,47 @@ export async function createRideAssignment(data: {
       data.rideId, data.driverId, data.sessionId,
       data.expiresAt, data.broadcastRound,
       data.driverLat ?? null, data.driverLng ?? null,
+      l?.straightM ?? null, l?.shownM ?? null, l?.radiusM ?? null, l?.rank ?? null, l?.reach ?? null, l?.fastStep ?? null,
     ]
   )
+}
+
+/** One row per broadcast round that did work (migration 135). Callers wrap this: a failed write must never stop a dispatch. */
+export async function insertDispatchRound(row: {
+  rideId: bigint; round: number; radiusM: number; widestRadiusM: number; fastStep: number; categoryIds: number[]
+  found: number; offered: number; liveSkipped: number; declinedSkipped: number; otherSkipped: number
+  outcome: 'offered' | 'empty' | 'closed'; diag: Record<string, number> | null
+}): Promise<void> {
+  await pool.query(
+    `INSERT INTO dispatch_rounds
+       (ride_id, round, radius_m, widest_radius_m, fast_step, category_ids, found, offered,
+        live_skipped, declined_skipped, other_skipped, outcome, diag)
+     VALUES ($1,$2,$3,$4,$5,$6::int[],$7,$8,$9,$10,$11,$12,$13)`,
+    [row.rideId, row.round, row.radiusM, row.widestRadiusM, row.fastStep, row.categoryIds, row.found, row.offered,
+     row.liveSkipped, row.declinedSkipped, row.otherSkipped, row.outcome, row.diag ? JSON.stringify(row.diag) : null]
+  )
+}
+
+/**
+ * Why few or nobody was found: of the drivers with an online session inside the radius (any category), how many each rule would
+ * have taken out. A driver can count under several reasons. Read-only; one indexed spatial query.
+ */
+export async function getDispatchDiag(params: { lat: number; lng: number; radiusMetres: number; categoryIds: bigint[] }): Promise<Record<string, number>> {
+  const res = await pool.query<Record<string, number>>(
+    `SELECT count(*)::int AS online_in_radius,
+            count(*) FILTER (WHERE dls.is_available = false)::int AS paused,
+            count(*) FILTER (WHERE NOT (ds.category_id = ANY($3::bigint[])))::int AS other_category,
+            count(*) FILTER (WHERE now() - dls.recorded_at > interval '10 minutes')::int AS stale_position,
+            count(*) FILTER (WHERE ds.mode <> 'standard')::int AS not_standard_mode,
+            count(*) FILTER (WHERE d.status <> 'active')::int AS driver_not_active
+       FROM driver_location_snapshots dls
+       JOIN driver_sessions ds ON ds.id = dls.session_id
+       JOIN drivers d ON d.id = ds.driver_id
+      WHERE ds.status = 'online'
+        AND ST_DWithin(dls.location, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)::geography, $4)`,
+    [params.lat, params.lng, params.categoryIds, params.radiusMetres]
+  )
+  return res.rows[0] ?? {}
 }
 
 export async function acceptAssignment(
