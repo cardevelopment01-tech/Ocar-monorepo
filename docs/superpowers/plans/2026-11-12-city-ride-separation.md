@@ -236,3 +236,13 @@ Turn `city_rides_enabled` on in staging for one city. Verify: a city booking by 
 - Test: update `legacy-client-compat.test.ts` to the new contract; delete the cases that only existed for old clients
 
 - [ ] **Step 1 to 5:** failing tests for the new contract, implement, run all three suites, commit `refactor: City ride is the only in-city mode; remove the transition flag and redirects`. This is the planned deletion of every temporary compatibility branch added above.
+
+---
+
+## Execution notes (what was actually built, 2026-11-13)
+
+- Branches: `feat/city-ride-separation` (Phase A: Tasks 1 to 4), `feat/city-ride-server` (Phase B: Tasks 5 to 7A), `feat/city-ride-apps` (Phase C admin: Task 9), all stacked in `C:\ocar-wt-cityride`; the rider app (Task 8) is `feat/rider-city-ride` in `C:\ocar-wt-redesign`, built on `feat/rider-redesign` because the screens it changes are restyled there.
+- **Task 5 changed:** migration 137 does NOT create the city cards (old API nodes, during the blue/green overlap or a rollback, would quote an intercity one-way on a city card). They are created by `api/scripts/seed-city-ride-cards.sql`, run once at Gate C after every node is the new build. There is no CHECK constraint on `rides.trip_mode` (it would scan the table under the ADD COLUMN lock).
+- **Task 10 (user web) deferred.** The web keeps working unchanged (opt-in design).
+- Tasks 11 and 12 (Phase D) are not started: they wait on their triggers.
+- Ops steps before the flag is turned on: run the preflight SQL; deploy Phase A and verify Gate A; deploy Phase B; run the seed script; recreate one-way offers as City ride offers where wanted; set `city_rides_enabled` per city.
