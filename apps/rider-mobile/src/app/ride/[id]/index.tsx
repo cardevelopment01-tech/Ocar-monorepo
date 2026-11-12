@@ -86,7 +86,7 @@ export default function RideTrackingScreen() {
   const bookedCategoryId = ride?.categoryId != null && Number.isFinite(Number(ride.categoryId)) ? Number(ride.categoryId) : null
   const nearbyCars = useNearbyDrivers(
     ride ? rideId : null, ride?.originLat ?? null, ride?.originLng ?? null, ride?.status === 'requested',
-    showWithinMetres(ride?.rideType, bookedCategoryId === null ? null : vehicleSlugs.get(bookedCategoryId)), bookedCategoryId,
+    showWithinMetres(ride?.rideType, bookedCategoryId === null ? null : vehicleSlugs.get(bookedCategoryId), ride?.tripMode), bookedCategoryId,
   )
 
   // "Driver's location hasn't updated" must appear when updates STOP, so it needs a timer: a memo on

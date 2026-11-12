@@ -16,6 +16,7 @@ import { fetchClassifyTrip, fetchNearestCityId, fetchPlaceDetail, fetchRoute, fe
 import { useAutocomplete } from '@/features/booking/hooks/useAutocomplete'
 import { useBookingDraftStore, type BookingPlace } from '@/features/booking/store'
 import type { RideType } from '@/features/booking/api'
+import { resolveInCityRoute, type TripMode } from '@/features/booking/cityRideRoute'
 import { useApproximateLocation, useFreshness, useLocationStore, useLocationTracking } from '@/store/useLocationStore'
 import { PreciseLocationNotice } from '@/features/home/PreciseLocationNotice'
 import { useRecentSearchesStore } from '@/store/useRecentSearchesStore'
@@ -72,6 +73,7 @@ export default function BookingPickersScreen() {
   const rideType = useBookingDraftStore((s) => s.rideType)
   const rideTypeDeclared = useBookingDraftStore((s) => s.rideTypeDeclared)
   const setRideType = useBookingDraftStore((s) => s.setRideType)
+  const tripMode = useBookingDraftStore((s) => s.tripMode)
   const riderName = useBookingDraftStore((s) => s.riderName)
   const riderPhone = useBookingDraftStore((s) => s.riderPhone)
   const setRider = useBookingDraftStore((s) => s.setRider)
@@ -153,8 +155,8 @@ export default function BookingPickersScreen() {
   // handleContinue already captured for *this* render, so auto-continue
   // could still see the pre-reset rideType/declared. Resetting before
   // setDrop() runs means the render setDrop triggers already reads fresh.
-  const enteredDeclaredRef = useRef<{ rideType: RideType; declared: boolean } | null>(null)
-  if (enteredDeclaredRef.current === null) enteredDeclaredRef.current = { rideType, declared: rideTypeDeclared }
+  const enteredDeclaredRef = useRef<{ rideType: RideType; declared: boolean; tripMode: TripMode } | null>(null)
+  if (enteredDeclaredRef.current === null) enteredDeclaredRef.current = { rideType, declared: rideTypeDeclared, tripMode }
 
   // Closes editing whenever a field's value changes from ANY source, not just
   // this screen's own commitPlace -- e.g. map-picker (a separate screen) sets
@@ -196,7 +198,7 @@ export default function BookingPickersScreen() {
       setEditingField(drop ? null : 'drop')
     } else {
       const entry = enteredDeclaredRef.current!
-      setRideType(entry.rideType, entry.declared)
+      setRideType(entry.rideType, entry.declared, entry.tripMode)
       if (redirectTimerRef.current) { clearTimeout(redirectTimerRef.current); redirectTimerRef.current = null }
       setRedirectToast(null)
       setDrop(place)
@@ -246,36 +248,28 @@ export default function BookingPickersScreen() {
         fetchClassifyTrip(pickup.lat, pickup.lng, drop.lat, drop.lng),
       ])
       setRoute(route.distanceKm, route.durationMin, cityId, route.routePoints)
-      const isInCity = classification?.scope === 'in_city'
+      // Where this trip goes next, by the rules in cityRideRoute.ts (Outstation, City Ride, Rental). Inside one city boundary it is a
+      // city ride when the server says City ride is on, and exactly what the app did before (Rental) otherwise.
+      const next = resolveInCityRoute({ rideTypeDeclared, rideType, tripMode, classification })
       const cityLabel = classification?.scope === 'in_city' ? classification.cityName : 'the city'
+      const toastText = {
+        to_city: `That's inside ${cityLabel}, switching to City Ride`,
+        to_rental: `That's inside ${cityLabel}, switching to Rental`,
+        to_outstation: `That's outside ${cityLabel}, switching to Outstation`,
+        to_one_way: `That's outside ${cityLabel}, switching to One Way`,
+      } as const
 
-      function redirectWithToast(path: '/booking/rental' | '/booking/fare' | '/booking/trip-type', message: string, resolvedRideType?: 'one_way' | 'rental') {
-        if (resolvedRideType) setRideType(resolvedRideType, true)
+      if (next.toast) {
+        setRideType(next.rideType, next.rideTypeDeclared, next.tripMode)
         setContinuing(false)
-        setRedirectToast(message)
+        setRedirectToast(toastText[next.toast])
         if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current)
-        redirectTimerRef.current = setTimeout(() => router.push(path), 1500)
-      }
-
-      if (!rideTypeDeclared) {
-        if (isInCity) redirectWithToast('/booking/rental', `That's inside ${cityLabel}, switching to City Rides`, 'rental')
-        else { setContinuing(false); router.push('/booking/trip-type') }
-        return
-      }
-
-      if ((rideType === 'one_way' || rideType === 'round_trip') && isInCity) {
-        redirectWithToast('/booking/rental', `That's inside ${cityLabel}, switching to City Rides`, 'rental')
-        return
-      }
-      if (rideType === 'rental' && !isInCity) {
-        redirectWithToast('/booking/fare', `That's outside ${cityLabel}, switching to One Way`, 'one_way')
+        redirectTimerRef.current = setTimeout(() => router.push(next.path), 1500)
         return
       }
 
       setContinuing(false)
-      router.push(
-        rideType === 'round_trip' ? '/booking/round-trip' : rideType === 'rental' ? '/booking/rental' : '/booking/fare'
-      )
+      router.push(next.path)
     } catch (err) {
       setContinueError(getApiErrorMessage(err, "Couldn't work out that route. Please try again."))
       setContinuing(false)

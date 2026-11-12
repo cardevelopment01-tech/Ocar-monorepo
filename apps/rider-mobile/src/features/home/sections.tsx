@@ -18,8 +18,9 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient'
 import { VehicleIcon } from '@ocar/mobile-shared'
 import { ease, font, geo, h, shadow } from '@/theme/homeTokens'
-import { ArrowUpRight, ChevronIcon, ClockIcon, OneWayIcon, PlaneIcon, RentalsIcon, RoundTripIcon, ShieldCheckIcon, StarIcon, TempleIcon, CloseIcon } from './icons'
+import { ArrowUpRight, ChevronIcon, ClockIcon, PlaneIcon, RentalsIcon, RoundTripIcon, ShieldCheckIcon, StarIcon, TempleIcon, CloseIcon } from './icons'
 import { Press } from './Press'
+import { TRIP_INTENTS, type TripIntent } from './tripIntent'
 import type { FleetItem } from './fleet'
 
 // ---------- .reveal: fade + rise once when 18% of the block enters the scroll viewport ----------
@@ -132,13 +133,10 @@ export function RecentsCard({ items }: { items: RecentItem[] }) {
 }
 
 // ---------- trip type (.tt-card) ----------
-const TRIPS = [
-  { type: 'one_way' as const, title: 'One-way', sub: 'Point A to B', Icon: OneWayIcon },
-  { type: 'round_trip' as const, title: 'Round trip', sub: 'There, and back', Icon: RoundTripIcon },
-  { type: 'rental' as const, title: 'City Ride', sub: 'By the hour', Icon: RentalsIcon },
-]
+const TILE_ICON: Record<TripIntent, (p: { size?: number }) => React.JSX.Element> = { outstation: RoundTripIcon, city: RentalsIcon, rental: ClockIcon }
+const TRIPS = TRIP_INTENTS.map((t) => ({ type: t.intent, title: t.title, sub: t.sub, Icon: TILE_ICON[t.intent] }))
 
-export function TripTypeCard({ onPick, style }: { onPick: (t: 'one_way' | 'round_trip' | 'rental') => void; style?: object | undefined }) {
+export function TripTypeCard({ onPick, style }: { onPick: (t: TripIntent) => void; style?: object | undefined }) {
   return (
     <View style={[s.ttWrap, style]}>
       <Text style={s.ttLabel}>Choose your journey</Text>

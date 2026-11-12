@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { RideType } from './api'
+import type { TripMode } from './cityRideRoute'
 import { MAX_STOPS } from './constants'
 
 export type BookingPlace = { address: string; lat: number; lng: number }
@@ -26,6 +27,8 @@ interface BookingDraftState {
    *  leftover/default value above. True once a tile (or the trip-type screen)
    *  has explicitly picked one. */
   rideTypeDeclared: boolean
+  /** 'city' = the City Ride mode (a one-way ride priced on the city card). Always standard unless the City Ride tile, or the route, set it. */
+  tripMode: TripMode
   /** Round-trip only -- how many hours the driver stays, chosen on /booking/round-trip. */
   tripHours: number | null
   /** Round-trip/rental only, up to MAX_STOPS -- matches web's stops[] URL-param carrying. */
@@ -40,7 +43,7 @@ interface BookingDraftState {
   setDrop: (place: BookingPlace) => void
   setRoute: (distanceKm: number, durationMin: number, originCityId: number | null, routePoints: [number, number][]) => void
   setSelectedCategoryId: (id: number) => void
-  setRideType: (rideType: RideType, declared?: boolean) => void
+  setRideType: (rideType: RideType, declared?: boolean, tripMode?: TripMode) => void
   setTripHours: (hours: number) => void
   addStop: (place: BookingPlace) => void
   removeStop: (index: number) => void
@@ -65,6 +68,7 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
   selectedCategoryId: null,
   rideType: 'one_way',
   rideTypeDeclared: false,
+  tripMode: 'standard',
   tripHours: null,
   stops: [],
   scheduledFor: null,
@@ -75,7 +79,8 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
   setDrop: (place) => set({ drop: place }),
   setRoute: (distanceKm, durationMin, originCityId, routePoints) => set({ distanceKm, durationMin, originCityId, routePoints }),
   setSelectedCategoryId: (id) => set({ selectedCategoryId: id }),
-  setRideType: (rideType, declared = true) => set({ rideType, rideTypeDeclared: declared }),
+  // Any ride type picked without a trip mode is a standard ride, so a leftover City Ride choice never leaks into Rental or Outstation.
+  setRideType: (rideType, declared = true, tripMode = 'standard') => set({ rideType, rideTypeDeclared: declared, tripMode }),
   setTripHours: (hours) => set({ tripHours: hours }),
   addStop: (place) => set((s) => (s.stops.length >= MAX_STOPS ? s : { stops: [...s.stops, place] })),
   removeStop: (index) => set((s) => ({ stops: s.stops.filter((_, i) => i !== index) })),
@@ -104,6 +109,7 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
       selectedCategoryId: null,
       rideType: 'one_way',
       rideTypeDeclared: false,
+      tripMode: 'standard',
       tripHours: null,
       stops: [],
       scheduledFor: null,

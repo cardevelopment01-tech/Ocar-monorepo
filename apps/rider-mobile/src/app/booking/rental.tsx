@@ -251,7 +251,7 @@ export default function RentalScreen() {
       <View style={styles.header}>
         <IconButton icon="arrow-left" label="Go back" onPress={() => goBack(router)} />
         <View style={styles.headerText}>
-          <Text style={styles.title}>City Rides</Text>
+          <Text style={styles.title}>Rental</Text>
           <Text style={styles.subtitle} numberOfLines={1}>Book a driver by the hour</Text>
         </View>
         <Pressable

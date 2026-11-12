@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FareEstimate, VehicleCategory } from '@ocar/mobile-shared'
 import { fetchFareEstimate, fetchReturnCabAvailable, fetchVehicleCategories, type RideType } from '../api'
 import { etaMinFromKm } from '../eta'
+import type { TripMode } from '../cityRideRoute'
 import { getApiErrorMessage } from '@ocar/mobile-shared'
 
 export type FareEstimatesState = {
@@ -38,7 +39,10 @@ export function useFareEstimates(
   // enable it, omit (or pass a scheduledFor date) to skip.
   pickup?: ReturnCabPoint | null,
   drop?: ReturnCabPoint | null,
-  scheduledFor?: string | null
+  scheduledFor?: string | null,
+  // 'city' quotes every vehicle on the City ride card (a vehicle with no city card drops out of the list, like any vehicle with no
+  // estimate). A city ride has no return cab.
+  tripMode: TripMode = 'standard'
 ): FareEstimatesState {
   const [categories, setCategories] = useState<VehicleCategory[]>([])
   const [estimates, setEstimates] = useState<Record<number, FareEstimate>>({})
@@ -70,6 +74,7 @@ export function useFareEstimates(
             }
             if (originCityId !== null) input.cityId = originCityId
             if (rideType === 'round_trip' && tripHours != null) input.tripHours = tripHours
+            if (tripMode === 'city') input.tripMode = 'city'
             return fetchFareEstimate(input)
           })
         )
@@ -88,7 +93,7 @@ export function useFareEstimates(
         // Return-cab check, only for an immediate one_way booking with a real
         // pickup/drop -- a scheduled future pickup can't match a driver's
         // live current route.
-        if (rideType === 'one_way' && !scheduledFor && pickup && drop) {
+        if (rideType === 'one_way' && tripMode !== 'city' && !scheduledFor && pickup && drop) {
           const rcAvailable = new Set<number>()
           const rcResults: Record<number, FareEstimate> = {}
           const rcEta: Record<number, number> = {}
@@ -124,7 +129,7 @@ export function useFareEstimates(
         setError(getApiErrorMessage(err, "Couldn't get a fare estimate, try again"))
         setLoading(false)
       })
-  }, [distanceKm, durationMin, originCityId, rideType, tripHours, pickup, drop, scheduledFor])
+  }, [distanceKm, durationMin, originCityId, rideType, tripHours, pickup, drop, scheduledFor, tripMode])
 
   useEffect(() => {
     load()

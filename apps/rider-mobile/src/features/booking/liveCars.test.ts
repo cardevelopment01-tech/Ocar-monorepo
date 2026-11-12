@@ -138,5 +138,15 @@ describe('showWithinMetres (how far out a car could really be offered the ride)'
     expect(showWithinMetres('one_way', 'sedan')).toBe(3_000)
     expect(showWithinMetres('round_trip', 'auto')).toBe(3_000)
     expect(showWithinMetres(undefined, undefined)).toBe(3_000)
+    expect(showWithinMetres('one_way', 'sedan', 'standard')).toBe(3_000)
+  })
+})
+
+describe('showWithinMetres for a city ride (the server offers it within 4 km, 2 km for an auto)', () => {
+  it('an auto is shown only within 2 km, any other vehicle within the usual 3 km map radius', () => {
+    expect(showWithinMetres('one_way', 'auto_rickshaw', 'city')).toBe(2_000)
+    expect(showWithinMetres('one_way', 'auto', 'city')).toBe(2_000)
+    expect(showWithinMetres('one_way', 'sedan', 'city')).toBe(3_000)
+    expect(showWithinMetres('one_way', null, 'city')).toBe(3_000)
   })
 })

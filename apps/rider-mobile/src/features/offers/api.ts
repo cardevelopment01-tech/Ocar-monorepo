@@ -18,6 +18,8 @@ export type PreviewRequest = {
   rentalPackageId?: number
   stopCount?: number
   isReturnCab?: boolean
+  /** 'city' = a city ride: it is matched on the City ride offers (the server needs it to agree with the booking). */
+  tripMode?: 'standard' | 'city'
   scheduledFor?: string
   code?: string
   autoOffer?: string
@@ -40,6 +42,7 @@ export async function previewOffer(input: PreviewRequest, signal?: AbortSignal):
   if (input.rentalPackageId !== undefined) body['rental_package_id'] = Number(input.rentalPackageId)
   if (input.stopCount !== undefined) body['stop_count'] = input.stopCount
   if (input.isReturnCab) body['is_return_cab'] = true
+  if (input.tripMode === 'city') body['trip_mode'] = 'city'
   if (input.scheduledFor) body['scheduledFor'] = input.scheduledFor
   if (input.code) body['code'] = input.code
   if (input.autoOffer) body['autoOffer'] = input.autoOffer

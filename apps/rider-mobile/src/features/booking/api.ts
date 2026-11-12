@@ -105,9 +105,8 @@ export async function fetchNearestCityId(lat: number, lng: number): Promise<numb
   }
 }
 
-export type TripClassification =
-  | { scope: 'in_city'; cityId: number; cityName: string }
-  | { scope: 'outstation' }
+export type { TripClassification } from './cityRideRoute'
+import type { TripClassification, TripMode } from './cityRideRoute'
 
 // Same endpoint web's geoApi.classifyTrip hits (GET /api/v1/geo/classify-trip) --
 // decides whether a route stays inside one city (round trips/rentals can't
@@ -117,10 +116,17 @@ export async function fetchClassifyTrip(
   originLat: number, originLng: number, destLat: number, destLng: number
 ): Promise<TripClassification | null> {
   try {
-    const res = await api.get<TripClassification>('/api/v1/geo/classify-trip', {
-      params: { originLat, originLng, destLat, destLng },
-    })
-    return res.data
+    const res = await api.get<{ scope: 'in_city' | 'outstation'; cityId: number | null; cityName: string | null; city_ride_available?: boolean }>(
+      '/api/v1/geo/classify-trip',
+      { params: { originLat, originLng, destLat, destLng } },
+    )
+    const d = res.data
+    if (d.scope !== 'in_city') return { scope: 'outstation' }
+    // `city_ride_available` is absent on an older server: City ride is then off, and the app behaves as it did before it existed.
+    return {
+      scope: 'in_city', cityId: d.cityId as number, cityName: d.cityName as string,
+      ...(d.city_ride_available === undefined ? {} : { cityRideAvailable: d.city_ride_available }),
+    }
   } catch {
     return null
   }
@@ -158,6 +164,8 @@ export type FareEstimateInput = {
   tripHours?: number
   rentalPackageId?: number
   isReturnCab?: boolean
+  /** 'city' prices the trip on the City ride card; absent (every other ride) is the standard card. */
+  tripMode?: TripMode
 }
 
 export async function fetchFareEstimate(
@@ -174,6 +182,7 @@ export async function fetchFareEstimate(
   if (input.cityId !== undefined) body['city_id'] = input.cityId
   if (input.tripHours !== undefined) body['trip_hours'] = input.tripHours
   if (input.rentalPackageId !== undefined) body['rental_package_id'] = input.rentalPackageId
+  if (input.tripMode === 'city') body['trip_mode'] = 'city'
   const res = await api.post('/api/v1/pricing/estimate', body, config)
   return camelizeKeys<FareEstimate>(res.data)
 }
@@ -253,6 +262,8 @@ export type CreateBookingInput = {
   riderName?: string
   riderPhone?: string
   isReturnCab?: boolean
+  /** Only sent for a city ride; absent is a standard ride, exactly as before City ride existed. */
+  tripMode?: 'city'
   /** Offers (all optional; absent for an app talking to a server with offers off). */
   couponCode?: string
   expectedPayable?: number

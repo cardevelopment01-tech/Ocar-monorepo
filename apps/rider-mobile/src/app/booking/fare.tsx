@@ -41,7 +41,7 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
 // Book button drifted up and down with however many categories loaded.
 const MAP_HEIGHT_RATIO = 0.3
 
-const RIDE_TYPE_LABEL = { one_way: 'One way', round_trip: 'Round trip', rental: 'City ride' } as const
+const RIDE_TYPE_LABEL = { one_way: 'One way', round_trip: 'Round trip', rental: 'Rental' } as const
 
 // Module scope: an inline ItemSeparatorComponent is a new component type every render, so React
 // unmounted and remounted every separator whenever the nearby-driver poll re-rendered the screen.
@@ -62,6 +62,7 @@ export default function BookingFareScreen() {
   const selectedCategoryId = useBookingDraftStore((s) => s.selectedCategoryId)
   const setSelectedCategoryId = useBookingDraftStore((s) => s.setSelectedCategoryId)
   const rideType = useBookingDraftStore((s) => s.rideType)
+  const tripMode = useBookingDraftStore((s) => s.tripMode)
   const tripHours = useBookingDraftStore((s) => s.tripHours)
   const stops = useBookingDraftStore((s) => s.stops)
   const scheduledFor = useBookingDraftStore((s) => s.scheduledFor)
@@ -73,7 +74,7 @@ export default function BookingFareScreen() {
   const {
     categories, estimates, loading, error, retry,
     returnCabCategories, returnCabEstimates, returnCabEta,
-  } = useFareEstimates(distanceKm, durationMin, originCityId, rideType, tripHours, pickup, drop, scheduledFor)
+  } = useFareEstimates(distanceKm, durationMin, originCityId, rideType, tripHours, pickup, drop, scheduledFor, tripMode)
 
   const [isReturnCab, setIsReturnCab] = useState(false)
   const [whyOpen, setWhyOpen] = useState(false)
@@ -134,12 +135,13 @@ export default function BookingFareScreen() {
           categoryId: effectiveSelected, rideType, distanceKm, durationMin, paymentChannel: 'cash' as const,
           originLat: pickup.lat, originLng: pickup.lng, destinationLat: drop.lat, destinationLng: drop.lng,
           ...(rideType === 'round_trip' && tripHours !== null ? { tripHours } : {}),
+          ...(tripMode === 'city' ? { tripMode: 'city' as const } : {}),
           ...(stops.length > 0 ? { stopCount: stops.length } : {}),
           ...(isReturnCab ? { isReturnCab: true } : {}),
           ...(scheduledFor ? { scheduledFor } : {}),
         }
       : null),
-    [effectiveSelected, rideType, distanceKm, durationMin, pickup, drop, tripHours, stops.length, isReturnCab, scheduledFor],
+    [effectiveSelected, rideType, tripMode, distanceKm, durationMin, pickup, drop, tripHours, stops.length, isReturnCab, scheduledFor],
   )
   const offers = useOfferPreview(offerRequest)
   const couponState = couponLineState({ status: offers.status, preview: offers.preview, typedCode: offers.typedCode, fullPrice: selectedFare ?? null })
@@ -220,6 +222,7 @@ export default function BookingFareScreen() {
       if (drop.address) input.destinationAddress = drop.address
       if (originCityId !== null) input.originCityId = originCityId
       if (rideType === 'round_trip' && tripHours !== null) input.tripHours = tripHours
+      if (tripMode === 'city') input.tripMode = 'city'
       if (stops.length > 0) input.stops = stops
       if (scheduledFor) input.scheduledFor = scheduledFor
       if (riderName && riderPhone) { input.riderName = riderName; input.riderPhone = riderPhone }
@@ -306,7 +309,7 @@ export default function BookingFareScreen() {
             <View style={styles.sheetHandle} />
             <View style={styles.sheetTitleRow}>
               <Text style={styles.title}>Choose a ride</Text>
-              <Chip label={RIDE_TYPE_LABEL[rideType]} />
+              <Chip label={tripMode === 'city' ? 'City ride' : RIDE_TYPE_LABEL[rideType]} />
             </View>
             <View style={styles.metaRow}>
               {distanceKm != null && durationMin != null ? (
