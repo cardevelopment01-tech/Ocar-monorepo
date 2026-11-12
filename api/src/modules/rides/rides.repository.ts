@@ -791,6 +791,9 @@ const RIDE_SELECT_SQL = `SELECT
        hrc.hour_rate  AS round_trip_hour_rate,
        rc.reason      AS cancellation_reason,
        rc.reason_code AS cancellation_reason_code,
+       -- Who cancelled (user / driver / admin / system), so a rider who missed the live socket event can still tell
+       -- "your driver cancelled" from a cancel of their own.
+       rc.actor       AS cancellation_actor,
        ur.score AS user_rating_given,
        drt.score AS driver_rating_given,
        dv.number_plate  AS vehicle_number_plate,
