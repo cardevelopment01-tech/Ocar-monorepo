@@ -25,6 +25,7 @@ import { SafetyToolkitSheet } from '@/features/ride-tracking/components/SafetyTo
 import { FareDriftToast, UpgradeToast } from '@/features/ride-tracking/components/Toasts'
 import { goBack } from '@/lib/goBack'
 import { IconButton } from '@/components/ui'
+import { ReturnCabRecovery } from '@/features/trip-summary/ReturnCabPanels'
 import { TripSummary } from '@/features/trip-summary/TripSummary'
 import { ReconnectBanner } from '@/features/ride-tracking/components/ReconnectBanner'
 import { DriverCancelledBanner } from '@/features/ride-tracking/components/DriverCancelledBanner'
@@ -290,8 +291,10 @@ export default function RideTrackingScreen() {
     ? `₹${Math.round(parseFloat(ride.totalFinal))}`
     : ride.totalEstimated != null ? `₹${Math.round(parseFloat(ride.totalEstimated))}` : null
 
-  // A finished trip is a receipt, not a live map: full-screen summary, shared with My Trips.
-  if (isCompleted || isCancelled) return <TripSummary ride={ride} onRefresh={retry} />
+  // A return-cab ride that no return driver took stays on the map with a sheet offering the way forward; every other finished trip is a
+  // receipt, not a live map: full-screen summary, shared with My Trips.
+  const returnCabNoDriver = ride.status === 'no_drivers' && ride.isReturnCab === true
+  if (isCompleted || (isCancelled && !returnCabNoDriver)) return <TripSummary ride={ride} onRefresh={retry} />
 
   return (
     <View style={styles.screen}>
@@ -321,7 +324,7 @@ export default function RideTrackingScreen() {
       />
 
       <View style={[styles.mapOverlayTop, { paddingTop: insets.top + spacing.sm }]} pointerEvents="box-none">
-        {isAssigned ? <View style={styles.backRow}><IconButton icon="arrow-left" label="Back" onPress={() => goBack(router)} /></View> : null}
+        {isAssigned || returnCabNoDriver ? <View style={styles.backRow}><IconButton icon="arrow-left" label="Back" onPress={() => goBack(router)} /></View> : null}
         {isInProgress ? (
           <View style={styles.tripPill}>
             <View style={styles.tripPillDot} />
@@ -344,6 +347,7 @@ export default function RideTrackingScreen() {
         </Pressable>
       ) : null}
 
+      {returnCabNoDriver ? null : (
       <SOSButton
         enabled
         onTrigger={async () => {
@@ -362,6 +366,7 @@ export default function RideTrackingScreen() {
         openSignal={sosSignal}
         {...(canShare ? { onShareTrip: () => setShareOpen(true) } : {})}
       />
+      )}
 
       <Animated.View
         style={[styles.sheet, sheetEntranceStyle]}
@@ -385,8 +390,10 @@ export default function RideTrackingScreen() {
             <FareDriftToast previousFare={fareDrift.previousFare} currentFare={fareDrift.currentFare} onDismiss={dismissFareDrift} />
           ) : null}
 
-          <StatusBanner status={status} eta={eta} totalKm={status === 'accepted' ? startKm : (ride.estimatedKm ?? null)}
-            {...(status === 'driver_arrived' && ride.startOtp ? { pin: ride.startOtp } : {})} {...(status === 'accepted' && !driverLocated ? { overrideSub: 'Locating your driver…' } : {})} />
+          {returnCabNoDriver ? <ReturnCabRecovery ride={ride} /> : null}
+
+          {returnCabNoDriver ? null : <StatusBanner status={status} eta={eta} totalKm={status === 'accepted' ? startKm : (ride.estimatedKm ?? null)}
+            {...(status === 'driver_arrived' && ride.startOtp ? { pin: ride.startOtp } : {})} {...(status === 'accepted' && !driverLocated ? { overrideSub: 'Locating your driver…' } : {})} />}
 
           {unreachableStop ? (
             <View style={styles.unreachableBanner} accessibilityRole="alert">

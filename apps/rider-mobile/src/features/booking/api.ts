@@ -190,8 +190,9 @@ export async function fetchReturnCabAvailable(params: {
   dropLat: number
   dropLng: number
   categoryId: number
-}): Promise<{ count: number }> {
-  const res = await api.get<{ count: number }>('/api/v1/rides/return-cab-available', {
+}): Promise<{ count: number; nearestM: number | null }> {
+  // `nearest_m` is how far the closest return-cab driver is (null when none, or from an older server): it lets the card show an honest wait.
+  const res = await api.get<{ count: number; nearest_m?: number | null }>('/api/v1/rides/return-cab-available', {
     params: {
       pickupLat: params.pickupLat,
       pickupLng: params.pickupLng,
@@ -200,7 +201,7 @@ export async function fetchReturnCabAvailable(params: {
       categoryId: params.categoryId,
     },
   })
-  return res.data
+  return { count: res.data.count, nearestM: res.data.nearest_m ?? null }
 }
 
 export async function fetchRentalPackages(categoryId: number, cityId?: number | null): Promise<RentalPackage[]> {

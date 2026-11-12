@@ -16,6 +16,10 @@ export type RideDetailExtra = RideDetail & {
   categoryId?: number | string | null
   // The booked route distance in km (fare_snapshots.estimated_km, sent as a number); the trip progress bar's total.
   estimatedKm?: number | null
+  // The booked route's duration in minutes (fare_snapshots.estimated_min), the booked city, and whether this was a return-cab booking.
+  estimatedMin?: number | null
+  originCityId?: number | string | null
+  isReturnCab?: boolean
 }
 
 export const SEARCHING_STATUSES = new Set(['requested', 'scheduled'])

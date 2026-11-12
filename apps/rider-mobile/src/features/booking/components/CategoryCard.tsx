@@ -18,11 +18,6 @@ export type CategoryCardProps = {
   // nothing found. Mirrors web's driverEta memo (select-ride/page.tsx).
   eta?: CategoryEta | null
   disabled?: boolean
-  // 'returnCab' renders the green "Return Cab" badge + savings line instead of
-  // seat count/ETA -- matches web's discounted-return-driver row treatment
-  // (apps/user/app/(main)/select-ride/page.tsx).
-  variant?: 'standard' | 'returnCab'
-  savingsText?: string
   // Set on the selected card when an offer applies: the fare shown is then the payable, with this gross struck through
   // above it and the saving as a line under the name (design review D3).
   grossFare?: number | null
@@ -34,12 +29,11 @@ const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
 // Design: docs/designs/ocar-redesign/screens/Vehicles.dc.html. Selected = teal wash + teal border + halo;
 // unavailable = greyed image, not selectable.
 function CategoryCardBase({
-  category, fareTotal, loading, selected, onPress, eta, disabled = false, variant = 'standard', savingsText,
+  category, fareTotal, loading, selected, onPress, eta, disabled = false,
   grossFare = null, offerSavingText = null,
 }: CategoryCardProps) {
   const noCars = disabled
   const active = selected && !noCars
-  const isReturnCab = variant === 'returnCab'
   const img = fleetImageFor(category.slug)
   const struck = grossFare != null
   return (
@@ -63,18 +57,12 @@ function CategoryCardBase({
       <View style={styles.info}>
         <View style={styles.nameRow}>
           <Text style={styles.name} numberOfLines={1}>{category.displayName}</Text>
-          {isReturnCab ? (
-            <View style={styles.rcBadge}><Text style={styles.rcBadgeText}>Return cab</Text></View>
-          ) : (
-            <View style={styles.seats}>
-              <Feather name="user" size={12} color={h.muted} />
-              <Text style={styles.seatsText}>{category.maxPassengers}</Text>
-            </View>
-          )}
+          <View style={styles.seats}>
+            <Feather name="user" size={12} color={h.muted} />
+            <Text style={styles.seatsText}>{category.maxPassengers}</Text>
+          </View>
         </View>
-        {isReturnCab ? (
-          <Text style={[styles.sub, { color: h.live }]}>{savingsText}</Text>
-        ) : noCars ? (
+        {noCars ? (
           <Text style={[styles.sub, { color: h.label }]}>No cars nearby right now</Text>
         ) : eta && eta.etaMin > 0 ? (
           <Text style={[styles.sub, { color: h.tealText }]}>{eta.etaMin} min away</Text>
@@ -123,8 +111,6 @@ const styles = StyleSheet.create({
   name: { fontFamily: font.b, fontSize: 16, color: h.ivory, flexShrink: 1 },
   seats: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   seatsText: { fontFamily: font.sb, fontSize: 12, color: h.muted, fontVariant: ['tabular-nums'] },
-  rcBadge: { backgroundColor: '#DDF5EA', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
-  rcBadgeText: { fontFamily: font.sb, fontSize: 11.5, color: h.live },
   sub: { fontFamily: font.sb, fontSize: 12.5 },
   fareBlock: { minWidth: 56, alignItems: 'flex-end' },
   old: { fontFamily: font.r, fontSize: 12, color: h.faint, textDecorationLine: 'line-through', fontVariant: ['tabular-nums'], marginBottom: 1 },

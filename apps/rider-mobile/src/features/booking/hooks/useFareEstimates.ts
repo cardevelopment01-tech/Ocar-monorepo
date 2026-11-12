@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FareEstimate, VehicleCategory } from '@ocar/mobile-shared'
 import { fetchFareEstimate, fetchReturnCabAvailable, fetchVehicleCategories, type RideType } from '../api'
+import { etaMinFromKm } from '../eta'
 import { getApiErrorMessage } from '@ocar/mobile-shared'
 
 export type FareEstimatesState = {
@@ -15,6 +16,8 @@ export type FareEstimatesState = {
   // populated for an immediate (unscheduled) one_way booking.
   returnCabCategories: Set<number>
   returnCabEstimates: Record<number, FareEstimate>
+  /** Minutes until the nearest return-cab driver could reach the pickup, per category (absent when the server did not say). */
+  returnCabEta: Record<number, number>
 }
 
 export type ReturnCabPoint = { lat: number; lng: number }
@@ -43,6 +46,7 @@ export function useFareEstimates(
   const [error, setError] = useState<string | null>(null)
   const [returnCabCategories, setReturnCabCategories] = useState<Set<number>>(new Set())
   const [returnCabEstimates, setReturnCabEstimates] = useState<Record<number, FareEstimate>>({})
+  const [returnCabEta, setReturnCabEta] = useState<Record<number, number>>({})
   const generationRef = useRef(0)
 
   const load = useCallback(() => {
@@ -87,6 +91,7 @@ export function useFareEstimates(
         if (rideType === 'one_way' && !scheduledFor && pickup && drop) {
           const rcAvailable = new Set<number>()
           const rcResults: Record<number, FareEstimate> = {}
+          const rcEta: Record<number, number> = {}
           await Promise.allSettled(
             cats.map(async (cat) => {
               const rc = await fetchReturnCabAvailable({
@@ -96,6 +101,7 @@ export function useFareEstimates(
               })
               if (rc.count > 0) {
                 rcAvailable.add(cat.id)
+                if (rc.nearestM !== null) rcEta[cat.id] = etaMinFromKm(rc.nearestM / 1000)
                 rcResults[cat.id] = await fetchFareEstimate({
                   categoryId: cat.id, rideType: 'one_way', distanceKm, durationMin, isReturnCab: true,
                   ...(originCityId !== null ? { cityId: originCityId } : {}),
@@ -106,9 +112,11 @@ export function useFareEstimates(
           if (generation !== generationRef.current) return
           setReturnCabCategories(rcAvailable)
           setReturnCabEstimates(rcResults)
+          setReturnCabEta(rcEta)
         } else {
           setReturnCabCategories(new Set())
           setReturnCabEstimates({})
+          setReturnCabEta({})
         }
       })
       .catch((err) => {
@@ -122,5 +130,5 @@ export function useFareEstimates(
     load()
   }, [load])
 
-  return { categories, estimates, loading, error, retry: load, returnCabCategories, returnCabEstimates }
+  return { categories, estimates, loading, error, retry: load, returnCabCategories, returnCabEstimates, returnCabEta }
 }

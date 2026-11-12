@@ -1,12 +1,15 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { Button, ErrorState, font, h, shadow, spacing } from '@ocar/mobile-shared'
 import { Chip, IconButton } from '@/components/ui'
 import { CategoryCard, type CategoryEta } from '@/features/booking/components/CategoryCard'
+import { ReturnCabCard, RETURN_GREEN_INK } from '@/features/booking/components/ReturnCabCard'
+import { ReturnCabWhySheet } from '@/features/booking/components/ReturnCabWhySheet'
+import { etaMinFromKm } from '@/features/booking/eta'
 import { SelectRideMap } from '@/features/booking/components/SelectRideMap'
 import { useFareEstimates } from '@/features/booking/hooks/useFareEstimates'
 import { useBookingDraftStore } from '@/features/booking/store'
@@ -69,10 +72,15 @@ export default function BookingFareScreen() {
 
   const {
     categories, estimates, loading, error, retry,
-    returnCabCategories, returnCabEstimates,
+    returnCabCategories, returnCabEstimates, returnCabEta,
   } = useFareEstimates(distanceKm, durationMin, originCityId, rideType, tripHours, pickup, drop, scheduledFor)
 
   const [isReturnCab, setIsReturnCab] = useState(false)
+  const [whyOpen, setWhyOpen] = useState(false)
+  // The return cab is preselected at most once, and never after the rider has made a choice of their own.
+  // ("Choose a standard car" on the no-return-cab screen arrives with ?standard=1: no preselection at all then.)
+  const { standard: preferStandard } = useLocalSearchParams<{ standard?: string }>()
+  const autoPicked = useRef(preferStandard === '1')
   const [booking, setBooking] = useState(false)
   const [bookError, setBookError] = useState<string | null>(null)
   const bookInFlightRef = useRef(false)
@@ -105,7 +113,7 @@ export default function BookingFareScreen() {
       const inCat = nearbyDrivers.filter((d) => d.categoryId === cat.id)
       if (inCat.length === 0) { result[cat.id] = { count: 0, etaMin: -1 }; continue }
       const nearest = Math.min(...inCat.map((d) => haversineKm(pickup.lat, pickup.lng, d.lat, d.lng)))
-      result[cat.id] = { count: inCat.length, etaMin: Math.max(1, Math.round(nearest / 0.5)) }
+      result[cat.id] = { count: inCat.length, etaMin: etaMinFromKm(nearest) }
     }
     return result
   }, [nearbyDrivers, visibleCategories, pickup])
@@ -147,10 +155,34 @@ export default function BookingFareScreen() {
   // Nearby cars only matter for a ride NOW. A ride booked for later is dispatched shortly before its time, so an empty
   // street at this moment must not stop the rider from booking it.
   const liveCheck = driversPolled && !scheduledFor
-  const allUnavailable = liveCheck && visibleCategories.length > 0 && visibleCategories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
-  const selectedNoCars = liveCheck && effectiveSelected != null && (driverEta[effectiveSelected]?.count ?? 0) === 0
+  // A return cab is a car too: while one is on offer the street is not "empty" (and Book must not say so).
+  const allUnavailable = liveCheck && visibleCategories.length > 0 && returnCabCategories.size === 0 && visibleCategories.every((c) => (driverEta[c.id]?.count ?? 0) === 0)
+  // Standard cars nearby do not matter for a return cab: its own drivers are checked by the server.
+  const selectedNoCars = liveCheck && !isReturnCab && effectiveSelected != null && (driverEta[effectiveSelected]?.count ?? 0) === 0
   const selectedName = visibleCategories.find((c) => c.id === effectiveSelected)?.displayName
   const canBook = effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars && !offers.bookLocked
+
+  // Return-cab deals: the car with the biggest saving, and whether it is worth preselecting. The wait decides: the return cab is
+  // only a default when it is not much slower than a standard car (or no standard car is near), and its wait is always shown on the card.
+  const returnCats = useMemo(
+    () => visibleCategories
+      .filter((c) => returnCabCategories.has(c.id))
+      .map((c) => ({ cat: c, save: (estimates[c.id]?.breakdown.total ?? 0) - (returnCabEstimates[c.id]?.breakdown.total ?? 0) }))
+      .sort((a, b) => b.save - a.save),
+    [visibleCategories, returnCabCategories, estimates, returnCabEstimates],
+  )
+  useEffect(() => {
+    if (autoPicked.current || scheduledFor || !driversPolled || returnCats.length === 0) return
+    // The car already chosen (e.g. carried over from a ride that found no return driver) wins, else the one that saves the most.
+    const best = returnCats.find((r) => r.cat.id === selectedCategoryId) ?? returnCats[0]!
+    const fare = returnCabEstimates[best.cat.id]?.breakdown.total
+    if (fare === undefined || estimates[best.cat.id] === undefined) return
+    autoPicked.current = true
+    const returnEta = returnCabEta[best.cat.id]
+    const std = driverEta[best.cat.id]
+    const worthIt = best.save > 0 && returnEta !== undefined && (!std || std.count === 0 || returnEta <= std.etaMin + 5)
+    if (worthIt) { setSelectedCategoryId(best.cat.id); setIsReturnCab(true) }
+  }, [returnCats, returnCabEstimates, returnCabEta, estimates, driverEta, driversPolled, scheduledFor, selectedCategoryId, setSelectedCategoryId])
 
   // Available categories first, unavailable ones pushed to the bottom rather
   // than left interleaved -- categories list order otherwise comes straight
@@ -162,6 +194,11 @@ export default function BookingFareScreen() {
         return aNo - bNo
       })
     : visibleCategories
+
+  // The standard fare for the selected car, only when a return cab is picked and really is cheaper: it is struck beside the Book price.
+  const standardForSelected = effectiveSelected != null ? estimates[effectiveSelected]?.breakdown.total ?? null : null
+  const returnStrike = isReturnCab && payable != null && standardForSelected != null && Math.round(standardForSelected) > Math.round(payable) ? standardForSelected : null
+  const returnNote = 'Pay after your trip. No charge if no driver takes it.'
 
   async function handleBook() {
     if (!pickup || !drop || effectiveSelected == null || bookInFlightRef.current) return
@@ -317,30 +354,31 @@ export default function BookingFareScreen() {
               ListHeaderComponent={
                 rideType === 'one_way' && !scheduledFor && returnCabCategories.size > 0 ? (
                   <View style={styles.returnCabSection}>
-                    <Text style={styles.returnCabLabel}>Return Cab Available</Text>
-                    {visibleCategories
-                      .filter((cat) => returnCabCategories.has(cat.id))
-                      .map((cat) => {
-                        const rcFare = returnCabEstimates[cat.id]?.breakdown.total
-                        const stdFare = estimates[cat.id]?.breakdown.total
-                        const isSel = isReturnCab && effectiveSelected === cat.id
-                        return (
-                          <CategoryCard
-                            key={`rc-${cat.id}`}
-                            category={cat}
-                            fareTotal={rcFare ?? null}
-                            loading={loading && rcFare == null}
-                            selected={isSel}
-                            onPress={() => { setSelectedCategoryId(cat.id); setIsReturnCab(true) }}
-                            variant="returnCab"
-                            savingsText={
-                              rcFare != null && stdFare != null && Math.round(stdFare) > Math.round(rcFare)
-                                ? `Save ₹${Math.round(stdFare - rcFare)} vs standard`
-                                : 'Discounted return rate'
-                            }
-                          />
-                        )
-                      })}
+                    <View style={styles.returnCabHead}>
+                      <View style={styles.returnCabTitle}>
+                        <Feather name="repeat" size={15} color={RETURN_GREEN_INK} />
+                        <Text style={styles.returnCabLabel}>Return cab deals</Text>
+                      </View>
+                      <Pressable onPress={() => setWhyOpen(true)} accessibilityRole="button" accessibilityLabel="Why is a return cab cheaper?" style={({ pressed }) => [styles.whyLink, pressed ? styles.whyPressed : null]}>
+                        <Text style={styles.whyText}>Why cheaper?</Text>
+                      </Pressable>
+                    </View>
+                    <Text style={styles.returnCabCaption}>A driver is heading your way. You ride along on their trip home.</Text>
+                    {returnCats.map(({ cat }) => {
+                      const rcFare = returnCabEstimates[cat.id]?.breakdown.total
+                      return (
+                        <ReturnCabCard
+                          key={`rc-${cat.id}`}
+                          category={cat}
+                          fare={rcFare ?? null}
+                          standardFare={estimates[cat.id]?.breakdown.total ?? null}
+                          etaMin={returnCabEta[cat.id] ?? null}
+                          loading={loading && rcFare == null}
+                          selected={isReturnCab && effectiveSelected === cat.id}
+                          onPress={() => { autoPicked.current = true; setSelectedCategoryId(cat.id); setIsReturnCab(true) }}
+                        />
+                      )
+                    })}
                     <View style={styles.returnCabDivider} />
                   </View>
                 ) : null
@@ -352,7 +390,7 @@ export default function BookingFareScreen() {
                     category={item}
                     loading={loading && estimates[item.id] === undefined}
                     selected={!isReturnCab && effectiveSelected === item.id}
-                    onPress={() => { setSelectedCategoryId(item.id); setIsReturnCab(false) }}
+                    onPress={() => { autoPicked.current = true; setSelectedCategoryId(item.id); setIsReturnCab(false) }}
                     eta={driverEta[item.id] ?? null}
                     disabled={noCars}
                     {...(hasOffer && !isReturnCab && effectiveSelected === item.id && offers.preview && payable != null
@@ -405,14 +443,29 @@ export default function BookingFareScreen() {
                 allUnavailable
                   ? 'No drivers available'
                   : payable != null
-                  ? `Book ${selectedName ?? ''}${selectedName ? ' · ' : '· '}${formatRupees(payable)}`
+                  ? isReturnCab
+                    ? `Book return cab · ${formatRupees(payable)}`
+                    : `Book ${selectedName ?? ''}${selectedName ? ' · ' : '· '}${formatRupees(payable)}`
                   : 'Book'
               }
+              {...(returnStrike != null ? { strikeLabel: formatRupees(returnStrike) } : {})}
               onPress={() => void handleBook()}
               disabled={!canBook}
               keepLookWhenDisabled={offers.bookLocked && effectiveSelected != null && selectedFare != null && !booking && !selectedNoCars}
               loading={booking}
               accessibilityLabel={hasOffer && payable != null && selectedFare != null ? `Book this ride, ${savingsLabel(selectedFare, payable)}` : 'Book this ride'}
+            />
+            {isReturnCab ? <Text style={styles.returnNote} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{returnNote}</Text> : null}
+            <ReturnCabWhySheet
+              visible={whyOpen}
+              onClose={() => setWhyOpen(false)}
+              fare={returnCats[0] ? returnCabEstimates[(returnCabCategories.has(effectiveSelected ?? -1) ? effectiveSelected : returnCats[0].cat.id) as number]?.breakdown.total ?? null : null}
+              standardFare={returnCats[0] ? estimates[(returnCabCategories.has(effectiveSelected ?? -1) ? effectiveSelected : returnCats[0].cat.id) as number]?.breakdown.total ?? null : null}
+              onChoose={() => {
+                const id = returnCabCategories.has(effectiveSelected ?? -1) ? effectiveSelected : returnCats[0]?.cat.id
+                if (id != null) { autoPicked.current = true; setSelectedCategoryId(id); setIsReturnCab(true) }
+                setWhyOpen(false)
+              }}
             />
             <OfferSheet
               visible={offerSheetOpen}
@@ -458,7 +511,14 @@ const styles = StyleSheet.create({
   listFlex: { flex: 1 },
   list: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12 },
   returnCabSection: { marginBottom: 4 },
-  returnCabLabel: { fontFamily: font.sb, fontSize: 14, color: h.live, marginHorizontal: 2, marginBottom: 10 },
+  returnCabHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 2 },
+  returnCabTitle: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  returnCabLabel: { fontFamily: font.b, fontSize: 14, color: RETURN_GREEN_INK },
+  returnCabCaption: { fontFamily: font.m, fontSize: 12.5, color: h.muted, marginHorizontal: 2, marginTop: -4, marginBottom: 10 },
+  whyLink: { minHeight: 44, justifyContent: 'center', paddingLeft: 12 },
+  whyPressed: { opacity: 0.6 },
+  whyText: { fontFamily: font.b, fontSize: 12.5, color: h.tealText },
+  returnNote: { fontFamily: font.m, fontSize: 12.5, lineHeight: 17, color: h.muted, textAlign: 'center', marginTop: 9, marginHorizontal: 8 },
   returnCabDivider: { height: 1, backgroundColor: h.line07, marginTop: 2, marginBottom: 14 },
   divider: { height: 0 },
   skeletonCard: { height: 92, borderRadius: 20, backgroundColor: h.chip, marginBottom: 12 },

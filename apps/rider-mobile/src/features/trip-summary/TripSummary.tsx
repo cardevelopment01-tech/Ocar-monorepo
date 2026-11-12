@@ -14,6 +14,7 @@ import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { fetchRouteLeg } from '@/features/ride-tracking/api'
 import type { RideDetailExtra } from '@/features/ride-tracking/types'
 import { RatingSection } from './RatingSection'
+import { useReturnCabSaving } from './ReturnCabPanels'
 import {
   buildInvoiceRows, buildTimeline, formatMoney, formatTripWhen, paymentState, tripTitle,
 } from './tripSummaryModel'
@@ -60,6 +61,8 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
   const pay = completed ? paymentState(ride) : null
   const cashDue = pay?.kind === 'cash_due'
   const [breakdownOpen, setBreakdownOpen] = useState(false)
+  // A return cab: one more line in the usual ticket saying what it saved (nothing unless the standard fare really is higher).
+  const returnSaving = useReturnCabSaving(ride, completed && ride.isReturnCab === true && ride.rideType === 'one_way')
 
   useEffect(() => {
     if (!cashDue) return
@@ -166,6 +169,12 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
               {pay && pay.kind === 'paid' ? <Chip label={pay.text} tone="teal" icon="check" /> : null}
               {pay && pay.kind === 'cash_due' ? <Chip label="Cash due" tone="gold" icon="clock" /> : null}
             </View>
+            {returnSaving > 0 ? (
+              <View style={styles.saveStrip} accessible accessibilityLabel={`You saved about ${returnSaving} rupees with a return cab`}>
+                <Feather name="check-circle" size={18} color="#0E7A52" />
+                <Text style={styles.saveText}>You saved about {formatMoney(returnSaving)} with a return cab</Text>
+              </View>
+            ) : null}
             {pay && pay.kind === 'cash_due' ? (
               <View style={styles.dueStrip} accessibilityRole="alert">
                 <Feather name="alert-circle" size={18} color={h.goldInk} />
@@ -350,6 +359,8 @@ const styles = StyleSheet.create({
   pillOk: { backgroundColor: '#DDF5EA' },
   pillBad: { backgroundColor: h.dangerWash },
   pillText: { fontFamily: font.b, fontSize: 12 },
+  saveStrip: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#DDF5EA', borderRadius: 16, padding: 14, marginHorizontal: 20, marginTop: 14 },
+  saveText: { fontFamily: font.b, fontSize: 14, color: '#0E7A52', flex: 1, fontVariant: ['tabular-nums'] },
   dueStrip: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: h.goldWash, borderRadius: 16, padding: 14, marginHorizontal: 20, marginTop: 14 },
   dueText: { fontFamily: font.b, fontSize: 14, color: h.ivory, flex: 1 },
 
