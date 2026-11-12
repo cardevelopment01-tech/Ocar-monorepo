@@ -8,6 +8,7 @@ vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: 
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 vi.mock('@/db/redis', () => ({ getJSON: vi.fn(), setWithTTL: vi.fn().mockResolvedValue(undefined), client: {} }))
 vi.mock('@/modules/geo/geo.repository', () => ({}))
+vi.mock('@/lib/system-config', () => ({ getConfigValue: vi.fn() })) // geo.service reads city_rides_enabled; this test is about Google counting only
 
 import { register } from '@/observability/registry'
 import { googleFetch } from '@/modules/geo/providers/google-fetch'

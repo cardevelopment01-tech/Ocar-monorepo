@@ -91,7 +91,7 @@ describe('getFareEstimate: everything else still needs its rate card', () => {
       id: 9, rate_per_km: '9.00', rate_per_min: '1.00', min_fare: '100.00', stop_charge: '0',
     } as never)
     const res = await getFareEstimate({ category_id: 2, ride_type: 'rental', distance_km: 10, duration_min: 20 })
-    expect(repo.getCurrentRateCard).toHaveBeenCalledWith(2, 'rental', null)
+    expect(repo.getCurrentRateCard).toHaveBeenCalledWith(2, 'rental', null, 'standard')
     expect(res.rate_card_id).toBe(9)
   })
 })
