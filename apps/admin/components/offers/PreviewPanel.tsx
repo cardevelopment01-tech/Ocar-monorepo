@@ -15,7 +15,7 @@ export default function PreviewPanel({ draft, lookups }: { draft: Draft; lookups
   const [fare, setFare] = useState('454')
   const [channel, setChannel] = useState<'cash' | 'online' | 'wallet'>('online')
   const [rides, setRides] = useState('0')
-  const [rideType, setRideType] = useState<'one_way' | 'round_trip' | 'rental'>('one_way')
+  const [rideType, setRideType] = useState<'one_way' | 'round_trip' | 'rental' | 'city'>('one_way')
   const [category, setCategory] = useState('')
   const [fromCity, setFromCity] = useState('')
   const [toCity, setToCity] = useState('')
@@ -77,7 +77,7 @@ export default function PreviewPanel({ draft, lookups }: { draft: Draft; lookups
           <div>
             <label htmlFor="pv-type" className="block text-xs font-semibold text-text-muted mb-1.5">Ride type</label>
             <select id="pv-type" className={inputCls} value={rideType} onChange={(e) => setRideType(e.target.value as typeof rideType)}>
-              <option value="one_way">One way</option><option value="round_trip">Round trip</option><option value="rental">Rental</option>
+              <option value="one_way">One way</option><option value="round_trip">Round trip</option><option value="rental">Rental</option><option value="city">City ride</option>
             </select>
           </div>
           <div>

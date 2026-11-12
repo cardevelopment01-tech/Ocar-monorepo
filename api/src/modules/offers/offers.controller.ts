@@ -8,9 +8,11 @@ import { describeOffer } from './engine'
 import { findNearestCity } from '@/modules/geo/geo.service'
 import { offersPreviewRejectionsTotal } from '@/observability/offers-metrics'
 
-const previewSchema = z.object({
+export const previewSchema = z.object({
   category_id: z.number().int().positive(),
   ride_type: z.enum(['one_way', 'round_trip', 'rental']),
+  // 'city' = a metered in-city ride: it is matched on the City ride offers, and quoted on the city card.
+  trip_mode: z.enum(['standard', 'city']).optional(),
   is_return_cab: z.boolean().optional(),
   distance_km: z.number().nonnegative(),
   duration_min: z.number().nonnegative(),
