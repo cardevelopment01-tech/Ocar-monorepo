@@ -20,6 +20,8 @@ export type RideDetailExtra = RideDetail & {
   estimatedMin?: number | null
   originCityId?: number | string | null
   isReturnCab?: boolean
+  // Who ended a cancelled ride (the API reads it from ride_cancellations). Absent on older servers and on rides that were never cancelled.
+  cancellationActor?: 'user' | 'driver' | 'admin' | 'system' | null
 }
 
 export const SEARCHING_STATUSES = new Set(['requested', 'scheduled'])

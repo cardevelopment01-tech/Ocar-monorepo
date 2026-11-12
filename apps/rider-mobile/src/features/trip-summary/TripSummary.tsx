@@ -15,6 +15,7 @@ import { fetchRouteLeg } from '@/features/ride-tracking/api'
 import type { RideDetailExtra } from '@/features/ride-tracking/types'
 import { RatingSection } from './RatingSection'
 import { useReturnCabSaving } from './ReturnCabPanels'
+import { endedHeadline } from './endedHeadline'
 import {
   buildInvoiceRows, buildTimeline, formatMoney, formatTripWhen, paymentState, tripTitle,
 } from './tripSummaryModel'
@@ -133,7 +134,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
           </Animated.View>
           <View style={styles.flex}>
             <Text style={styles.arriveTitle} accessibilityRole="header" numberOfLines={2}>
-              {completed ? 'You have arrived' : ride.status === 'no_drivers' ? 'No drivers found' : 'Ride cancelled'}
+              {completed ? 'You have arrived' : endedHeadline(ride)}
             </Text>
             <Text style={styles.sub} numberOfLines={1}>{[tripTitle(ride), facts.find((f) => f.key === 'distance')?.value, facts.find((f) => f.key === 'time')?.value].filter(Boolean).join(' · ')}</Text>
             {when ? <Text style={styles.sub} numberOfLines={1}>{when}</Text> : null}
