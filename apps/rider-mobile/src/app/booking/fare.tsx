@@ -379,7 +379,6 @@ export default function BookingFareScreen() {
                         />
                       )
                     })}
-                    <View style={styles.returnCabDivider} />
                   </View>
                 ) : null
               }
@@ -510,7 +509,7 @@ const styles = StyleSheet.create({
   subtitle: { fontFamily: font.m, fontSize: 12.5, color: h.muted, fontVariant: ['tabular-nums'] },
   listFlex: { flex: 1 },
   list: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12 },
-  returnCabSection: { marginBottom: 4 },
+  returnCabSection: { marginBottom: 0 },
   returnCabHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 2 },
   returnCabTitle: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   returnCabLabel: { fontFamily: font.b, fontSize: 14, color: RETURN_GREEN_INK },
@@ -519,7 +518,6 @@ const styles = StyleSheet.create({
   whyPressed: { opacity: 0.6 },
   whyText: { fontFamily: font.b, fontSize: 12.5, color: h.tealText },
   returnNote: { fontFamily: font.m, fontSize: 12.5, lineHeight: 17, color: h.muted, textAlign: 'center', marginTop: 9, marginHorizontal: 8 },
-  returnCabDivider: { height: 1, backgroundColor: h.line07, marginTop: 2, marginBottom: 14 },
   divider: { height: 0 },
   skeletonCard: { height: 92, borderRadius: 20, backgroundColor: h.chip, marginBottom: 12 },
   sheetFooter: { paddingHorizontal: 18, paddingTop: 12, borderTopWidth: 1, borderTopColor: h.line06 },

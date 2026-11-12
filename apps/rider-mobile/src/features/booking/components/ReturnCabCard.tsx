@@ -58,7 +58,7 @@ function ReturnCabCardBase({ category, fare, standardFare, etaMin, loading, sele
         </View>
         <View style={s.info}>
           <View style={s.nameRow}>
-            <Text style={s.name} numberOfLines={1}>{category.displayName}</Text>
+            <Text style={s.name}>{category.displayName}</Text>
             <View style={s.pill}><Text style={s.pillText} numberOfLines={1}>Return cab</Text></View>
           </View>
           <Text style={s.sub} numberOfLines={1}>{sub}</Text>
@@ -81,7 +81,7 @@ function ReturnCabCardBase({ category, fare, standardFare, etaMin, loading, sele
 }
 
 const s = StyleSheet.create({
-  card: { backgroundColor: h.surface, borderWidth: 1.5, borderColor: h.line08, borderRadius: 20, marginBottom: 10, overflow: 'hidden', boxShadow: '0 2px 8px rgba(20,23,26,0.05)' },
+  card: { backgroundColor: h.surface, borderWidth: 1.5, borderColor: h.line08, borderRadius: 20, marginBottom: 12, overflow: 'hidden', boxShadow: '0 2px 8px rgba(20,23,26,0.05)' },
   cardOn: { backgroundColor: '#F3FAFB', borderColor: h.tealCta, boxShadow: '0 0 0 4px rgba(14,143,163,0.12), 0 2px 8px rgba(20,23,26,0.06)' },
   pressed: { transform: [{ scale: 0.985 }] },
   strip: { height: 30, paddingHorizontal: 14, backgroundColor: '#EEF8F3', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -89,18 +89,18 @@ const s = StyleSheet.create({
   stripLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
   stripText: { fontFamily: font.xb, fontSize: 12.5, color: GREEN_INK, fontVariant: ['tabular-nums'] },
   stripPct: { fontFamily: font.b, fontSize: 12, color: GREEN_INK, fontVariant: ['tabular-nums'] },
-  body: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingLeft: 8, paddingRight: 16, minHeight: 74 },
-  imgBox: { width: 88, height: 56, alignItems: 'center', justifyContent: 'center' },
-  img: { width: 88, height: 56 },
+  body: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingLeft: 10, paddingRight: 16 },
+  imgBox: { width: 96, height: 60, alignItems: 'center', justifyContent: 'center' },
+  img: { width: 96, height: 60 },
   info: { flex: 1, minWidth: 0 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
-  name: { fontFamily: font.xb, fontSize: 16, color: h.ivory, flexShrink: 1 },
+  nameRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 6, rowGap: 3, marginBottom: 4 },
+  name: { fontFamily: font.b, fontSize: 16, color: h.ivory },
   pill: { backgroundColor: '#DDF5EA', borderRadius: 10, paddingHorizontal: 8, height: 20, justifyContent: 'center' },
   pillText: { fontFamily: font.b, fontSize: 11.5, color: GREEN_INK },
   sub: { fontFamily: font.sb, fontSize: 12.5, color: h.tealText },
   fareBlock: { minWidth: 56, alignItems: 'flex-end' },
   old: { fontFamily: font.sb, fontSize: 12.5, color: h.faint, textDecorationLine: 'line-through', fontVariant: ['tabular-nums'], marginBottom: 1 },
-  fare: { fontFamily: font.xb, fontSize: 20, letterSpacing: -0.4, color: h.ivory, fontVariant: ['tabular-nums'] },
+  fare: { fontFamily: font.xb, fontSize: 17, letterSpacing: -0.2, color: h.ivory, fontVariant: ['tabular-nums'] },
   fareNone: { fontFamily: font.m, fontSize: 15, color: h.faint },
 })
 
