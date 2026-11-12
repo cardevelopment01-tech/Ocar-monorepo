@@ -4,6 +4,8 @@ export interface RateCard {
   category_name: string
   category_slug: string
   ride_type: 'one_way' | 'round_trip' | 'rental'
+  /** 'city' = the metered in-city card (ride_type stays one_way); 'standard' = every other card. */
+  trip_mode: 'standard' | 'city'
   rate_per_km: number
   rate_per_min: number
   min_fare: number
