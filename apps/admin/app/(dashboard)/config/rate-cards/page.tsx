@@ -9,12 +9,12 @@ import { SkeletonRows, inputCls, labelCls } from './shared'
 import RentalPackagesTab from './RentalPackagesTab'
 import SuccessToast from '@/components/ui/SuccessToast'
 import SlideOver from '@/components/ui/SlideOver'
+import { cardMode, MODE_LABEL, MODE_ORDER, isRentalCard, modeToCardFields, sameCard } from '@/lib/rate-card-mode'
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
 
-const RIDE_TYPE_LABEL: Record<string, string> = {
-  one_way: 'One Way', round_trip: 'Round Trip', rental: 'Rental',
-}
+// A card's "mode" is its ride type, except a one-way card with trip mode city, which is the City Ride card (see lib/rate-card-mode).
+const RIDE_TYPE_LABEL = MODE_LABEL
 
 const SURGE_STATUS_CLS: Record<string, string> = {
   scheduled: 'pill-info', active: 'pill-warning',
@@ -22,7 +22,7 @@ const SURGE_STATUS_CLS: Record<string, string> = {
 }
 
 const CATEGORY_ORDER_ITEMS = ['hatchback', 'sedan', 'suv', 'luxury', 'van', 'auto_rickshaw']
-const RIDE_TYPE_ORDER = ['one_way', 'round_trip', 'rental']
+const RIDE_TYPE_ORDER = MODE_ORDER
 
 function fmt(v: string | null): string {
   return v ? `₹${parseFloat(v).toFixed(2)}` : '—'
@@ -53,7 +53,7 @@ function buildEffectiveRows(cards: RateCard[], selectedCityId: number | null): R
     const rows = bySlug[slug] ?? []
     const globalRows = rows
       .filter(c => c.city_id === null)
-      .sort((a, b) => RIDE_TYPE_ORDER.indexOf(a.ride_type) - RIDE_TYPE_ORDER.indexOf(b.ride_type))
+      .sort((a, b) => RIDE_TYPE_ORDER.indexOf(cardMode(a)) - RIDE_TYPE_ORDER.indexOf(cardMode(b)))
     if (!globalRows.length) continue
 
     if (selectedCityId === null) {
@@ -61,7 +61,7 @@ function buildEffectiveRows(cards: RateCard[], selectedCityId: number | null): R
     } else {
       const cityRows = rows.filter(c => c.city_id === selectedCityId)
       result[slug] = globalRows.map(globalCard => {
-        const override = cityRows.find(c => c.ride_type === globalCard.ride_type)
+        const override = cityRows.find(c => cardMode(c) === cardMode(globalCard))
         return override
           ? { card: override, globalCard, isOverride: true, isInherited: false }
           : { card: globalCard, globalCard, isOverride: false, isInherited: true }
@@ -114,7 +114,7 @@ function UpdateRateDialog({
     setLoading(true); setError('')
     try {
       await pricingApi.createRateCard({
-        category_id: card.category_id, ride_type: card.ride_type,
+        category_id: card.category_id, ride_type: card.ride_type, trip_mode: card.trip_mode,
         city_id: form.city_id ? parseInt(form.city_id, 10) : null,
         rate_per_km: parseFloat(form.rate_per_km), rate_per_min: parseFloat(form.rate_per_min),
         min_fare: parseFloat(form.min_fare),
@@ -169,7 +169,7 @@ function UpdateRateDialog({
               >
           <Dialog.Title className="text-lg font-bold text-text-primary mb-1">
             {defaultCityId !== undefined && defaultCityId !== null ? 'Override ' : 'Update '}
-            {card.category_name} · {RIDE_TYPE_LABEL[card.ride_type]}
+            {card.category_name} · {RIDE_TYPE_LABEL[cardMode(card)]}
           </Dialog.Title>
           <Dialog.Description className="text-xs text-warning bg-warning-light border border-warning/20 rounded-xl px-3 py-2 mb-5">
             {cityChanged
@@ -227,7 +227,7 @@ function UpdateRateDialog({
                 placeholder="0" />
               <p className="text-xs text-text-muted mt-1">was {fmt(card.stop_charge)}. 0 = stops are free. Added to the fare for each stop on this ride type; stops already added are not repriced.</p>
             </div>
-            {card.ride_type === 'one_way' && (
+            {cardMode(card) === 'one_way' && (
               <div>
                 <label className={labelCls}>Return Cab Rate /km (₹)</label>
                 <input type="number" step="0.01" value={form.return_rate_per_km}
@@ -423,7 +423,7 @@ function CreateSurgeDialog({
 // ── Inline ride-type badge ─────────────────────────────────────────────────────
 
 function StatusPillRideType({ type }: { type: string }) {
-  const cls = type === 'one_way' ? 'pill-info' : type === 'round_trip' ? 'pill-purple' : 'pill-muted'
+  const cls = type === 'one_way' ? 'pill-info' : type === 'round_trip' ? 'pill-purple' : type === 'city' ? 'pill-success' : 'pill-muted'
   return <span className={cls}>{RIDE_TYPE_LABEL[type] ?? type}</span>
 }
 
@@ -499,7 +499,7 @@ function HistoryDrawerBody({ rows }: { rows: RateCardHistoryRow[] }) {
             <span className="font-mono font-bold text-primary">{fmt(h.rate_per_km)}</span>
           </div>
           <div className="flex items-center gap-2 text-[11px] text-text-muted mt-0.5">
-            <span>{h.category_name} · {RIDE_TYPE_LABEL[h.ride_type] ?? h.ride_type} · {h.city_name ?? 'Global'}</span>
+            <span>{h.category_name} · {RIDE_TYPE_LABEL[cardMode(h)] ?? h.ride_type} · {h.city_name ?? 'Global'}</span>
           </div>
         </div>
       ))}
@@ -539,7 +539,7 @@ export default function RateCardsPage() {
       const [c, s, ci, h] = await Promise.all([
         pricingApi.getRateCards(), pricingApi.getSurgeEvents(), cityApi.list(), pricingApi.getRateCardHistory(),
       ])
-      setCards(c); setSurges(s); setCities(ci); setHistory(h)
+      setCards(c.filter(x => !isRentalCard(x))); setSurges(s); setCities(ci); setHistory(h)
     } catch { setError('Failed to load pricing data.') }
     finally { setLoading(false) }
   }, [])
@@ -556,10 +556,10 @@ export default function RateCardsPage() {
   }
 
   function openRowHistory(card: RateCard) {
-    const rows = history.filter(h => h.category_name === card.category_name && h.ride_type === card.ride_type && h.city_id === card.city_id)
+    const rows = history.filter(h => sameCard(h, card))
     setDrawer({
       open: true,
-      title: `${card.category_name} · ${RIDE_TYPE_LABEL[card.ride_type]}`,
+      title: `${card.category_name} · ${RIDE_TYPE_LABEL[cardMode(card)]}`,
       subtitle: `${card.city_name ?? 'Global default'} · rate history, newest first`,
       rows,
     })
@@ -715,11 +715,11 @@ export default function RateCardsPage() {
                             <tbody>
                               {rows.map(({ card, globalCard, isOverride, isInherited }) => {
                                 const diff = isOverride ? diffRateVsGlobal(card, globalCard) : null
-                                const rowHistoryCount = history.filter(h => h.category_name === card.category_name && h.ride_type === card.ride_type && h.city_id === card.city_id).length
+                                const rowHistoryCount = history.filter(h => sameCard(h, card)).length
                                 return (
-                                  <tr key={`${card.category_id}-${card.ride_type}-${card.city_id ?? 'g'}`} className={`cursor-default ${isInherited ? 'opacity-60' : ''}`}>
+                                  <tr key={`${card.category_id}-${cardMode(card)}-${card.city_id ?? 'g'}`} className={`cursor-default ${isInherited ? 'opacity-60' : ''}`}>
                                     <td>
-                                      <StatusPillRideType type={card.ride_type} />
+                                      <StatusPillRideType type={cardMode(card)} />
                                       <span className={`ml-2 ${isOverride ? 'pill-info' : 'pill-muted'}`}>
                                         {isOverride ? 'City override' : isInherited ? 'Inherited' : 'Global'}
                                       </span>
@@ -734,7 +734,7 @@ export default function RateCardsPage() {
                                     </td>
                                     <td className="!text-right font-mono font-semibold text-text-primary">
                                       {fmt(card.rate_per_km)}
-                                      {card.ride_type === 'one_way' && (
+                                      {cardMode(card) === 'one_way' && (
                                         <span className="block text-[11px] font-sans font-medium text-text-muted mt-0.5">Return {fmt(card.return_rate_per_km)}/km</span>
                                       )}
                                       {card.ride_type === 'round_trip' && (
@@ -892,7 +892,7 @@ function CreateRateCardDialog({
     setLoading(true); setError('')
     try {
       await pricingApi.createRateCard({
-        category_id: parseInt(form.category_id, 10), ride_type: form.ride_type,
+        category_id: parseInt(form.category_id, 10), ...modeToCardFields(form.ride_type),
         city_id: parseInt(form.city_id, 10),
         rate_per_km: parseFloat(form.rate_per_km), rate_per_min: parseFloat(form.rate_per_min),
         min_fare: parseFloat(form.min_fare),
@@ -964,7 +964,7 @@ function CreateRateCardDialog({
               <select value={form.ride_type} onChange={e => set('ride_type', e.target.value)} className={inputCls}>
                 <option value="one_way">One Way</option>
                 <option value="round_trip">Round Trip</option>
-                <option value="rental">Rental</option>
+                <option value="city">City Ride</option>
               </select>
             </div>
             <div className="grid grid-cols-3 gap-3">

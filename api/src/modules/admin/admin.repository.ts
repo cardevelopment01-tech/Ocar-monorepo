@@ -2120,7 +2120,13 @@ export async function listAdminRides(filters: {
     conditions.push(`r.status = $${p++}`);
     params.push(filters.status);
   }
-  if (filters.ride_type) {
+  if (filters.ride_type === "city") {
+    // City ride: a one-way ride booked with trip mode city.
+    conditions.push(`r.ride_type = 'one_way' AND r.trip_mode = 'city'`);
+  } else if (filters.ride_type === "one_way") {
+    // One Way is the intercity one-way, so city rides do not hide inside it.
+    conditions.push(`r.ride_type = 'one_way' AND r.trip_mode = 'standard'`);
+  } else if (filters.ride_type) {
     conditions.push(`r.ride_type = $${p++}`);
     params.push(filters.ride_type);
   }
@@ -2195,7 +2201,7 @@ export async function listAdminRides(filters: {
   // `id DESC` is the unique tie-break: without it rides with equal timestamps can repeat or vanish between pages.
   const dataRes = await pool.query(
     `${withMatches}SELECT
-       r.id::text, r.status, r.ride_type, r.is_return_cab,
+       r.id::text, r.status, r.ride_type, r.trip_mode, r.is_return_cab,
        r.origin_address, r.destination_address,
        r.requested_at, r.accepted_at, r.driver_arrived_at, r.started_at, r.completed_at,
        r.review_flagged_at, r.review_reason,

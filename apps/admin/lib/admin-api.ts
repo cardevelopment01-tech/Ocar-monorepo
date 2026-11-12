@@ -253,6 +253,8 @@ export interface AdminRideItem {
   id: string
   status: string
   ride_type: string
+  /** 'city' for a city ride (a one-way ride booked as City Ride); older APIs send none. */
+  trip_mode?: 'standard' | 'city'
   is_return_cab: boolean
   origin_address: string | null
   destination_address: string | null
