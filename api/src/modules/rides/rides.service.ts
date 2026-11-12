@@ -1850,7 +1850,18 @@ async function readCancellationFee(
   categoryId: bigint,
   rideType: string,
   cityId: bigint | null,
+  rideId: bigint,
 ): Promise<number> {
+  // A rental is charged the fee saved on its ride from its package at booking (migration 136); the rate card below is only the
+  // fallback for a rental booked before that snapshot existed.
+  if (rideType === 'rental') {
+    const snap = await client.query<{ fee: string | null }>(
+      `SELECT rental_cancellation_fee::text AS fee FROM fare_snapshots WHERE ride_id = $1`,
+      [rideId]
+    )
+    const pinned = snap.rows[0]?.fee
+    if (pinned != null) return parseFloat(pinned)
+  }
   const res = await client.query<{ cancellation_fee: string | null }>(
     `SELECT cancellation_fee FROM rate_cards
       WHERE category_id = $1 AND ride_type = $2 AND effective_to IS NULL
@@ -1880,6 +1891,7 @@ async function chargeCancellationFee(
     BigInt(ride.category_id),
     ride.ride_type,
     ride.origin_city_id != null ? BigInt(ride.origin_city_id) : null,
+    rideId,
   )
   if (feeAmount > 0) {
     await client.query(
