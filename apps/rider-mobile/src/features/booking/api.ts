@@ -121,10 +121,10 @@ export async function fetchClassifyTrip(
       { params: { originLat, originLng, destLat, destLng } },
     )
     const d = res.data
-    if (d.scope !== 'in_city') return { scope: 'outstation' }
+    if (d.scope !== 'in_city' || d.cityId == null || d.cityName == null) return { scope: 'outstation' }
     // `city_ride_available` is absent on an older server: City ride is then off, and the app behaves as it did before it existed.
     return {
-      scope: 'in_city', cityId: d.cityId as number, cityName: d.cityName as string,
+      scope: 'in_city', cityId: d.cityId, cityName: d.cityName,
       ...(d.city_ride_available === undefined ? {} : { cityRideAvailable: d.city_ride_available }),
     }
   } catch {

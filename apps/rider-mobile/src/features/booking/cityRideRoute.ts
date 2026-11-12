@@ -37,6 +37,8 @@ export function resolveInCityRoute(args: {
 
   // The City Ride tile.
   if (tripMode === 'city') {
+    // Classification failed (a flaky network): stay on City Ride rather than claim the trip leaves the city; the server judges it.
+    if (classification === null) return route('/booking/fare', 'one_way', true, 'city', null)
     if (inCity && cityOn) return route('/booking/fare', 'one_way', true, 'city', null)
     if (inCity) return route('/booking/rental', 'rental', true, 'standard', 'to_rental')
     return route('/booking/trip-type', 'one_way', false, 'standard', 'to_outstation')

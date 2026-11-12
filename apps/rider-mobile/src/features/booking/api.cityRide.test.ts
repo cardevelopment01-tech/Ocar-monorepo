@@ -29,6 +29,11 @@ describe('fetchClassifyTrip', () => {
     expect(c).toEqual({ scope: 'in_city', cityId: 1, cityName: 'Bhubaneswar' })
   })
 
+  it('an in_city answer with no city id or name is treated as outstation, so "inside null" can never reach the screen', async () => {
+    get.mockResolvedValue({ data: { scope: 'in_city', cityId: null, cityName: null } })
+    expect(await fetchClassifyTrip(1, 2, 3, 4)).toEqual({ scope: 'outstation' })
+  })
+
   it('outstation stays outstation, and a failed call is null', async () => {
     get.mockResolvedValue({ data: { scope: 'outstation', cityId: null, cityName: null, city_ride_available: false } })
     expect(await fetchClassifyTrip(1, 2, 3, 4)).toEqual({ scope: 'outstation' })

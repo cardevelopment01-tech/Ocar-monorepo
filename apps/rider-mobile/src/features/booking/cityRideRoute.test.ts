@@ -29,8 +29,14 @@ describe('City Ride tile (declared one-way with trip mode city)', () => {
     }
   })
 
-  it('a failed classification is treated as outstation, like the booking screen always did', () => {
-    expect(resolveInCityRoute({ ...args, classification: null }).path).toBe('/booking/trip-type')
+  it('a failed classification keeps the rider on City Ride (no false "outside the city" toast); the server judges the trip at quote and booking', () => {
+    expect(resolveInCityRoute({ ...args, classification: null })).toEqual({
+      path: '/booking/fare', rideType: 'one_way', rideTypeDeclared: true, tripMode: 'city', toast: null,
+    })
+  })
+
+  it('a failed classification with no declared ride type still opens the Outstation chooser, as before', () => {
+    expect(resolveInCityRoute({ rideTypeDeclared: false, rideType: 'one_way', tripMode: 'standard', classification: null }).path).toBe('/booking/trip-type')
   })
 })
 

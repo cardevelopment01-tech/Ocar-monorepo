@@ -251,6 +251,13 @@ export default function BookingPickersScreen() {
       // Where this trip goes next, by the rules in cityRideRoute.ts (Outstation, City Ride, Rental). Inside one city boundary it is a
       // city ride when the server says City ride is on, and exactly what the app did before (Rental) otherwise.
       const next = resolveInCityRoute({ rideTypeDeclared, rideType, tripMode, classification })
+      // A route that becomes a city ride (it was undeclared, or an in-city one-way) is a one-way: pickup and drop cannot be the same
+      // place. (A rental can start and end at the same place, which is why the check at the top skips undeclared trips.)
+      if (next.tripMode === 'city' && haversineMetres([pickup.lat, pickup.lng], [drop.lat, drop.lng]) < SAME_PLACE_METRES) {
+        setContinuing(false)
+        setContinueError('Pickup and drop are the same place. Choose a different drop-off.')
+        return
+      }
       const cityLabel = classification?.scope === 'in_city' ? classification.cityName : 'the city'
       const toastText = {
         to_city: `That's inside ${cityLabel}, switching to City Ride`,
