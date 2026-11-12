@@ -1381,9 +1381,9 @@ export async function patchAdminRentalPackage(
       fields.display_order = Number(display_order);
     if (city_id !== undefined)
       fields.city_id = city_id === null ? null : Number(city_id);
-    if (stop_charge !== undefined) fields.stop_charge = Number(stop_charge);
+    if (stop_charge !== undefined) fields.stop_charge = service.parseRentalFeeInput(stop_charge);
     if (cancellation_fee !== undefined)
-      fields.cancellation_fee = Number(cancellation_fee);
+      fields.cancellation_fee = service.parseRentalFeeInput(cancellation_fee);
     res.json(
       await service.updateAdminRentalPackage(
         BigInt(req.params["id"]!),
@@ -1435,9 +1435,9 @@ export async function postAdminRentalPackage(
         package_fare: Number(package_fare),
         extra_per_km: Number(extra_per_km),
         extra_per_min: Number(extra_per_min),
-        // Number(undefined) is NaN, which the service rejects: both fees are required on create.
-        stop_charge: Number(stop_charge),
-        cancellation_fee: Number(cancellation_fee),
+        // A missing, null or blank fee is NaN, which the service rejects: both fees are required on create.
+        stop_charge: service.parseRentalFeeInput(stop_charge),
+        cancellation_fee: service.parseRentalFeeInput(cancellation_fee),
         ...(display_order !== undefined
           ? { display_order: Number(display_order) }
           : {}),

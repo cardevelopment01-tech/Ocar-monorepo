@@ -47,8 +47,14 @@ export async function getFareEstimate(
       : Promise.resolve(null),
   ])
 
-  if (isPackageRental && !pkg) {
-    throw Object.assign(new Error('This rental package is not available'), { httpStatus: 422 })
+  if (isPackageRental) {
+    // With no rate card to anchor it, the package alone prices the ride: it must be for this vehicle category, and, when it is
+    // specific to a city and the request names one, for that city (a global package, no city, suits any city).
+    const wrongCategory = pkg != null && Number(pkg.category_id) !== req.category_id
+    const wrongCity = pkg != null && pkg.city_id != null && req.city_id !== undefined && Number(pkg.city_id) !== req.city_id
+    if (!pkg || wrongCategory || wrongCity) {
+      throw Object.assign(new Error('This rental package is not available'), { httpStatus: 422 })
+    }
   }
   if (!isPackageRental && !rateCard) {
     throw Object.assign(

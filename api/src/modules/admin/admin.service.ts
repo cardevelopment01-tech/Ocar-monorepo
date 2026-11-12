@@ -675,6 +675,13 @@ function rethrowIfDuplicatePackage(err: unknown): never {
 
 const MAX_RENTAL_FEE = 5000
 
+/** A fee from a request body as a number: null, undefined, blank and non-numeric are NaN (rejected), never silently 0. */
+export function parseRentalFeeInput(v: unknown): number {
+  if (typeof v === 'number') return v
+  if (typeof v === 'string' && v.trim() !== '') return Number(v)
+  return NaN
+}
+
 /** A rental fee is 0 (free, chosen on purpose) up to MAX_RENTAL_FEE rupees. `required`: undefined is also rejected. */
 function assertRentalFee(name: 'stop_charge' | 'cancellation_fee', v: number | undefined, required: boolean): void {
   if (v === undefined && !required) return

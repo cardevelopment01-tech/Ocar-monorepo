@@ -48,6 +48,35 @@ describe('getFareEstimate: a package rental needs no rate card', () => {
   })
 })
 
+describe('getFareEstimate: the package must belong to the vehicle and the city being quoted', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(repo.getCurrentRateCard).mockRejectedValue(new Error('a package rental must not read a rate card'))
+  })
+
+  it('refuses another category\'s package (a cheaper package must not price a dearer car)', async () => {
+    vi.mocked(repo.getRentalPackage).mockResolvedValue(pkg({ category_id: 3 }) as never)
+    await expect(getFareEstimate(RENTAL)).rejects.toMatchObject({ httpStatus: 422 })
+  })
+
+  it('refuses a package that is specific to another city', async () => {
+    vi.mocked(repo.getRentalPackage).mockResolvedValue(pkg({ city_id: 5 }) as never)
+    await expect(getFareEstimate({ ...RENTAL, city_id: 1 })).rejects.toMatchObject({ httpStatus: 422 })
+  })
+
+  it('accepts a global package for any city, and a city package for its own city', async () => {
+    vi.mocked(repo.getRentalPackage).mockResolvedValue(pkg({ city_id: null }) as never)
+    expect((await getFareEstimate({ ...RENTAL, city_id: 9 })).breakdown.total).toBe(500)
+    vi.mocked(repo.getRentalPackage).mockResolvedValue(pkg({ city_id: 5 }) as never)
+    expect((await getFareEstimate({ ...RENTAL, city_id: 5 })).breakdown.total).toBe(500)
+  })
+
+  it('does not check the city when the request names none (older clients quote without one)', async () => {
+    vi.mocked(repo.getRentalPackage).mockResolvedValue(pkg({ city_id: 5 }) as never)
+    expect((await getFareEstimate(RENTAL)).breakdown.total).toBe(500)
+  })
+})
+
 describe('getFareEstimate: everything else still needs its rate card', () => {
   beforeEach(() => { vi.clearAllMocks() })
 

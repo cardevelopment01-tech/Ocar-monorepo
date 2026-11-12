@@ -165,6 +165,22 @@ describe('endRideEarlyAsDriver: rental', () => {
     expect(far.finalFare).toBe(500)
   })
 
+  it('only finalises a snapshot that is still an estimate, so a retry or a lost race never rewrites a final fare', async () => {
+    await endRideEarlyAsDriver(BigInt(9), BigInt(202), 'vehicle_breakdown', 3, 10)
+    const update = vi.mocked(pool.query).mock.calls.find((c) => /UPDATE fare_snapshots/.test(String(c[0])))
+    expect(String(update![0])).toMatch(/WHERE ride_id = \$1\s+AND status = 'estimate'/)
+  })
+
+  it('reports no fare and re-derives no discount when the snapshot was already final', async () => {
+    vi.mocked(pool.query).mockImplementation((sql: unknown) => {
+      const s = sql as string
+      if (/UPDATE fare_snapshots/.test(s) && /total_final\s*=\s*total_estimated/.test(s)) return { rows: [], rowCount: 0 } as never
+      return { rows: [], rowCount: 1 } as never
+    })
+    const result = await endRideEarlyAsDriver(BigInt(9), BigInt(202), 'vehicle_breakdown', 3, 10)
+    expect(result).not.toHaveProperty('finalFare')
+  })
+
   it('records the measured km and minutes beside the unchanged fare', async () => {
     await endRideEarlyAsDriver(BigInt(9), BigInt(202), 'vehicle_breakdown', 3, 10)
     const update = vi.mocked(pool.query).mock.calls.find((c) => /UPDATE fare_snapshots/.test(String(c[0])))

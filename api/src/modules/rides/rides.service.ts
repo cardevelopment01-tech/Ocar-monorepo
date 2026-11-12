@@ -2189,6 +2189,7 @@ export async function endRideEarlyAsDriver(
        SET actual_km = $2, actual_min = $3, total_final = total_estimated,
            status = 'final', finalised_at = now()
        WHERE ride_id = $1
+         AND status = 'estimate'
        RETURNING total_final::text AS total_final`,
       [rideId, actualDistanceKm, actualDurationMin]
     )

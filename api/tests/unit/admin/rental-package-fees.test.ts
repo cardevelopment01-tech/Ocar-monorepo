@@ -7,7 +7,7 @@ vi.mock('@/modules/admin/admin.repository', () => ({
 }))
 
 import * as repo from '@/modules/admin/admin.repository'
-import { createAdminRentalPackage, updateAdminRentalPackage } from '@/modules/admin/admin.service'
+import { createAdminRentalPackage, updateAdminRentalPackage, parseRentalFeeInput } from '@/modules/admin/admin.service'
 
 const ADMIN_ID = BigInt(1)
 const BASE = { category_id: 1, duration_minutes: 240, km_limit: 40, package_fare: 500, extra_per_km: 8, extra_per_min: 1 }
@@ -16,6 +16,16 @@ const ROW = {
   package_fare: '500.00', extra_per_km: '8.00', extra_per_min: '1.00', stop_charge: '15.00', cancellation_fee: '50.00',
   is_active: true, city_id: null, updated_by: 1, created_at: '', updated_at: '',
 }
+
+describe('parseRentalFeeInput: a blank or null fee is never read as 0', () => {
+  it.each([[null], [undefined], [''], ['  '], ['abc'], [{}]])('%s is NaN, which the service rejects', (v) => {
+    expect(parseRentalFeeInput(v)).toBeNaN()
+  })
+
+  it.each([[0, 0], ['0', 0], ['15', 15], [50, 50], ['12.5', 12.5]])('%s is %s', (v, n) => {
+    expect(parseRentalFeeInput(v)).toBe(n)
+  })
+})
 
 describe('createAdminRentalPackage: the fees', () => {
   beforeEach(() => { vi.clearAllMocks() })
