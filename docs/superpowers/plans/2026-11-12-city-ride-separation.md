@@ -183,12 +183,13 @@ Deploy Phase A and wait until the old blue/green color is drained (old nodes wri
 ### Task 8: Rider app
 
 **Files:**
-- Modify: `apps/rider-mobile/src/features/booking/api.ts` (`TripClassification.cityRideAvailable`, `CreateBookingInput.tripMode`, `fetchFareEstimate` input), `features/booking/store.ts` (`tripMode`, `setTripMode`, reset), `app/booking/index.tsx` (redirect logic lines ~247-277), `app/booking/fare.tsx` (send `tripMode` in estimates, offer request and `createBooking`), `features/booking/liveCars.ts` (`showWithinMetres` mirrors Task 7), `features/home/sections.tsx` (hourly tile renamed "Rental"), `features/trip-summary/tripSummaryModel.ts` (labels: `rental` is "Rental"; `tripMode === 'city'` is "City ride"), `app/booking/rental.tsx` (title "Rentals")
+- Modify: `apps/rider-mobile/src/features/booking/api.ts` (`TripClassification.cityRideAvailable`, `CreateBookingInput.tripMode`, `fetchFareEstimate` input), `features/booking/store.ts` (`tripMode`, `setTripMode`, reset), `app/booking/index.tsx` (redirect logic lines ~247-277), `app/booking/fare.tsx` (send `tripMode` in estimates, offer request and `createBooking`), `features/booking/liveCars.ts` (`showWithinMetres` mirrors Task 7), `features/home/sections.tsx` (the three tiles become Outstation, City Ride and Rental; the Outstation tile opens `app/booking/trip-type.tsx`, whose One way and Round trip choices are unchanged), `features/trip-summary/tripSummaryModel.ts` (labels: `rental` is "Rental"; `tripMode === 'city'` is "City ride"), `app/booking/rental.tsx` (title "Rentals")
 - Test: `apps/rider-mobile/src/features/booking/cityRideRoute.test.ts` (new pure function `resolveInCityRoute`)
 
 **Interfaces:**
 - Produces: `resolveInCityRoute(args: { rideTypeDeclared: boolean; rideType: RideType; classification: TripClassification | null }): { path: '/booking/fare' | '/booking/rental' | null; tripMode: 'standard' | 'city' }`. When `cityRideAvailable` is true an in-city trip goes to `/booking/fare` with `tripMode 'city'` and no toast about rentals; when false or absent it returns exactly today's routes (so an API without the flag, or the flag off, behaves like today).
 
+- Routing rule (D8): tile intent is Outstation, City Ride or Rental. In-region trip + Outstation tile: switch to City Ride with a toast. Trip leaving the region + City Ride tile: switch to Outstation (one way) with a toast. Rental is unaffected by region. A round trip inside the region is never offered.
 - [ ] **Step 1: Failing tests** for `resolveInCityRoute`: flag off, `cityRideAvailable` absent (older server), in-city + available, outside city with `rideType:'rental'` still redirects to one-way. **Step 2: Run, FAIL.** **Step 3: Implement** the function and wire it into `index.tsx` and the store; pass `tripMode` on the quote and booking only when `'city'`, and send `trip_mode: 'city'` on the offers preview request (`features/offers/api.ts`, `offerModel.ts`) so the preview matches Task 7A. **Step 4: `cd apps/rider-mobile && npx tsc --noEmit && npx eslint src && npx vitest run`, expect PASS.**
 - [ ] **Step 5: Emulator check** against the local API with the flag turned on in the local DB: an in-city trip shows the Choose a ride list (including Auto), books, and the ride tracks; with the flag off the old rental redirect appears. **Step 6: Commit** `feat(rider): City ride mode on Choose a ride, hourly mode renamed Rental`.
 
@@ -206,7 +207,7 @@ Deploy Phase A and wait until the old blue/green color is drained (old nodes wri
 - Modify: `apps/user/app/(main)/search/page.tsx` (lines ~298-323), `apps/user/app/(main)/select-ride/page.tsx` (line ~145), `apps/user/lib/ride-api.ts`, `apps/user/app/(main)/home/page.tsx` (tile label)
 - Test: component/unit test following the existing user-web test setup, or a manual check if none exists (state which in the commit)
 
-- [ ] **Step 1 to 4:** same routing rule as Task 8 (`cityRideAvailable` true sends `tripMode:'city'` to `/select-ride`; otherwise unchanged). Run `cd apps/user && npx tsc --noEmit`. **Step 5: Commit** `feat(user): City ride routing on web`.
+- [ ] **Step 1 to 4:** same routing rule as Task 8 (`cityRideAvailable` true sends `tripMode:'city'` to `/select-ride`; otherwise unchanged) and the same three home tiles (Outstation, City Ride, Rental). Run `cd apps/user && npx tsc --noEmit`. **Step 5: Commit** `feat(user): City ride routing on web`.
 
 ### Gate C (no code)
 D2 is decided: city cards are copies of the rental cards, so a Bhubaneswar to Cuttack quote on a new build is lower than on an old build (the owner accepted this). Compare the two quotes on staging, confirm the numbers match the D2 table in the spec, and tell the driver and ops side before the flag is turned on.
@@ -227,7 +228,7 @@ Turn `city_rides_enabled` on in staging for one city. Verify: a city booking by 
 
 **Housekeeping in the same release:** update `api/scripts/seed-load-test-data.sql`, `api/src/db/bench-cache-invalidation.ts` and `load-tests/api-table-matrix.csv` (they read cards by category, ride type and city and would silently pick a city card); check `apps/user/app/pricing/page.tsx` and `apps/admin/lib/mock-data.ts` for rate-card assumptions.
 
-### Task 12 (also: delete `IN_CITY_MAX_TRIP_DISTANCE_METRES` from `api/src/constants/limits.ts`, since nothing uses it once the old-client branch is gone): Remove the flag and the redirect-to-rental code (trigger: minimum rider and web versions raised past the Task 8 and 10 builds, via the existing version policy)
+### Task 12 (also: in-region `round_trip` bookings are rejected with the existing "book an hourly rental" message, since Outstation is for trips that leave the region; and delete `IN_CITY_MAX_TRIP_DISTANCE_METRES` from `api/src/constants/limits.ts`, since nothing uses it once the old-client branch is gone): Remove the flag and the redirect-to-rental code (trigger: minimum rider and web versions raised past the Task 8 and 10 builds, via the existing version policy)
 
 **Files:**
 - Modify: `api/src/modules/rides/rides.service.ts` (the in-city rule stays but now requires `tripMode:'city'`, error code kept), `api/src/modules/geo/geo.service.ts` (drop `city_ride_available`), `apps/rider-mobile/src/app/booking/index.tsx`, `apps/user/app/(main)/search/page.tsx`, `select-ride/page.tsx` (drop the rental redirects), migration `140` deleting the `city_rides_enabled` row

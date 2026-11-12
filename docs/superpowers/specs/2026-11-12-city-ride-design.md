@@ -26,6 +26,7 @@ Today an in-city trip (same city, under 15 km) cannot be booked as one-way: the 
 - D5 (**decided by the owner: offers are separate for city ride, one way and rental**): the offers `ride_type` rule gets a fourth value `city`. A city ride is evaluated as `city`, never as `one_way`. Active `one_way` offers therefore stop applying to city rides on new builds (including Bhubaneswar to Cuttack); ops recreates them for City ride before the flag is turned on.
 - D7 (**decided by the owner: full package fare**): a rental ended early is billed the quoted package fare (no per-km recompute), since the package is a reserved block of time.
 - D6: In the new apps the hourly mode is renamed "Rental"; "City ride" names the metered mode.
+- D8 (**decided by the owner: three home tiles**): the rider home shows **Outstation**, **City Ride** and **Rental**. Outstation holds One way and Round trip (the existing "Choose your trip" screen) and is only for trips that leave the merged region. Inside the region the rider gets City Ride (point to point) or Rental (hourly); a round trip inside the region is not offered (the rider uses Rental). Picking a tile for the wrong kind of trip switches the rider with a toast, as the app does today (Outstation for an in-region trip: "switching to City Ride"; City Ride for a trip leaving the region: "switching to Outstation").
 
 ## Non-goals
 Bikes, a driver-app label for city rides, changes to commission.
