@@ -449,7 +449,7 @@ function RentalContent() {
           <ArrowLeft size={17} strokeWidth={2} className="text-slate-800" />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-[15px] font-bold text-slate-900 leading-tight">City Rides</p>
+          <p className="text-[15px] font-bold text-slate-900 leading-tight">Rental</p>
           <div className="flex items-center gap-1 mt-0.5">
             <MapPin size={10} strokeWidth={2.5} className="text-primary flex-shrink-0" />
             <p className="text-[11px] text-slate-400 truncate">{originAddress}</p>

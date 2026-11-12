@@ -1,5 +1,6 @@
 'use client'
 
+import { resolveSearchRoute } from '@/lib/city-ride-route'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -78,6 +79,7 @@ function SearchContent() {
   const rideType  = sp.get('rideType')  ?? undefined
   const backTo    = sp.get('backTo')    ?? undefined
   const tripHours = sp.get('tripHours') ?? undefined
+  const tripMode  = sp.get('tripMode') === 'city' ? 'city' as const : undefined
 
   const [scheduledFor, setScheduledFor] = useState<Date | null>(() => {
     const raw = sp.get('scheduledFor')
@@ -273,62 +275,36 @@ function SearchContent() {
       if (nearestCity) params.set('originCityId', String(nearestCity.id))
       if (route.polyline) params.set('polyline', route.polyline)
       if (rideType)      params.set('rideType', rideType)
+      if (tripMode)      params.set('tripMode', tripMode)
       if (scheduledFor)  params.set('scheduledFor', scheduledFor.toISOString())
       if (bookingForOther) { params.set('riderName', riderName); params.set('riderPhone', riderPhone) }
 
-      const isInCity  = classification?.scope === 'in_city'
       const cityLabel = classification?.cityName ?? 'the city'
+
+      // Where this trip goes next, by the rules in lib/city-ride-route.ts (Outstation, City Ride, Rental). Inside one city boundary it is
+      // a city ride when the server says City ride is on, and exactly what this page did before (Rental) otherwise.
+      const next = resolveSearchRoute({ rideType, backTo, tripMode, classification })
+      if (next.tripMode) params.set('tripMode', next.tripMode)
+      else params.delete('tripMode')
+      if (backTo === 'select-ride' && tripHours && next.path === '/select-ride') params.set('tripHours', tripHours)
 
       function go(path: string) {
         if (useReplace) router.replace(`${path}?${params.toString()}`)
         else            router.push(`${path}?${params.toString()}`)
       }
-
-      function redirectWithToast(path: string, message: string) {
+      const toastText = {
+        to_city: `That's inside ${cityLabel}, switching to City Ride`,
+        to_rental: `That's inside ${cityLabel}, switching to Rental`,
+        to_outstation: `That's outside ${cityLabel}, switching to outstation options`,
+      } as const
+      if (next.toast) {
         setResolving(false)
-        setRedirectToast(message)
+        setRedirectToast(toastText[next.toast])
         if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current)
-        redirectTimerRef.current = setTimeout(() => go(path), 1500)
-      }
-
-      // Editing pickup/destination mid-flow from /select-ride, return there with the
-      // ride type already in progress, unless the edit turned One Way/Round Trip in-city
-      if (backTo === 'select-ride') {
-        if ((rideType === 'one_way' || rideType === 'round_trip') && isInCity) {
-          redirectWithToast('/rental', `That's inside ${cityLabel}, switching to City Rides`)
-          return
-        }
-        if (tripHours) params.set('tripHours', tripHours)
-        go('/select-ride')
+        redirectTimerRef.current = setTimeout(() => go(next.path), 1500)
         return
       }
-
-      // Return Cab destination picker navigates back to /round-trip, unless the
-      // destination turns out to be within the same city, which round trips can't serve
-      if (backTo === 'round_trip') {
-        if (isInCity) { redirectWithToast('/rental', `That's inside ${cityLabel}, switching to City Rides`); return }
-        go('/round-trip')
-        return
-      }
-
-      // Rental's own destination picker, outstation destinations can't be a rental
-      if (backTo === 'rental') {
-        if (isInCity) go('/rental')
-        else redirectWithToast('/trip-type', `That's outside ${cityLabel}, switching to outstation options`)
-        return
-      }
-
-      // "One Way" tile declared intent, still redirect if the destination is in-city
-      if (rideType === 'one_way') {
-        if (isInCity) { redirectWithToast('/rental', `That's inside ${cityLabel}, switching to City Rides`); return }
-        go('/select-ride')
-        return
-      }
-
-      // No declared intent (home search bar, saved places, "Go again", popular routes).
-      // auto-detect city vs outstation and route accordingly
-      if (isInCity) go('/rental')
-      else          go('/trip-type')
+      go(next.path)
     } catch {
       setResolving(false)
     }

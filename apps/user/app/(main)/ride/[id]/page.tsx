@@ -122,8 +122,11 @@ function RouteRow({ ride, fare, status }: { ride: RideDetail | null; fare: strin
           </p>
           {ride?.ride_type === 'rental' && (
             <p className="text-[12px] font-medium mt-0.5 text-text-muted">
-              {ride.trip_hours ? `City ride · ${ride.trip_hours} hour package` : 'City ride · hourly package'}
+              {ride.trip_hours ? `Rental · ${ride.trip_hours} hour package` : 'Rental · hourly package'}
             </p>
+          )}
+          {ride?.ride_type === 'one_way' && ride.trip_mode === 'city' && (
+            <p className="text-[12px] font-medium mt-0.5 text-text-muted">City ride</p>
           )}
           {ride?.ride_type === 'round_trip' && ride.return_at && (
             <p className="text-[12px] font-medium mt-0.5 text-accent">
@@ -753,7 +756,7 @@ export default function RidePage() {
       ? { sub: 'Still searching — this is taking longer than usual' }
       : {}),
     ...(status === 'in_progress' && ride?.ride_type === 'rental'
-      ? { label: 'Rental in progress', sub: 'Your city ride is under way' }
+      ? { label: 'Rental in progress', sub: 'Your rental is under way' }
       : {}),
   }
   // No driver fix yet -> no ETA; say so instead of leaving the banner silently blank.

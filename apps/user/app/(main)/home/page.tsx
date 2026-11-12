@@ -1,5 +1,7 @@
 'use client'
 
+import { resolveSearchRoute } from '@/lib/city-ride-route'
+import { TRIP_TILES, searchParamsForTile } from '@/lib/trip-tiles'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
@@ -53,11 +55,8 @@ const page = {
 
 // ─── data ─────────────────────────────────────────────────────────────────────
 
-const SERVICES = [
-  { id: 'oneway',     Icon: Car,       label: 'One Way',    sub: 'One way · best fare'    },
-  { id: 'roundtrip',  Icon: RotateCcw, label: 'Round Trip', sub: 'Driver stays with you'  },
-  { id: 'rental',     Icon: Clock,     label: 'City Rides', sub: 'Within city · hourly'   },
-]
+const TILE_ICON = { outstation: RotateCcw, city: Car, rental: Clock } as const
+const SERVICES = TRIP_TILES.map(t => ({ id: t.id, Icon: TILE_ICON[t.id], label: t.label, sub: t.sub }))
 const SAVED = [
   { Icon: Home,      label: 'Home', sub: 'Sahid Nagar, Bhubaneswar',   lat: 20.2929, lng: 85.8363 },
   { Icon: Briefcase, label: 'Work', sub: 'Infocity, Chandrasekharpur', lat: 20.3506, lng: 85.8110 },
@@ -127,32 +126,18 @@ export default function HomePage() {
     router.push(`/search?${params.toString()}`)
   }
 
-  async function toOneWay() {
+  // Outstation and City Ride go through /search so the route is classified first (lib/city-ride-route.ts); Outstation declares no ride type.
+  async function toTile(tile: 'outstation' | 'city') {
     setResolving(true)
     const fix = await ensureFresh()
     const rLat = fix?.lat ?? lat
     const rLng = fix?.lng ?? lng
-    const params = new URLSearchParams({ rideType: 'one_way' })
-    if (rLat !== null && rLng !== null) {
-      params.set('originLat', String(rLat))
-      params.set('originLng', String(rLng))
-      params.set('originAddress', addr)
-    }
-    router.push(`/search?${params.toString()}`)
+    const origin = rLat !== null && rLng !== null ? { lat: rLat, lng: rLng, address: addr } : null
+    router.push(`/search?${searchParamsForTile(tile, origin).toString()}`)
   }
 
-  // Round trip / rental need a real origin + city id up front (no picker of
-  // their own) — if either hasn't resolved yet, send the user through
+  // Rental needs a real origin + city id up front (no picker of its own) — if either hasn't resolved yet, send the user through
   // /search instead of booking off a missing/wrong location.
-  async function toRoundTrip() {
-    setResolving(true)
-    const fix = await ensureFresh()
-    const rLat = fix?.lat ?? lat
-    const rLng = fix?.lng ?? lng
-    if (rLat === null || rLng === null || originCityId === null) { router.push('/search'); return }
-    router.push(`/round-trip?originLat=${rLat}&originLng=${rLng}&originAddress=${encodeURIComponent(addr)}&originCityId=${originCityId}`)
-  }
-
   async function toRental() {
     setResolving(true)
     const fix = await ensureFresh()
@@ -190,8 +175,10 @@ export default function HomePage() {
         originCityId:       String(originCityId),
       })
       if (route.polyline) params.set('polyline', route.polyline)
-      const path = classification?.scope === 'in_city' ? '/rental' : '/trip-type'
-      router.push(`${path}?${params.toString()}`)
+      // Same rules as the search page: inside the city it is a city ride when City ride is on, otherwise Rental, as before.
+      const next = resolveSearchRoute({ classification })
+      if (next.tripMode) params.set('tripMode', next.tripMode)
+      router.push(`${next.path}?${params.toString()}`)
     } catch {
       setResolving(false)
     }
@@ -372,11 +359,7 @@ export default function HomePage() {
               {SERVICES.map(s => (
                 <motion.button
                   key={s.id}
-                  onClick={
-                    s.id === 'rental'    ? toRental :
-                    s.id === 'roundtrip' ? toRoundTrip :
-                    toOneWay
-                  }
+                  onClick={s.id === 'rental' ? toRental : () => void toTile(s.id === 'city' ? 'city' : 'outstation')}
                   className="card flex flex-col items-center gap-2 py-4"
                   variants={cardV}
                   whileTap={{ scale: 0.97 }}

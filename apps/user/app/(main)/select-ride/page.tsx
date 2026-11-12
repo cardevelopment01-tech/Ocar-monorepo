@@ -1,5 +1,6 @@
 'use client'
 
+import { resolveSearchRoute } from '@/lib/city-ride-route'
 import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard, RotateCcw } from 'lucide-react'
@@ -70,6 +71,9 @@ function SelectRideContent() {
   // When arriving from /round-trip, tripHours is in the URL and rideType is round_trip
   const tripHoursFromUrl   = sp.get('tripHours') ? parseInt(sp.get('tripHours')!) : undefined
   const fromRoundTripPage  = tripHoursFromUrl !== undefined && sp.get('rideType') === 'round_trip'
+  // A city ride (tripMode=city): a metered one-way inside the city, quoted on the City ride card. No round trip, no return cab.
+  const tripModeParam: 'city' | undefined = sp.get('tripMode') === 'city' ? 'city' : undefined
+  const cityRide = tripModeParam === 'city'
 
   // Stops apply to one-way (priced via detour distance) and round trip (flat
   // per-stop fee). Rental books directly from /rental, so it never lands here.
@@ -140,9 +144,16 @@ function SelectRideContent() {
     let cancelled = false
     geoApi.classifyTrip(originLat, originLng, destinationLat, destinationLng)
       .then(c => {
-        if (cancelled || c.scope !== 'in_city') return
+        if (cancelled) return
+        // Same rules as the search page (lib/city-ride-route.ts): a trip that already suits this screen stays; otherwise switch.
+        const next = resolveSearchRoute({ rideType, backTo: 'select-ride', tripMode: tripModeParam, classification: c })
+        if (next.path === '/select-ride' && next.tripMode === tripModeParam) return
         const cityLabel = c.cityName ?? 'the city'
-        setRedirectToast(`That's inside ${cityLabel}, switching to City Rides`)
+        setRedirectToast(
+          next.toast === 'to_city' ? `That's inside ${cityLabel}, switching to City Ride`
+          : next.toast === 'to_outstation' ? `That's outside ${cityLabel}, switching to outstation options`
+          : `That's inside ${cityLabel}, switching to Rental`
+        )
         const params = new URLSearchParams({
           originLat: String(originLat), originLng: String(originLng), originAddress,
           destinationAddress, destinationLat: String(destinationLat), destinationLng: String(destinationLng),
@@ -151,7 +162,8 @@ function SelectRideContent() {
         if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
         if (riderName)  params.set('riderName', riderName)
         if (riderPhone) params.set('riderPhone', riderPhone)
-        setTimeout(() => { if (!cancelled) router.replace(`/rental?${params.toString()}`) }, 1500)
+        if (next.tripMode) params.set('tripMode', next.tripMode)
+        setTimeout(() => { if (!cancelled) router.replace(`${next.path}?${params.toString()}`) }, 1500)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -247,12 +259,13 @@ function SelectRideContent() {
             tripHours,
           }
           if (rideType === 'round_trip') estParams.stopCount = stops.length
+          if (cityRide) estParams.tripMode = 'city'
           results[cat.id] = await rideApi.getEstimate(estParams)
         } catch {}
 
         // Parallel: check return cab availability for one_way rides.
         // A detour with stops can't match a return driver's fixed route, so skip it.
-        if (rideType === 'one_way' && stops.length === 0) {
+        if (rideType === 'one_way' && !cityRide && stops.length === 0) {
           try {
             const rc = await rideApi.getReturnCabAvailable({
               pickupLat: originLat, pickupLng: originLng,
@@ -276,7 +289,7 @@ function SelectRideContent() {
     setReturnCabCategories(rcAvailable)
     setReturnCabEstimates(rcResults)
     setLoading(false)
-  }, [categories, rideType, effectiveDistanceKm, effectiveDurationMin, originCityId, tripHours, originLat, originLng, destinationLat, destinationLng, stops.length])
+  }, [categories, rideType, cityRide, effectiveDistanceKm, effectiveDurationMin, originCityId, tripHours, originLat, originLng, destinationLat, destinationLng, stops.length])
 
   useEffect(() => { void loadEstimates() }, [loadEstimates])
 
@@ -284,7 +297,7 @@ function SelectRideContent() {
   // fetches only the currently-selected category, not the full category list.
   const [otherTypeFare, setOtherTypeFare] = useState<number | null>(null)
   useEffect(() => {
-    if (fromRoundTripPage) { setOtherTypeFare(null); return }
+    if (fromRoundTripPage || cityRide) { setOtherTypeFare(null); return }
     let cancelled = false
     const otherType = rideType === 'one_way' ? 'round_trip' : 'one_way'
     const estParams: Parameters<typeof rideApi.getEstimate>[0] = {
@@ -296,7 +309,7 @@ function SelectRideContent() {
       .then(est => { if (!cancelled) setOtherTypeFare(Number(est.breakdown.total)) })
       .catch(() => { if (!cancelled) setOtherTypeFare(null) })
     return () => { cancelled = true }
-  }, [fromRoundTripPage, rideType, selected, effectiveDistanceKm, effectiveDurationMin, originCityId, tripHours])
+  }, [fromRoundTripPage, cityRide, rideType, selected, effectiveDistanceKm, effectiveDurationMin, originCityId, tripHours])
 
   // Offers: one preview per selected fare. The server decides; the page only shows it.
   const [typedCode, setTypedCode] = useState('')
@@ -306,7 +319,7 @@ function SelectRideContent() {
   const [offerPreview, setOfferPreview] = useState<OfferPreview | null>(null)
   const [offerStatus, setOfferStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [priceNote, setPriceNote] = useState<string | null>(null)
-  const offerKey = `${selected}|${rideType}|${effectiveDistanceKm}|${effectiveDurationMin}|${tripHours ?? ''}|${stops.length}|${isReturnCab}|${scheduledFor?.toISOString() ?? ''}|${typedCode}|${offerChoice.kind}`
+  const offerKey = `${selected}|${rideType}|${cityRide}|${effectiveDistanceKm}|${effectiveDurationMin}|${tripHours ?? ''}|${stops.length}|${isReturnCab}|${scheduledFor?.toISOString() ?? ''}|${typedCode}|${offerChoice.kind}`
   useEffect(() => {
     if (loading || !estimates[selected]) { setOfferPreview(null); setOfferStatus('idle'); return }
     const ctl = new AbortController()
@@ -320,6 +333,7 @@ function SelectRideContent() {
       if (destinationLat !== undefined) req.destinationLat = destinationLat
       if (destinationLng !== undefined) req.destinationLng = destinationLng
       if (tripHours !== undefined) req.tripHours = tripHours
+      if (cityRide) req.tripMode = 'city'
       if (scheduledFor) req.scheduledFor = scheduledFor.toISOString()
       if (typedCode) req.code = typedCode
       if (offerChoice.kind === 'none') req.autoOffer = 'none'
@@ -345,6 +359,7 @@ function SelectRideContent() {
       if (originCityId)            bookingParams.originCityId  = originCityId
       if (tripHours !== undefined) bookingParams.tripHours     = tripHours
       if (isReturnCab)             bookingParams.isReturnCab   = true
+      if (cityRide)                bookingParams.tripMode      = 'city'
       if (scheduledFor)            bookingParams.scheduledFor  = scheduledFor.toISOString()
       if (stops.length > 0) bookingParams.stops = stops
       if (riderName)  bookingParams.riderName  = riderName
@@ -391,6 +406,7 @@ function SelectRideContent() {
       rideType,
     })
     if (rideType === 'round_trip' && tripHours) params.set('tripHours', String(tripHours))
+    if (cityRide) params.set('tripMode', 'city')
     if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
     if (riderName)  params.set('riderName', riderName)
     if (riderPhone) params.set('riderPhone', riderPhone)
@@ -537,7 +553,10 @@ function SelectRideContent() {
           </div>
 
           {/* Ride type tabs, hidden when user arrived from /round-trip (already committed) */}
-          {!fromRoundTripPage && (
+          {cityRide && (
+            <p className="mb-2 text-[12px] font-semibold" style={{ color: '#087C89' }}>City ride · inside the city, fare by distance and time</p>
+          )}
+          {!fromRoundTripPage && !cityRide && (
             <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-2">
               {(['one_way', 'round_trip'] as const).map(t => (
                 <button
@@ -561,7 +580,7 @@ function SelectRideContent() {
           )}
 
           {/* Trade-off line — what the other trip type would cost, without switching tabs */}
-          {!fromRoundTripPage && otherTypeFare != null && (
+          {!fromRoundTripPage && !cityRide && otherTypeFare != null && (
             <button
               onClick={() => {
                 const t = rideType === 'one_way' ? 'round_trip' : 'one_way'
