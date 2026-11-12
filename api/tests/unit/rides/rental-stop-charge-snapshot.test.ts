@@ -4,7 +4,7 @@ vi.mock('@/db/client', () => ({ pool: { query: vi.fn() }, withTransaction: vi.fn
 vi.mock('@/db/redis', () => ({ client: { get: vi.fn(), set: vi.fn(), del: vi.fn() } }))
 
 import { pool } from '@/db/client'
-import { getRideStopCharge, insertFareSnapshot } from '@/modules/rides/rides.repository'
+import { getRideStopCharge, insertFareSnapshot, getRentalSettlementInputs, updateFareSnapshotEstimate } from '@/modules/rides/rides.repository'
 
 const sqlOf = (mock: { mock: { calls: unknown[][] } }, i = 0) => String(mock.mock.calls[i]![0])
 
@@ -41,5 +41,26 @@ describe('insertFareSnapshot', () => {
     expect(sql).toMatch(/rental_cancellation_fee/)
     expect(sql).toMatch(/SELECT stop_charge\s+FROM rental_packages WHERE id = \$3/)
     expect(sql).toMatch(/SELECT cancellation_fee\s+FROM rental_packages WHERE id = \$3/)
+  })
+})
+
+describe('a rental with no rate card (migration 136) still settles and re-quotes', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('settlement reads the package terms and the snapshot only, never a rate card', async () => {
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [{ base_fare: '500', surge_multiplier: '1', km_limit: '40', duration_minutes: 240, extra_per_km: '8', extra_per_min: '1' }] } as never)
+    expect(await getRentalSettlementInputs(7n)).toMatchObject({ km_limit: '40' })
+    const sql = sqlOf(vi.mocked(pool.query))
+    expect(sql).not.toMatch(/rate_cards/)
+    expect(sql).toMatch(/JOIN rental_packages rp/)
+  })
+
+  it('the scheduled-ride re-quote can store a null rate card id', async () => {
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [] } as never)
+    await updateFareSnapshotEstimate(7n, {
+      rate_card_id: null, surge_event_id: null, surge_multiplier: 1,
+      breakdown: { base_fare: 500, distance_fare: 0, time_fare: 0, stop_fare: 0, hour_surcharge: 0, surge_fare: 0, total: 500 },
+    })
+    expect(vi.mocked(pool.query).mock.calls[0]![1]![1]).toBeNull()
   })
 })

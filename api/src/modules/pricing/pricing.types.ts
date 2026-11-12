@@ -60,6 +60,9 @@ export interface RentalPackage {
   package_fare: number
   extra_per_km: number
   extra_per_min: number
+  /** Fees a rental is charged, kept here since migration 136 (numeric strings from Postgres). */
+  stop_charge: string
+  cancellation_fee: string
   is_active: boolean
   city_id: number | null
   city_name: string | null
@@ -82,7 +85,8 @@ export interface FareEstimateRequest {
 export interface FareEstimateResponse {
   /** 2 for round trips quoted under the hourly window model, else 1. Stored on the snapshot. */
   pricing_version: 1 | 2
-  rate_card_id: number
+  /** The rate card this quote used; null for a package rental, which is priced from its package alone. */
+  rate_card_id: number | null
   surge_event_id: number | null
   surge_multiplier: number
   /** Flat fee per stop on the rate card this quote used (0 = free). Stops added at booking are stamped with it. */

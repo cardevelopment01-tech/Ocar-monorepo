@@ -400,7 +400,8 @@ export async function createRide(data: {
 
 export type FareSnapshotInput = {
   rideId: bigint | string
-  rateCardId: number
+  /** Null for a package rental: it is priced from its package, with no rate card (migration 136). */
+  rateCardId: number | null
   rentalPackageId: number | null
   rideType: string
   isReturnCab: boolean
@@ -1739,7 +1740,7 @@ export async function getFareRecomputeInput(rideId: bigint): Promise<FareRecompu
 export async function updateFareSnapshotEstimate(
   rideId: bigint,
   fareEstimate: {
-    rate_card_id: number
+    rate_card_id: number | null
     surge_event_id: number | null
     surge_multiplier: number
     breakdown: {

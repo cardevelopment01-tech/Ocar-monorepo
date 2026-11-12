@@ -93,12 +93,18 @@ export async function getRateCardHistory() {
 }
 
 export async function getRentalPackage(packageId: number) {
-  return cachedRead(
+  const pkg = await cachedRead(
     'rental_packages',
     rentalPackageKey(packageId),
     RATE_CARD_CACHE_TTL_SECONDS,
     () => fetchRentalPackageFromDb(packageId)
   )
+  // A package cached by a build that predates rental_packages.stop_charge (migration 136) has no such field; read through to the
+  // DB rather than quote a rental's stops as free for up to the cache TTL (same guard as getCurrentRateCard's base_fare).
+  if (pkg && (pkg as { stop_charge?: unknown }).stop_charge === undefined) {
+    return fetchRentalPackageFromDb(packageId)
+  }
+  return pkg
 }
 
 async function fetchRentalPackageFromDb(packageId: number) {

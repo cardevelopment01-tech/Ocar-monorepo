@@ -25,7 +25,7 @@ export interface RateCard {
 
 export interface RateCardHistoryRow {
   id: number
-  rate_card_id: number
+  rate_card_id: number | null
   category_name: string
   ride_type: string
   city_id: number | null

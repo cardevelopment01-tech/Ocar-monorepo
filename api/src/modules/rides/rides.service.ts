@@ -997,11 +997,13 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
       actorId:    userId,
     })
 
-    await repo.createAdvanceMeta({
+    const advanceMeta: Parameters<typeof repo.createAdvanceMeta>[0] = {
       rideId:                 BigInt(ride.id),
       dispatchBufferMinutes:  ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES,
-      rateCardIdAtBooking:    BigInt(fareEstimate.rate_card_id),
-    })
+    }
+    // A package rental has no rate card to remember.
+    if (fareEstimate.rate_card_id !== null) advanceMeta.rateCardIdAtBooking = BigInt(fareEstimate.rate_card_id)
+    await repo.createAdvanceMeta(advanceMeta)
 
     const dispatchAt = scheduledForDate.getTime() - ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES * 60_000
     const delay = Math.max(dispatchAt - Date.now(), 0)
@@ -2178,7 +2180,25 @@ export async function endRideEarlyAsDriver(
     throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
   }
 
-  const snapRes = await pool.query<{
+  // A rental is a reserved block of time: ended early it is billed the quoted package fare (owner decision D7). It has no rate card
+  // to recompute from, and what the driver app reports never changes the bill. One statement, so the fare is exactly the quote.
+  let rentalFinal: number | null = null
+  if (ride.ride_type === 'rental') {
+    const billed = await pool.query<{ total_final: string }>(
+      `UPDATE fare_snapshots
+       SET actual_km = $2, actual_min = $3, total_final = total_estimated,
+           status = 'final', finalised_at = now()
+       WHERE ride_id = $1
+       RETURNING total_final::text AS total_final`,
+      [rideId, actualDistanceKm, actualDurationMin]
+    )
+    if (billed.rows[0]) {
+      rentalFinal = parseFloat(billed.rows[0].total_final)
+      await finaliseDiscount(pool, rideId)
+    }
+  }
+
+  const snapRes = ride.ride_type === 'rental' ? null : await pool.query<{
     surge_multiplier: string
     stop_fare: string
     is_return_cab: boolean
@@ -2201,9 +2221,9 @@ export async function endRideEarlyAsDriver(
      WHERE fs.ride_id = $1`,
     [rideId]
   )
-  const snap = snapRes.rows[0]
+  const snap = snapRes?.rows[0]
 
-  let finalFare: number | null = null
+  let finalFare: number | null = rentalFinal
   if (snap) {
     const recalc = calculateFare({
       rate_card: {

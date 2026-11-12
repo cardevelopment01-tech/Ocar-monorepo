@@ -36,15 +36,21 @@ export async function getFareEstimate(
 
   // These lookups are independent of each other — run them concurrently
   // instead of paying sequential round trips.
+  // A package rental is priced from its package alone: no rate card is read (migration 136 moved its stop charge and
+  // cancellation fee onto the package). A rental sent without a package id is a legacy request and still uses the card.
+  const isPackageRental = req.ride_type === 'rental' && req.rental_package_id !== undefined
   const [rateCard, surgeEvent, pkg] = await Promise.all([
-    repo.getCurrentRateCard(req.category_id, req.ride_type, req.city_id ?? null),
+    isPackageRental ? Promise.resolve(null) : repo.getCurrentRateCard(req.category_id, req.ride_type, req.city_id ?? null),
     req.city_id ? repo.getActiveSurge(req.city_id, req.category_id) : Promise.resolve(null),
     req.ride_type === 'rental' && req.rental_package_id
       ? repo.getRentalPackage(req.rental_package_id)
       : Promise.resolve(null),
   ])
 
-  if (!rateCard) {
+  if (isPackageRental && !pkg) {
+    throw Object.assign(new Error('This rental package is not available'), { httpStatus: 422 })
+  }
+  if (!isPackageRental && !rateCard) {
     throw Object.assign(
       new Error(`No rate card for category ${req.category_id} / ${req.ride_type}`),
       { httpStatus: 422 }
@@ -54,7 +60,8 @@ export async function getFareEstimate(
   const surgeMultiplier = surgeEvent ? parseFloat(surgeEvent.multiplier) : 1.0
   // Per-stop price lives on the rate card (rate_cards.stop_charge, 0 = free) so it is versioned and
   // city-scoped like every other rate. Applies to any ride type the admin sets it on.
-  const chargePerStop = rateCard.stop_charge != null ? parseFloat(rateCard.stop_charge) : 0
+  const stopChargeSource = isPackageRental ? pkg?.stop_charge : rateCard?.stop_charge
+  const chargePerStop = stopChargeSource != null ? parseFloat(stopChargeSource) : 0
 
   let packageFare: number | null = null
   let extraPerKm = 0
@@ -71,21 +78,26 @@ export async function getFareEstimate(
   // before this shipped passes its stored version so its price basis never changes underneath it.
   const pricingVersion: 1 | 2 = req.ride_type === 'round_trip' ? (req.pricing_version ?? 2) : 1
 
+  // No rate card for a package rental: the package fare branch of the fare engine never reads these rates.
+  const rates = rateCard
+    ? {
+        rate_per_km:        parseFloat(rateCard.rate_per_km),
+        rate_per_min:       parseFloat(rateCard.rate_per_min),
+        min_fare:           parseFloat(rateCard.min_fare),
+        base_fare:          rateCard.base_fare != null ? parseFloat(rateCard.base_fare) : 0,
+        return_rate_per_km: rateCard.return_rate_per_km != null
+          ? parseFloat(rateCard.return_rate_per_km) : null,
+        hour_rate: rateCard.hour_rate != null
+          ? parseFloat(rateCard.hour_rate) : null,
+        km_per_day: rateCard.km_per_day != null
+          ? parseFloat(rateCard.km_per_day) : null,
+        driver_allowance_per_day: rateCard.driver_allowance_per_day != null
+          ? parseFloat(rateCard.driver_allowance_per_day) : null,
+      }
+    : { rate_per_km: 0, rate_per_min: 0, min_fare: 0 }
+
   const breakdown = estimateFare({
-    rate_card: {
-      rate_per_km:        parseFloat(rateCard.rate_per_km),
-      rate_per_min:       parseFloat(rateCard.rate_per_min),
-      min_fare:           parseFloat(rateCard.min_fare),
-      base_fare:          rateCard.base_fare != null ? parseFloat(rateCard.base_fare) : 0,
-      return_rate_per_km: rateCard.return_rate_per_km != null
-        ? parseFloat(rateCard.return_rate_per_km) : null,
-      hour_rate: rateCard.hour_rate != null
-        ? parseFloat(rateCard.hour_rate) : null,
-      km_per_day: rateCard.km_per_day != null
-        ? parseFloat(rateCard.km_per_day) : null,
-      driver_allowance_per_day: rateCard.driver_allowance_per_day != null
-        ? parseFloat(rateCard.driver_allowance_per_day) : null,
-    },
+    rate_card: rates,
     ride_type:        req.ride_type,
     is_return_cab:    req.is_return_cab ?? false,
     // round_trip: req.distance_km is the one-way leg from the route lookup;
@@ -104,7 +116,7 @@ export async function getFareEstimate(
 
   const response: import('./pricing.types').FareEstimateResponse = {
     pricing_version:  pricingVersion,
-    rate_card_id:     rateCard.id,
+    rate_card_id:     rateCard?.id ?? null,
     surge_event_id:   surgeEvent?.id ?? null,
     surge_multiplier: surgeMultiplier,
     charge_per_stop:  chargePerStop,
