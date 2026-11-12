@@ -196,9 +196,10 @@ Deploy Phase A and wait until the old blue/green color is drained (old nodes wri
 ### Task 9: Admin rate cards and rides
 
 **Files:**
-- Modify: `apps/admin/app/(dashboard)/config/rate-cards/page.tsx` (ride-type list `RIDE_TYPE_ORDER` line 25 gains City ride, create/edit form sends `trip_mode`; Rental stays visible but read-only with a note "priced from Rental Packages" until Task 11), `apps/admin/lib/pricing-api.ts`, `apps/admin/app/(dashboard)/rides/page.tsx` (filter by trip mode), `api/src/modules/admin/admin.service.ts` and `admin.repository.ts` (rate-card create/list/update take `trip_mode`, default `standard`; the pricing-side `createRateCard` is covered in Task 5)
+- Modify: `apps/admin/app/(dashboard)/config/rate-cards/page.tsx` (ride-type list `RIDE_TYPE_ORDER` line 25 gains City ride, create/edit form sends `trip_mode`; the ride-type group **City ride** (cards with `trip_mode = 'city'`) replaces **Rental** in the list and the create form, in the same position; the Rental cards are hidden from the admin from this task on because, after Phase A, they affect nothing new (they stay in the database until Task 11, and the page note says rentals are priced from Rental Packages)), `apps/admin/lib/pricing-api.ts`, `apps/admin/app/(dashboard)/rides/page.tsx` (filter by trip mode), `api/src/modules/admin/admin.service.ts` and `admin.repository.ts` (rate-card create/list/update take `trip_mode`, default `standard`; the pricing-side `createRateCard` is covered in Task 5)
 - Test: `api/tests/unit/admin/rate-card-trip-mode.test.ts`
 
+- [ ] **Step 0:** the page groups cards by ride type today (`RIDE_TYPE_ORDER` near line 25, labels near line 16); group by `(ride_type, trip_mode)` so City ride is its own group labelled "City ride", and hide the hidden-Rental special cases only in Task 11. Rental Packages stays its own tab, unchanged.
 - [ ] **Step 1: Failing tests:** creating a card with `trip_mode:'city'` inserts a new row and closes the previous current city row (not an UPDATE of rates); the same category/ride_type with `standard` is untouched; omitting `trip_mode` is `standard`. **Step 2 to 4:** run (FAIL), implement, run API tests and `cd apps/admin && npx tsc --noEmit` (PASS). **Step 5: Commit** `feat(admin): City ride rate cards`.
 
 ### Task 10: User web parity
