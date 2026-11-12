@@ -30,9 +30,8 @@ export function maxPickupRadiusMetres(
   return baseRadiusMetres(rideType, categorySlug, tripHours, tripMode) + (Math.max(round, 1) - 1) * BROADCAST_ROUND_STEP_METRES
 }
 function baseRadiusMetres(rideType: string, categorySlug: string | null, tripHours: number | undefined, tripMode: 'standard' | 'city'): number {
-  // A city ride is a short in-city hop: it searches close to the pickup (tighter still for an auto), like the hourly rental, not the
-  // 10 km of an intercity one-way. Owner to confirm the two numbers.
-  if (tripMode === 'city' && rideType === 'one_way') return categorySlug === 'auto_rickshaw' ? 2_000 : 4_000
+  // A city ride is a short in-city hop: it searches the same radius as a short rental (owner decision), not the 10 km of an intercity one-way.
+  if (tripMode === 'city' && rideType === 'one_way') return categorySlug === 'auto_rickshaw' ? 2_000 : 2_500
   if (rideType !== 'rental') return 10_000
   if (tripHours !== undefined && tripHours > 2) return 4_000
   return categorySlug === 'auto_rickshaw' ? 2_000 : 2_500
