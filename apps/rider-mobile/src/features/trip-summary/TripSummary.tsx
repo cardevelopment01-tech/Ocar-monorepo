@@ -15,7 +15,7 @@ import { fetchRouteLeg } from '@/features/ride-tracking/api'
 import type { RideDetailExtra } from '@/features/ride-tracking/types'
 import { RatingSection } from './RatingSection'
 import { useReturnCabSaving } from './ReturnCabPanels'
-import { endedHeadline } from './endedHeadline'
+import { cancellationFeeOf, endedHeadline } from './endedHeadline'
 import {
   buildInvoiceRows, buildTimeline, formatMoney, formatTripWhen, paymentState, tripTitle,
 } from './tripSummaryModel'
@@ -98,7 +98,8 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
   const back = () => (canGoBack ? router.back() : goHome())
 
   const invoice = buildInvoiceRows(ride)
-  const fareValue = completed ? invoice.total : Number(ride.totalFinal ?? 0)
+  // A ride that did not complete has no fare: the only money on it is a late-cancel fee, and only when one was charged.
+  const fareValue = completed ? invoice.total : cancellationFeeOf(ride)
   const showFare = fareValue > 0
   const fareText = formatMoney(fareValue)
   const fareShown = formatMoney(Math.round(useCountUp(fareValue)))

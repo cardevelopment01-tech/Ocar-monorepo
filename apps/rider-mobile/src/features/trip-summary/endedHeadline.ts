@@ -9,3 +9,9 @@ export function endedHeadline(ride: Pick<RideDetailExtra, 'status' | 'cancellati
   if (ride.status === 'cancelled' && ride.cancellationActor === 'driver') return 'Your driver cancelled'
   return 'Ride cancelled'
 }
+
+/** The late-cancel fee to show on a ride that did not complete: what was charged, or 0 when there was none or an admin waived it. */
+export function cancellationFeeOf(ride: Pick<RideDetailExtra, 'cancellationFee' | 'cancellationFeeWaived'>): number {
+  const fee = Number(ride.cancellationFee ?? 0)
+  return Number.isFinite(fee) && fee > 0 && !ride.cancellationFeeWaived ? fee : 0
+}

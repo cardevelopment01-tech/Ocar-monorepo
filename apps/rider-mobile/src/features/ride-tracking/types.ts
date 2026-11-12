@@ -22,6 +22,9 @@ export type RideDetailExtra = RideDetail & {
   isReturnCab?: boolean
   // Who ended a cancelled ride (the API reads it from ride_cancellations). Absent on older servers and on rides that were never cancelled.
   cancellationActor?: 'user' | 'driver' | 'admin' | 'system' | null
+  // The late-cancel fee charged to the rider and whether an admin waived it (0 / false when there was none).
+  cancellationFee?: number | null
+  cancellationFeeWaived?: boolean | null
 }
 
 export const SEARCHING_STATUSES = new Set(['requested', 'scheduled'])
