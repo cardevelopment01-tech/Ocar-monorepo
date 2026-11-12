@@ -1981,7 +1981,7 @@ export async function listAdminRateCardHistory() {
             rch.changed_by::int AS changed_by, rch.change_reason, rch.created_at,
             rch.city_id::int AS city_id,
             vc.display_name AS category_name,
-            rc.ride_type,
+            rc.ride_type, rc.trip_mode,
             rc.category_id::int AS category_id,
             c.name AS city_name
      FROM rate_card_history rch

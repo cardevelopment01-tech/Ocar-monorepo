@@ -107,6 +107,18 @@ describe('createBooking: tripMode "city"', () => {
     await expect(book({ tripMode: 'city', stops: [stop(1), stop(2), stop(3), stop(4)] })).rejects.toMatchObject({ httpStatus: 422 })
   })
 
+  it('checks the city rules once: one trip classification and one read of the switch per booking', async () => {
+    const { pool } = await import('@/db/client')
+    const { getConfigValue } = await import('@/lib/system-config')
+    vi.mocked(pool.query).mockClear()
+    vi.mocked(getConfigValue).mockClear()
+    await book({ tripMode: 'city' })
+    const classifications = vi.mocked(pool.query).mock.calls.filter((c) => String(c[0]).includes('boundary'))
+    expect(classifications).toHaveLength(1)
+    const flagReads = vi.mocked(getConfigValue).mock.calls.filter((c) => c[0] === 'city_rides_enabled')
+    expect(flagReads).toHaveLength(1)
+  })
+
   it('refuses an unknown tripMode instead of treating it as standard', async () => {
     await expect(book({ tripMode: 'bogus' })).rejects.toMatchObject({ httpStatus: 422 })
   })

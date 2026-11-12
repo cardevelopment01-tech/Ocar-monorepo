@@ -84,7 +84,7 @@ export async function getRateCardHistory() {
             rch.changed_by::int AS changed_by, rch.change_reason, rch.created_at,
             rch.city_id::int AS city_id,
             vc.display_name AS category_name,
-            rc.ride_type,
+            rc.ride_type, rc.trip_mode,
             c.name AS city_name
      FROM rate_card_history rch
      JOIN rate_cards rc ON rc.id = rch.rate_card_id

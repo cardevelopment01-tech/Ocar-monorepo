@@ -13,18 +13,15 @@ SET LOCAL lock_timeout = '3s';
 ALTER TABLE rate_cards ADD COLUMN IF NOT EXISTS trip_mode TEXT NOT NULL DEFAULT 'standard';
 ALTER TABLE rides      ADD COLUMN IF NOT EXISTS trip_mode TEXT NOT NULL DEFAULT 'standard';
 
--- 2. The check constraints, added NOT VALID and then validated, so the validating scan holds only a light lock.
+-- 2. The check constraint, on the small rate_cards table only. rides gets none: validating one would scan the whole table while the
+--    ADD COLUMN lock is still held (one transaction), and createRide only ever writes 'standard' or 'city' (parseTripMode).
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rate_cards_trip_mode_check') THEN
     ALTER TABLE rate_cards ADD CONSTRAINT rate_cards_trip_mode_check CHECK (trip_mode IN ('standard', 'city')) NOT VALID;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rides_trip_mode_check') THEN
-    ALTER TABLE rides ADD CONSTRAINT rides_trip_mode_check CHECK (trip_mode IN ('standard', 'city')) NOT VALID;
-  END IF;
 END $$;
 ALTER TABLE rate_cards VALIDATE CONSTRAINT rate_cards_trip_mode_check;
-ALTER TABLE rides      VALIDATE CONSTRAINT rides_trip_mode_check;
 
 -- 3. One current card per (city or global, category, ride type, trip mode). Follows migration 078.
 DROP INDEX IF EXISTS rate_cards_current_idx;
@@ -37,16 +34,6 @@ CREATE INDEX rate_cards_lookup_idx
   ON rate_cards (category_id, ride_type, trip_mode, city_id)
   WHERE effective_to IS NULL;
 
--- 4. City ride cards: a copy of every current rental card (same rates and fees, same city or global), as a one_way / city card.
---    The rental cards stay open (they are closed only in Phase D). Never an UPDATE of a rate card: new rows only.
-INSERT INTO rate_cards
-  (category_id, ride_type, trip_mode, rate_per_km, rate_per_min, min_fare, base_fare, stop_charge, cancellation_fee, city_id, notes)
-SELECT rc.category_id, 'one_way', 'city', rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.base_fare, rc.stop_charge,
-       rc.cancellation_fee, rc.city_id, 'City ride card, copied from the rental card by migration 137'
-FROM rate_cards rc
-WHERE rc.ride_type = 'rental' AND rc.effective_to IS NULL
-  AND NOT EXISTS (
-    SELECT 1 FROM rate_cards x
-    WHERE x.category_id = rc.category_id AND x.ride_type = 'one_way' AND x.trip_mode = 'city'
-      AND x.effective_to IS NULL AND COALESCE(x.city_id, 0) = COALESCE(rc.city_id, 0)
-  );
+-- City ride cards are NOT created here. Migrations run before the cutover, so old API nodes keep serving against this data; they do
+-- not filter on trip_mode and would quote an intercity one-way on a city card (or close it on an admin edit). The cards are copied
+-- from the rental cards by api/scripts/seed-city-ride-cards.sql, which the owner runs once the new API is live on every node.

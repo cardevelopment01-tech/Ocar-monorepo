@@ -796,6 +796,8 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   }
 
   const tripMode = parseTripMode(data.tripMode)
+  // Filled in by the classification below when a drop is given; a city ride with no usable drop is refused before scope matters.
+  let cityScope: 'in_city' | 'outstation' = 'outstation'
 
   if (
     (data.rideType === 'one_way' || data.rideType === 'round_trip') &&
@@ -810,11 +812,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
       data.originLat, data.originLng, data.destinationLat, data.destinationLng
     )
     if (tripMode === 'city') {
-      // A city ride (owner decisions D3, D8): anything inside one city boundary, no distance cap.
-      assertCityRideAllowed(data, {
-        flagOn: (await getConfigValue('city_rides_enabled', 'false')) === 'true',
-        scope: classification.scope,
-      })
+      cityScope = classification.scope
     } else if (classification.scope === 'in_city') {
       const tripDistanceMetres = distanceMetres(
         data.originLat, data.originLng, data.destinationLat, data.destinationLng
@@ -828,9 +826,9 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     }
   }
 
-  // A city ride with no drop (or a round trip) never reaches the block above: refuse it here with the same rules.
-  if (tripMode === 'city' && !((data.rideType === 'one_way' || data.rideType === 'round_trip') && data.destinationLat !== undefined && data.destinationLng !== undefined)) {
-    assertCityRideAllowed(data, { flagOn: (await getConfigValue('city_rides_enabled', 'false')) === 'true', scope: 'in_city' })
+  // The one place a city ride is judged (owner decisions D3, D8): anything inside one city boundary, no distance cap.
+  if (tripMode === 'city') {
+    assertCityRideAllowed(data, { flagOn: (await getConfigValue('city_rides_enabled', 'false')) === 'true', scope: cityScope })
   }
 
   if (data.rideType === 'rental' && (data.destinationLat === undefined || data.destinationLng === undefined)) {

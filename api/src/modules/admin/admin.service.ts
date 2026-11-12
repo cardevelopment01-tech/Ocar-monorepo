@@ -570,6 +570,9 @@ export async function createAdminRateCard(data: Parameters<typeof repo.createAdm
   }
   // Rentals are priced from the package fare, so a base fare would be stored and shown but never charged.
   if (data.rideType === 'rental' && (data.baseFare ?? 0) > 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  // A city card is a one-way card with trip mode 'city': it is its own current row, so an edit must say which card it is a version of.
+  if (data.tripMode !== undefined && data.tripMode !== 'standard' && data.tripMode !== 'city') throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (data.tripMode === 'city' && data.rideType !== 'one_way') throw createHttpError(AppErrors.VALIDATION_ERROR)
   return repo.createAdminRateCard(data)
 }
 

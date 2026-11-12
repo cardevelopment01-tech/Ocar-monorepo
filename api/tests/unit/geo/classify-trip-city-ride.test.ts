@@ -14,16 +14,23 @@ describe('classifyTrip: city_ride_available', () => {
   beforeEach(() => { world.flagOn = true; world.city = { id: 1, name: 'Bhubaneswar' } })
 
   it('is true for an in-city trip while the switch is on, with no distance cap', async () => {
-    expect(await classifyTrip(20.2961, 85.8245, 20.4625, 85.8828)).toMatchObject({ scope: 'in_city', cityName: 'Bhubaneswar', city_ride_available: true })
+    expect(await classifyTrip(20.2961, 85.8245, 20.4625, 85.8828, { withCityRide: true })).toMatchObject({ scope: 'in_city', cityName: 'Bhubaneswar', city_ride_available: true })
   })
 
   it('is false while the switch is off, and the existing fields are unchanged', async () => {
     world.flagOn = false
-    expect(await classifyTrip(20.2961, 85.8245, 20.4625, 85.8828)).toEqual({ scope: 'in_city', cityId: 1, cityName: 'Bhubaneswar', city_ride_available: false })
+    expect(await classifyTrip(20.2961, 85.8245, 20.4625, 85.8828, { withCityRide: true })).toEqual({ scope: 'in_city', cityId: 1, cityName: 'Bhubaneswar', city_ride_available: false })
+  })
+
+  it('does not read the switch, or return the hint, unless the endpoint asks (the booking path stays cheap)', async () => {
+    const { getConfigValue } = await import('@/lib/system-config')
+    vi.mocked(getConfigValue).mockClear()
+    expect(await classifyTrip(20.2961, 85.8245, 20.4625, 85.8828)).toEqual({ scope: 'in_city', cityId: 1, cityName: 'Bhubaneswar' })
+    expect(getConfigValue).not.toHaveBeenCalled()
   })
 
   it('is false for a trip that leaves the region', async () => {
     world.city = null
-    expect(await classifyTrip(20.2961, 85.8245, 19.8, 85.83)).toEqual({ scope: 'outstation', cityId: null, cityName: null, city_ride_available: false })
+    expect(await classifyTrip(20.2961, 85.8245, 19.8, 85.83, { withCityRide: true })).toEqual({ scope: 'outstation', cityId: null, cityName: null, city_ride_available: false })
   })
 })

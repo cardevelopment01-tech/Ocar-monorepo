@@ -14,8 +14,8 @@ vi.mock('@/db/redis', () => ({
   client: { incr: vi.fn().mockResolvedValue(1), del: vi.fn().mockResolvedValue(1), get: vi.fn().mockResolvedValue('3') },
 }))
 
-import { getCurrentRateCard, createRateCard, getAllCurrentRateCards } from '@/modules/pricing/pricing.repository'
-import { createAdminRateCard, listAdminRateCards } from '@/modules/admin/admin.repository'
+import { getCurrentRateCard, createRateCard, getAllCurrentRateCards, getRateCardHistory } from '@/modules/pricing/pricing.repository'
+import { createAdminRateCard, listAdminRateCards, listAdminRateCardHistory } from '@/modules/admin/admin.repository'
 import { rateCardKey } from '@/constants/redis-keys'
 import { getJSON } from '@/db/redis'
 
@@ -104,6 +104,17 @@ describe('createAdminRateCard: a standard and a city card never close each other
     wire([OLD_STANDARD])
     await createAdminRateCard({ ...BASE, adminId: 9n })
     expect(call(/^\s*UPDATE rate_cards/)[1]).toEqual([2, 'one_way', null, 'standard'])
+  })
+})
+
+describe('rate card history tells a standard card from a city card', () => {
+  beforeEach(() => { vi.clearAllMocks(); poolQuery.mockResolvedValue({ rows: [] }) })
+
+  it('both history lists return trip_mode beside ride_type', async () => {
+    await getRateCardHistory()
+    await listAdminRateCardHistory()
+    expect(String(poolQuery.mock.calls[0]![0])).toMatch(/rc\.trip_mode/)
+    expect(String(poolQuery.mock.calls[1]![0])).toMatch(/rc\.trip_mode/)
   })
 })
 
