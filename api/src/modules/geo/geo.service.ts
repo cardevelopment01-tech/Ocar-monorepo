@@ -7,6 +7,7 @@ import { getJSON, setWithTTL } from '@/db/redis'
 import { routeKey } from '@/constants/redis-keys'
 import { ROUTE_CACHE_TTL_SECONDS } from '@/constants/limits'
 import { geoRouteCacheTotal } from '@/observability/google-metrics'
+import { getConfigValue } from '@/lib/system-config'
 export type { PlaceSuggestion, PlaceDetail, RouteResult, RouteStep } from './providers/google.provider'
 
 export async function getCities() {
@@ -165,9 +166,10 @@ export async function classifyTrip(
   destLng: number,
 ) {
   const city = await repo.findContainingCity(originLat, originLng, destLat, destLng)
-  return city
-    ? { scope: 'in_city' as const, cityId: city.id, cityName: city.name }
-    : { scope: 'outstation' as const, cityId: null, cityName: null }
+  if (!city) return { scope: 'outstation' as const, cityId: null, cityName: null, city_ride_available: false }
+  // A city ride is offered for any trip inside one city boundary (no distance cap), once the switch is on.
+  const cityRideAvailable = (await getConfigValue('city_rides_enabled', 'false')) === 'true'
+  return { scope: 'in_city' as const, cityId: city.id, cityName: city.name, city_ride_available: cityRideAvailable }
 }
 
 export async function createCity(data: {

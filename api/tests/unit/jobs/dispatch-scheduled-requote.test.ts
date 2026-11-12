@@ -47,6 +47,26 @@ describe('processDispatchScheduled: the fare re-quote can never stop a ride bein
     expect(add).toHaveBeenCalledTimes(3) // the three broadcast rounds
   })
 
+  it('re-quotes a city ride on the city card (it must not fall back to the intercity card)', async () => {
+    vi.mocked(repo.getFareRecomputeInput).mockResolvedValue({ ...RECOMPUTE, ride_type: 'one_way', rental_package_id: null, trip_mode: 'city' } as never)
+    vi.mocked(getFareEstimate).mockResolvedValue({
+      rate_card_id: 21, surge_event_id: null, surge_multiplier: 1, pricing_version: 1, charge_per_stop: 0,
+      breakdown: { base_fare: 0, distance_fare: 0, time_fare: 0, stop_fare: 0, hour_surcharge: 0, overage_fare: 0, surge_fare: 0, total: 297 },
+    } as never)
+    await processDispatchScheduled({ rideId: '5' })
+    expect(vi.mocked(getFareEstimate).mock.calls[0]![0]).toMatchObject({ trip_mode: 'city' })
+  })
+
+  it('a standard ride is re-quoted with no trip mode, as before', async () => {
+    vi.mocked(repo.getFareRecomputeInput).mockResolvedValue({ ...RECOMPUTE, trip_mode: 'standard' } as never)
+    vi.mocked(getFareEstimate).mockResolvedValue({
+      rate_card_id: 1, surge_event_id: null, surge_multiplier: 1, pricing_version: 1, charge_per_stop: 0,
+      breakdown: { base_fare: 500, distance_fare: 0, time_fare: 0, stop_fare: 0, hour_surcharge: 0, overage_fare: 0, surge_fare: 0, total: 500 },
+    } as never)
+    await processDispatchScheduled({ rideId: '5' })
+    expect(vi.mocked(getFareEstimate).mock.calls[0]![0]).not.toHaveProperty('trip_mode')
+  })
+
   it('still re-prices and dispatches when the re-quote works', async () => {
     vi.mocked(getFareEstimate).mockResolvedValue({
       rate_card_id: null, surge_event_id: null, surge_multiplier: 1, pricing_version: 1, charge_per_stop: 0,

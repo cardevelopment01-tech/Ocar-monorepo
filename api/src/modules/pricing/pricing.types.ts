@@ -80,6 +80,8 @@ export interface FareEstimateRequest {
   trip_hours?: number
   rental_package_id?: number
   city_id?: number
+  /** 'city' = quote on the city ride card (ride_type stays one_way). Anything else is the standard card. */
+  trip_mode?: 'standard' | 'city'
   /** Pin the round-trip formula (scheduled-ride re-quote keeps the version it was booked under). Default: current. */
   pricing_version?: 1 | 2
 }
