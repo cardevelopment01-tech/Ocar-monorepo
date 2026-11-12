@@ -192,7 +192,7 @@ Deploy Phase A and wait until the old blue/green color is drained (old nodes wri
 - [ ] **Step 1 to 4:** same routing rule as Task 8 (`cityRideAvailable` true sends `tripMode:'city'` to `/select-ride`; otherwise unchanged). Run `cd apps/user && npx tsc --noEmit`. **Step 5: Commit** `feat(user): City ride routing on web`.
 
 ### Gate C (no code)
-Before turning the flag on anywhere, the owner settles D2 (city prices) because D3 = B moves Bhubaneswar to Cuttack onto the city card. Compare a Bhubaneswar to Cuttack quote on an old and a new build; they will differ unless D2 seeds the city cards from the one-way values.
+D2 is decided: city cards are copies of the rental cards, so a Bhubaneswar to Cuttack quote on a new build is lower than on an old build (the owner accepted this). Compare the two quotes on staging, confirm the numbers match the D2 table in the spec, and tell the driver and ops side before the flag is turned on.
 Turn `city_rides_enabled` on in staging for one city. Verify: a city booking by the new rider app; an **old** rider build (previous APK) on the same trip still gets redirected to Rental and books fine; a driver on the previous driver APK receives the city ride as a normal one-way and can start, add a stop, end and settle it. Then enable in one prod city.
 
 ---
