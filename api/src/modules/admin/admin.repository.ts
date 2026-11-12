@@ -2316,6 +2316,7 @@ export async function listAdminRentalPackages(cityId: number | null) {
       `SELECT rp.id::int AS id, rp.category_id::int AS category_id, vc.display_name AS category_name, vc.slug AS category_slug,
               rp.duration_minutes, rp.km_limit, rp.display_order,
               rp.package_fare::text, rp.extra_per_km::text, rp.extra_per_min::text,
+              rp.stop_charge::text, rp.cancellation_fee::text,
               rp.is_active, rp.city_id::int AS city_id, c.name AS city_name,
               rp.updated_by::int AS updated_by, rp.created_at, rp.updated_at
        FROM rental_packages rp
@@ -2333,6 +2334,7 @@ export async function listAdminRentalPackages(cityId: number | null) {
               rp.id::int AS id, rp.category_id::int AS category_id, vc.display_name AS category_name, vc.slug AS category_slug,
               rp.duration_minutes, rp.km_limit, rp.display_order,
               rp.package_fare::text, rp.extra_per_km::text, rp.extra_per_min::text,
+              rp.stop_charge::text, rp.cancellation_fee::text,
               rp.is_active, rp.city_id::int AS city_id, c.name AS city_name,
               rp.updated_by::int AS updated_by, rp.created_at, rp.updated_at
        FROM rental_packages rp
@@ -2358,6 +2360,8 @@ export async function updateAdminRentalPackage(
     km_limit?: number;
     display_order?: number;
     city_id?: number | null;
+    stop_charge?: number;
+    cancellation_fee?: number;
   },
   adminId: bigint,
 ) {
@@ -2397,6 +2401,14 @@ export async function updateAdminRentalPackage(
     sets.push(`city_id          = $${p++}`);
     params.push(fields.city_id);
   }
+  if (fields.stop_charge !== undefined) {
+    sets.push(`stop_charge      = $${p++}`);
+    params.push(fields.stop_charge);
+  }
+  if (fields.cancellation_fee !== undefined) {
+    sets.push(`cancellation_fee = $${p++}`);
+    params.push(fields.cancellation_fee);
+  }
 
   sets.push(`updated_by = $${p++}`);
   params.push(adminId);
@@ -2405,7 +2417,7 @@ export async function updateAdminRentalPackage(
   const res = await pool.query(
     `UPDATE rental_packages SET ${sets.join(", ")} WHERE id = $${p} RETURNING
        id::int AS id, category_id::int AS category_id, duration_minutes, km_limit, display_order,
-       package_fare::text, extra_per_km::text, extra_per_min::text,
+       package_fare::text, extra_per_km::text, extra_per_min::text, stop_charge::text, cancellation_fee::text,
        is_active, city_id::int AS city_id, updated_by::int AS updated_by, created_at, updated_at`,
     params,
   );
@@ -2432,6 +2444,8 @@ export async function createAdminRentalPackage(
     package_fare: number;
     extra_per_km: number;
     extra_per_min: number;
+    stop_charge: number;
+    cancellation_fee: number;
     display_order?: number;
     city_id?: number | null;
   },
@@ -2439,11 +2453,12 @@ export async function createAdminRentalPackage(
 ) {
   const res = await pool.query(
     `INSERT INTO rental_packages
-       (category_id, duration_minutes, km_limit, package_fare, extra_per_km, extra_per_min, display_order, city_id, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 100), $8, $9)
+       (category_id, duration_minutes, km_limit, package_fare, extra_per_km, extra_per_min, display_order, city_id, updated_by,
+        stop_charge, cancellation_fee)
+     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 100), $8, $9, $10, $11)
      RETURNING
        id::int AS id, category_id::int AS category_id, duration_minutes, km_limit, display_order,
-       package_fare::text, extra_per_km::text, extra_per_min::text,
+       package_fare::text, extra_per_km::text, extra_per_min::text, stop_charge::text, cancellation_fee::text,
        is_active, city_id::int AS city_id, updated_by::int AS updated_by, created_at, updated_at`,
     [
       fields.category_id,
@@ -2455,6 +2470,8 @@ export async function createAdminRentalPackage(
       fields.display_order ?? null,
       fields.city_id ?? null,
       adminId,
+      fields.stop_charge,
+      fields.cancellation_fee,
     ],
   );
   const row = res.rows[0] as AdminRentalPackage;

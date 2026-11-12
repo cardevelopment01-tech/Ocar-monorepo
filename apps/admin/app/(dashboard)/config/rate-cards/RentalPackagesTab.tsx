@@ -23,6 +23,8 @@ function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackag
     package_fare:  pkg.package_fare,
     extra_per_km:  pkg.extra_per_km,
     extra_per_min: pkg.extra_per_min,
+    stop_charge:      pkg.stop_charge,
+    cancellation_fee: pkg.cancellation_fee,
   })
 
   useEffect(() => {
@@ -33,6 +35,7 @@ function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackag
         km_limit:      String(pkg.km_limit),
         display_order: String(pkg.display_order),
         package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min,
+        stop_charge: pkg.stop_charge, cancellation_fee: pkg.cancellation_fee,
       })
       setError('')
     }
@@ -49,6 +52,8 @@ function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackag
         package_fare:  parseFloat(form.package_fare),
         extra_per_km:  parseFloat(form.extra_per_km),
         extra_per_min: parseFloat(form.extra_per_min),
+        stop_charge:      parseFloat(form.stop_charge),
+        cancellation_fee: parseFloat(form.cancellation_fee),
       })
       setOpen(false); onUpdated()
     } catch (err: unknown) {
@@ -123,6 +128,20 @@ function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackag
                 <p className="text-xs text-text-muted mt-1">was {numFmt(pkg.extra_per_min)}</p>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Stop charge (₹) *</label>
+                <input type="number" step="0.01" min="0" required value={form.stop_charge}
+                  onChange={e => setForm(f => ({ ...f, stop_charge: e.target.value }))} className={inputCls} />
+                <p className="text-xs text-text-muted mt-1">was {numFmt(pkg.stop_charge)}</p>
+              </div>
+              <div>
+                <label className={labelCls}>Cancellation fee (₹) *</label>
+                <input type="number" step="0.01" min="0" required value={form.cancellation_fee}
+                  onChange={e => setForm(f => ({ ...f, cancellation_fee: e.target.value }))} className={inputCls} />
+                <p className="text-xs text-text-muted mt-1">was {numFmt(pkg.cancellation_fee)}</p>
+              </div>
+            </div>
             {error && <p className="text-xs text-danger font-semibold">{error}</p>}
             <div className="flex gap-3 pt-2">
               <Dialog.Close asChild>
@@ -155,7 +174,7 @@ function CreateRentalPackageDialog({
   const [form, setForm] = useState({
     city_id: defaultCityId !== null ? String(defaultCityId) : '',
     category_id: '', duration_minutes: '', km_limit: '', display_order: '',
-    package_fare: '', extra_per_km: '', extra_per_min: '0',
+    package_fare: '', extra_per_km: '', extra_per_min: '0', stop_charge: '', cancellation_fee: '',
   })
 
   useEffect(() => {
@@ -163,6 +182,7 @@ function CreateRentalPackageDialog({
       setForm({
         city_id: defaultCityId !== null ? String(defaultCityId) : '',
         category_id: '', duration_minutes: '', km_limit: '', display_order: '', package_fare: '', extra_per_km: '', extra_per_min: '0',
+        stop_charge: '', cancellation_fee: '',
       })
       setError('')
     }
@@ -179,6 +199,8 @@ function CreateRentalPackageDialog({
         package_fare:      parseFloat(form.package_fare),
         extra_per_km:      parseFloat(form.extra_per_km),
         extra_per_min:     parseFloat(form.extra_per_min),
+        stop_charge:       parseFloat(form.stop_charge),
+        cancellation_fee:  parseFloat(form.cancellation_fee),
         ...(form.display_order ? { display_order: parseInt(form.display_order, 10) } : {}),
       })
       setOpen(false); onCreated()
@@ -263,6 +285,20 @@ function CreateRentalPackageDialog({
                   className={inputCls} placeholder="0" />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Stop charge (₹) *</label>
+                <input type="number" step="0.01" min="0" required value={form.stop_charge}
+                  onChange={e => setForm(f => ({ ...f, stop_charge: e.target.value }))} className={inputCls} placeholder="0 = free" />
+                
+              </div>
+              <div>
+                <label className={labelCls}>Cancellation fee (₹) *</label>
+                <input type="number" step="0.01" min="0" required value={form.cancellation_fee}
+                  onChange={e => setForm(f => ({ ...f, cancellation_fee: e.target.value }))} className={inputCls} placeholder="0 = free" />
+                
+              </div>
+            </div>
             {error && <p className="text-xs text-danger font-semibold">{error}</p>}
             <div className="flex gap-3 pt-2">
               <Dialog.Close asChild>
@@ -288,11 +324,15 @@ function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min,
+    stop_charge: pkg.stop_charge, cancellation_fee: pkg.cancellation_fee,
   })
 
   useEffect(() => {
     if (open) {
-      setForm({ package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min })
+      setForm({
+        package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min,
+        stop_charge: pkg.stop_charge, cancellation_fee: pkg.cancellation_fee,
+      })
       setError('')
     }
   }, [open, pkg])
@@ -309,6 +349,8 @@ function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
         package_fare: parseFloat(form.package_fare),
         extra_per_km: parseFloat(form.extra_per_km),
         extra_per_min: parseFloat(form.extra_per_min),
+        stop_charge: parseFloat(form.stop_charge),
+        cancellation_fee: parseFloat(form.cancellation_fee),
       })
       setOpen(false); onCreated()
     } catch (err: unknown) {
@@ -351,6 +393,20 @@ function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
                 <input type="number" step="0.01" min="0" value={form.extra_per_min}
                   onChange={e => setForm(f => ({ ...f, extra_per_min: e.target.value }))} className={inputCls} />
                 <p className="text-xs text-text-muted mt-1">global is {numFmt(pkg.extra_per_min)}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Stop charge (₹) *</label>
+                <input type="number" step="0.01" min="0" required value={form.stop_charge}
+                  onChange={e => setForm(f => ({ ...f, stop_charge: e.target.value }))} className={inputCls} />
+                <p className="text-xs text-text-muted mt-1">global is {numFmt(pkg.stop_charge)}</p>
+              </div>
+              <div>
+                <label className={labelCls}>Cancellation fee (₹) *</label>
+                <input type="number" step="0.01" min="0" required value={form.cancellation_fee}
+                  onChange={e => setForm(f => ({ ...f, cancellation_fee: e.target.value }))} className={inputCls} />
+                <p className="text-xs text-text-muted mt-1">global is {numFmt(pkg.cancellation_fee)}</p>
               </div>
             </div>
             {error && <p className="text-xs text-danger font-semibold">{error}</p>}

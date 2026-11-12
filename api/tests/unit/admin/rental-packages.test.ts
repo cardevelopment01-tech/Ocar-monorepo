@@ -98,7 +98,7 @@ describe('createAdminRentalPackage', () => {
       is_active: true, updated_by: 1, created_at: '', updated_at: '',
     })
     const result = await createAdminRentalPackage(
-      { category_id: 1, duration_minutes: 240, km_limit: 40, package_fare: 300, extra_per_km: 10, extra_per_min: 0 },
+      { category_id: 1, duration_minutes: 240, km_limit: 40, package_fare: 300, extra_per_km: 10, extra_per_min: 0, stop_charge: 15, cancellation_fee: 50 },
       ADMIN_ID,
     )
     expect(result.duration_minutes).toBe(240)
@@ -112,7 +112,7 @@ describe('createAdminRentalPackage', () => {
       is_active: true, updated_by: 1, created_at: '', updated_at: '',
     })
     const result = await createAdminRentalPackage(
-      { category_id: 1, duration_minutes: 30, km_limit: 10, package_fare: 100, extra_per_km: 12, extra_per_min: 1.5, display_order: 1 },
+      { category_id: 1, duration_minutes: 30, km_limit: 10, package_fare: 100, extra_per_km: 12, extra_per_min: 1.5, stop_charge: 15, cancellation_fee: 50, display_order: 1 },
       ADMIN_ID,
     )
     expect(result.duration_minutes).toBe(30)
@@ -122,7 +122,7 @@ describe('createAdminRentalPackage', () => {
   it('surfaces a duplicate (category, duration, km) combo as 409', async () => {
     vi.mocked(repo.createAdminRentalPackage).mockRejectedValue({ code: '23505' })
     await expect(createAdminRentalPackage(
-      { category_id: 1, duration_minutes: 60, km_limit: 20, package_fare: 200, extra_per_km: 10, extra_per_min: 1 },
+      { category_id: 1, duration_minutes: 60, km_limit: 20, package_fare: 200, extra_per_km: 10, extra_per_min: 1, stop_charge: 15, cancellation_fee: 50 },
       ADMIN_ID,
     )).rejects.toMatchObject({ httpStatus: 409 })
   })
