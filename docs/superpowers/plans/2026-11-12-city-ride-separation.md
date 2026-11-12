@@ -21,7 +21,8 @@
 - Commits: no `Co-Authored-By` line. One commit per task. Nothing is pushed until the owner says so.
 - Tests: `cd api && npx vitest run <file>` (env vars as in the existing test runs).
 - Migrations run during blue/green with old and new API nodes live together: every migration must be safe for old code, must not take long locks on `rides`, and must never hard-fail a deploy for data gaps (warn and skip; the preflight is the gate).
-- **D7 (owner decision before Task 3):** today `endRideEarlyAsDriver` re-prices ANY ride type, rentals included, from the rate card's per-km and per-minute (capped at the quoted fare). After the detach a rental has no card, so an early-ended rental is billed per D7: **(recommended) the full package fare** (the package is a reserved block), or keep a per-km early-end by storing the two rates on the package. Pick one; Task 3 implements it and tests it.
+- **D7 (decided by the owner: full package fare):** today `endRideEarlyAsDriver` re-prices ANY ride type, rentals included, from the rate card's per-km and per-minute (capped at the quoted fare). After the detach a rental has no card, so an early-ended rental is billed the quoted package fare (`total_final = total_estimated`, no recompute). This is a deliberate change from today's cheaper-if-shorter result; tell ops. Task 3 implements and tests it.
+- **D5 (decided by the owner):** offers are separate for city ride, one way and rental (Task 7A).
 
 ## Review Focus
 
@@ -87,7 +88,7 @@
 - [ ] **Step 1: Write failing tests.** (a) mock `getRentalPackage` and make `getCurrentRateCard` throw; the rental quote still returns the package fare + `charge_per_stop` equal to the package's `stop_charge`; (b) the `breakdown.total` equals the value the old path produced for the same inputs (golden numbers from `lib/fare.ts`: package 500, no overage, surge 1 gives 500); (c) a **one-way** quote still throws 422 "No rate card" when none exists.
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement.** In `getFareEstimate`, skip the rate-card fetch when `ride_type === 'rental' && pkg`; feed `estimateFare` a zero `rate_card` (the pattern already used at `lib/fare.ts:266`); a rental with no `rental_package_id` keeps the old 422. In `rides.service.ts` make the two `BigInt(fareEstimate.rate_card_id)` uses null-safe.
-- [ ] **Step 4: Audit every read of `fare_snapshots.rate_card_id`** and make each null-safe, with a test per item (a rental with a NULL card): the early-end recompute in `rides.service.ts` (INNER JOIN near line 2188; implement D7 here), `getRideRatePerMin` in `rides.repository.ts` (near line 649; returns 0 for a card-less ride, so confirm it is only used for one-way stop wait), `getRideStopCharge` (Task 2), `updateFareSnapshotEstimate` (near line 1735, typed non-null; widen to `number | null`), the scheduled re-quote in `jobs/processors/dispatch-scheduled.processor.ts`, and the `rate_card_id_at_booking` insert. LEFT JOINs (`RIDE_SELECT_SQL`, admin ride detail) and the round-trip snapshot loader are already safe. Tests: completing a card-less rental, early-ending it (per D7), adding a stop to it.
+- [ ] **Step 4: Audit every read of `fare_snapshots.rate_card_id`** and make each null-safe, with a test per item (a rental with a NULL card): the early-end recompute in `rides.service.ts` (INNER JOIN near line 2188; implement D7 here), `getRideRatePerMin` in `rides.repository.ts` (near line 649; returns 0 for a card-less ride, so confirm it is only used for one-way stop wait), `getRideStopCharge` (Task 2), `updateFareSnapshotEstimate` (near line 1735, typed non-null; widen to `number | null`), the scheduled re-quote in `jobs/processors/dispatch-scheduled.processor.ts`, and the `rate_card_id_at_booking` insert. LEFT JOINs (`RIDE_SELECT_SQL`, admin ride detail) and the round-trip snapshot loader are already safe. Tests: completing a card-less rental; early-ending it bills exactly `total_estimated` whatever `actualDistanceKm` and `actualDurationMin` the driver app sends (D7); adding a stop to it.
 - [ ] **Step 4b: Check no client reads `rate_card_id` at runtime**: `grep -rn "rate_card_id\|rateCardId" apps packages --include=*.ts --include=*.tsx`; expect only type declarations (found: `apps/user/lib/ride-api.ts:23`, `apps/admin/lib/pricing-api.ts:28`, `packages/mobile-shared/src/api/types.ts:30`). Widen those three types to `number | null`.
 - [ ] **Step 5: Run `npx vitest run tests/unit/pricing tests/unit/rides` and `npx tsc --noEmit`, expect PASS.**
 - [ ] **Step 6: Commit** `feat(rentals): a rental quote and booking no longer depend on a rate card`.
@@ -159,6 +160,22 @@ Deploy Phase A and wait until the old blue/green color is drained (old nodes wri
 - [ ] **Step 1: Failing tests:** the two city values; `maxPickupRadiusMetres('one_way', null)` still 10000 and `('rental','auto_rickshaw')` still 2000; round widening still adds `BROADCAST_ROUND_STEP_METRES` per round for a city ride.
 - [ ] **Step 2 to 4:** run (FAIL), implement, run `npx vitest run tests/unit/dispatch src/jobs` (PASS). **Step 5: Commit** `feat(dispatch): pickup radius for city rides`.
 
+### Task 7A: Offers treat a city ride as its own ride type (D5)
+
+**Files:**
+- Create: `api/src/modules/offers/offer-ride-type.ts`
+- Modify: `api/src/modules/offers/offers.types.ts` (`RideType` gains `'city'`), `api/src/modules/offers/rules.ts` (the `ride_type` rule: options, zod enum and `describe`, near lines 55-63), `api/src/modules/offers/offers.controller.ts` (`previewSchema` gains optional `trip_mode`, near line 13), `api/src/modules/offers/offers.service.ts` (near line 157), `api/src/modules/offers/admin-offers.service.ts` (`simulateSchema.ride.rideType`, near line 248), `api/src/modules/rides/rides.service.ts` (`resolveBookingOffer` ride context, near line 897), `apps/admin/lib/offers-api.ts`, `apps/admin/components/offers/PreviewPanel.tsx`, `apps/user/lib/offers-api.ts`
+- Test: `api/tests/unit/offers/offer-ride-type.test.ts`
+
+**Interfaces:**
+- Produces: `offerRideType(rideType: 'one_way' | 'round_trip' | 'rental', tripMode?: 'standard' | 'city'): 'one_way' | 'round_trip' | 'rental' | 'city'` returns `'city'` only for `one_way` + `city`; every other input returns `rideType` unchanged. Used by BOTH the offers preview and the booking-time offer resolution so they can never disagree.
+
+- [ ] **Step 1: Failing tests.** `offerRideType('one_way','city') === 'city'`; `('one_way','standard')`, `('one_way')`, `('rental','standard')`, `('round_trip')` return their own type; a `ride_type` rule with `types: ['one_way']` fails (`RIDE_TYPE`) for a city ride and passes for a standard one-way; `['city']` passes only for a city ride; a legacy `['rental']` rule still passes for a rental; a preview with `trip_mode:'city'` and the booking of the same ride give the same offer outcome; a preview request with no `trip_mode` behaves exactly as today (old clients).
+- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** the helper and use it at the two call sites; widen the enums and the rule options (the rule editor reads its options from the registry, so it picks up `City ride` with no separate UI list; confirm in the admin offers rule form). Keep the stored rule JSON backward compatible (additive value only).
+- [ ] **Step 4: Run `npx vitest run tests/unit/offers`, `npx tsc --noEmit`, and `cd apps/admin && npx tsc --noEmit`, expect PASS.**
+- [ ] **Step 5: Commit** `feat(offers): city ride is its own offer ride type`.
+- [ ] **Ops (not code), before Gate C:** list the active offers whose `ride_type` rule is `one_way` or that have no ride-type rule, and decide which need a City ride copy; one-way offers stop applying to city rides on new builds.
+
 ---
 
 ## Phase C: Clients (new builds only; old builds untouched)
@@ -172,7 +189,7 @@ Deploy Phase A and wait until the old blue/green color is drained (old nodes wri
 **Interfaces:**
 - Produces: `resolveInCityRoute(args: { rideTypeDeclared: boolean; rideType: RideType; classification: TripClassification | null }): { path: '/booking/fare' | '/booking/rental' | null; tripMode: 'standard' | 'city' }`. When `cityRideAvailable` is true an in-city trip goes to `/booking/fare` with `tripMode 'city'` and no toast about rentals; when false or absent it returns exactly today's routes (so an API without the flag, or the flag off, behaves like today).
 
-- [ ] **Step 1: Failing tests** for `resolveInCityRoute`: flag off, `cityRideAvailable` absent (older server), in-city + available, outside city with `rideType:'rental'` still redirects to one-way. **Step 2: Run, FAIL.** **Step 3: Implement** the function and wire it into `index.tsx` and the store; pass `tripMode` on the quote, offers preview and booking only when `'city'`. **Step 4: `cd apps/rider-mobile && npx tsc --noEmit && npx eslint src && npx vitest run`, expect PASS.**
+- [ ] **Step 1: Failing tests** for `resolveInCityRoute`: flag off, `cityRideAvailable` absent (older server), in-city + available, outside city with `rideType:'rental'` still redirects to one-way. **Step 2: Run, FAIL.** **Step 3: Implement** the function and wire it into `index.tsx` and the store; pass `tripMode` on the quote and booking only when `'city'`, and send `trip_mode: 'city'` on the offers preview request (`features/offers/api.ts`, `offerModel.ts`) so the preview matches Task 7A. **Step 4: `cd apps/rider-mobile && npx tsc --noEmit && npx eslint src && npx vitest run`, expect PASS.**
 - [ ] **Step 5: Emulator check** against the local API with the flag turned on in the local DB: an in-city trip shows the Choose a ride list (including Auto), books, and the ride tracks; with the flag off the old rental redirect appears. **Step 6: Commit** `feat(rider): City ride mode on Choose a ride, hourly mode renamed Rental`.
 
 ### Task 9: Admin rate cards and rides
