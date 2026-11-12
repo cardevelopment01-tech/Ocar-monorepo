@@ -20,8 +20,8 @@ Today an in-city trip (same city, under 15 km) cannot be booked as one-way: the 
 
 ## Decisions (assumed)
 - D1: Autos are in (the auto category gets a city card). Bikes are out of scope.
-- D2: City prices start as copies of the rental card prices; admin edits them afterwards.
-- D3: City limit stays "classified in_city and straight-line under `IN_CITY_MAX_TRIP_DISTANCE_METRES` (15 km)".
+- D2 (**open, now material**): city prices start as copies of the rental card prices. With D3 = B that prices Bhubaneswar to Cuttack on the city card. Local numbers for 28 km and 45 min: Hatchback 348 -> 232, Sedan 454 -> 297, SUV 589 -> 390, Luxury 880 -> 585, Van 529 -> 460 (one-way card -> rental-copied city card). Owner must either accept this, or seed the city cards from the one-way card values (no price change when the flag is turned on) and lower them deliberately in admin.
+- D3 (**decided by the owner: option B, no distance cap**): a trip is a city ride when `classifyTrip` says `in_city` (both ends inside the same city boundary). The Bhubaneswar, Khordha and Cuttack boundary is one merged region (migration 096), so Bhubaneswar to Cuttack (about 25 to 30 km) is a city ride. The 15 km `IN_CITY_MAX_TRIP_DISTANCE_METRES` rule is not used for city rides. One-way intercity then applies only to trips that leave the region.
 - D4: Max 3 stops (existing); stop charge comes from the city card.
 - D5: Offer rules treat a city ride as `one_way` (no new offer rule type now).
 - D6: In the new apps the hourly mode is renamed "Rental"; "City ride" names the metered mode.
@@ -30,4 +30,4 @@ Today an in-city trip (same city, under 15 km) cannot be booked as one-way: the 
 Bikes, a driver-app label for city rides, a new offers rule type, changes to commission.
 
 ## Risks
-Old builds (mitigated by opt-in and `ride_type` staying `one_way`); open rentals at deploy (mitigated by backfill + fallback); autos with no city card (the app must show "not available", not crash); cache collisions between standard and city cards (cache key includes trip_mode).
+Price split during rollout: an old build still books Bhubaneswar to Cuttack as intercity one-way (the 15 km rule applies to it) while a new build books the same trip as a city ride, at a different price (see D2). Driver earnings and commission on those trips follow the card used. Old builds (mitigated by opt-in and `ride_type` staying `one_way`); open rentals at deploy (mitigated by backfill + fallback); autos with no city card (the app must show "not available", not crash); cache collisions between standard and city cards (cache key includes trip_mode).
