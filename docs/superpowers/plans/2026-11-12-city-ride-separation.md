@@ -20,14 +20,16 @@
 - Production is read-only for us: preflight SQL is handed to the owner to run; nothing here touches prod.
 - Commits: no `Co-Authored-By` line. One commit per task. Nothing is pushed until the owner says so.
 - Tests: `cd api && npx vitest run <file>` (env vars as in the existing test runs).
+- Migrations run during blue/green with old and new API nodes live together: every migration must be safe for old code, must not take long locks on `rides`, and must never hard-fail a deploy for data gaps (warn and skip; the preflight is the gate).
+- **D7 (owner decision before Task 3):** today `endRideEarlyAsDriver` re-prices ANY ride type, rentals included, from the rate card's per-km and per-minute (capped at the quoted fare). After the detach a rental has no card, so an early-ended rental is billed per D7: **(recommended) the full package fare** (the package is a reserved block), or keep a per-km early-end by storing the two rates on the package. Pick one; Task 3 implements it and tests it.
 
 ## Review Focus
 
-1. A rental booked **before** Phase A deploys, cancelled after it: must still be charged its ₹50 and its stop charge (snapshot backfill + rate-card fallback).
-2. An old client sends an in-city one-way with no `trip_mode`: the same 422 text as today.
-3. A category or city that has a rental package but only a global rental card (no city override): the copied city card and the package fees must still resolve.
-4. Auto Rickshaw (category 6) with the flag on: it needs a city card; if one is missing the quote must say "not available", not 500.
-5. Standard and city cards share (city, category): the rate-card cache key must include `trip_mode` so they never collide.
+1. A rental booked **before** Phase A deploys (or by an old API node during the blue/green overlap), cancelled after: still charged its fee and stop charge (snapshot backfill + rate-card fallback).
+2. An old client sends an in-city one-way with no `trip_mode` to `createBooking`: the same 422 text as today (`/pricing/estimate` has no such guard and stays that way).
+3. An admin edits the **standard** one-way card (or the city card) for a city and category: the other card must stay current (both `createRateCard` writers must filter on `trip_mode`).
+4. A **scheduled** city ride is re-priced at dispatch: it must use the city card and keep `fare_snapshots.rate_card_id` on it.
+5. A rental with no rate card completes, ends early, adds a stop and cancels without a null-join or a silent fare change (D7).
 
 ---
 
@@ -45,10 +47,10 @@
 
 - [ ] **Step 1: Write the failing test.** `rental-cards-preflight.test.ts` reads `preflight-rental-cards.sql` as text and asserts: it contains `rental_packages`, `rate_cards`, `effective_to IS NULL`, and `COALESCE(rp.city_id`; named `it('looks for packages whose category has no current rental card (city override or global)')`.
 - [ ] **Step 2: Run it** (`npx vitest run tests/unit/pricing/rental-cards-preflight.test.ts`), expect FAIL (file missing).
-- [ ] **Step 3: Write the SQL**: select every active `rental_packages` row `rp` with no current `rate_cards` row where `ride_type='rental'`, `category_id = rp.category_id`, `effective_to IS NULL` and `(city_id = rp.city_id OR city_id IS NULL)`. Returns `(package_id, category_id, city_id)` gaps. Migration 136 starts with a `DO $$` block running the same query and `RAISE EXCEPTION 'rental packages without a current rental rate card: %'` if any row comes back.
+- [ ] **Step 3: Write the SQL**: select every active `rental_packages` row `rp` with no current `rate_cards` row where `ride_type='rental'`, `category_id = rp.category_id`, `effective_to IS NULL` and `(city_id = rp.city_id OR city_id IS NULL)`. Returns `(package_id, category_id, city_id)` gaps. Migration 136 starts with a `DO $$` block running the same query and `RAISE WARNING 'rental packages without a current rental rate card: %'` (never an exception: a data gap must not fail a blue/green deploy); the package backfill in Task 2 skips unmatched rows and leaves their fees 0 until the owner fixes them from the preflight output.
 - [ ] **Step 4: Run test, expect PASS.** Then run the SQL against the local test DB: `docker exec -i ocar_pr1_test_pg psql -U postgres -d ocar_test < api/scripts/preflight-rental-cards.sql`; expect 0 rows.
 - [ ] **Step 5: Commit** `feat(pricing): preflight that every rental package has a current rental rate card`.
-- [ ] **Owner action (not code):** run the same SQL read-only on staging and prod and report the rows. Task 2 is not merged until both return 0 rows.
+- [ ] **Owner action (not code):** run the same SQL read-only on staging and prod and report the rows. Task 2 is not merged until both return 0 rows (this is the gate; the migration only warns).
 
 ### Task 2: Fees on the package, snapshotted on the ride
 
@@ -67,7 +69,8 @@
 - [ ] **Step 3: Migration 136 (after the guard):** add the four columns; backfill `rental_packages.stop_charge/cancellation_fee` from the current rental card matching `(category, COALESCE(city override, global))`; backfill `fare_snapshots.rental_stop_charge/rental_cancellation_fee` for every non-terminal rental (`rides.status IN ('scheduled','requested','accepted','driver_arrived','in_progress','returning')`) from the card in `fs.rate_card_id` (same style as migration 099).
 - [ ] **Step 4: Implement** the two reads as above, and make `insertFareSnapshot` write the package's two fees into the new snapshot columns when `rentalPackageId` is set.
 - [ ] **Step 5: Run the new test plus `npx vitest run tests/unit/rides`, expect PASS.** Apply the migration to the local DB and check `SELECT count(*) FROM rental_packages WHERE cancellation_fee = 0` is 0 where a card had a fee.
-- [ ] **Step 6: Commit** `feat(rentals): stop charge and cancellation fee live on the package and are snapshotted on the ride`.
+- [ ] **Step 6:** The rate-card fallbacks stay in code until Task 11's trigger (old API nodes keep writing rentals with the snapshot columns NULL during the blue/green overlap).
+- [ ] **Step 7: Commit** `feat(rentals): stop charge and cancellation fee live on the package and are snapshotted on the ride`.
 
 ### Task 3: The rental quote stops needing a rate card
 
@@ -84,7 +87,8 @@
 - [ ] **Step 1: Write failing tests.** (a) mock `getRentalPackage` and make `getCurrentRateCard` throw; the rental quote still returns the package fare + `charge_per_stop` equal to the package's `stop_charge`; (b) the `breakdown.total` equals the value the old path produced for the same inputs (golden numbers from `lib/fare.ts`: package 500, no overage, surge 1 gives 500); (c) a **one-way** quote still throws 422 "No rate card" when none exists.
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement.** In `getFareEstimate`, skip the rate-card fetch when `ride_type === 'rental' && pkg`; feed `estimateFare` a zero `rate_card` (the pattern already used at `lib/fare.ts:266`); a rental with no `rental_package_id` keeps the old 422. In `rides.service.ts` make the two `BigInt(fareEstimate.rate_card_id)` uses null-safe.
-- [ ] **Step 4: Check no client reads `rate_card_id` at runtime**: `grep -rn "rate_card_id\|rateCardId" apps packages --include=*.ts --include=*.tsx`; expect only type declarations (found: `apps/user/lib/ride-api.ts:23`, `apps/admin/lib/pricing-api.ts:28`, `packages/mobile-shared/src/api/types.ts:30`). Widen those three types to `number | null`.
+- [ ] **Step 4: Audit every read of `fare_snapshots.rate_card_id`** and make each null-safe, with a test per item (a rental with a NULL card): the early-end recompute in `rides.service.ts` (INNER JOIN near line 2188; implement D7 here), `getRideRatePerMin` in `rides.repository.ts` (near line 649; returns 0 for a card-less ride, so confirm it is only used for one-way stop wait), `getRideStopCharge` (Task 2), `updateFareSnapshotEstimate` (near line 1735, typed non-null; widen to `number | null`), the scheduled re-quote in `jobs/processors/dispatch-scheduled.processor.ts`, and the `rate_card_id_at_booking` insert. LEFT JOINs (`RIDE_SELECT_SQL`, admin ride detail) and the round-trip snapshot loader are already safe. Tests: completing a card-less rental, early-ending it (per D7), adding a stop to it.
+- [ ] **Step 4b: Check no client reads `rate_card_id` at runtime**: `grep -rn "rate_card_id\|rateCardId" apps packages --include=*.ts --include=*.tsx`; expect only type declarations (found: `apps/user/lib/ride-api.ts:23`, `apps/admin/lib/pricing-api.ts:28`, `packages/mobile-shared/src/api/types.ts:30`). Widen those three types to `number | null`.
 - [ ] **Step 5: Run `npx vitest run tests/unit/pricing tests/unit/rides` and `npx tsc --noEmit`, expect PASS.**
 - [ ] **Step 6: Commit** `feat(rentals): a rental quote and booking no longer depend on a rate card`.
 
@@ -98,12 +102,12 @@
 **Interfaces:**
 - Produces: create/update accept optional `stop_charge`, `cancellation_fee` (numbers, 0 to 5000); list returns them.
 
-- [ ] **Step 1: Failing tests:** create with `cancellation_fee: 50, stop_charge: 15` persists both; update changes only `cancellation_fee`; a negative value is rejected with `VALIDATION_ERROR`; omitting both leaves the existing values.
+- [ ] **Step 1: Failing tests:** create with `cancellation_fee: 50, stop_charge: 15` persists both; update changes only `cancellation_fee`; a negative value is rejected with `VALIDATION_ERROR`; omitting both on **update** leaves the existing values; on **create** both are required (a forgotten field must not become a free cancellation).
 - [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** in service, repository and types; add two number inputs ("Cancellation fee", "Stop charge") to the create and edit dialogs of `RentalPackagesTab.tsx`. **Step 4: Run tests and `cd apps/admin && npx tsc --noEmit`, expect PASS.**
 - [ ] **Step 5: Commit** `feat(admin): rental package fees (stop charge, cancellation fee)`.
 
 ### Gate A (no code)
-Deploy Phase A. Confirm with read-only SQL on staging, then prod: `SELECT count(*) FROM fare_snapshots fs JOIN rides r ON r.id = fs.ride_id WHERE r.ride_type='rental' AND r.status IN ('scheduled','requested','accepted','driver_arrived','in_progress','returning') AND fs.rental_cancellation_fee IS NULL` returns 0. Book, stop-add and cancel a test rental on staging; the fee and stop charge match the package. Only then continue.
+Deploy Phase A and wait until the old blue/green color is drained (old nodes write rentals without the snapshot columns). Confirm with read-only SQL on staging, then prod: `SELECT count(*) FROM fare_snapshots fs JOIN rides r ON r.id = fs.ride_id WHERE r.ride_type='rental' AND r.status IN ('scheduled','requested','accepted','driver_arrived','in_progress','returning') AND fs.rental_cancellation_fee IS NULL` returns 0. Book, stop-add and cancel a test rental on staging; the fee and stop charge match the package. Only then continue.
 
 ---
 
@@ -113,7 +117,7 @@ Deploy Phase A. Confirm with read-only SQL on staging, then prod: `SELECT count(
 
 **Files:**
 - Create: `api/src/db/migrations/137_city_ride_rate_cards.sql`
-- Modify: `api/src/modules/pricing/pricing.repository.ts` (`getCurrentRateCard`, `fetchCurrentRateCardFromDb`, `rateCardKey`), `api/src/modules/pricing/pricing.types.ts`
+- Modify: `api/src/modules/pricing/pricing.repository.ts` (`getCurrentRateCard`, `fetchCurrentRateCardFromDb`, `rateCardKey`, **`createRateCard` expire/history/carry-forward near lines 316-370**, `getAllCurrentRateCards`), `api/src/modules/admin/admin.repository.ts` (**`createAdminRateCard` near lines 2623-2660**, the admin list near line 1967), `api/src/constants/redis-keys.ts` (rate-card key near line 72), `api/src/modules/pricing/pricing.types.ts`
 - Test: `api/tests/unit/pricing/rate-card-trip-mode.test.ts`
 
 **Interfaces:**
@@ -121,9 +125,10 @@ Deploy Phase A. Confirm with read-only SQL on staging, then prod: `SELECT count(
 - Produces (code): `getCurrentRateCard(categoryId: number, rideType: string, cityId: number | null, tripMode: 'standard' | 'city' = 'standard')`; the cache key includes `tripMode`.
 - Data: for every current rental card insert a city card (`ride_type='one_way'`, `trip_mode='city'`, same per-km, per-minute, min fare, base fare, stop charge, cancellation fee, same city_id). Rental cards are left open.
 
-- [ ] **Step 1: Failing tests.** (a) `rateCardKey` differs for `standard` vs `city` with identical other args (Review Focus 5); (b) `getCurrentRateCard(2,'one_way',null)` SQL filters `trip_mode = 'standard'`; with `'city'` filters `'city'`; (c) default arg keeps every existing caller on `standard`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** repository change and migration. **Step 4:** apply to the local DB; check `SELECT category_id, trip_mode, rate_per_km FROM rate_cards WHERE effective_to IS NULL AND trip_mode='city'` shows one row per rental card including category 6; check the standard one-way quote for category 2 is unchanged. **Step 5: Run `npx vitest run tests/unit/pricing`, expect PASS.**
-- [ ] **Step 6: Commit** `feat(pricing): trip_mode on rate cards; city ride cards copied from the rental cards`.
+- [ ] **Step 1: Failing tests.** (0) for BOTH `createRateCard` and `createAdminRateCard`: creating a `standard` card leaves the current `city` card for the same city and category open, and creating a `city` card leaves the `standard` one open; the history row and the carried-forward `stop_charge`, `cancellation_fee`, `base_fare` come from the card of the same `trip_mode` (Review Focus 3); (a) `rateCardKey` differs for `standard` vs `city` with identical other args (Review Focus 5); (b) `getCurrentRateCard(2,'one_way',null)` SQL filters `trip_mode = 'standard'`; with `'city'` filters `'city'`; (c) default arg keeps every existing caller on `standard`.
+- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** repository change and migration. **Step 4:** apply to the local DB; check `SELECT category_id, trip_mode, rate_per_km FROM rate_cards WHERE effective_to IS NULL AND trip_mode='city'` shows one row per rental card including category 6; check the standard one-way quote for category 2 is unchanged. **Step 5: Run `npx vitest run tests/unit/pricing tests/unit/admin`, expect PASS.**
+- [ ] **Step 6: Migration safety.** In `137`: add `rides.trip_mode` and `rate_cards.trip_mode` as `ADD COLUMN ... NOT NULL DEFAULT 'standard'` and add the CHECK constraints `NOT VALID`, then `VALIDATE CONSTRAINT` in a second statement; `SET LOCAL lock_timeout = '3s'` at the top (the migration is retried, never queued behind a long ride transaction); swap `rate_cards_current_idx` and `rate_cards_lookup_idx` in ONE transaction so the uniqueness guard is never absent. Bump the rate-card cache key prefix and read through to the DB when a cached card has no `trip_mode` (same pattern as the `base_fare` guard in `getCurrentRateCard`). The admin and public lists (`getAllCurrentRateCards`, the admin list) select `trip_mode` so duplicate one-way rows are distinguishable.
+- [ ] **Step 7: Commit** `feat(pricing): trip_mode on rate cards; city ride cards copied from the rental cards`.
 
 ### Task 6: Flag, classifier hint, and booking rules
 
@@ -134,9 +139,9 @@ Deploy Phase A. Confirm with read-only SQL on staging, then prod: `SELECT count(
 
 **Interfaces:**
 - Consumes: `getCurrentRateCard(..., tripMode)` from Task 5.
-- Produces: `classifyTrip` returns `city_ride_available = flag on && scope === 'in_city'`; `createBooking` with `tripMode: 'city'` requires `rideType === 'one_way'`, flag on, scope `in_city`, straight distance below `IN_CITY_MAX_TRIP_DISTANCE_METRES`, at most `MAX_STOPS_PER_RIDE` stops; otherwise 422 with codes `CITY_RIDE_DISABLED`, `CITY_RIDE_NOT_IN_CITY`.
+- Produces: `rides.trip_mode` is stored at booking and read back by `getFareRecomputeInput` (`rides.repository.ts` near line 1720) and passed into the scheduled re-quote in `jobs/processors/dispatch-scheduled.processor.ts`; `readCancellationFee` (`rides.service.ts` near line 1848) filters on the ride's `trip_mode` so the standard and city one-way cards never tie; `classifyTrip` returns `city_ride_available = flag on && scope === 'in_city'`; `createBooking` with `tripMode: 'city'` requires `rideType === 'one_way'`, flag on, scope `in_city`, straight distance below `IN_CITY_MAX_TRIP_DISTANCE_METRES`, at most `MAX_STOPS_PER_RIDE` stops; otherwise 422 with codes `CITY_RIDE_DISABLED`, `CITY_RIDE_NOT_IN_CITY`.
 
-- [ ] **Step 1: Failing tests.** `city-ride-booking.test.ts`: city booking accepted when in-city, short, flag on (asserts the city card was requested and `rides.trip_mode='city'` stored); `CITY_RIDE_DISABLED` when flag off; `CITY_RIDE_NOT_IN_CITY` for an intercity pair; `tripMode:'city'` with `rideType:'round_trip'` rejected; 4 stops rejected; a category with no city card returns a 422 whose message says the ride is not available for that vehicle (Review Focus 4). `legacy-client-compat.test.ts` (Review Focus 2): the existing in-city one-way request with **no** `tripMode` still throws the exact message "This trip stays within X — book an hourly rental package instead" with `httpStatus 422`, with the flag both on and off; a `rental` and a standard `one_way` request quote identical totals before and after.
+- [ ] **Step 1: Failing tests.** `city-ride-booking.test.ts`: city booking accepted when in-city, short, flag on (asserts the city card was requested and `rides.trip_mode='city'` stored); `CITY_RIDE_DISABLED` when flag off; `CITY_RIDE_NOT_IN_CITY` for an intercity pair; `tripMode:'city'` with `rideType:'round_trip'` rejected; 4 stops rejected; a scheduled city ride re-quoted at dispatch uses the city card and keeps `rate_card_id` on it (Review Focus 4); a city cancel after arrival charges the city card's fee; a category with no city card returns a 422 whose message says the ride is not available for that vehicle (Review Focus 4). `legacy-client-compat.test.ts` (Review Focus 2): the existing in-city one-way request with **no** `tripMode` still throws the exact message "This trip stays within X — book an hourly rental package instead" with `httpStatus 422`, with the flag both on and off; a `rental` and a standard `one_way` request quote identical totals before and after.
 - [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** Keep the old in-city block untouched for requests without `tripMode`. **Step 4: Run `npx vitest run tests/unit/rides tests/unit/pricing tests/unit/geo` and `npx tsc --noEmit`, expect PASS.**
 - [ ] **Step 5: Commit** `feat(rides): city ride bookings behind city_rides_enabled; old requests unchanged`.
 
@@ -149,6 +154,7 @@ Deploy Phase A. Confirm with read-only SQL on staging, then prod: `SELECT count(
 **Interfaces:**
 - Produces: `maxPickupRadiusMetres('one_way', slug, undefined, round, 'city')` returns 2000 for `auto_rickshaw` and 4000 otherwise (assumed, owner confirms); all existing calls (no 5th arg) return what they returned before.
 
+- [ ] **Step 0:** audit every place that re-reads `ride_type` for dispatch (`jobs/processors/broadcast.processor.ts`, `ack-check.processor.ts`, retries) and carry `tripMode` through each.
 - [ ] **Step 1: Failing tests:** the two city values; `maxPickupRadiusMetres('one_way', null)` still 10000 and `('rental','auto_rickshaw')` still 2000; round widening still adds `BROADCAST_ROUND_STEP_METRES` per round for a city ride.
 - [ ] **Step 2 to 4:** run (FAIL), implement, run `npx vitest run tests/unit/dispatch src/jobs` (PASS). **Step 5: Commit** `feat(dispatch): pickup radius for city rides`.
 
@@ -171,7 +177,7 @@ Deploy Phase A. Confirm with read-only SQL on staging, then prod: `SELECT count(
 ### Task 9: Admin rate cards and rides
 
 **Files:**
-- Modify: `apps/admin/app/(dashboard)/config/rate-cards/page.tsx` (ride-type list `RIDE_TYPE_ORDER` line 25 gains City ride, create/edit form sends `trip_mode`; Rental stays visible but read-only with a note "priced from Rental Packages" until Task 11), `apps/admin/lib/pricing-api.ts`, `apps/admin/app/(dashboard)/rides/page.tsx` (filter by trip mode), `api/src/modules/admin/admin.service.ts` and `admin.repository.ts` (rate-card create/list/update take `trip_mode`, default `standard`)
+- Modify: `apps/admin/app/(dashboard)/config/rate-cards/page.tsx` (ride-type list `RIDE_TYPE_ORDER` line 25 gains City ride, create/edit form sends `trip_mode`; Rental stays visible but read-only with a note "priced from Rental Packages" until Task 11), `apps/admin/lib/pricing-api.ts`, `apps/admin/app/(dashboard)/rides/page.tsx` (filter by trip mode), `api/src/modules/admin/admin.service.ts` and `admin.repository.ts` (rate-card create/list/update take `trip_mode`, default `standard`; the pricing-side `createRateCard` is covered in Task 5)
 - Test: `api/tests/unit/admin/rate-card-trip-mode.test.ts`
 
 - [ ] **Step 1: Failing tests:** creating a card with `trip_mode:'city'` inserts a new row and closes the previous current city row (not an UPDATE of rates); the same category/ride_type with `standard` is untouched; omitting `trip_mode` is `standard`. **Step 2 to 4:** run (FAIL), implement, run API tests and `cd apps/admin && npx tsc --noEmit` (PASS). **Step 5: Commit** `feat(admin): City ride rate cards`.
@@ -199,6 +205,8 @@ Turn `city_rides_enabled` on in staging for one city. Verify: a city booking by 
 - Test: `api/tests/unit/pricing/rental-cards-closed.test.ts`
 
 - [ ] **Step 1: Failing tests:** the migration text raises an exception if any non-terminal rental lacks `rental_cancellation_fee`; it sets `effective_to = now()` only where `ride_type='rental' AND effective_to IS NULL`; `getRideStopCharge` and `readCancellationFee` no longer query `rate_cards` for a rental. **Step 2 to 4:** run, implement, run `npx vitest run tests/unit` (PASS). **Step 5: Commit** `refactor(rentals): close the rental rate cards; rentals are priced from packages only`.
+
+**Housekeeping in the same release:** update `api/scripts/seed-load-test-data.sql`, `api/src/db/bench-cache-invalidation.ts` and `load-tests/api-table-matrix.csv` (they read cards by category, ride type and city and would silently pick a city card); check `apps/user/app/pricing/page.tsx` and `apps/admin/lib/mock-data.ts` for rate-card assumptions.
 
 ### Task 12: Remove the flag and the redirect-to-rental code (trigger: minimum rider and web versions raised past the Task 8 and 10 builds, via the existing version policy)
 
