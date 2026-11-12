@@ -86,8 +86,8 @@ describe('processBroadcast category eligibility per round', () => {
   })
 
   it.each([
-    ['sedan',         1, 4_000],
-    ['sedan',         3, 6_000],
+    ['sedan',         1, 2_500],
+    ['sedan',         3, 4_500],
     ['auto_rickshaw', 1, 2_000],
     ['auto_rickshaw', 3, 4_000],
   ])('a city ride (%s, round %s) searches only %s m around the pickup, not the intercity 10 km', async (slug, round, expected) => {

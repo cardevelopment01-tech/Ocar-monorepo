@@ -2,13 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { maxPickupRadiusMetres, BROADCAST_ROUND_STEP_METRES } from '@/constants/limits'
 
 describe('maxPickupRadiusMetres: city ride', () => {
-  it('is 4 km for a car and 2 km for an auto in round 1', () => {
-    expect(maxPickupRadiusMetres('one_way', 'sedan', undefined, 1, 'city')).toBe(4_000)
+  it('is the same as a short rental: 2.5 km for a car and 2 km for an auto in round 1', () => {
+    expect(maxPickupRadiusMetres('one_way', 'sedan', undefined, 1, 'city')).toBe(2_500)
+    expect(maxPickupRadiusMetres('rental', 'sedan')).toBe(maxPickupRadiusMetres('one_way', 'sedan', undefined, 1, 'city'))
     expect(maxPickupRadiusMetres('one_way', 'auto_rickshaw', undefined, 1, 'city')).toBe(2_000)
   })
 
   it('widens by the same step each round, like every other ride', () => {
-    expect(maxPickupRadiusMetres('one_way', 'sedan', undefined, 3, 'city')).toBe(4_000 + 2 * BROADCAST_ROUND_STEP_METRES)
+    expect(maxPickupRadiusMetres('one_way', 'sedan', undefined, 3, 'city')).toBe(2_500 + 2 * BROADCAST_ROUND_STEP_METRES)
     expect(maxPickupRadiusMetres('one_way', 'auto_rickshaw', undefined, 3, 'city')).toBe(2_000 + 2 * BROADCAST_ROUND_STEP_METRES)
   })
 
