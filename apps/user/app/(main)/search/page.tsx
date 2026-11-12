@@ -1,6 +1,6 @@
 'use client'
 
-import { resolveSearchRoute } from '@/lib/city-ride-route'
+import { resolveSearchRoute, tripModeFromParams } from '@/lib/city-ride-route'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -79,7 +79,7 @@ function SearchContent() {
   const rideType  = sp.get('rideType')  ?? undefined
   const backTo    = sp.get('backTo')    ?? undefined
   const tripHours = sp.get('tripHours') ?? undefined
-  const tripMode  = sp.get('tripMode') === 'city' ? 'city' as const : undefined
+  const tripMode  = tripModeFromParams(sp.get('tripMode'), sp.get('rideType'))
 
   const [scheduledFor, setScheduledFor] = useState<Date | null>(() => {
     const raw = sp.get('scheduledFor')

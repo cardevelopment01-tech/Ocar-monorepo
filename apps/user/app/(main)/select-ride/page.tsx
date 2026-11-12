@@ -1,6 +1,6 @@
 'use client'
 
-import { resolveSearchRoute } from '@/lib/city-ride-route'
+import { resolveSearchRoute, tripModeFromParams } from '@/lib/city-ride-route'
 import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowLeft, ChevronRight, Users, Zap, Clock, CreditCard, RotateCcw } from 'lucide-react'
@@ -72,7 +72,7 @@ function SelectRideContent() {
   const tripHoursFromUrl   = sp.get('tripHours') ? parseInt(sp.get('tripHours')!) : undefined
   const fromRoundTripPage  = tripHoursFromUrl !== undefined && sp.get('rideType') === 'round_trip'
   // A city ride (tripMode=city): a metered one-way inside the city, quoted on the City ride card. No round trip, no return cab.
-  const tripModeParam: 'city' | undefined = sp.get('tripMode') === 'city' ? 'city' : undefined
+  const tripModeParam = tripModeFromParams(sp.get('tripMode'), sp.get('rideType'))
   const cityRide = tripModeParam === 'city'
 
   // Stops apply to one-way (priced via detour distance) and round trip (flat
@@ -154,15 +154,22 @@ function SelectRideContent() {
           : next.toast === 'to_outstation' ? `That's outside ${cityLabel}, switching to outstation options`
           : `That's inside ${cityLabel}, switching to Rental`
         )
-        const params = new URLSearchParams({
-          originLat: String(originLat), originLng: String(originLng), originAddress,
-          destinationAddress, destinationLat: String(destinationLat), destinationLng: String(destinationLng),
-        })
-        if (originCityId !== undefined) params.set('originCityId', String(originCityId))
-        if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
-        if (riderName)  params.set('riderName', riderName)
-        if (riderPhone) params.set('riderPhone', riderPhone)
+        // Staying on this page (a city ride switch) keeps the whole trip: distance, duration, polyline and stops. The other screens
+        // rebuild their own from the pickup and drop.
+        const params = next.path === '/select-ride'
+          ? new URLSearchParams(sp.toString())
+          : new URLSearchParams({
+              originLat: String(originLat), originLng: String(originLng), originAddress,
+              destinationAddress, destinationLat: String(destinationLat), destinationLng: String(destinationLng),
+            })
+        if (next.path !== '/select-ride') {
+          if (originCityId !== undefined) params.set('originCityId', String(originCityId))
+          if (scheduledFor) params.set('scheduledFor', scheduledFor.toISOString())
+          if (riderName)  params.set('riderName', riderName)
+          if (riderPhone) params.set('riderPhone', riderPhone)
+        }
         if (next.tripMode) params.set('tripMode', next.tripMode)
+        else params.delete('tripMode')
         setTimeout(() => { if (!cancelled) router.replace(`${next.path}?${params.toString()}`) }, 1500)
       })
       .catch(() => {})
