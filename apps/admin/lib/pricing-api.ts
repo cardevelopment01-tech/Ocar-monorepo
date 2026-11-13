@@ -6,6 +6,8 @@ export interface RateCard {
   category_name: string
   category_slug: string
   ride_type: 'one_way' | 'round_trip' | 'rental'
+  /** 'city' = the City Ride card (a one-way card with its own rates); 'standard' = every other card. */
+  trip_mode: 'standard' | 'city'
   city_id: number | null
   city_name: string | null
   rate_per_km: string
@@ -24,6 +26,8 @@ export interface RateCard {
 }
 
 export interface RateCardHistoryRow {
+  /** 'city' for a version of the City Ride card; the API sends it so history can tell the two one-way cards apart. */
+  trip_mode?: 'standard' | 'city'
   id: number
   rate_card_id: number | null
   category_name: string
@@ -63,6 +67,8 @@ export const pricingApi = {
   createRateCard: (data: {
     category_id: number
     ride_type: string
+    /** Omit for a standard card; 'city' makes this a version of the City Ride card. */
+    trip_mode?: 'standard' | 'city'
     city_id?: number | null
     rate_per_km: number
     rate_per_min: number
