@@ -38,8 +38,7 @@ describe('seed-city-ride-cards.sql (run by the owner when City ride is enabled, 
     expect(seed).toMatch(/rc\.min_fare > 0/)
   })
 
-  it('skips an implausible minimum fare (a typo like 18000 must be set by hand, not copied) and defaults a missing cancellation fee to 0', () => {
-    expect(seed).toMatch(/rc\.min_fare <= 2000/)
+  it('defaults a missing cancellation fee to 0', () => {
     expect(seed).toMatch(/COALESCE\(rc\.cancellation_fee, 0\)/)
   })
 })

@@ -13,8 +13,6 @@ WHERE rc.ride_type = 'rental' AND rc.effective_to IS NULL
   -- A package rental never read these rates, so a placeholder (0 per km, 0 minimum) must not become a free city ride: set such a card
   -- by hand in the admin (City Ride) instead.
   AND rc.rate_per_km > 0 AND rc.min_fare > 0
-  -- A minimum fare above 2000 is a typo (prd had a Sedan card at 18000); skipped so it is set by hand in the admin (City Ride).
-  AND rc.min_fare <= 2000
   AND NOT EXISTS (
     SELECT 1 FROM rate_cards x
     WHERE x.category_id = rc.category_id AND x.ride_type = 'one_way' AND x.trip_mode = 'city'
