@@ -184,11 +184,20 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
               </View>
             ) : null}
             <View style={styles.strip}>
-              <View style={styles.stripDotA} />
-              <Text style={styles.stripText} numberOfLines={1}>{(ride.originAddress ?? 'Pickup').split(',')[0]}</Text>
-              <Feather name="arrow-right" size={14} color={h.faint} />
-              <View style={styles.stripDotB} />
-              <Text style={styles.stripText} numberOfLines={1}>{(drop.value ?? 'Drop').split(',')[0]}</Text>
+              <View style={styles.stripRow}>
+                <View style={styles.stripDotA} />
+                <View style={styles.flex}>
+                  <Text style={styles.stripLabel}>Pickup</Text>
+                  <Text style={styles.stripText} numberOfLines={2}>{ride.originAddress?.trim() || 'Pickup'}</Text>
+                </View>
+              </View>
+              <View style={styles.stripRow}>
+                <View style={styles.stripDotB} />
+                <View style={styles.flex}>
+                  <Text style={styles.stripLabel}>{drop.label}</Text>
+                  <Text style={styles.stripText} numberOfLines={2}>{drop.value}</Text>
+                </View>
+              </View>
             </View>
             {drop.note ? <Text style={styles.stripNote}>{drop.note}</Text> : null}
 
@@ -339,10 +348,12 @@ const styles = StyleSheet.create({
   ticketTint: { position: 'absolute', top: 0, left: 0, right: 0, height: 150, borderTopLeftRadius: 26, borderTopRightRadius: 26 },
   ticketTop: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20 },
   fareLabel: { fontFamily: font.sb, fontSize: 13, color: h.muted },
-  strip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginTop: 14, marginBottom: 18, backgroundColor: h.chip, borderRadius: 16, paddingHorizontal: 14, height: 48 },
-  stripDotA: { width: 9, height: 9, borderRadius: 5, backgroundColor: h.teal },
-  stripDotB: { width: 9, height: 9, borderRadius: 3, backgroundColor: h.ivory },
-  stripText: { flex: 1, fontFamily: font.sb, fontSize: 13.5, color: h.ivory },
+  strip: { gap: 14, marginHorizontal: 20, marginTop: 14, marginBottom: 18, backgroundColor: h.chip, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 14 },
+  stripRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  stripLabel: { fontFamily: font.m, fontSize: 12, color: h.muted },
+  stripDotA: { width: 9, height: 9, borderRadius: 5, backgroundColor: h.teal, marginTop: 4 },
+  stripDotB: { width: 9, height: 9, borderRadius: 3, backgroundColor: h.ivory, marginTop: 4 },
+  stripText: { fontFamily: font.sb, fontSize: 13.5, lineHeight: 19, color: h.ivory },
   stripNote: { fontFamily: font.m, fontSize: 12.5, color: h.muted, marginHorizontal: 22, marginTop: -8, marginBottom: 12 },
   perf: { height: 20, justifyContent: 'center' },
   perfLine: { marginHorizontal: 14, borderTopWidth: 1.5, borderTopColor: h.line10, borderStyle: 'dashed' },
