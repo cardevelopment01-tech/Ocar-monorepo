@@ -5,7 +5,7 @@ export type TripIntent = 'outstation' | 'city' | 'rental'
 
 /** The three home tiles (owner decision D8). Outstation holds One way and Round trip, chosen on the next screens. */
 export const TRIP_INTENTS: ReadonlyArray<{ intent: TripIntent; title: string; sub: string }> = [
-  { intent: 'outstation', title: 'Outstation', sub: 'One way or round trip' },
+  { intent: 'outstation', title: 'Outstation', sub: 'City to city' },
   { intent: 'city', title: 'City Ride', sub: 'Within the city' },
   { intent: 'rental', title: 'Rental', sub: 'By the hour' },
 ]
