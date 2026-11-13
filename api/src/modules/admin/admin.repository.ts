@@ -1956,7 +1956,7 @@ export async function deleteCityBoundary(
 
 export async function listAdminRateCards() {
   const res = await pool.query(
-    `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type,
+    `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type, rc.trip_mode,
             rc.city_id::int AS city_id, rc.rate_per_km, rc.rate_per_min, rc.min_fare,
             rc.return_rate_per_km, rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day,
             rc.cancellation_fee, rc.stop_charge, rc.base_fare, rc.effective_from, rc.effective_to, rc.notes,
@@ -1968,7 +1968,7 @@ export async function listAdminRateCards() {
      JOIN vehicle_categories vc ON vc.id = rc.category_id
      LEFT JOIN cities c ON c.id = rc.city_id
      WHERE rc.effective_to IS NULL
-     ORDER BY c.name NULLS FIRST, vc.display_name, rc.ride_type`,
+     ORDER BY c.name NULLS FIRST, vc.display_name, rc.ride_type, rc.trip_mode`,
   );
   return res.rows;
 }
@@ -1981,7 +1981,7 @@ export async function listAdminRateCardHistory() {
             rch.changed_by::int AS changed_by, rch.change_reason, rch.created_at,
             rch.city_id::int AS city_id,
             vc.display_name AS category_name,
-            rc.ride_type,
+            rc.ride_type, rc.trip_mode,
             rc.category_id::int AS category_id,
             c.name AS city_name
      FROM rate_card_history rch
@@ -2631,7 +2631,10 @@ export async function createAdminRateCard(data: {
   cityId?: number | null;
   notes?: string | null;
   adminId: bigint;
+  /** Which card this is a new version of. Omitted = the standard (intercity) card; a city card is a separate current row. */
+  tripMode?: "standard" | "city";
 }) {
+  const tripMode = data.tripMode ?? "standard";
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -2641,9 +2644,10 @@ export async function createAdminRateCard(data: {
        SET effective_to = now()
        WHERE category_id = $1 AND ride_type = $2
          AND COALESCE(city_id, 0) = COALESCE($3::bigint, 0)
+         AND trip_mode = $4
          AND effective_to IS NULL
        RETURNING *`,
-      [data.categoryId, data.rideType, data.cityId ?? null],
+      [data.categoryId, data.rideType, data.cityId ?? null, tripMode],
     );
 
     if (expired.rows.length > 0) {
@@ -2676,8 +2680,8 @@ export async function createAdminRateCard(data: {
       `INSERT INTO rate_cards
          (category_id, ride_type, rate_per_km, rate_per_min,
           min_fare, return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-          city_id, notes, created_by, stop_charge, cancellation_fee, base_fare)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          city_id, notes, created_by, stop_charge, cancellation_fee, base_fare, trip_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        RETURNING *`,
       [
         data.categoryId,
@@ -2699,6 +2703,7 @@ export async function createAdminRateCard(data: {
         expired.rows[0]?.cancellation_fee ?? null,
         // Same carry-forward for the flat base fare.
         data.baseFare ?? Number(expired.rows[0]?.base_fare ?? 0),
+        tripMode,
       ],
     );
 

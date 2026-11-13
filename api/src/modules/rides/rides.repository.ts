@@ -361,6 +361,7 @@ export async function createRide(data: {
   paymentChannel?: string
   riderName?: string
   riderPhone?: string
+  tripMode?: 'standard' | 'city'
 }, client?: PoolClient) {
   const res = await (client ?? pool).query(
     `INSERT INTO rides (
@@ -369,14 +370,14 @@ export async function createRide(data: {
        origin_address, destination_address,
        origin_city_id, destination_city_id,
        rental_package_id, trip_hours, scheduled_for, return_at,
-       payment_channel, status, rider_name, rider_phone
+       payment_channel, status, rider_name, rider_phone, trip_mode
      ) VALUES (
        $1, $2, $3, $4,
        ST_SetSRID(ST_MakePoint($6::float8, $5::float8), 4326)::geography,
        CASE WHEN $7::float8 IS NOT NULL AND $8::float8 IS NOT NULL
          THEN ST_SetSRID(ST_MakePoint($8::float8, $7::float8), 4326)::geography
          ELSE NULL END,
-       $9, $10, $11, $12, $13, $14, $15, $16, $17, COALESCE($18::ride_status, 'requested'::ride_status), $19, $20
+       $9, $10, $11, $12, $13, $14, $15, $16, $17, COALESCE($18::ride_status, 'requested'::ride_status), $19, $20, $21
      )
      RETURNING *`,
     [
@@ -393,6 +394,7 @@ export async function createRide(data: {
       data.status ?? null,
       data.riderName ?? null,
       data.riderPhone ?? null,
+      data.tripMode ?? 'standard',
     ]
   )
   return res.rows[0]
@@ -1718,6 +1720,8 @@ export interface FareRecomputeInput {
   pricing_version:  1 | 2
   rental_package_id: number | null
   origin_city_id:   number | null
+  /** 'city' re-quotes on the city card; absent or 'standard' on the standard one. */
+  trip_mode?:       'standard' | 'city'
   total_estimated:  number
   /** The offer discount reserved on this quote; 0 when none. */
   discount_amount?: number
@@ -1725,7 +1729,7 @@ export interface FareRecomputeInput {
 
 export async function getFareRecomputeInput(rideId: bigint): Promise<FareRecomputeInput | null> {
   const res = await pool.query(
-    `SELECT r.category_id::int, r.origin_city_id::int,
+    `SELECT r.category_id::int, r.origin_city_id::int, r.trip_mode,
             fs.ride_type, fs.is_return_cab, fs.estimated_km::float8, fs.estimated_min::float8,
             fs.stop_count::int, fs.trip_hours::float8, fs.pricing_version::int, fs.rental_package_id::int,
             fs.total_estimated::float8, fs.discount_amount::float8 AS discount_amount

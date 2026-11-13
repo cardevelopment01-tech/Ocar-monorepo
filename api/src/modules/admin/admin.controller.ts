@@ -688,7 +688,10 @@ export async function postAdminRateCard(
       baseFare?: number;
       cityId?: number | null;
       notes?: string | null;
+      tripMode?: "standard" | "city";
     } = {};
+    // Omitted = the standard card (old admin screens). Anything else is passed on for the service to refuse.
+    if (req.body.trip_mode !== undefined) data.tripMode = req.body.trip_mode;
     if (req.body.return_rate_per_km !== undefined)
       data.returnRatePerKm =
         req.body.return_rate_per_km != null

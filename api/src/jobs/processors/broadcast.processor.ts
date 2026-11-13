@@ -124,8 +124,10 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     radiusM?: number
   }> = []
 
-  const slug = data.rideType === 'rental' ? await repo.getCategorySlug(categoryId) : null
-  const cap = maxPickupRadiusMetres(data.rideType, slug, data.tripHours, data.broadcastRound)
+  // A city ride's mode is read from its ride row (stamped at booking), not from the job: jobs already queued carry no such field.
+  const tripMode: 'standard' | 'city' = ride.trip_mode === 'city' ? 'city' : 'standard'
+  const slug = data.rideType === 'rental' || tripMode === 'city' ? await repo.getCategorySlug(categoryId) : null
+  const cap = maxPickupRadiusMetres(data.rideType, slug, data.tripHours, data.broadcastRound, tripMode)
   const roundRadius = Math.min(cap, data.radiusMetres ?? cap)
   // Dispatch phase 0 (migration 135): what the round did, recorded at the end. Both helpers answer "off" on any failure.
   const logOn = phase1 && await decisionLogEnabled()
@@ -231,7 +233,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   // instead of leaving the ride to wait for the next round's timer. Off unless the switch is on; never for return-cab matches or a job
   // that carries its own radius.
   if (!drivers.length && maxThisRound > 0 && phase1 && !data.isReturnCab && data.radiusMetres == null && await fastRoundsEnabled()) {
-    const capMax = maxPickupRadiusMetres(data.rideType, slug, data.tripHours, BROADCAST_ROUND_MAX)
+    const capMax = maxPickupRadiusMetres(data.rideType, slug, data.tripHours, BROADCAST_ROUND_MAX, tripMode)
     const steps = fastRoundSteps(data.broadcastRound, roundRadius, capMax, BROADCAST_ROUND_STEP_METRES)
     const fallbackIds = steps.some((s) => !s.exactOnly) && data.broadcastRound === 1 ? await repo.getEligibleDriverCategoryIds(categoryId) : categoryIds
     // Like the normal search, each step first leaves out everyone this ride should skip (open offers, decliners, spread's busy and

@@ -39,8 +39,10 @@ export async function getFareEstimate(
   // A package rental is priced from its package alone: no rate card is read (migration 136 moved its stop charge and
   // cancellation fee onto the package). A rental sent without a package id is a legacy request and still uses the card.
   const isPackageRental = req.ride_type === 'rental' && req.rental_package_id !== undefined
+  // Only an explicit 'city' reads the city card; any other value is the standard card (a public caller cannot invent a mode).
+  const tripMode = req.trip_mode === 'city' ? 'city' as const : 'standard' as const
   const [rateCard, surgeEvent, pkg] = await Promise.all([
-    isPackageRental ? Promise.resolve(null) : repo.getCurrentRateCard(req.category_id, req.ride_type, req.city_id ?? null),
+    isPackageRental ? Promise.resolve(null) : repo.getCurrentRateCard(req.category_id, req.ride_type, req.city_id ?? null, tripMode),
     req.city_id ? repo.getActiveSurge(req.city_id, req.category_id) : Promise.resolve(null),
     req.ride_type === 'rental' && req.rental_package_id
       ? repo.getRentalPackage(req.rental_package_id)
@@ -55,6 +57,9 @@ export async function getFareEstimate(
     if (!pkg || wrongCategory || wrongCity) {
       throw Object.assign(new Error('This rental package is not available'), { httpStatus: 422 })
     }
+  }
+  if (!isPackageRental && !rateCard && tripMode === 'city') {
+    throw Object.assign(new Error('City ride is not available for this vehicle'), { httpStatus: 422, appCode: 'CITY_RIDE_UNAVAILABLE' })
   }
   if (!isPackageRental && !rateCard) {
     throw Object.assign(

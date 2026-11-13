@@ -85,6 +85,29 @@ describe('processBroadcast category eligibility per round', () => {
     expect(mockFindNearbyDrivers).toHaveBeenCalledWith(expect.objectContaining({ radiusMetres: expected }))
   })
 
+  it.each([
+    ['sedan',         1, 2_500],
+    ['sedan',         3, 4_500],
+    ['auto_rickshaw', 1, 2_000],
+    ['auto_rickshaw', 3, 4_000],
+  ])('a city ride (%s, round %s) searches only %s m around the pickup, not the intercity 10 km', async (slug, round, expected) => {
+    mockGetCategorySlug.mockResolvedValue(slug)
+    mockGetRideById.mockResolvedValue({ id: 1n, status: 'requested', trip_mode: 'city', origin_address: 'A', destination_address: 'B', total_estimated: '100' })
+    await processBroadcast({
+      rideId: '1', categoryId: '2', originLat: 20.29, originLng: 85.82,
+      rideType: 'one_way', isReturnCab: false, broadcastRound: round,
+    })
+    expect(mockFindNearbyDrivers).toHaveBeenCalledWith(expect.objectContaining({ radiusMetres: expected }))
+  })
+
+  it('a standard one-way ride keeps the 10 km search (its ride row says standard, or predates trip_mode)', async () => {
+    mockGetRideById.mockResolvedValue({ id: 1n, status: 'requested', trip_mode: 'standard', origin_address: 'A', destination_address: 'B', total_estimated: '100' })
+    await processBroadcast({
+      rideId: '1', categoryId: '2', originLat: 20.29, originLng: 85.82, rideType: 'one_way', isReturnCab: false, broadcastRound: 1,
+    })
+    expect(mockFindNearbyDrivers).toHaveBeenCalledWith(expect.objectContaining({ radiusMetres: 10_000 }))
+  })
+
   it('round 1 queries only the ride\'s exact category, without calling the eligibility helper', async () => {
     await processBroadcast({
       rideId: '1', categoryId: '2', originLat: 20.29, originLng: 85.82,

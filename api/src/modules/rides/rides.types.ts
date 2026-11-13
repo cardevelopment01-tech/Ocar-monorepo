@@ -102,6 +102,8 @@ export interface Ride {
   driver_current_lng: number | null
   payment_status: string | null
   resolved_by?: 'admin' | 'timeout' | null
+  /** 'city' for a city ride (migration 137); standard for every other ride. */
+  trip_mode?: 'standard' | 'city'
   /** Cash the driver collects and the rider-offer discount already taken off it (numeric strings). */
   cash_due?: string | null
   discount_amount?: string | null
@@ -148,6 +150,8 @@ export interface RideStop {
 export interface BookingRequest {
   categoryId: number
   rideType: 'one_way' | 'round_trip' | 'rental'
+  /** 'city' = a metered in-city ride (ride_type stays one_way). Absent = standard, exactly as before city rides existed. */
+  tripMode?: 'standard' | 'city'
   isReturnCab?: boolean
   originLat: number
   originLng: number

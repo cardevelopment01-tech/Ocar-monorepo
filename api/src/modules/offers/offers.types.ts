@@ -13,7 +13,8 @@ export type FareComponents = {
 }
 export type FareComponentKey = keyof FareComponents
 
-export type RideType = 'one_way' | 'round_trip' | 'rental'
+// 'city' is a one-way ride booked with trip mode 'city' (see offer-ride-type.ts); it has its own offers.
+export type RideType = 'one_way' | 'round_trip' | 'rental' | 'city'
 export type PaymentChannel = 'cash' | 'online' | 'wallet'
 
 export type EvalContext = {

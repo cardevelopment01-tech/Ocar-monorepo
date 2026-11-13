@@ -7,6 +7,7 @@ import { getJSON, setWithTTL } from '@/db/redis'
 import { routeKey } from '@/constants/redis-keys'
 import { ROUTE_CACHE_TTL_SECONDS } from '@/constants/limits'
 import { geoRouteCacheTotal } from '@/observability/google-metrics'
+import { getConfigValue } from '@/lib/system-config'
 export type { PlaceSuggestion, PlaceDetail, RouteResult, RouteStep } from './providers/google.provider'
 
 export async function getCities() {
@@ -163,11 +164,17 @@ export async function classifyTrip(
   originLng: number,
   destLat: number,
   destLng: number,
-) {
+  // The classify-trip endpoint asks for the city ride hint; the booking path only needs the scope and must not pay for a config read.
+  opts: { withCityRide?: boolean } = {},
+): Promise<{ scope: 'in_city' | 'outstation'; cityId: number | null; cityName: string | null; city_ride_available?: boolean }> {
   const city = await repo.findContainingCity(originLat, originLng, destLat, destLng)
-  return city
+  const scope = city
     ? { scope: 'in_city' as const, cityId: city.id, cityName: city.name }
     : { scope: 'outstation' as const, cityId: null, cityName: null }
+  if (!opts.withCityRide) return scope
+  // A city ride is offered for any trip inside one city boundary (no distance cap), once the switch is on.
+  const on = city !== null && (await getConfigValue('city_rides_enabled', 'false')) === 'true'
+  return { ...scope, city_ride_available: on }
 }
 
 export async function createCity(data: {

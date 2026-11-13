@@ -58,6 +58,8 @@ export async function processDispatchScheduled(data: DispatchScheduledJobData): 
     }
     if (recomputeInput.rental_package_id != null) fareReq.rental_package_id = recomputeInput.rental_package_id
     if (recomputeInput.origin_city_id    != null) fareReq.city_id           = recomputeInput.origin_city_id
+    // A city ride is re-priced on the city card, and keeps pointing at it.
+    if (recomputeInput.trip_mode === 'city') fareReq.trip_mode = 'city'
 
     // The ride is already 'requested' here, so a failed re-quote (a rental package deactivated since booking, no rate card for
     // the city any more) must not stop it being dispatched: it keeps the quote the rider was shown.

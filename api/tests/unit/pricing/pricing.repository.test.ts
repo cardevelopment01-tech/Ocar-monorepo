@@ -13,8 +13,8 @@ vi.mock('@/db/redis', () => ({
 import { pool } from '@/db/client'
 import { getCurrentRateCard } from '@/modules/pricing/pricing.repository'
 
-const GLOBAL_ROW = { id: 1, category_id: 10, ride_type: 'one_way', city_id: null }
-const OVERRIDE_ROW = { id: 2, category_id: 10, ride_type: 'one_way', city_id: 5 }
+const GLOBAL_ROW = { id: 1, category_id: 10, ride_type: 'one_way', city_id: null, trip_mode: 'standard' }
+const OVERRIDE_ROW = { id: 2, category_id: 10, ride_type: 'one_way', city_id: 5, trip_mode: 'standard' }
 
 describe('getCurrentRateCard — city fallback', () => {
   beforeEach(() => {
@@ -27,7 +27,7 @@ describe('getCurrentRateCard — city fallback', () => {
     const result = await getCurrentRateCard(10, 'one_way', 999)
 
     expect(result).toEqual(GLOBAL_ROW)
-    expect(pool.query).toHaveBeenCalledWith(expect.any(String), [10, 'one_way', 999])
+    expect(pool.query).toHaveBeenCalledWith(expect.any(String), [10, 'one_way', 999, 'standard'])
   })
 
   it('returns the city override when both a global row and a city-specific override exist for that city', async () => {
@@ -55,7 +55,7 @@ describe('getCurrentRateCard — city fallback', () => {
     const result = await getCurrentRateCard(10, 'one_way', null)
 
     expect(result).toEqual(GLOBAL_ROW)
-    expect(pool.query).toHaveBeenCalledWith(expect.any(String), [10, 'one_way', null])
+    expect(pool.query).toHaveBeenCalledWith(expect.any(String), [10, 'one_way', null, 'standard'])
   })
 
   it('returns null when no rate card exists at all', async () => {

@@ -4,6 +4,8 @@ export interface RateCard {
   category_name: string
   category_slug: string
   ride_type: 'one_way' | 'round_trip' | 'rental'
+  /** 'city' = the metered in-city card (ride_type stays one_way); 'standard' = every other card. */
+  trip_mode: 'standard' | 'city'
   rate_per_km: number
   rate_per_min: number
   min_fare: number
@@ -78,6 +80,8 @@ export interface FareEstimateRequest {
   trip_hours?: number
   rental_package_id?: number
   city_id?: number
+  /** 'city' = quote on the city ride card (ride_type stays one_way). Anything else is the standard card. */
+  trip_mode?: 'standard' | 'city'
   /** Pin the round-trip formula (scheduled-ride re-quote keeps the version it was booked under). Default: current. */
   pricing_version?: 1 | 2
 }

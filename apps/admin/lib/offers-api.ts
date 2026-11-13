@@ -99,7 +99,7 @@ export interface OfferPayload {
 export interface SampleRide {
   fare: { base: number; distance: number; time: number; stop: number; hourSurcharge: number; waiting: number; surge: number; overage: number }
   ride: {
-    rideType?: 'one_way' | 'round_trip' | 'rental'; categoryId?: number; cityId?: number | null
+    rideType?: 'one_way' | 'round_trip' | 'rental' | 'city'; categoryId?: number; cityId?: number | null
     originCityId?: number | null; destinationCityId?: number | null; paymentChannel?: 'cash' | 'online' | 'wallet'
   }
   completedRides?: number

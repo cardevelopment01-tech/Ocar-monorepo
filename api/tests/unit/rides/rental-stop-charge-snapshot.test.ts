@@ -4,7 +4,7 @@ vi.mock('@/db/client', () => ({ pool: { query: vi.fn() }, withTransaction: vi.fn
 vi.mock('@/db/redis', () => ({ client: { get: vi.fn(), set: vi.fn(), del: vi.fn() } }))
 
 import { pool } from '@/db/client'
-import { getRideStopCharge, insertFareSnapshot, getRentalSettlementInputs, updateFareSnapshotEstimate } from '@/modules/rides/rides.repository'
+import { getRideStopCharge, insertFareSnapshot, getRentalSettlementInputs, updateFareSnapshotEstimate, createRide, getFareRecomputeInput } from '@/modules/rides/rides.repository'
 
 const sqlOf = (mock: { mock: { calls: unknown[][] } }, i = 0) => String(mock.mock.calls[i]![0])
 
@@ -62,5 +62,24 @@ describe('a rental with no rate card (migration 136) still settles and re-quotes
       breakdown: { base_fare: 500, distance_fare: 0, time_fare: 0, stop_fare: 0, hour_surcharge: 0, surge_fare: 0, total: 500 },
     })
     expect(vi.mocked(pool.query).mock.calls[0]![1]![1]).toBeNull()
+  })
+})
+
+describe('trip_mode on the ride row', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('createRide stores the trip mode, standard unless told otherwise', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ id: 1 }] } as never)
+    await createRide({ userId: 1n, categoryId: 2n, rideType: 'one_way', isReturnCab: false, originLat: 20, originLng: 85, tripMode: 'city' })
+    expect(sqlOf(vi.mocked(pool.query))).toMatch(/trip_mode/)
+    expect(vi.mocked(pool.query).mock.calls[0]![1]).toContain('city')
+    await createRide({ userId: 1n, categoryId: 2n, rideType: 'one_way', isReturnCab: false, originLat: 20, originLng: 85 })
+    expect(vi.mocked(pool.query).mock.calls[1]![1]).toContain('standard')
+  })
+
+  it('the scheduled re-quote input carries the ride trip mode', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [] } as never)
+    await getFareRecomputeInput(7n)
+    expect(sqlOf(vi.mocked(pool.query))).toMatch(/r\.trip_mode/)
   })
 })

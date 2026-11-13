@@ -245,7 +245,7 @@ const fareField = z.number().nonnegative().default(0)
 export const simulateSchema = z.object({
   fare: z.object({ base: fareField, distance: fareField, time: fareField, stop: fareField, hourSurcharge: fareField, waiting: fareField, surge: fareField, overage: fareField }),
   ride: z.object({
-    rideType: z.enum(['one_way', 'round_trip', 'rental']).default('one_way'),
+    rideType: z.enum(['one_way', 'round_trip', 'rental', 'city']).default('one_way'),
     categoryId: z.number().int().default(0), cityId: z.number().int().nullable().default(null),
     originCityId: z.number().int().nullable().default(null), destinationCityId: z.number().int().nullable().default(null),
     paymentChannel: z.enum(['cash', 'online', 'wallet']).default('online'), scheduledFor: z.string().datetime({ offset: true }).nullable().default(null),

@@ -24,10 +24,14 @@ export const BROADCAST_ROUND_MAX = 3
 // City = rental. Outstation = one_way + round_trip.
 // Round 1 uses the base value; each later broadcast round adds BROADCAST_ROUND_STEP_METRES.
 export const BROADCAST_ROUND_STEP_METRES = 1_000
-export function maxPickupRadiusMetres(rideType: string, categorySlug: string | null, tripHours?: number, round = 1): number {
-  return baseRadiusMetres(rideType, categorySlug, tripHours) + (Math.max(round, 1) - 1) * BROADCAST_ROUND_STEP_METRES
+export function maxPickupRadiusMetres(
+  rideType: string, categorySlug: string | null, tripHours?: number, round = 1, tripMode: 'standard' | 'city' = 'standard',
+): number {
+  return baseRadiusMetres(rideType, categorySlug, tripHours, tripMode) + (Math.max(round, 1) - 1) * BROADCAST_ROUND_STEP_METRES
 }
-function baseRadiusMetres(rideType: string, categorySlug: string | null, tripHours?: number): number {
+function baseRadiusMetres(rideType: string, categorySlug: string | null, tripHours: number | undefined, tripMode: 'standard' | 'city'): number {
+  // A city ride is a short in-city hop: it searches the same radius as a short rental (owner decision), not the 10 km of an intercity one-way.
+  if (tripMode === 'city' && rideType === 'one_way') return categorySlug === 'auto_rickshaw' ? 2_000 : 2_500
   if (rideType !== 'rental') return 10_000
   if (tripHours !== undefined && tripHours > 2) return 4_000
   return categorySlug === 'auto_rickshaw' ? 2_000 : 2_500

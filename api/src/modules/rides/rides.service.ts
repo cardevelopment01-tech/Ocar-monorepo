@@ -9,6 +9,7 @@ import { getPresignedUrl } from '@/lib/storage'
 import crypto from 'crypto'
 import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
+import { assertCityRideAllowed, parseTripMode } from './city-ride'
 import * as repo from './rides.repository'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { getBlockingChallenge } from '@/modules/drivers/driver-verification.service'
@@ -794,6 +795,10 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     }
   }
 
+  const tripMode = parseTripMode(data.tripMode)
+  // Filled in by the classification below when a drop is given; a city ride with no usable drop is refused before scope matters.
+  let cityScope: 'in_city' | 'outstation' = 'outstation'
+
   if (
     (data.rideType === 'one_way' || data.rideType === 'round_trip') &&
     data.destinationLat !== undefined &&
@@ -806,7 +811,9 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     const classification = await classifyTrip(
       data.originLat, data.originLng, data.destinationLat, data.destinationLng
     )
-    if (classification.scope === 'in_city') {
+    if (tripMode === 'city') {
+      cityScope = classification.scope
+    } else if (classification.scope === 'in_city') {
       const tripDistanceMetres = distanceMetres(
         data.originLat, data.originLng, data.destinationLat, data.destinationLng
       )
@@ -817,6 +824,11 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
         )
       }
     }
+  }
+
+  // The one place a city ride is judged (owner decisions D3, D8): anything inside one city boundary, no distance cap.
+  if (tripMode === 'city') {
+    assertCityRideAllowed(data, { flagOn: (await getConfigValue('city_rides_enabled', 'false')) === 'true', scope: cityScope })
   }
 
   if (data.rideType === 'rental' && (data.destinationLat === undefined || data.destinationLng === undefined)) {
@@ -888,6 +900,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   }
   if (data.rentalPackageId !== undefined) fareReq.rental_package_id = data.rentalPackageId
   if (originCity           !== null)      fareReq.city_id           = originCity.id
+  if (tripMode === 'city')                fareReq.trip_mode         = 'city'
   const fareEstimate = await getFareEstimate(fareReq)
   const offer = await resolveBookingOffer(userId, data, fareReq, originCity?.id ?? null, fareEstimate)
 
@@ -906,6 +919,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   if (originCity              !== null)      rideInput.originCityId       = BigInt(originCity.id)
   if (data.destinationCityId  !== undefined) rideInput.destinationCityId  = BigInt(data.destinationCityId)
   if (data.rentalPackageId    !== undefined) rideInput.rentalPackageId    = BigInt(data.rentalPackageId)
+  if (tripMode === 'city')                   rideInput.tripMode           = 'city'
   const storedTripHours = fareEstimate.rental_hours ?? (effectiveTripHours > 0 ? effectiveTripHours : undefined)
   if (storedTripHours !== undefined) rideInput.tripHours = storedTripHours
   if (data.returnAt           !== undefined) rideInput.returnAt           = data.returnAt
@@ -1853,6 +1867,7 @@ async function readCancellationFee(
   rideType: string,
   cityId: bigint | null,
   rideId: bigint,
+  tripMode: 'standard' | 'city' = 'standard',
 ): Promise<number> {
   // A rental is charged the fee saved on its ride from its package at booking (migration 136); the rate card below is only the
   // fallback for a rental booked before that snapshot existed.
@@ -1868,9 +1883,10 @@ async function readCancellationFee(
     `SELECT cancellation_fee FROM rate_cards
       WHERE category_id = $1 AND ride_type = $2 AND effective_to IS NULL
         AND (city_id = $3 OR city_id IS NULL)
+        AND trip_mode = $4
       ORDER BY city_id NULLS LAST
       LIMIT 1`,
-    [categoryId, rideType, cityId]
+    [categoryId, rideType, cityId, tripMode]
   )
   const raw = res.rows[0]?.cancellation_fee
   return raw != null ? parseFloat(raw) : 0
@@ -1894,6 +1910,7 @@ async function chargeCancellationFee(
     ride.ride_type,
     ride.origin_city_id != null ? BigInt(ride.origin_city_id) : null,
     rideId,
+    ride.trip_mode === 'city' ? 'city' : 'standard',
   )
   if (feeAmount > 0) {
     await client.query(
