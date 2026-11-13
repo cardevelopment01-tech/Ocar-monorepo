@@ -47,8 +47,13 @@ export function useFloatingIcon(): void {
   // Keep the icon in step with: the opt-in, being online, and whether Ocar is in front.
   useEffect(() => {
     if (!overlay.available) return
+    // A cold start (for example from the Recents card after the icon was dragged to the X) begins while Android still reports the app as
+    // not in front, which showed the icon for a blink before "active" arrived. The icon only makes sense once Ocar has been in front
+    // in this process and then left, so until the first "active" the app is treated as being in front.
+    let seenActive = false
     const sync = (appState: AppStateName) => {
-      const i = inputs(appState)
+      if (appState === 'active') seenActive = true
+      const i = inputs(seenActive ? appState : 'active')
       if (shouldShowIcon(i)) overlay.showIcon()
       else overlay.hideIcon()
       // The dot has done its job when the driver is back in Ocar (the request card itself is showing), and it must not outlive the

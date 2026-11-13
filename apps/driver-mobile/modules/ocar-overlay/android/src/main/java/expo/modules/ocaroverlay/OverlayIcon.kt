@@ -308,6 +308,10 @@ object OverlayIcon {
       val service = Class.forName("expo.modules.location.services.LocationTaskService")
       app.stopService(Intent(app, service))
     } catch (_: Exception) {}
+    // Take Ocar's card out of the Recents list too. Killing the process alone leaves the card there, and tapping it cold-starts the app.
+    try {
+      (app.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).appTasks.forEach { it.finishAndRemoveTask() }
+    } catch (_: Exception) {}
     android.os.Process.killProcess(android.os.Process.myPid())
   }
 
