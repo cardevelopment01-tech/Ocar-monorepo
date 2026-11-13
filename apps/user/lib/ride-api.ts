@@ -48,6 +48,8 @@ export type RideDetail = {
   id: string
   status: string
   ride_type: string
+  /** "city" for a city ride (a one-way booked as City ride); absent on an older server. */
+  trip_mode?: "standard" | "city"
   trip_hours: number | null
   return_at: string | null
   scheduled_for: string | null
@@ -186,6 +188,8 @@ export const rideApi = {
     tripHours?: number
     rentalPackageId?: number
     originCityId?: number
+    /** 'city' quotes on the City ride card; absent (every other ride) is the standard card. */
+    tripMode?: 'city'
   }): Promise<FareEstimate> => {
     // stopCount is round-trip only — rental stops are a free itinerary, callers should pass 0/undefined
     const body: Record<string, unknown> = {
@@ -199,6 +203,7 @@ export const rideApi = {
       city_id:       params.originCityId,
     }
     if (params.rentalPackageId !== undefined) body['rental_package_id'] = params.rentalPackageId
+    if (params.tripMode === 'city') body['trip_mode'] = 'city'
     const res = await api.post('/api/v1/pricing/estimate', body)
     return res.data as FareEstimate
   },
@@ -228,6 +233,8 @@ export const rideApi = {
     couponCode?: string
     expectedPayable?: number
     autoOffer?: string
+    /** Only sent for a city ride; absent is a standard ride, exactly as before City ride existed. */
+    tripMode?: 'city'
   }): Promise<BookingResult> => {
     const body: Record<string, unknown> = {
       categoryId:    params.categoryId,
@@ -255,6 +262,7 @@ export const rideApi = {
     if (params.couponCode          !== undefined) body['couponCode']          = params.couponCode
     if (params.expectedPayable     !== undefined) body['expectedPayable']     = params.expectedPayable
     if (params.autoOffer           !== undefined) body['autoOffer']           = params.autoOffer
+    if (params.tripMode === 'city')                body['tripMode']           = 'city'
     const res = await api.post('/api/v1/rides', body)
     return res.data as BookingResult
   },

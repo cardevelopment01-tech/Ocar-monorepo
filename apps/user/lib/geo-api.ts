@@ -27,6 +27,8 @@ export type TripClassification = {
   scope: 'in_city' | 'outstation'
   cityId: number | null
   cityName: string | null
+  /** Present only when the server knows City ride; absent on an older server (treated as off). */
+  city_ride_available?: boolean
 }
 
 export type NearestCity = {
