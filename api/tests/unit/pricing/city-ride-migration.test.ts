@@ -32,4 +32,9 @@ describe('seed-city-ride-cards.sql (run by the owner when City ride is enabled, 
     expect(seed).not.toMatch(/\bUPDATE\s+rate_cards/i)
     expect(seed).not.toMatch(/\bDELETE\b/i)
   })
+
+  it('skips a rental card with a zero rate or minimum fare (a package rental never used them, so they may be placeholders)', () => {
+    expect(seed).toMatch(/rc\.rate_per_km > 0/)
+    expect(seed).toMatch(/rc\.min_fare > 0/)
+  })
 })
