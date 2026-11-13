@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { colors, spacing, typography, fonts } from '@ocar/mobile-shared'
+import { font, h } from '@ocar/mobile-shared'
 import type { RideStop } from '@ocar/mobile-shared'
 
 // `onSkip` set = rider may drop a pending stop (live trip only; the trip summary omits it).
@@ -11,7 +11,7 @@ export function StopTimeline({ stops, onSkip }: StopTimelineProps) {
   return (
     <View style={styles.container}>
       {stops.map((stop, i) => {
-        const dotColor = stop.status === 'reached' ? colors.success : stop.status === 'skipped' ? colors.ink400 : colors.primary
+        const dotColor = stop.status === 'reached' ? h.live : stop.status === 'skipped' ? h.faint : h.teal
         return (
           <View key={stop.id} style={styles.row}>
             <View style={styles.dotCol}>
@@ -29,7 +29,7 @@ export function StopTimeline({ stops, onSkip }: StopTimelineProps) {
                 accessibilityRole="button"
                 accessibilityLabel={`Skip stop ${stop.sequence}`}
               >
-                <Text style={[styles.status, { color: colors.error }]}>Skip</Text>
+                <Text style={[styles.status, { color: h.danger }]}>Skip</Text>
               </Pressable>
             ) : (
               <Text style={[styles.status, { color: dotColor }]}>
@@ -45,12 +45,12 @@ export function StopTimeline({ stops, onSkip }: StopTimelineProps) {
 
 const styles = StyleSheet.create({
   container: { gap: 0 },
-  row: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
+  row: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   dotCol: { alignItems: 'center', width: 12 },
   dot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
-  line: { width: 2, flex: 1, minHeight: 20, backgroundColor: colors.border },
-  textCol: { flex: 1, paddingBottom: spacing.sm },
-  label: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
-  address: { ...typography.body, color: colors.ink900, fontFamily: fonts.medium },
-  status: { ...typography.caption, fontFamily: fonts.bold },
+  line: { width: 0, flex: 1, minHeight: 20, borderLeftWidth: 1.5, borderLeftColor: '#B3C0C3', borderStyle: 'dashed' },
+  textCol: { flex: 1, paddingBottom: 12 },
+  label: { fontFamily: font.sb, fontSize: 11.5, color: h.label },
+  address: { fontFamily: font.b, fontSize: 14, color: h.ivory },
+  status: { fontFamily: font.b, fontSize: 12.5 },
 })

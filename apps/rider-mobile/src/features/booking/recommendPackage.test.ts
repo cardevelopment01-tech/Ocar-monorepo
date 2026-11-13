@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { RentalPackage } from '@ocar/mobile-shared'
-import { recommendPackage } from './recommendPackage'
+import { estimateOverage, recommendPackage } from './recommendPackage'
 
 // Only the fields recommendPackage reads; the rest of RentalPackage is irrelevant here.
 const pkg = (id: number, durationMinutes: number, kmLimit: number, packageFare: number) =>
@@ -62,5 +62,20 @@ describe('recommendPackage', () => {
     expect(recommendPackage(small, 10, 64)?.packageId).toBe(10)
     expect(recommendPackage(small, 10, 65)?.packageId).toBe(10) // limit + 5 min
     expect(recommendPackage(small, 10, 66)?.packageId).toBe(11)
+  })
+})
+
+describe('estimateOverage', () => {
+  const p = { kmLimit: 60, durationMinutes: 360, extraPerKm: 10, extraPerMin: 2 }
+  it('is zero when the trip fits, grace included', () => {
+    expect(estimateOverage(p, 43.3, 99)).toEqual({ overKm: 0, overMin: 0, extra: 0 })
+    expect(estimateOverage(p, 62, 365)).toEqual({ overKm: 0, overMin: 0, extra: 0 })
+  })
+  it('prices km and minutes past limit plus grace', () => {
+    // 70 km: 70 - 60 - 2 = 8 over. 380 min: 380 - 360 - 5 = 15 over.
+    expect(estimateOverage(p, 70, 380)).toEqual({ overKm: 8, overMin: 15, extra: 8 * 10 + 15 * 2 })
+  })
+  it('counts a started km or minute', () => {
+    expect(estimateOverage(p, 62.1, 360)).toEqual({ overKm: 1, overMin: 0, extra: 10 })
   })
 })

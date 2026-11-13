@@ -14,6 +14,19 @@ export type RideDetailExtra = RideDetail & {
   userRatingGiven: number | null
   // The booked vehicle category. The API sends bigint columns as strings, so it may arrive as a numeric string.
   categoryId?: number | string | null
+  // The booked route distance in km (fare_snapshots.estimated_km, sent as a number); the trip progress bar's total.
+  estimatedKm?: number | null
+  // The booked route's duration in minutes (fare_snapshots.estimated_min), the booked city, and whether this was a return-cab booking.
+  estimatedMin?: number | null
+  originCityId?: number | string | null
+  isReturnCab?: boolean
+  // 'city' for a city ride (a one-way ride booked as City ride); absent on an older server.
+  tripMode?: 'standard' | 'city'
+  // Who ended a cancelled ride (the API reads it from ride_cancellations). Absent on older servers and on rides that were never cancelled.
+  cancellationActor?: 'user' | 'driver' | 'admin' | 'system' | null
+  // The late-cancel fee charged to the rider and whether an admin waived it (0 / false when there was none).
+  cancellationFee?: number | null
+  cancellationFeeWaived?: boolean | null
 }
 
 export const SEARCHING_STATUSES = new Set(['requested', 'scheduled'])

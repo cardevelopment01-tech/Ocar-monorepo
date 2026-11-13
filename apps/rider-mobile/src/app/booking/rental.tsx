@@ -1,155 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { LinearGradient } from 'expo-linear-gradient'
-import Animated, { FadeIn, FadeOut, LinearTransition, useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated'
-import { Skeleton, VehicleIcon, colors, radii, spacing, typography, fonts, h } from '@ocar/mobile-shared'
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated'
+import { Button, Skeleton, VehicleIcon, font, h } from '@ocar/mobile-shared'
+import { IconButton } from '@/components/ui'
+import { PackageSlider } from '@/components/ui/PackageSlider'
 import type { RentalPackage, VehicleCategory } from '@ocar/mobile-shared'
 import { createBooking, fetchAllRentalPackages, fetchRoute, fetchVehicleCategories, fetchFareEstimate, resolveBookingError } from '@/features/booking/api'
-import { recommendPackage, type PackageRecommendation } from '@/features/booking/recommendPackage'
+import { estimateOverage, recommendPackage } from '@/features/booking/recommendPackage'
+import { MAX_STOPS } from '@/features/booking/constants'
+import { formatDuration } from '@/features/booking/format'
 import { useBookingDraftStore } from '@/features/booking/store'
 import { socket } from '@/services/socket'
 import { RiderSheet } from '@/features/booking/components/RiderSheet'
 import { ScheduleSheet, formatPickupTime } from '@/features/booking/components/ScheduleSheet'
-import { StopsList } from '@/features/booking/components/StopsList'
+import { RouteRail, StopsSummaryRow } from '@/features/booking/components/StopsList'
 import { sectionLabel } from '@/theme/homeTokens'
 import { CouponLine } from '@/features/offers/CouponLine'
 import { OfferSheet } from '@/features/offers/OfferSheet'
 import { PriceChangedBanner } from '@/features/offers/PriceChangedBanner'
 import { useOfferPreview } from '@/features/offers/useOfferPreview'
-import { bookAmount, bookingOfferFields, couponLineState, parseOfferNotApplicable, parsePriceChanged, priceChangedMessage, rentalPreviewRequest } from '@/features/offers/offerModel'
+import { bookAmount, bookingOfferFields, formatRupees, type CouponLineState, couponLineState, parseOfferNotApplicable, parsePriceChanged, priceChangedMessage, rentalPreviewRequest } from '@/features/offers/offerModel'
 
-const MAX_STOPS = 3
-
-function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes} min`
-  const h_ = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return m === 0 ? `${h_} hr${h_ > 1 ? 's' : ''}` : `${h_}h ${m}m`
-}
-
-// Luxury carries the app's own gold "premium tier" signal — same gradient
-// family as the Ocar Elite banner on Home — so it reads as genuinely premium.
+// Luxury is an ordinary row in the list; it only carries a small gold Premium chip after the seat count.
 function isPremiumSlug(slug: string) {
   return slug === 'luxury'
-}
-
-const AnimatedGradient = Animated.createAnimatedComponent(LinearGradient)
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
-
-// Package tiers scroll horizontally and some vehicles have more tiers than fit
-// on screen. A fade + arrow at the trailing edge signals there's more to see —
-// the arrow scrolls forward on tap, and both fade out smoothly once fully
-// scrolled. Mirrors web's PackageTierScroller (apps/user/.../rental/page.tsx).
-function PackageTierScroller({
-  pkgs, selectedPkgId, recommendation, onSelect,
-}: {
-  pkgs: RentalPackage[]
-  selectedPkgId: number | null
-  recommendation: PackageRecommendation | null
-  onSelect: (id: number) => void
-}) {
-  const scrollRef = useRef<ScrollView>(null)
-  const offsetRef = useRef(0)
-  const contentWidthRef = useRef(0)
-  const layoutWidthRef = useRef(0)
-  const arrowOpacity = useSharedValue(0)
-  const [canScrollRight, setCanScrollRight] = useState(false)
-
-  // Bring the selected package (the best fit, unless the rider chose another) to the middle of the visible window. It needs three
-  // measurements (the chip, the window, the content), which arrive in any order, so each one asks to settle and it scrolls once all are in.
-  const chipLayouts = useRef<Record<number, { x: number; w: number }>>({})
-  const pendingCentre = useRef<number | null>(null)
-  const hasCentred = useRef(false)
-  const settle = useCallback(() => {
-    const id = pendingCentre.current
-    const chip = id === null ? undefined : chipLayouts.current[id]
-    if (!chip || layoutWidthRef.current === 0 || contentWidthRef.current === 0) return
-    const max = Math.max(0, contentWidthRef.current - layoutWidthRef.current)
-    const x = Math.min(max, Math.max(0, chip.x + chip.w / 2 - layoutWidthRef.current / 2))
-    pendingCentre.current = null
-    scrollRef.current?.scrollTo({ x, animated: hasCentred.current })
-    hasCentred.current = true
-  }, [])
-  useEffect(() => { pendingCentre.current = selectedPkgId; settle() }, [selectedPkgId, settle])
-
-  const lastCanScroll = useRef<boolean | null>(null)
-  const evaluate = useCallback(() => {
-    const canScroll = contentWidthRef.current - offsetRef.current - layoutWidthRef.current > 4
-    // Scroll events fire every 16ms; only the boolean flipping needs an animation + a render.
-    if (canScroll === lastCanScroll.current) return
-    lastCanScroll.current = canScroll
-    arrowOpacity.value = withTiming(canScroll ? 1 : 0, { duration: 180 })
-    setCanScrollRight(canScroll)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    offsetRef.current = e.nativeEvent.contentOffset.x
-    evaluate()
-  }, [evaluate])
-
-  const fadeStyle = useAnimatedStyle(() => ({ opacity: arrowOpacity.value }))
-  const arrowStyle = useAnimatedStyle(() => ({ opacity: arrowOpacity.value }))
-
-  return (
-    <View>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.tierRow}
-        contentContainerStyle={styles.tierRowContent}
-        scrollEventThrottle={16}
-        onScroll={onScroll}
-        onContentSizeChange={(w) => { contentWidthRef.current = w; evaluate(); settle() }}
-        onLayout={(e) => { layoutWidthRef.current = e.nativeEvent.layout.width; evaluate(); settle() }}
-      >
-        {pkgs.map((pkg) => {
-          const active = pkg.id === selectedPkgId
-          const isRec = recommendation?.packageId === pkg.id
-          return (
-            <Pressable
-              key={pkg.id}
-              onPress={() => onSelect(pkg.id)}
-              onLayout={(e) => { chipLayouts.current[pkg.id] = { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width }; settle() }}
-              style={[styles.tierChip, active ? styles.tierChipActive : null]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-            >
-              {isRec ? (
-                <View style={styles.bestFitTag}>
-                  <Text style={styles.bestFitText} numberOfLines={1}>Best fit</Text>
-                </View>
-              ) : null}
-              <Text style={[styles.tierDuration, active ? styles.tierTextActive : null]} numberOfLines={1}>{formatDuration(pkg.durationMinutes)}</Text>
-              <Text style={[styles.tierKm, active ? styles.tierKmActive : null]} numberOfLines={1}>{`${pkg.kmLimit} km`}</Text>
-            </Pressable>
-          )
-        })}
-      </ScrollView>
-
-      <AnimatedGradient
-        pointerEvents="none"
-        colors={['rgba(247,246,241,0)', h.chip]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.tierFade, fadeStyle]}
-      />
-      <AnimatedPressable
-        onPress={() => scrollRef.current?.scrollTo({ x: offsetRef.current + 140, animated: true })}
-        accessibilityRole="button"
-        accessibilityLabel="Show more packages"
-        pointerEvents={canScrollRight ? 'auto' : 'none'}
-        style={[styles.tierArrowBtn, arrowStyle]}
-      >
-        <Feather name="chevron-right" size={13} color={h.teal} />
-      </AnimatedPressable>
-    </View>
-  )
 }
 
 // Matches web's /rental ("City Rides", apps/user/app/(main)/rental/page.tsx) --
@@ -164,8 +42,6 @@ export default function RentalScreen() {
   const drop = useBookingDraftStore((s) => s.drop)
   const originCityId = useBookingDraftStore((s) => s.originCityId)
   const stops = useBookingDraftStore((s) => s.stops)
-  const removeStop = useBookingDraftStore((s) => s.removeStop)
-  const swapStop = useBookingDraftStore((s) => s.swapStop)
   const scheduledFor = useBookingDraftStore((s) => s.scheduledFor)
   const setScheduledFor = useBookingDraftStore((s) => s.setScheduledFor)
   const riderName = useBookingDraftStore((s) => s.riderName)
@@ -187,6 +63,8 @@ export default function RentalScreen() {
   const [userPickedPkg, setUserPickedPkg] = useState(false)
   const [estimate, setEstimate] = useState<Awaited<ReturnType<typeof fetchFareEstimate>> | null>(null)
   const [estLoading, setEstLoading] = useState(false)
+  // Which vehicle and package the estimate in state is for, so the Book button never shows the previous vehicle's price while the new one loads.
+  const [estimateKey, setEstimateKey] = useState<string | null>(null)
   const [booking, setBooking] = useState(false)
   const [offerSheetOpen, setOfferSheetOpen] = useState(false)
   const [priceBanner, setPriceBanner] = useState<string | null>(null)
@@ -269,7 +147,7 @@ export default function RentalScreen() {
     }
     if (originCityId !== null) input.cityId = originCityId
     fetchFareEstimate(input)
-      .then((est) => { if (!cancelled) setEstimate(est) })
+      .then((est) => { if (!cancelled) { setEstimate(est); setEstimateKey(`${openCatId}:${selectedPkgId}`) } })
       .catch(() => { if (!cancelled) setEstimate(null) })
       .finally(() => { if (!cancelled) setEstLoading(false) })
     return () => { cancelled = true }
@@ -286,7 +164,11 @@ export default function RentalScreen() {
     setSelectedPkgId(null)
   }
 
-  const selectedPkg = openPackages.find((p) => p.id === selectedPkgId) ?? null
+  // What the screen SHOWS as selected. The logic below still waits for selectedPkgId, but switching vehicles resets it to
+  // null for a moment before the effect picks the best fit again; showing that gap made the tray, the Cash and Offers
+  // row and the Book button blink on every switch. This mirrors that effect, so the right package shows at once.
+  const shownPkgId = selectedPkgId ?? (!userPickedPkg && tripReady && openPackages.length > 0 ? (recommendation?.packageId ?? openPackages[0]!.id) : null)
+  const selectedPkg = openPackages.find((p) => p.id === shownPkgId) ?? null
   // Offers: the server prices the chosen package again whenever the package, vehicle, route or a typed code changes.
   const offerRequest = useMemo(
     () => (openCatId !== null && selectedPkgId !== null && pickup && drop
@@ -298,6 +180,21 @@ export default function RentalScreen() {
   const selectedFare = estimate?.breakdown.total ?? null
   const couponState = couponLineState({ status: offers.status, preview: offers.preview, typedCode: offers.typedCode, fullPrice: selectedFare })
   const payable = bookAmount(selectedFare, offers.preview)
+  // Every package or vehicle change restarts the offers check, so the state flips to 'loading' for a moment each time. The
+  // footer must not follow that: remember the last settled answer and lay out by it, so the Offers button, its label and
+  // the message row stay put (and an off-offers server never flashes the button in and out).
+  const settledKind = useRef<CouponLineState['kind'] | null>(null)
+  const settledApplied = useRef<{ label: string } | null>(null)
+  if (couponState.kind !== 'loading') {
+    settledKind.current = couponState.kind
+    settledApplied.current = couponState.kind === 'applied' ? { label: couponState.auto ? 'Best offer' : (couponState.offer.code ?? couponState.offer.name) } : null
+  }
+  const layoutKind = couponState.kind === 'loading' ? settledKind.current : couponState.kind
+  const offersAvailable = layoutKind !== null && layoutKind !== 'off'
+  const appliedOffer = couponState.kind === 'applied' ? couponState.offer : null
+  const shownApplied = couponState.kind === 'loading' ? settledApplied.current : (couponState.kind === 'applied' ? settledApplied.current : null)
+  const offerLabel = shownApplied ? shownApplied.label : 'Offers'
+  const openCategoryName = categories.find((c) => c.id === openCatId)?.displayName ?? ''
   const canBook = openCatId !== null && selectedPkgId !== null && estimate !== null && !estLoading && !!drop && !booking && !offers.bookLocked
 
   async function handleBook() {
@@ -352,18 +249,10 @@ export default function RentalScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable
-          onPress={() => goBack(router)}
-          style={({ pressed }) => [styles.backButton, pressed ? styles.pressedScale : null]}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Feather name="arrow-left" size={17} color={colors.ink900} />
-        </Pressable>
+        <IconButton icon="arrow-left" label="Go back" onPress={() => goBack(router)} />
         <View style={styles.headerText}>
-          <Text style={styles.title}>City Rides</Text>
-          <Text style={styles.subtitle} numberOfLines={1}>{pickup?.address ?? 'Pickup location'}</Text>
+          <Text style={styles.title}>Rental</Text>
+          <Text style={styles.subtitle} numberOfLines={1}>Book a driver by the hour</Text>
         </View>
         <Pressable
           onPress={() => setRiderSheetOpen(true)}
@@ -371,41 +260,38 @@ export default function RentalScreen() {
           accessibilityRole="button"
           accessibilityLabel="Who's travelling"
         >
-          <Feather name="user" size={11} color={colors.primaryDark} />
+          <Feather name="user" size={16} color={h.ivory} />
           <Text style={styles.riderPillText} numberOfLines={1}>{bookingForOther ? riderName : 'For me'}</Text>
         </Pressable>
       </View>
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
 
-        {/* Trip summary card */}
+        {/* Route card: pickup, ONE stops summary row (never grows with the number of stops), drop. */}
         <View style={styles.tripCard}>
           <View style={styles.tripRow}>
             <Pressable onPress={() => setScheduleSheetOpen(true)} style={styles.scheduleChip} accessibilityRole="button">
-              <Feather name="clock" size={12} color={colors.primaryDark} />
+              <Feather name="clock" size={15} color={h.tealText} />
               <Text style={styles.scheduleChipText}>{scheduledFor ? formatPickupTime(new Date(scheduledFor)) : 'Now'}</Text>
               {scheduledFor ? (
                 <Pressable onPress={() => setScheduledFor(null)} hitSlop={8} accessibilityLabel="Reset to ride now">
-                  <Feather name="x" size={12} color={colors.primaryDark} />
+                  <Feather name="x" size={13} color={h.tealText} />
                 </Pressable>
               ) : null}
             </Pressable>
             {trip ? <Text style={styles.tripMeta}>{`${trip.km} km · ~${formatDuration(trip.min)}`}</Text> : null}
           </View>
-          <View style={styles.tripDivider} />
-          <Pressable onPress={() => router.push('/booking/add-stop')} style={styles.routeRow}>
-            <Feather name="navigation" size={13} color={colors.primary} />
-            <Text style={styles.routeText} numberOfLines={1}>{drop?.address ?? 'Destination'}</Text>
-          </Pressable>
-        </View>
 
-        <StopsList
-          stops={stops}
-          maxStops={MAX_STOPS}
-          onAdd={() => router.push('/booking/add-stop')}
-          onRemove={removeStop}
-          onSwap={swapStop}
-        />
+          <View style={[styles.routeRow, { minHeight: 38 }]}>
+            <RouteRail line="down"><View style={styles.pickupDot} /></RouteRail>
+            <Text style={styles.routeText} numberOfLines={1}>{pickup?.address ?? 'Pickup location'}</Text>
+          </View>
+          <StopsSummaryRow stops={stops} maxStops={MAX_STOPS} onEdit={() => router.push('/booking/plan-stops')} onAdd={() => router.push('/booking/add-stop')} />
+          <View style={[styles.routeRow, { minHeight: 38 }]}>
+            <RouteRail line="up"><View style={styles.dropDot} /></RouteRail>
+            <Text style={styles.routeText} numberOfLines={1}>{drop?.address ?? 'Destination'}</Text>
+          </View>
+        </View>
 
         {/* Vehicle list — every option visible on one vertical scroll */}
         <View style={styles.vehHeader}>
@@ -425,39 +311,27 @@ export default function RentalScreen() {
               <Pressable
                 onPress={() => !noPkgs && toggleCategory(cat.id)}
                 disabled={noPkgs}
-                style={[styles.vehRow, noPkgs ? styles.vehRowDisabled : null]}
+                style={({ pressed }) => [styles.vehRow, noPkgs ? styles.vehRowDisabled : null, pressed ? styles.pressedRow : null]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isOpen, disabled: noPkgs }}
               >
-                {premium ? (
-                  <LinearGradient
-                    colors={['#F3D9A6', '#E0B662', '#C9974A']}
-                    locations={[0, 0.55, 1]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.iconWrap}
-                  >
-                    <VehicleIcon slug={cat.slug} size={26} />
-                  </LinearGradient>
-                ) : (
-                  <View style={[styles.iconWrap, isOpen ? styles.iconWrapOpen : null]}>
-                    <VehicleIcon slug={cat.slug} size={26} />
-                  </View>
-                )}
+                <View style={styles.iconWrap}>
+                  <VehicleIcon slug={cat.slug} size={34} />
+                </View>
 
                 <View style={styles.vehInfo}>
-                  <View style={styles.vehNameRow}>
-                    <Text style={styles.vehName}>{cat.displayName}</Text>
+                  <Text style={styles.vehName} numberOfLines={1}>{cat.displayName}</Text>
+                  <View style={styles.vehSeatsRow}>
+                    <View style={styles.seatsWrap}>
+                      <Feather name="user" size={13} color={h.muted} />
+                      <Text style={styles.vehSeats}>{`${cat.maxPassengers} seats`}</Text>
+                    </View>
                     {premium ? (
-                      <View style={styles.premiumBadge}>
-                        <Feather name="star" size={8} color={h.gold} />
-                        <Text style={styles.premiumBadgeText}>Premium fleet</Text>
+                      <View style={styles.premiumChip}>
+                        <Feather name="star" size={11} color="#7A5410" />
+                        <Text style={styles.premiumChipText}>Premium</Text>
                       </View>
                     ) : null}
-                  </View>
-                  <View style={styles.vehSeatsRow}>
-                    <Feather name="users" size={9} color={h.ivoryFaint} />
-                    <Text style={styles.vehSeats}>{cat.maxPassengers} seats</Text>
                   </View>
                 </View>
 
@@ -467,16 +341,18 @@ export default function RentalScreen() {
                   ) : pkgsLoading ? (
                     <Skeleton width={56} height={16} />
                   ) : isOpen && selectedPkg ? (
-                    <Text style={styles.vehFareSelected}>{`₹${Math.round(selectedPkg.packageFare)}`}</Text>
+                    <Text style={styles.vehFare} numberOfLines={1}>{formatRupees(selectedPkg.packageFare)}</Text>
                   ) : fromFare != null ? (
-                    <Text style={styles.vehFareFrom}>{`from ₹${Math.round(fromFare)}`}</Text>
+                    <>
+                      <Text style={styles.vehFrom} numberOfLines={1}>from</Text>
+                      <Text style={styles.vehFare} numberOfLines={1}>{formatRupees(fromFare)}</Text>
+                    </>
                   ) : null}
                 </View>
                 <Feather
-                  name="chevron-down"
-                  size={14}
-                  color={isOpen ? h.teal : h.line13}
-                  style={isOpen ? styles.chevronOpen : null}
+                  name={isOpen ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={isOpen ? h.tealText : h.faint}
                 />
               </Pressable>
 
@@ -495,52 +371,56 @@ export default function RentalScreen() {
                     </View>
                   ) : (
                     <>
-                      <Text style={styles.trayLabel}>{`PACKAGE · ${pkgs.length} TIERS`}</Text>
-                      <PackageTierScroller
-                        pkgs={pkgs}
-                        selectedPkgId={selectedPkgId}
-                        recommendation={recommendation}
+                      <View style={styles.trayHead}>
+                        <Text style={styles.trayTitle}>Choose a package</Text>
+                        <View style={styles.trayCount}>
+                          <Text style={styles.trayCountText}>{`${pkgs.length} packages`}</Text>
+                          <Feather name="chevron-right" size={14} color={h.faint} />
+                        </View>
+                      </View>
+                      <PackageSlider
+                        tiles={pkgs.map((p) => ({ id: p.id, hours: formatDuration(p.durationMinutes), km: `${p.kmLimit} km`, price: formatRupees(p.packageFare) }))}
+                        selectedId={shownPkgId}
+                        bestId={recommendation?.packageId ?? null}
                         onSelect={(id) => { setUserPickedPkg(true); setSelectedPkgId(id) }}
                       />
 
                       {selectedPkg ? (
                         <>
-                          <View style={styles.trayDivider} />
-                          <View style={styles.trayTotalRow}>
-                            <View style={styles.trayTotalInfo}>
-                              <Text style={styles.trayTotalMeta} numberOfLines={1}>
-                                {`${formatDuration(selectedPkg.durationMinutes)} · ${selectedPkg.kmLimit} km · `}
-                                <Text style={styles.trayExtra}>{`extra ₹${selectedPkg.extraPerKm}/km`}</Text>
-                              </Text>
-                              {estimate != null && estimate.surgeMultiplier > 1 ? (
-                                <View style={styles.surgeRow}>
-                                  <Feather name="zap" size={9} color={colors.warning} />
-                                  <Text style={styles.surgeText}>{`${estimate.surgeMultiplier}× surge`}</Text>
-                                </View>
-                              ) : null}
+                          <View style={styles.incRow}>
+                            <View style={styles.incCol}>
+                              <Text style={styles.incLabel}>Included</Text>
+                              <Text style={styles.incValue}>{`${selectedPkg.kmLimit} km · ${formatDuration(selectedPkg.durationMinutes)}`}</Text>
                             </View>
-                            {estLoading ? (
-                              <Skeleton width={64} height={22} />
-                            ) : estimate != null ? (
-                              <Text style={styles.trayTotalValue}>{`₹${Math.round(estimate.breakdown.total)}`}</Text>
-                            ) : (
-                              <Text style={styles.trayTotalUnavailable}>-</Text>
-                            )}
+                            <View style={styles.incSep} />
+                            <View style={styles.incCol}>
+                              <Text style={styles.incLabel}>After that</Text>
+                              <Text style={[styles.incValue, { color: h.tealText }]}>{`${formatRupees(selectedPkg.extraPerKm)}/km · ${formatRupees(selectedPkg.extraPerMin)}/min`}</Text>
+                            </View>
                           </View>
+                          {estimate != null && estimate.surgeMultiplier > 1 ? (
+                            <View style={styles.surgeRow}>
+                              <Feather name="zap" size={11} color={h.goldInk} />
+                              <Text style={styles.surgeText}>{`${estimate.surgeMultiplier}× surge applies to this fare`}</Text>
+                            </View>
+                          ) : null}
+                          {trip ? (() => {
+                            const o = estimateOverage(selectedPkg, trip.km, trip.min)
+                            const lead = `Your trip is about ${trip.km} km and ${formatDuration(trip.min)}.`
+                            const parts = [o.overKm > 0 ? `${o.overKm} km` : null, o.overMin > 0 ? `${formatDuration(o.overMin)}` : null].filter(Boolean).join(' and ')
+                            const fits = o.extra === 0
+                            return (
+                              <View style={[styles.estBox, fits ? styles.estFit : styles.estOver]}>
+                                <Feather name={fits ? 'check-circle' : 'alert-circle'} size={16} color={fits ? h.tealText : '#9A6A12'} style={styles.estIcon} />
+                                <Text style={[styles.estText, { color: fits ? '#0A5666' : '#5A4310' }]}>
+                                  {fits
+                                    ? `${lead} It fits this package, so no extra charges are expected.`
+                                    : `${lead} That is ${parts} over this package. Estimated extra ${formatRupees(o.extra)}, billed after the ride.`}
+                                </Text>
+                              </View>
+                            )
+                          })() : null}
                         </>
-                      ) : null}
-
-                      {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) ? (
-                        <View style={styles.warnCard}>
-                          <Feather name="info" size={13} color={colors.warning} />
-                          <Text style={styles.warnText}>
-                            {`Your route (~${trip.km} km, ${formatDuration(trip.min)}) is longer than the biggest package.${
-                              recommendation.overKm > 0 ? ` About ${recommendation.overKm} km over` : ''
-                            }${recommendation.overKm > 0 && recommendation.overMin > 0 ? ' and' : ''}${
-                              recommendation.overMin > 0 ? ` ${formatDuration(recommendation.overMin)} over` : ''
-                            } will be charged as extra.`}
-                          </Text>
-                        </View>
                       ) : null}
                     </>
                   )}
@@ -555,32 +435,52 @@ export default function RentalScreen() {
         </Text>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         {priceBanner ? <PriceChangedBanner message={priceBanner} onDismiss={() => setPriceBanner(null)} /> : null}
-        {selectedPkg ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
+        {/* Loading / refused / failed checks keep their message line; an applied offer shows in the Offers button and the Book price. */}
+        {openCatId !== null && ((couponState.kind === 'loading' && offersAvailable) || couponState.kind === 'rejected' || couponState.kind === 'error') ? <CouponLine state={couponState} onOpenSheet={() => setOfferSheetOpen(true)} onRemove={offers.removeCode} onRetry={offers.retry} /> : null}
+        {/* Cash and Offers side by side. Offers is absent while offers are off, and shows the code once one applies. */}
+        {openCatId !== null ? (
+          <View style={styles.payRow}>
+            <View style={styles.payBtn} accessible accessibilityLabel="Payment method: Cash">
+              <Feather name="credit-card" size={18} color={h.ivory} />
+              <Text style={styles.payText}>Cash</Text>
+              <Feather name="chevron-down" size={14} color={h.faint} style={styles.payChev} />
+            </View>
+            {offersAvailable ? (
+              <Pressable
+                onPress={() => setOfferSheetOpen(true)}
+                style={({ pressed }) => [styles.payBtn, shownApplied ? styles.payBtnOn : null, pressed ? styles.pressedScale : null]}
+                accessibilityRole="button"
+                accessibilityLabel={shownApplied ? `Offer ${offerLabel} applied. Change offer` : 'Offers. Have a code? Add an offer code'}
+              >
+                <Feather name="tag" size={18} color={h.tealText} />
+                <Text style={[styles.payText, shownApplied ? styles.payTextOn : null]} numberOfLines={1}>{offerLabel}</Text>
+                <Feather name="chevron-right" size={14} color={h.faint} style={styles.payChev} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
         {bookError ? (
           <Text style={styles.error} accessibilityLiveRegion="polite">{bookError}</Text>
         ) : null}
-        <Pressable
+        <Button
+          variant="cta"
+          label={
+            !drop
+              ? 'Add a drop-off to continue'
+              : !selectedPkg
+              ? 'Select a package'
+              : estimate != null && estimateKey === `${openCatId}:${selectedPkgId}`
+              ? `Book ${openCategoryName} · ${formatRupees(payable ?? estimate.breakdown.total)}`
+              : `Book ${openCategoryName}`
+          }
+          {...(appliedOffer && estimate != null && selectedFare != null && payable != null && payable < selectedFare ? { strikeLabel: formatRupees(selectedFare) } : {})}
           onPress={() => void handleBook()}
           disabled={!canBook}
-          style={({ pressed }) => [styles.bookBtn, !canBook ? styles.disabled : null, pressed && canBook ? styles.pressedScale : null]}
-          accessibilityRole="button"
-        >
-          {booking ? (
-            <ActivityIndicator color={colors.inkInverse} />
-          ) : (
-            <Text style={styles.bookText}>
-              {!drop
-                ? 'Add a drop-off to continue'
-                : !selectedPkg
-                ? 'Select a package'
-                : estimate != null
-                ? `Book · ₹${Math.round(payable ?? estimate.breakdown.total)}`
-                : 'Book'}
-            </Text>
-          )}
-        </Pressable>
+          keepLookWhenDisabled={!!drop && openCatId !== null && !booking && (estLoading || selectedPkgId === null || offers.bookLocked)}
+          loading={booking}
+        />
       </View>
 
       <OfferSheet
@@ -610,84 +510,79 @@ export default function RentalScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
-  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: h.line10, boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)', alignItems: 'center', justifyContent: 'center' },
+  screen: { flex: 1, backgroundColor: h.canvas },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 6 },
   pressedScale: { transform: [{ scale: 0.97 }] },
-  headerText: { flex: 1 },
-  title: { ...typography.title, color: h.ivory, fontFamily: fonts.bold },
-  subtitle: { ...typography.caption, color: h.ivoryDim, marginTop: 1 },
-  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: h.chip, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, maxWidth: 110 },
-  riderPillText: { ...typography.caption, color: h.ivory, fontFamily: fonts.bold },
+  pressedRow: { transform: [{ scale: 0.985 }] },
+  headerText: { flex: 1, minWidth: 0 },
+  title: { fontFamily: font.b, fontSize: 20, letterSpacing: -0.2, color: h.ivory },
+  subtitle: { fontFamily: font.m, fontSize: 13, color: h.muted, marginTop: 1 },
+  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 7, height: 36, paddingLeft: 12, paddingRight: 14, borderRadius: 18, backgroundColor: h.chip, borderWidth: 1, borderColor: h.line06, maxWidth: 130 },
+  riderPillText: { fontSize: 13.5, color: h.ivory, fontFamily: font.b, flexShrink: 1 },
   body: { flex: 1 },
-  bodyContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.sm },
+  bodyContent: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
 
-  tripCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: radii['2xl'], padding: spacing.sm + 4, boxShadow: '0 3px 12px rgba(20,23,26,0.07)', gap: spacing.sm },
-  tripRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  tripMeta: { ...typography.caption, color: h.ivoryDim, fontFamily: fonts.semibold },
-  tripDivider: { height: 1, backgroundColor: h.line08 },
-  routeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  routeText: { ...typography.body, color: h.ivory, fontFamily: fonts.bold, flex: 1, fontSize: 13 },
-  scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: h.chip, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2 },
-  scheduleChipText: { ...typography.caption, color: h.ivory, fontFamily: fonts.bold },
+  tripCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line07, borderRadius: 22, paddingTop: 14, paddingHorizontal: 16, paddingBottom: 8, boxShadow: '0 2px 8px rgba(20,23,26,0.05), inset 0 1px 0 rgba(255,255,255,0.9)' },
+  tripRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  tripMeta: { fontSize: 13.5, color: h.muted, fontFamily: font.sb, fontVariant: ['tabular-nums'] },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  routeText: { fontSize: 14, color: h.ivory, fontFamily: font.sb, flex: 1 },
+  pickupDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: h.teal, boxShadow: '0 0 0 3px rgba(14,143,163,0.16)' },
+  dropDot: { width: 9, height: 9, borderRadius: 2.5, backgroundColor: h.ivory },
+  scheduleChip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, paddingLeft: 10, paddingRight: 12, borderRadius: 16, backgroundColor: h.tealWash },
+  scheduleChipText: { fontSize: 13, color: h.tealText, fontFamily: font.b },
 
-  vehHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: spacing.xs },
+  vehHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 24, marginBottom: 12, marginHorizontal: 2 },
   sectionLabel: { ...sectionLabel },
-  vehCount: { ...typography.caption, color: h.ivoryFaint, fontFamily: fonts.semibold },
+  vehCount: { fontSize: 12.5, color: h.label, fontFamily: font.m },
 
-  vehCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10, borderRadius: radii['2xl'], overflow: 'hidden', boxShadow: '0 2px 8px rgba(20,23,26,0.04)' },
-  vehCardOpen: { borderColor: '#E58BBD', boxShadow: '0 8px 24px rgba(220,62,147,0.14)' },
-  vehRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, padding: spacing.sm + 4 },
+  vehCard: { backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, borderRadius: 20, marginBottom: 10, overflow: 'hidden', boxShadow: '0 2px 8px rgba(20,23,26,0.05)' },
+  vehCardOpen: { borderWidth: 1.5, borderColor: h.tealCta, borderRadius: 22, boxShadow: '0 0 0 4px rgba(14,143,163,0.09), 0 2px 8px rgba(20,23,26,0.06)' },
+  vehRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingLeft: 12, paddingRight: 14 },
   vehRowDisabled: { opacity: 0.4 },
-  iconWrap: { width: 52, height: 44, borderRadius: 12, backgroundColor: h.chip, alignItems: 'center', justifyContent: 'center' },
-  iconWrapOpen: { backgroundColor: h.chip },
-  vehInfo: { flex: 1, gap: 2, minWidth: 0 },
-  vehNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  vehName: { fontSize: 14, fontFamily: fonts.bold, color: h.ivory },
-  premiumBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FBF3E6', borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2 },
-  premiumBadgeText: { fontSize: 12, fontFamily: fonts.semibold, color: '#8A6323' },
-  vehSeatsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  vehSeats: { ...typography.caption, color: h.ivoryDim, fontSize: 11 },
-  vehFareBlock: { alignItems: 'flex-end', minWidth: 56 },
-  vehFareFrom: { fontSize: 14, fontFamily: fonts.bold, color: h.ivory },
-  vehFareSelected: { fontSize: 15, fontFamily: fonts.bold, color: h.ivory },
-  vehNoPkgs: { fontSize: 11, fontFamily: fonts.semibold, color: h.ivoryFaint },
-  chevronOpen: { transform: [{ rotate: '180deg' }] },
+  iconWrap: { width: 68, height: 52, borderRadius: 14, backgroundColor: '#F4F5F1', alignItems: 'center', justifyContent: 'center' },
+  vehInfo: { flex: 1, minWidth: 0 },
+  vehName: { fontSize: 16, fontFamily: font.b, color: h.ivory },
+  // wraps so the Premium chip drops under the seat count on a narrow phone instead of running under the price
+  vehSeatsRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 6, rowGap: 4, marginTop: 5 },
+  seatsWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  vehSeats: { fontFamily: font.sb, fontSize: 12.5, color: h.muted },
+  premiumChip: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 22, paddingHorizontal: 6, borderRadius: 11, backgroundColor: '#FBF1D9' },
+  premiumChipText: { fontFamily: font.b, fontSize: 12, color: '#7A5410' },
+  // minWidth, not width: a larger price or bigger text grows this block and the name column gives way, instead of the price wrapping.
+  vehFareBlock: { minWidth: 62, flexShrink: 0, alignItems: 'flex-end', justifyContent: 'center' },
+  vehFrom: { fontSize: 12, fontFamily: font.m, color: h.label },
+  vehFare: { fontSize: 17, fontFamily: font.xb, letterSpacing: -0.2, color: h.ivory, fontVariant: ['tabular-nums'] },
+  vehNoPkgs: { fontSize: 12, fontFamily: font.sb, color: h.faint },
 
-  tray: { backgroundColor: h.chip, marginHorizontal: 6, marginBottom: 6, borderRadius: radii.lg, padding: spacing.sm + 4 },
-  trayLoadingRow: { flexDirection: 'row', gap: spacing.xs + 4 },
-  trayLabel: { fontSize: 10, fontFamily: fonts.bold, letterSpacing: 0.4, color: h.ivoryDim, marginBottom: spacing.sm },
-  tierRow: { flexGrow: 0, marginBottom: spacing.sm + 4 },
-  tierRowContent: { gap: spacing.xs + 2, paddingTop: 4 },
-  tierChip: { minWidth: 64, paddingVertical: 8, paddingHorizontal: 13, borderRadius: radii.md, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, alignItems: 'center' },
-  tierFade: { position: 'absolute', top: 4, bottom: spacing.sm + 4, right: 0, width: 44 },
-  tierArrowBtn: { position: 'absolute', top: 4, right: 4, width: 26, height: 26, borderRadius: radii.full, backgroundColor: h.surface, alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(14,143,163,0.22)' },
-  tierChipActive: { backgroundColor: '#FDEFF6', borderColor: '#DC3E93', boxShadow: '0 6px 16px rgba(220,62,147,0.18)' },
-  tierDuration: { fontSize: 11.5, fontFamily: fonts.bold, color: h.ivory },
-  tierKm: { fontSize: 9.5, color: h.ivoryFaint },
-  tierTextActive: { color: '#A31F6B' },
-  tierKmActive: { color: 'rgba(163,31,107,0.72)' },
-  bestFitTag: { alignSelf: 'center', backgroundColor: '#DC3E93', borderRadius: radii.full, paddingHorizontal: 8, paddingVertical: 2, marginBottom: 4 },
-  bestFitText: { fontSize: 11, fontFamily: fonts.bold, color: '#FFFFFF', letterSpacing: 0.3, flexShrink: 0 },
-  trayDivider: { height: 1, backgroundColor: h.line08, marginBottom: spacing.sm },
-  trayTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-  trayTotalInfo: { flex: 1, minWidth: 0 },
-  trayTotalMeta: { fontSize: 11.5, color: h.ivoryDim, fontFamily: fonts.medium },
-  trayExtra: { fontFamily: fonts.bold, color: '#A31F6B' },
-  surgeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
-  surgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.warning },
-  trayTotalValue: { fontSize: 19, fontFamily: fonts.bold, color: h.teal, letterSpacing: -0.3 },
-  trayTotalUnavailable: { fontSize: 14, color: h.ivoryFaint },
+  tray: { borderTopWidth: 1, borderTopColor: h.line07, marginHorizontal: 16, paddingTop: 14, paddingBottom: 18 },
+  trayLoadingRow: { flexDirection: 'row', gap: 10, paddingTop: 8 },
+  trayHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  trayTitle: { fontFamily: font.sb, fontSize: 14, color: h.ivory },
+  trayCount: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  trayCountText: { fontFamily: font.m, fontSize: 12.5, color: h.label },
+  incRow: { flexDirection: 'row', marginTop: 12, paddingTop: 14, borderTopWidth: 1, borderTopColor: h.line07 },
+  incCol: { flex: 1, minWidth: 0 },
+  incSep: { width: 1, backgroundColor: h.line08, marginHorizontal: 16 },
+  incLabel: { fontFamily: font.m, fontSize: 12.5, color: h.label, marginBottom: 3 },
+  incValue: { fontFamily: font.b, fontSize: 14.5, color: h.ivory, fontVariant: ['tabular-nums'] },
+  surgeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 12 },
+  surgeText: { fontSize: 12.5, fontFamily: font.sb, color: h.goldInk },
+  estBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 14, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14 },
+  estFit: { backgroundColor: h.tealWash },
+  estOver: { backgroundColor: '#FBF3E1' },
+  estIcon: { marginTop: 1 },
+  estText: { flex: 1, fontFamily: font.m, fontSize: 13, lineHeight: 19 },
 
-  warnCard: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, backgroundColor: colors.warningLight, borderRadius: radii.lg, padding: spacing.md, marginTop: spacing.sm + 4 },
-  warnText: { ...typography.caption, flex: 1, color: h.ivory, lineHeight: 17 },
+  footnote: { fontFamily: font.m, fontSize: 12.5, lineHeight: 18, color: h.faint, marginTop: 4 },
+  footnoteStrong: { color: h.muted, fontFamily: font.sb },
 
-  footnote: { ...typography.caption, color: h.ivoryFaint, lineHeight: 17, marginTop: spacing.xs },
-  footnoteStrong: { color: h.ivoryDim, fontFamily: fonts.semibold },
-
-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: h.line08, backgroundColor: colors.bg },
-  error: { ...typography.body, color: colors.error, marginBottom: spacing.xs, textAlign: 'center' },
-  bookBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 54, boxShadow: '0 10px 24px rgba(14,143,163,0.28)' },
-  disabled: { opacity: 0.5 },
-  bookText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
+  footer: { paddingHorizontal: 18, paddingTop: 14, backgroundColor: h.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, boxShadow: '0 -10px 30px rgba(20,23,26,0.08)' },
+  payRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  payBtn: { flex: 1, height: 46, borderRadius: 16, backgroundColor: h.chip, borderWidth: 1, borderColor: h.line06, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 },
+  payBtnOn: { backgroundColor: '#E3F3F6', borderColor: 'rgba(14,143,163,0.4)' },
+  payText: { fontFamily: font.sb, fontSize: 14, color: h.ivory, flexShrink: 1 },
+  payTextOn: { fontFamily: font.b, color: h.tealText },
+  payChev: { marginLeft: 'auto' },
+  error: { fontFamily: font.r, fontSize: 14.5, lineHeight: 21, color: h.danger, marginBottom: 4, textAlign: 'center' },
 })

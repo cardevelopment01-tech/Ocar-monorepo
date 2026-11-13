@@ -2,9 +2,11 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View, type PressablePro
 import { LinearGradient } from 'expo-linear-gradient'
 import { Feather } from '@expo/vector-icons'
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
+import { h } from '../theme/brand'
 import { buttonRadius, colors, fonts, gradientPrimary, shadows, spacing } from '../theme/tokens'
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost'
+// 'cta' / 'soft' are the rider redesign's 56px / 50px buttons (18 / 16 radius); the others are unchanged.
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'cta' | 'soft'
 
 export type ButtonProps = Omit<PressableProps, 'style'> & {
   label: string
@@ -18,9 +20,13 @@ export type ButtonProps = Omit<PressableProps, 'style'> & {
   // one with the label; hidden automatically during loading/success since
   // those already have their own icon (spinner / checkmark).
   icon?: React.ComponentProps<typeof Feather>['name']
+  // 'cta' only: the price before an offer, shown struck through after the label ("Book Sedan · ₹600 ₹750").
+  strikeLabel?: string
+  // 'cta' only: stay at full strength while disabled. For a button that is only waiting a moment (a price loading), so it does not dim and brighten on every change.
+  keepLookWhenDisabled?: boolean
 }
 
-export function Button({ label, variant = 'primary', loading = false, success = false, icon, disabled = false, ...pressableProps }: ButtonProps) {
+export function Button({ label, variant = 'primary', loading = false, success = false, icon, strikeLabel, keepLookWhenDisabled = false, disabled = false, ...pressableProps }: ButtonProps) {
   const isDisabled = !!disabled || loading || success
   // Loading/success still read as "the brand button, mid-action" -- only an
   // explicit `disabled` prop should gray the gradient out.
@@ -42,6 +48,34 @@ export function Button({ label, variant = 'primary', loading = false, success = 
       <Text style={[styles.label, variant === 'primary' ? styles.labelInverse : styles.labelPrimary]}>{label}</Text>
     </Animated.View>
   )
+
+  if (variant === 'cta' || variant === 'soft') {
+    const cta = variant === 'cta'
+    const dim = !!disabled && !loading && !success && !keepLookWhenDisabled
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled: isDisabled }}
+        disabled={isDisabled}
+        style={({ pressed }) => [
+          cta ? styles.cta : styles.soft,
+          { backgroundColor: cta ? h.tealCta : h.tealWash },
+          cta && !dim ? { boxShadow: '0 12px 24px rgba(14,143,163,0.30)' } : null,
+          dim ? styles.disabled : null,
+          pressed && !isDisabled ? styles.pressed : null,
+        ]}
+        {...pressableProps}
+      >
+        {loading ? <ActivityIndicator color={cta ? '#fff' : h.tealText} /> : (
+          <View style={styles.row}>
+            {icon ? <Feather name={icon} size={17} color={cta ? '#fff' : h.tealText} /> : null}
+            <Text style={[styles.ctaLabel, { color: cta ? '#fff' : h.tealText }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{label}</Text>
+            {strikeLabel ? <Text style={styles.ctaStrike}>{strikeLabel}</Text> : null}
+          </View>
+        )}
+      </Pressable>
+    )
+  }
 
   return (
     <Pressable
@@ -91,6 +125,10 @@ const styles = StyleSheet.create({
   labelPrimary: {
     color: colors.primary,
   },
+  cta: { height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
+  soft: { height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
+  ctaLabel: { fontSize: 16, fontFamily: fonts.bold, fontVariant: ['tabular-nums'], flexShrink: 1 },
+  ctaStrike: { fontSize: 13.5, fontFamily: fonts.semibold, color: 'rgba(255,255,255,0.62)', textDecorationLine: 'line-through', marginLeft: 4, fontVariant: ['tabular-nums'] },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
 })
 

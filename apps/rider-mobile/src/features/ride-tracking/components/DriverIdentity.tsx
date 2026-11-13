@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather, FontAwesome } from '@expo/vector-icons'
-import { colors, fonts, PLATE_YELLOW, spacing, typography } from '@ocar/mobile-shared'
+import { LinearGradient } from 'expo-linear-gradient'
+import { font, h, PLATE_YELLOW } from '@ocar/mobile-shared'
 import { driverIdentity, type DriverIdentityView } from '@ocar/shared'
 import type { RideDetail } from '@ocar/mobile-shared'
 
@@ -28,25 +29,27 @@ export function driverViewFromName(name: string | null): DriverIdentityView {
   return driverIdentity({ name, rating: null, totalTrips: null, verified: null, vehicleColor: null, vehicleBrand: null, vehicleModel: null, vehicleName: null, plate: null })
 }
 
-const AVATAR = { lg: 68, md: 44, sm: 28 } as const
+const AVATAR = { lg: 56, md: 44, sm: 28 } as const
 
 export function DriverAvatar({ view, photo, size = 'md', chip = false }: {
   view: DriverIdentityView; photo: string | null; size?: keyof typeof AVATAR; chip?: boolean
 }) {
   const px = AVATAR[size]
-  const box = { width: px, height: px, borderRadius: size === 'lg' ? 20 : size === 'md' ? 14 : 9 }
+  // A photo URL that fails to load (expired link, offline) must fall back to the initials, not a blank circle.
+  const [photoFailed, setPhotoFailed] = useState(false)
+  const box = { width: px, height: px, borderRadius: px / 2 }
   return (
-    <View style={[styles.avatarWrap, chip && { paddingBottom: 8 }]}>
-      {photo ? (
-        <Image source={{ uri: photo }} style={[styles.avatar, box]} accessibilityIgnoresInvertColors />
+    <View style={[styles.avatarWrap, chip && { paddingBottom: 9, paddingRight: 8 }]}>
+      {photo && !photoFailed ? (
+        <View style={[styles.avatar, box]}><Image source={{ uri: photo }} style={box} onError={() => setPhotoFailed(true)} accessibilityIgnoresInvertColors /></View>
       ) : (
-        <View style={[styles.avatar, styles.avatarFallback, box]}>
+        <LinearGradient colors={['#12A0B6', '#0A7788']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.avatar, styles.avatarFallback, box]}>
           <Text style={[styles.avatarInitials, { fontSize: Math.round(px * 0.34) }]}>{view.initials}</Text>
-        </View>
+        </LinearGradient>
       )}
       {chip ? (
         <View style={styles.chip} accessibilityLabel={view.ratingText ? `Rated ${view.ratingText}` : 'New driver'}>
-          {view.ratingText ? <FontAwesome name="star" size={10} color={colors.accent} /> : null}
+          {view.ratingText ? <FontAwesome name="star" size={10} color="#E2A93B" /> : null}
           <Text style={styles.chipText}>{view.ratingText ?? 'New'}</Text>
         </View>
       ) : null}
@@ -57,7 +60,7 @@ export function DriverAvatar({ view, photo, size = 'md', chip = false }: {
 export function PlateBadge({ plate, large = false }: { plate: string | null; large?: boolean }) {
   if (!plate) return null
   return (
-    // Drawn like a plate (same as the driver app): IND stripe, yellow commercial plate, dark rim, one line.
+    // Drawn like a plate (same as the driver app): IND stripe, light plate, dark rim, one line.
     <View style={[styles.plate, large && styles.plateLg]} accessible accessibilityLabel={`Number plate ${plate}`}>
       <View style={[styles.plateStripe, large && styles.plateStripeLg]}><Text style={styles.plateStripeText}>IND</Text></View>
       <Text style={[styles.plateText, large && styles.plateTextLg]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{plate}</Text>
@@ -75,19 +78,27 @@ export function VehicleLine({ view, swatch = true, lines = 1 }: { view: DriverId
 }
 
 // Compact identity for chat header / rate: avatar, name, "★ 4.9 · 1,240 trips", vehicle + plate.
-export function DriverRow({ view, photo, right }: { view: DriverIdentityView; photo: string | null; right?: ReactNode }) {
+export function DriverRow({ view, photo, right, status }: { view: DriverIdentityView; photo: string | null; right?: ReactNode; /** A live line under the name, e.g. "Driver is on the way" (green dot, teal text). */ status?: string | null }) {
   return (
     <View style={styles.row}>
       <DriverAvatar view={view} photo={photo} size="md" />
       <View style={styles.rowInfo}>
         <Text style={styles.rowName} numberOfLines={1}>{view.name}</Text>
-        <View style={styles.rowMeta}>
-          {view.ratingText ? <><FontAwesome name="star" size={10} color={colors.accent} /><Text style={styles.rowMetaStrong}>{view.ratingText}</Text><Text style={styles.rowMetaText}>·</Text></> : null}
-          <Text style={styles.rowMetaText} numberOfLines={1}>{view.tripsText}</Text>
-        </View>
+        {status ? (
+          <View style={styles.rowMeta}>
+            <View style={styles.liveDot} />
+            <Text style={styles.rowStatus} numberOfLines={1}>{status}</Text>
+          </View>
+        ) : null}
+        {view.ratingText ? (
+          <View style={styles.rowMeta}>
+            <FontAwesome name="star" size={10} color="#E2A93B" /><Text style={styles.rowMetaStrong}>{view.ratingText}</Text><Text style={styles.rowMetaText}>·</Text>
+            <Text style={styles.rowMetaText} numberOfLines={1}>{view.tripsText}</Text>
+          </View>
+        ) : null}
         <View style={styles.rowMeta}>
           {view.swatch ? <View style={[styles.swatchSm, { backgroundColor: view.swatch }]} /> : null}
-          <Text style={[styles.rowMetaText, { flexShrink: 1 }]} numberOfLines={1}>{view.vehicleLine}{view.plate ? ` · ${view.plate}` : ''}</Text>
+          <Text style={[styles.rowMetaText, { flexShrink: 1 }]} numberOfLines={1}>{view.plate ? `${view.plate} · ` : ''}{view.vehicleLine}</Text>
         </View>
       </View>
       {right}
@@ -123,14 +134,14 @@ export function MeetAtRow({ address, lat, lng }: { address: string | null; lat: 
   const url = lat != null && lng != null ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}` : null
   return (
     <View style={styles.meet}>
-      <Feather name="map-pin" size={16} color={colors.primary} />
+      <Feather name="map-pin" size={16} color={h.tealText} />
       <View style={styles.meetText}>
         <Text style={styles.meetLabel}>Meet at</Text>
         <Text style={styles.meetAddress} numberOfLines={1}>{address}</Text>
       </View>
       {url ? (
         <Pressable onPress={() => void Linking.openURL(url)} accessibilityRole="link" accessibilityLabel="Get directions to pickup" style={styles.directions} hitSlop={8}>
-          <Feather name="navigation" size={13} color={colors.primary} />
+          <Feather name="navigation" size={13} color={h.tealText} />
           <Text style={styles.directionsText}>Directions</Text>
         </Pressable>
       ) : null}
@@ -140,38 +151,42 @@ export function MeetAtRow({ address, lat, lng }: { address: string | null; lat: 
 
 const styles = StyleSheet.create({
   avatarWrap: { alignItems: 'center', flexShrink: 0 },
-  avatar: { borderWidth: 2, borderColor: colors.surface },
-  avatarFallback: { backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  avatarInitials: { fontFamily: fonts.bold, color: colors.primary },
-  chip: { position: 'absolute', bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
-  chipText: { fontFamily: fonts.bold, fontSize: 11, color: colors.ink900 },
-  plate: { flexShrink: 0, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', backgroundColor: PLATE_YELLOW, borderRadius: 8, borderWidth: 1.5, borderColor: colors.ink900, overflow: 'hidden' },
+  // Gold ring (the redesign's driver / profile avatar): white gap, then a thin gold line.
+  avatar: { boxShadow: '0 0 0 2.5px #FFFFFF, 0 0 0 4px rgba(214,165,82,0.7)' },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  avatarInitials: { fontFamily: font.b, color: '#FFFFFF' },
+  chip: { position: 'absolute', bottom: -2, right: -8, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: h.surface, borderRadius: 11, height: 22, paddingHorizontal: 7, boxShadow: '0 2px 6px rgba(20,23,26,0.16)' },
+  chipText: { fontFamily: font.b, fontSize: 11.5, color: h.ivory, fontVariant: ['tabular-nums'] },
+  // Yellow commercial plate (the shared PLATE_YELLOW, same as the driver app).
+  plate: { flexShrink: 0, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', backgroundColor: PLATE_YELLOW, borderRadius: 8, borderWidth: 1.5, borderColor: h.ivory, overflow: 'hidden' },
   plateLg: { borderRadius: 10, borderWidth: 2 },
   plateStripeLg: { width: 26 },
   plateTextLg: { paddingHorizontal: 14, paddingVertical: 8, fontSize: 21, lineHeight: 28, letterSpacing: 1.4 },
   plateStripe: { alignSelf: 'stretch', width: 20, backgroundColor: '#1D3F8F', alignItems: 'center', justifyContent: 'center' },
-  plateStripeText: { fontFamily: fonts.bold, fontSize: 8, lineHeight: 11, color: '#FFFFFF' },
-  plateText: { flexShrink: 1, paddingHorizontal: 8, paddingVertical: 5, fontFamily: fonts.bold, fontSize: 15, lineHeight: 20, letterSpacing: 0.8, color: colors.ink900, fontVariant: ['tabular-nums'] },
+  plateStripeText: { fontFamily: font.b, fontSize: 8, lineHeight: 11, color: '#FFFFFF' },
+  plateText: { flexShrink: 1, paddingHorizontal: 8, paddingVertical: 5, fontFamily: font.xb, fontSize: 15, lineHeight: 20, letterSpacing: 0.8, color: h.ivory, fontVariant: ['tabular-nums'] },
   vehicle: { minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  swatch: { width: 14, height: 14, borderRadius: 7, borderWidth: 1, borderColor: colors.ink400 },
-  swatchSm: { width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: colors.ink400 },
-  vehicleText: { ...typography.label, color: colors.ink900, flexShrink: 1 },
-  row: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  swatch: { width: 14, height: 14, borderRadius: 7, borderWidth: 1, borderColor: h.faint },
+  swatchSm: { width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: h.faint },
+  vehicleText: { fontFamily: font.sb, fontSize: 13, color: h.ivory, flexShrink: 1 },
+  row: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
   rowInfo: { flex: 1, minWidth: 0, gap: 1 },
-  rowName: { ...typography.label, fontSize: 15, fontFamily: fonts.bold, color: colors.ink900 },
+  rowName: { fontFamily: font.b, fontSize: 15, color: h.ivory },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: h.live },
+  rowStatus: { fontFamily: font.sb, fontSize: 12.5, color: h.tealText, flexShrink: 1 },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  rowMetaStrong: { fontFamily: fonts.bold, fontSize: 12, color: colors.ink600 },
-  rowMetaText: { ...typography.caption, color: colors.ink400 },
-  pin: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 8, paddingHorizontal: 14 },
-  pinTitle: { flex: 1, minWidth: 0, fontFamily: fonts.bold, fontSize: 13, color: colors.inkInverse },
+  rowMetaStrong: { fontFamily: font.b, fontSize: 12, color: h.muted },
+  rowMetaText: { fontFamily: font.r, fontSize: 12, color: h.muted },
+  pin: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, backgroundColor: '#F3FAFB', borderWidth: 1, borderColor: 'rgba(14,143,163,0.22)', borderRadius: 14, paddingVertical: 8, paddingHorizontal: 14 },
+  pinTitle: { flex: 1, minWidth: 0, fontFamily: font.sb, fontSize: 13, color: h.tealText },
   pinBoxes: { flexDirection: 'row', gap: 5 },
-  pinBox: { width: 28, height: 32, borderRadius: 9, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
-  pinDigit: { fontFamily: fonts.bold, fontSize: 16, color: colors.ink900 },
-  pinGenerating: { fontFamily: fonts.semibold, fontSize: 12, color: colors.inkInverse },
-  meet: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 18, paddingVertical: 10, paddingHorizontal: 14 },
+  pinBox: { width: 30, height: 36, borderRadius: 9, backgroundColor: h.surface, borderWidth: 1, borderColor: 'rgba(14,143,163,0.22)', alignItems: 'center', justifyContent: 'center' },
+  pinDigit: { fontFamily: font.xb, fontSize: 20, color: h.ivory, fontVariant: ['tabular-nums'] },
+  pinGenerating: { fontFamily: font.sb, fontSize: 12, color: h.tealText },
+  meet: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: h.chip, borderRadius: 18, paddingVertical: 10, paddingHorizontal: 14 },
   meetText: { flex: 1, minWidth: 0 },
-  meetLabel: { ...typography.caption, color: colors.ink400 },
-  meetAddress: { ...typography.label, color: colors.ink900 },
-  directions: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
-  directionsText: { fontFamily: fonts.bold, fontSize: 12, color: colors.primary },
+  meetLabel: { fontFamily: font.sb, fontSize: 11.5, color: h.label },
+  meetAddress: { fontFamily: font.b, fontSize: 14, color: h.ivory },
+  directions: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0, minHeight: 44 },
+  directionsText: { fontFamily: font.b, fontSize: 12.5, color: h.tealText },
 })

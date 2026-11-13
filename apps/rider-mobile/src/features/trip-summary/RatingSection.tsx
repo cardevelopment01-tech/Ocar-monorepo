@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import Animated, { FadeIn } from 'react-native-reanimated'
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated'
 import { Ionicons } from '@expo/vector-icons'
-import { Button, colors, fonts, radii, spacing, typography, getApiErrorMessage } from '@ocar/mobile-shared'
+import { Button, font, h, getApiErrorMessage } from '@ocar/mobile-shared'
 import type { RatingTag } from '@ocar/mobile-shared'
 import { fetchRatingTags, submitRating } from '@/features/safety/api'
 
 // Unselected star: darker than colors.border so it reads on white.
-const EMPTY_STAR = '#C3CCCE'
+const EMPTY_STAR = '#E4EAEB'
 const WORDS = ['', 'Poor', 'Below average', 'Okay', 'Good', 'Excellent']
 
 // Rating lives on the summary itself: tap a star, tags appear below, submit. No navigation away.
@@ -87,10 +87,27 @@ export function RatingSection({ rideId, driverName, existing, onRated }: {
       {score > 0 ? (
         <Animated.View entering={FadeIn.duration(200)} style={styles.submit}>
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Button label={submitting ? 'Submitting…' : 'Submit rating'} onPress={() => void submit()} loading={submitting} />
+          <Button variant="cta" label={submitting ? 'Submitting…' : 'Submit rating'} onPress={() => void submit()} loading={submitting} />
         </Animated.View>
       ) : null}
     </View>
+  )
+}
+
+// A star pops (up, then settles) when it turns on, a little later for each one further along, so a 5 fills like a sweep.
+function StarIcon({ on, index }: { on: boolean; index: number }) {
+  const k = useSharedValue(1)
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) { first.current = false; return }
+    if (on) k.set(withSequence(withTiming(1, { duration: index * 55 }), withTiming(1.28, { duration: 110 }), withSpring(1, { damping: 12 })))
+    else k.set(1)
+  }, [on, index, k])
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: k.get() }] }))
+  return (
+    <Animated.View style={style}>
+      <Ionicons name="star" size={36} color={on ? '#E2A93B' : EMPTY_STAR} />
+    </Animated.View>
   )
 }
 
@@ -99,7 +116,7 @@ function Stars({ value, onSelect }: { value: number; onSelect?: (n: number) => v
     <View style={styles.stars} accessibilityRole={onSelect ? 'radiogroup' : 'image'} accessibilityLabel={onSelect ? undefined : `Rated ${value} of 5`}>
       {[1, 2, 3, 4, 5].map((s) => {
         const on = value >= s
-        const icon = <Ionicons name={on ? 'star' : 'star-outline'} size={38} color={on ? colors.accent : EMPTY_STAR} />
+        const icon = <StarIcon on={on} index={s - 1} />
         return onSelect ? (
           <Pressable key={s} onPress={() => onSelect(s)} hitSlop={4} accessibilityRole="radio" accessibilityState={{ selected: value === s }} accessibilityLabel={`Rate ${s} of 5, ${WORDS[s]}`} style={styles.star}>
             {icon}
@@ -113,18 +130,18 @@ function Stars({ value, onSelect }: { value: number; onSelect?: (n: number) => v
 }
 
 const styles = StyleSheet.create({
-  wrap: { alignItems: 'center', gap: spacing.sm + 2 },
-  title: { ...typography.title, fontSize: 16, color: colors.ink900, textAlign: 'center' },
-  stars: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xs },
+  wrap: { alignItems: 'center', gap: 12 },
+  title: { fontFamily: font.b, fontSize: 17, color: h.ivory, textAlign: 'center' },
+  stars: { flexDirection: 'row', justifyContent: 'center', gap: 6 },
   star: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  word: { ...typography.label, fontSize: 14, color: colors.ink600 },
-  tagsWrap: { alignSelf: 'stretch', gap: spacing.sm },
-  tagsLabel: { ...typography.label, fontSize: 14, fontFamily: fonts.bold, color: colors.ink900 },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  tag: { minHeight: 40, paddingHorizontal: spacing.md, justifyContent: 'center', borderRadius: radii.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  tagOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tagText: { ...typography.label, fontSize: 14, color: colors.ink600, fontFamily: fonts.semibold },
-  tagTextOn: { color: colors.inkInverse },
-  submit: { alignSelf: 'stretch', gap: spacing.xs, marginTop: spacing.sm },
-  error: { ...typography.label, color: colors.error, textAlign: 'center' },
+  word: { fontFamily: font.sb, fontSize: 14, color: h.muted },
+  tagsWrap: { alignSelf: 'stretch', gap: 10 },
+  tagsLabel: { fontFamily: font.sb, fontSize: 14, color: h.ivory },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tag: { minHeight: 40, paddingHorizontal: 16, justifyContent: 'center', borderRadius: 20, borderWidth: 1, borderColor: h.line10, backgroundColor: h.chip },
+  tagOn: { backgroundColor: h.tealCta, borderColor: h.tealCta },
+  tagText: { fontFamily: font.sb, fontSize: 13.5, color: h.ivory },
+  tagTextOn: { color: '#FFFFFF' },
+  submit: { alignSelf: 'stretch', gap: 8, marginTop: 8 },
+  error: { fontFamily: font.m, fontSize: 13, color: h.danger, textAlign: 'center' },
 })

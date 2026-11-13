@@ -5,7 +5,8 @@ import { goBack } from '@/lib/goBack'
 import { formatEstimatedRoadKm } from '@ocar/shared'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, fonts, pillTextFor, getApiErrorMessage, haversineMetres, ageMs, track } from '@ocar/mobile-shared'
+import { LinearGradient } from 'expo-linear-gradient'
+import { Button, spacing, h, font, pillTextFor, getApiErrorMessage, haversineMetres, ageMs, track } from '@ocar/mobile-shared'
 
 // Same threshold as the API (MIN_TRIP_DISTANCE_METRES): closer than this is the same place, not a trip.
 const SAME_PLACE_METRES = 100
@@ -15,11 +16,13 @@ import { fetchClassifyTrip, fetchNearestCityId, fetchPlaceDetail, fetchRoute, fe
 import { useAutocomplete } from '@/features/booking/hooks/useAutocomplete'
 import { useBookingDraftStore, type BookingPlace } from '@/features/booking/store'
 import type { RideType } from '@/features/booking/api'
+import { resolveInCityRoute, type TripMode } from '@/features/booking/cityRideRoute'
 import { useApproximateLocation, useFreshness, useLocationStore, useLocationTracking } from '@/store/useLocationStore'
 import { PreciseLocationNotice } from '@/features/home/PreciseLocationNotice'
 import { useRecentSearchesStore } from '@/store/useRecentSearchesStore'
 import { RedirectToast } from '@/features/booking/components/RedirectToast'
 import { sectionLabel } from '@/theme/homeTokens'
+import { IconButton } from '@/components/ui'
 
 type ActiveField = 'pickup' | 'drop'
 
@@ -70,6 +73,7 @@ export default function BookingPickersScreen() {
   const rideType = useBookingDraftStore((s) => s.rideType)
   const rideTypeDeclared = useBookingDraftStore((s) => s.rideTypeDeclared)
   const setRideType = useBookingDraftStore((s) => s.setRideType)
+  const tripMode = useBookingDraftStore((s) => s.tripMode)
   const riderName = useBookingDraftStore((s) => s.riderName)
   const riderPhone = useBookingDraftStore((s) => s.riderPhone)
   const setRider = useBookingDraftStore((s) => s.setRider)
@@ -151,8 +155,8 @@ export default function BookingPickersScreen() {
   // handleContinue already captured for *this* render, so auto-continue
   // could still see the pre-reset rideType/declared. Resetting before
   // setDrop() runs means the render setDrop triggers already reads fresh.
-  const enteredDeclaredRef = useRef<{ rideType: RideType; declared: boolean } | null>(null)
-  if (enteredDeclaredRef.current === null) enteredDeclaredRef.current = { rideType, declared: rideTypeDeclared }
+  const enteredDeclaredRef = useRef<{ rideType: RideType; declared: boolean; tripMode: TripMode } | null>(null)
+  if (enteredDeclaredRef.current === null) enteredDeclaredRef.current = { rideType, declared: rideTypeDeclared, tripMode }
 
   // Closes editing whenever a field's value changes from ANY source, not just
   // this screen's own commitPlace -- e.g. map-picker (a separate screen) sets
@@ -194,7 +198,7 @@ export default function BookingPickersScreen() {
       setEditingField(drop ? null : 'drop')
     } else {
       const entry = enteredDeclaredRef.current!
-      setRideType(entry.rideType, entry.declared)
+      setRideType(entry.rideType, entry.declared, entry.tripMode)
       if (redirectTimerRef.current) { clearTimeout(redirectTimerRef.current); redirectTimerRef.current = null }
       setRedirectToast(null)
       setDrop(place)
@@ -244,36 +248,35 @@ export default function BookingPickersScreen() {
         fetchClassifyTrip(pickup.lat, pickup.lng, drop.lat, drop.lng),
       ])
       setRoute(route.distanceKm, route.durationMin, cityId, route.routePoints)
-      const isInCity = classification?.scope === 'in_city'
-      const cityLabel = classification?.scope === 'in_city' ? classification.cityName : 'the city'
-
-      function redirectWithToast(path: '/booking/rental' | '/booking/fare' | '/booking/trip-type', message: string, resolvedRideType?: 'one_way' | 'rental') {
-        if (resolvedRideType) setRideType(resolvedRideType, true)
+      // Where this trip goes next, by the rules in cityRideRoute.ts (Outstation, City Ride, Rental). Inside one city boundary it is a
+      // city ride when the server says City ride is on, and exactly what the app did before (Rental) otherwise.
+      const next = resolveInCityRoute({ rideTypeDeclared, rideType, tripMode, classification })
+      // A route that becomes a city ride (it was undeclared, or an in-city one-way) is a one-way: pickup and drop cannot be the same
+      // place. (A rental can start and end at the same place, which is why the check at the top skips undeclared trips.)
+      if (next.tripMode === 'city' && haversineMetres([pickup.lat, pickup.lng], [drop.lat, drop.lng]) < SAME_PLACE_METRES) {
         setContinuing(false)
-        setRedirectToast(message)
+        setContinueError('Pickup and drop are the same place. Choose a different drop-off.')
+        return
+      }
+      const cityLabel = classification?.scope === 'in_city' ? classification.cityName : 'the city'
+      const toastText = {
+        to_city: `That's inside ${cityLabel}, switching to City Ride`,
+        to_rental: `That's inside ${cityLabel}, switching to Rental`,
+        to_outstation: `That's outside ${cityLabel}, switching to Outstation`,
+        to_one_way: `That's outside ${cityLabel}, switching to One Way`,
+      } as const
+
+      if (next.toast) {
+        setRideType(next.rideType, next.rideTypeDeclared, next.tripMode)
+        setContinuing(false)
+        setRedirectToast(toastText[next.toast])
         if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current)
-        redirectTimerRef.current = setTimeout(() => router.push(path), 1500)
-      }
-
-      if (!rideTypeDeclared) {
-        if (isInCity) redirectWithToast('/booking/rental', `That's inside ${cityLabel}, switching to City Rides`, 'rental')
-        else { setContinuing(false); router.push('/booking/trip-type') }
-        return
-      }
-
-      if ((rideType === 'one_way' || rideType === 'round_trip') && isInCity) {
-        redirectWithToast('/booking/rental', `That's inside ${cityLabel}, switching to City Rides`, 'rental')
-        return
-      }
-      if (rideType === 'rental' && !isInCity) {
-        redirectWithToast('/booking/fare', `That's outside ${cityLabel}, switching to One Way`, 'one_way')
+        redirectTimerRef.current = setTimeout(() => router.push(next.path), 1500)
         return
       }
 
       setContinuing(false)
-      router.push(
-        rideType === 'round_trip' ? '/booking/round-trip' : rideType === 'rental' ? '/booking/rental' : '/booking/fare'
-      )
+      router.push(next.path)
     } catch (err) {
       setContinueError(getApiErrorMessage(err, "Couldn't work out that route. Please try again."))
       setContinuing(false)
@@ -309,15 +312,7 @@ export default function BookingPickersScreen() {
       {/* Fixed header: back button, title, route card, "Select on map" pill --
           mirrors web's own flex-shrink-0 header (never part of the scroll). */}
       <View style={styles.header}>
-        <Pressable
-          onPress={() => { resetDraft(); goBack(router) }}
-          style={({ pressed }) => [styles.backButton, pressed ? styles.pressedScale : null]}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Feather name="arrow-left" size={17} color={colors.ink900} />
-        </Pressable>
+        <IconButton icon="arrow-left" label="Go back" onPress={() => { resetDraft(); goBack(router) }} />
         <Text style={styles.title}>Plan your trip</Text>
         <Pressable
           onPress={() => setRiderSheetOpen(true)}
@@ -325,7 +320,7 @@ export default function BookingPickersScreen() {
           accessibilityRole="button"
           accessibilityLabel="Who's travelling"
         >
-          <Feather name="user" size={11} color={colors.primaryDark} />
+          <Feather name="user" size={16} color={h.ivory} />
           <Text style={styles.riderPillText} numberOfLines={1}>{bookingForOther ? riderName : 'For me'}</Text>
         </Pressable>
       </View>
@@ -335,30 +330,27 @@ export default function BookingPickersScreen() {
       <View style={styles.headerBody}>
         {/* Fixed-height route card -- fields only ever show their own text or an
             inline TextInput, never a results list, so this card's height never
-            jumps around while typing (the instability the redesign fixes). */}
-        <View style={styles.routeCard}>
-          <View style={styles.connector}>
-            <View style={styles.dotPickup} />
-            <View style={styles.dashedLine} />
-            <View style={styles.dotDrop} />
-          </View>
-          <View style={styles.fieldsColumn}>
-            <Pressable onPress={() => openField('pickup')} style={styles.fieldRow}>
+            jumps around while typing. The teal ring shows while a field is being edited. */}
+        <View style={[styles.routeCard, editingField !== null ? styles.routeCardActive : null]}>
+          <Pressable onPress={() => openField('pickup')} style={styles.fieldRow}>
+            <View style={styles.dotSlot}><View style={styles.dotPickup} /></View>
+            <View style={styles.fieldCol}>
+              <Text style={styles.fieldLabel}>Pickup</Text>
               {editingField === 'pickup' ? (
                 <View style={styles.fieldInputRow}>
                   <TextInput
                     value={query}
                     onChangeText={setQuery}
                     placeholder="Enter pickup location"
-                    placeholderTextColor={colors.ink400}
-                    selectionColor={colors.primary}
-                    cursorColor={colors.primary}
+                    placeholderTextColor={h.faint}
+                    selectionColor={h.teal}
+                    cursorColor={h.teal}
                     autoFocus
                     style={styles.fieldInput}
                   />
                   {query.length > 0 ? (
                     <Pressable onPress={() => setQuery('')} hitSlop={8} style={styles.clearBtn}>
-                      <Feather name="x" size={13} color={colors.ink400} />
+                      <Feather name="x" size={14} color={h.faint} />
                     </Pressable>
                   ) : null}
                 </View>
@@ -367,23 +359,28 @@ export default function BookingPickersScreen() {
                   {pickupLabel}
                 </Text>
               )}
-            </Pressable>
-            <Pressable onPress={() => openField('drop')} style={styles.fieldRowLast}>
+            </View>
+          </Pressable>
+          <View style={styles.fieldDivider} />
+          <Pressable onPress={() => openField('drop')} style={styles.fieldRow}>
+            <View style={styles.dotSlot}><View style={styles.dotDrop} /></View>
+            <View style={styles.fieldCol}>
+              <Text style={[styles.fieldLabel, { color: h.tealText }]}>Drop</Text>
               {editingField === 'drop' ? (
                 <View style={styles.fieldInputRow}>
                   <TextInput
                     value={query}
                     onChangeText={setQuery}
                     placeholder="Enter destination"
-                    placeholderTextColor={colors.ink400}
-                    selectionColor={colors.primary}
-                    cursorColor={colors.primary}
+                    placeholderTextColor={h.faint}
+                    selectionColor={h.teal}
+                    cursorColor={h.teal}
                     autoFocus
                     style={styles.fieldInput}
                   />
                   {query.length > 0 ? (
                     <Pressable onPress={() => setQuery('')} hitSlop={8} style={styles.clearBtn}>
-                      <Feather name="x" size={13} color={colors.ink400} />
+                      <Feather name="x" size={14} color={h.faint} />
                     </Pressable>
                   ) : null}
                 </View>
@@ -392,27 +389,32 @@ export default function BookingPickersScreen() {
                   {drop?.address ?? 'Enter destination'}
                 </Text>
               )}
-            </Pressable>
-          </View>
+            </View>
+          </Pressable>
+          <View style={styles.dashed} pointerEvents="none" />
         </View>
 
-        <Pressable
-          onPress={openMapPicker}
-          style={({ pressed }) => [styles.mapPill, pressed ? styles.pressedScale : null]}
-          accessibilityRole="button"
-          accessibilityLabel="Select location on map"
-        >
-          <Feather name="map" size={14} color={colors.primary} />
-          <Text style={styles.mapPillText}>Select on map</Text>
-        </Pressable>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.chips}>
+          <Pressable onPress={openMapPicker} style={({ pressed }) => [styles.chip, pressed ? styles.pressedScale : null]} accessibilityRole="button" accessibilityLabel="Select location on map">
+            <Feather name="map" size={17} color={h.tealText} />
+            <Text style={styles.chipText}>Select on map</Text>
+          </Pressable>
+          {/* Same commitPlace path as the Favourites rows below; just a shortcut for the two saved kinds. */}
+          {savedPlaces.filter((p) => p.kind !== 'other').map((p) => (
+            <Pressable key={p.id} onPress={() => void commitPlace({ address: p.address, lat: p.lat, lng: p.lng })} style={({ pressed }) => [styles.chip, pressed ? styles.pressedScale : null]} accessibilityRole="button" accessibilityLabel={p.label}>
+              <Feather name={SAVED_ICON[p.kind]} size={17} color={h.ivory} />
+              <Text style={styles.chipText}>{p.label}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Scrollable middle: results only. Header above and footer below never move. */}
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
         {showSuggestions ? (
-          loading ? (
+          loading && results.length === 0 ? (
             <View style={styles.hintRow}>
-              <ActivityIndicator size="small" color={colors.primary} />
+              <ActivityIndicator size="small" color={h.teal} />
               <Text style={styles.hint}>Searching…</Text>
             </View>
           ) : error ? (
@@ -425,7 +427,8 @@ export default function BookingPickersScreen() {
           ) : results.length === 0 ? (
             <Text style={styles.hint}>Nothing found. Try a different search.</Text>
           ) : (
-            results.map((r, i) => (
+            <View style={styles.group}>
+            {results.map((r, i) => (
               <PlaceRow
                 key={r.placeId}
                 icon="map-pin"
@@ -435,13 +438,15 @@ export default function BookingPickersScreen() {
                 last={i === results.length - 1}
                 distance={editingField === 'drop' && r.distanceMetres !== undefined ? formatEstimatedRoadKm(r.distanceMetres) : undefined}
               />
-            ))
+            ))}
+            </View>
           )
         ) : (
           <>
             {recents.length > 0 ? (
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Recent</Text>
+                <View style={styles.group}>
                 {recents.map((r, i) => (
                   <PlaceRow
                     key={`${r.address}-${i}`}
@@ -453,11 +458,13 @@ export default function BookingPickersScreen() {
                     distance={editingField === 'drop' ? distanceFromPickup(pickup, r.lat, r.lng) : undefined}
                   />
                 ))}
+                </View>
               </View>
             ) : null}
             {savedPlaces.length > 0 ? (
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Favourites</Text>
+                <View style={styles.group}>
                 {savedPlaces.map((p, i) => (
                   <PlaceRow
                     key={p.id}
@@ -469,14 +476,17 @@ export default function BookingPickersScreen() {
                     distance={editingField === 'drop' ? distanceFromPickup(pickup, p.lat, p.lng) : undefined}
                   />
                 ))}
+                </View>
               </View>
             ) : null}
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>Popular</Text>
+              <View style={styles.group}>
               {POPULAR.map((p, i) => (
                 <PlaceRow
                   key={p.label}
                   icon={p.icon}
+                  tone="teal"
                   label={p.label}
                   address={p.address}
                   onPress={() => void commitPlace({ address: p.address, lat: p.lat, lng: p.lng })}
@@ -484,6 +494,7 @@ export default function BookingPickersScreen() {
                   distance={editingField === 'drop' ? distanceFromPickup(pickup, p.lat, p.lng) : undefined}
                 />
               ))}
+              </View>
             </View>
           </>
         )}
@@ -492,24 +503,20 @@ export default function BookingPickersScreen() {
       {/* Fixed footer: Continue never drifts up/down as the results area above
           changes height -- the exact instability this redesign fixes. */}
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+        <LinearGradient pointerEvents="none" colors={['rgba(246,251,251,0)', h.canvas]} style={styles.fade} />
         {continueError ? (
           <Text style={styles.error} accessibilityLiveRegion="polite">
             {continueError}
           </Text>
         ) : null}
-        <Pressable
+        <Button
+          variant="cta"
+          label="Continue"
           onPress={() => void handleContinue()}
-          disabled={!canContinue || continuing}
-          style={({ pressed }) => [
-            styles.continueBtn,
-            !canContinue || continuing ? styles.disabled : null,
-            pressed && canContinue && !continuing ? styles.pressedScale : null,
-          ]}
-          accessibilityRole="button"
+          loading={continuing}
+          disabled={!canContinue}
           accessibilityLabel="Continue to fare estimate"
-        >
-          {continuing ? <ActivityIndicator color={colors.inkInverse} /> : <Text style={styles.continueText}>Continue</Text>}
-        </Pressable>
+        />
       </View>
 
       <RiderSheet
@@ -527,69 +534,42 @@ export default function BookingPickersScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  headerBody: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: 'rgba(20,23,26,0.08)',
-    boxShadow: '0 2px 8px rgba(20,23,26,0.06), 0 1px 2px rgba(20,23,26,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  screen: { flex: 1, backgroundColor: h.canvas },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingTop: 12 },
+  headerBody: { paddingHorizontal: 18, paddingTop: 22, gap: 14 },
   pressedScale: { transform: [{ scale: 0.97 }] },
-  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, flex: 1 },
-  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface2, borderRadius: radii.full, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2, maxWidth: 110 },
-  riderPillText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.bold },
-  routeCard: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  connector: { width: 40, alignItems: 'center', paddingVertical: spacing.md },
-  dotPickup: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary, boxShadow: '0 0 0 3px rgba(14,143,163,0.14)' },
-  dashedLine: { flex: 1, width: 1, minHeight: 24, borderLeftWidth: 1, borderLeftColor: colors.border, borderStyle: 'dashed', marginVertical: 4 },
-  dotDrop: { width: 10, height: 10, borderRadius: 2, backgroundColor: '#DC3E93' },
-  fieldsColumn: { flex: 1 },
-  fieldRow: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm + 2, borderBottomWidth: 1, borderBottomColor: colors.borderLight, justifyContent: 'center', minHeight: 44 },
-  fieldRowLast: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm + 2, justifyContent: 'center', minHeight: 44 },
+  title: { fontFamily: font.b, fontSize: 20, letterSpacing: -0.2, color: h.ivory, flex: 1 },
+  riderPill: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, paddingHorizontal: 16, borderRadius: 22, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line08, maxWidth: 150 },
+  riderPillText: { fontFamily: font.sb, fontSize: 14, color: h.ivory, flexShrink: 1 },
+  routeCard: { backgroundColor: h.surface, borderRadius: 20, borderWidth: 1.5, borderColor: h.line10, boxShadow: '0 2px 8px rgba(20,23,26,0.06)', paddingVertical: 4 },
+  routeCardActive: { borderColor: h.tealCta, boxShadow: '0 0 0 4px rgba(14,143,163,0.10), 0 2px 8px rgba(20,23,26,0.06)' },
+  fieldRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12, paddingLeft: 18, paddingRight: 18, minHeight: 62 },
+  dotSlot: { width: 12, height: 12, alignItems: 'center', justifyContent: 'center' },
+  dotPickup: { width: 12, height: 12, borderRadius: 6, backgroundColor: h.teal, boxShadow: '0 0 0 4px rgba(14,143,163,0.16)' },
+  dotDrop: { width: 10, height: 10, borderRadius: 3, backgroundColor: h.ivory },
+  fieldCol: { flex: 1, minWidth: 0 },
+  fieldLabel: { fontFamily: font.sb, fontSize: 11.5, color: h.label, marginBottom: 2 },
+  fieldDivider: { height: 1, backgroundColor: h.line07, marginLeft: 44 },
+  dashed: { position: 'absolute', left: 23, top: 44, height: 46, borderLeftWidth: 1.5, borderLeftColor: '#B3C0C3', borderStyle: 'dashed' },
   fieldInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  fieldInput: { ...typography.body, color: colors.ink900, padding: 0, flex: 1 },
-  clearBtn: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
-  fieldText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
-  fieldPlaceholder: { color: colors.ink400, fontFamily: fonts.regular },
-  mapPill: {
-    flexDirection: 'row',
-    alignSelf: 'flex-start',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm + 4,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  mapPillText: { ...typography.caption, color: colors.ink600, fontFamily: fonts.bold },
+  fieldInput: { fontFamily: font.sb, fontSize: 15, color: h.ivory, padding: 0, flex: 1 },
+  clearBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  fieldText: { fontFamily: font.sb, fontSize: 15, color: h.ivory },
+  fieldPlaceholder: { color: h.faint, fontFamily: font.r },
+  chips: { gap: 8 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, paddingHorizontal: 16, borderRadius: 22, backgroundColor: h.surface, borderWidth: 1, borderColor: h.line10 },
+  chipText: { fontFamily: font.sb, fontSize: 14, color: h.ivory },
   body: { flex: 1 },
-  bodyContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg },
+  bodyContent: { paddingHorizontal: 18, paddingTop: 6, paddingBottom: 24 },
+  group: { backgroundColor: h.surface, borderRadius: 20, borderWidth: 1, borderColor: h.line07, boxShadow: '0 2px 8px rgba(20,23,26,0.05)', overflow: 'hidden' },
   hintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
-  hint: { ...typography.body, color: colors.ink400, textAlign: 'center', paddingVertical: spacing.lg },
+  hint: { fontFamily: font.m, fontSize: 14, color: h.muted, textAlign: 'center', paddingVertical: spacing.lg },
   errorRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md },
-  errorText: { ...typography.body, color: colors.error, flex: 1 },
-  retryText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
-  section: { marginBottom: spacing.sm },
-  sectionLabel: { ...sectionLabel, marginBottom: spacing.xs },
-  error: { ...typography.body, color: colors.error, marginBottom: spacing.xs },
-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight, backgroundColor: colors.bg },
-  continueBtn: { backgroundColor: colors.primary, borderRadius: 16, paddingVertical: spacing.sm + 8, alignItems: 'center', justifyContent: 'center', minHeight: 54, boxShadow: '0 10px 24px rgba(14,143,163,0.28)' },
-  disabled: { opacity: 0.5 },
-  continueText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
+  errorText: { fontFamily: font.m, fontSize: 14, color: h.danger, flex: 1 },
+  retryText: { fontFamily: font.b, fontSize: 13, color: h.tealText },
+  section: { marginBottom: 14 },
+  sectionLabel: { ...sectionLabel, marginHorizontal: 2, marginTop: 14, marginBottom: 10 },
+  error: { fontFamily: font.m, fontSize: 14, color: h.danger, marginBottom: spacing.xs },
+  fade: { position: 'absolute', left: 0, right: 0, top: -40, height: 40 },
+  footer: { paddingHorizontal: 18, paddingTop: 10, backgroundColor: h.canvas },
 })

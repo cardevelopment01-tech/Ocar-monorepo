@@ -63,6 +63,11 @@ describe('tripTitle', () => {
   it('prefers the assigned category and appends the ride type', () => {
     expect(tripTitle({ rideType: 'round_trip', assignedCategoryName: 'Sedan', bookedCategoryName: 'Hatchback' })).toBe('Sedan · Round trip')
   })
+  it('names the hourly mode Rental and a city ride City ride', () => {
+    expect(tripTitle({ rideType: 'rental', assignedCategoryName: 'Sedan', bookedCategoryName: null })).toBe('Sedan · Rental')
+    expect(tripTitle({ rideType: 'one_way', tripMode: 'city', assignedCategoryName: 'Sedan', bookedCategoryName: null })).toBe('Sedan · City ride')
+    expect(tripTitle({ rideType: 'one_way', tripMode: 'standard', assignedCategoryName: 'Sedan', bookedCategoryName: null })).toBe('Sedan')
+  })
   it('falls back to the booked category, then to Ride', () => {
     expect(tripTitle({ rideType: 'one_way', assignedCategoryName: null, bookedCategoryName: 'Hatchback' })).toBe('Hatchback')
     expect(tripTitle({ rideType: 'one_way', assignedCategoryName: null, bookedCategoryName: null })).toBe('Ride')

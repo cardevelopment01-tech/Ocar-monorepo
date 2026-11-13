@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Button, ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, colors, radii, spacing, typography, fonts, getApiErrorMessage, getFreshFix, getLastKnownFix, track } from '@ocar/mobile-shared'
+import { Button, ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, font, h, shadow, spacing, getApiErrorMessage, getFreshFix, getLastKnownFix, track } from '@ocar/mobile-shared'
 import { api, serverNow } from '@/services/api'
 import { triggerSos } from '@/features/safety/api'
 import { useLocationStore } from '@/store/useLocationStore'
 import { useLiveLocation } from '@/features/home/useLiveLocation'
 import { SearchingBar } from '@/features/ride-tracking/components/SearchingBar'
-import { RideActions } from '@/features/ride-tracking/components/RideActions'
+import { TripDetailsRow } from '@/features/ride-tracking/components/TripDetailsRow'
 import { DriverCard } from '@/features/ride-tracking/components/DriverCard'
 import { MeetAtRow, PinBand } from '@/features/ride-tracking/components/DriverIdentity'
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
@@ -20,7 +21,11 @@ import { EditPickupSheet } from '@/features/ride-tracking/components/EditPickupS
 import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { NextStopRow } from '@/features/ride-tracking/components/NextStopRow'
 import { TripDetailsCard } from '@/features/ride-tracking/components/TripDetailsCard'
+import { SafetyToolkitSheet } from '@/features/ride-tracking/components/SafetyToolkitSheet'
 import { FareDriftToast, UpgradeToast } from '@/features/ride-tracking/components/Toasts'
+import { goBack } from '@/lib/goBack'
+import { IconButton } from '@/components/ui'
+import { ReturnCabRecovery } from '@/features/trip-summary/ReturnCabPanels'
 import { TripSummary } from '@/features/trip-summary/TripSummary'
 import { ReconnectBanner } from '@/features/ride-tracking/components/ReconnectBanner'
 import { DriverCancelledBanner } from '@/features/ride-tracking/components/DriverCancelledBanner'
@@ -38,6 +43,7 @@ import { useTripShare } from '@/features/trip-share/useTripShare'
 import { ShareTripSheet } from '@/features/trip-share/components/ShareTripSheet'
 import { ManageSharesSheet, confirmStopAll } from '@/features/trip-share/components/ManageSharesSheet'
 import { SharingBanner } from '@/features/trip-share/components/SharingBanner'
+import { confirmDialog } from '@/components/ui/confirm'
 
 // Mirrors api/src/modules/rides/rides.service.ts's PICKUP_EDITABLE_STATUSES --
 // once the driver has arrived, "where do I pick you up" no longer applies.
@@ -48,7 +54,7 @@ const STALE_LOCATION_MS = 3 * 60 * 1000
 // with "Trip details" expanded -- matches Uber's own half-screen sheet
 // ceiling (its Base design system caps a mobile sheet at collapsed/half/full,
 // never letting the half state swallow the whole map).
-const MAX_SHEET_HEIGHT_RATIO = 0.62
+const MAX_SHEET_HEIGHT_RATIO = 0.7
 const SHEET_ENTRANCE_DISTANCE = 40
 const SHEET_ENTRANCE_DURATION_MS = 400
 
@@ -80,7 +86,7 @@ export default function RideTrackingScreen() {
   const bookedCategoryId = ride?.categoryId != null && Number.isFinite(Number(ride.categoryId)) ? Number(ride.categoryId) : null
   const nearbyCars = useNearbyDrivers(
     ride ? rideId : null, ride?.originLat ?? null, ride?.originLng ?? null, ride?.status === 'requested',
-    showWithinMetres(ride?.rideType, bookedCategoryId === null ? null : vehicleSlugs.get(bookedCategoryId)), bookedCategoryId,
+    showWithinMetres(ride?.rideType, bookedCategoryId === null ? null : vehicleSlugs.get(bookedCategoryId), ride?.tripMode), bookedCategoryId,
   )
 
   // "Driver's location hasn't updated" must appear when updates STOP, so it needs a timer: a memo on
@@ -109,6 +115,8 @@ export default function RideTrackingScreen() {
   const [addStopOpen, setAddStopOpen] = useState(false)
   // Live trip sharing: the links for this trip. Called here (before any early return) so the hook order never changes.
   const [shareOpen, setShareOpen] = useState(false)
+  const [toolkitOpen, setToolkitOpen] = useState(false)
+  const [sosSignal, setSosSignal] = useState(0)
   const [manageOpen, setManageOpen] = useState(false)
   const [addStopError, setAddStopError] = useState<string | null>(null)
   const [editPickupOpen, setEditPickupOpen] = useState(false)
@@ -116,10 +124,20 @@ export default function RideTrackingScreen() {
   const [pickupUpdating, setPickupUpdating] = useState(false)
   const [pickupError, setPickupError] = useState<string | null>(null)
   const [pickupToast, setPickupToast] = useState(false)
-  // Open by default: pickup, drop and stops are the first thing a rider on a live trip looks for.
-  const [detailsExpanded, setDetailsExpanded] = useState(true)
+  // Collapsed by default, as in the approved design: the sheet stays calm and the details open in place from one row.
+  const [detailsExpanded, setDetailsExpanded] = useState(false)
   // Height of the docked sheet, so the map frames the trip (and the car) above it, not underneath.
   const [sheetHeight, setSheetHeight] = useState(0)
+  // Opening "Trip details" adds content below the fold of the sheet; scroll it into view or the tap looks like it did
+  // nothing. Details start open, so skip the first run and only react to a later open.
+  const sheetScrollRef = useRef<ScrollView>(null)
+  const detailsMounted = useRef(false)
+  useEffect(() => {
+    if (!detailsMounted.current) { detailsMounted.current = true; return }
+    if (!detailsExpanded) return
+    const t = setTimeout(() => sheetScrollRef.current?.scrollToEnd({ animated: true }), 80)
+    return () => clearTimeout(t)
+  }, [detailsExpanded])
   // Stops whose "driver can't reach this" prompt the rider chose to keep; the timeline Skip still works.
   const [keptStops, setKeptStops] = useState<number[]>([])
   const [skippingStop, setSkippingStop] = useState(false)
@@ -138,7 +156,7 @@ export default function RideTrackingScreen() {
 
   // One tap must not throw away a search that may be seconds from matching, so ask first.
   function confirmCancelSearch() {
-    Alert.alert('Cancel this request?', "We'll stop looking for a driver. You can book again any time.", [
+    confirmDialog('Cancel this request?', "We'll stop looking for a driver. You can book again any time.", [
       { text: 'Keep waiting', style: 'cancel' },
       { text: 'Cancel request', style: 'destructive', onPress: () => void cancelSearch() },
     ])
@@ -197,7 +215,7 @@ export default function RideTrackingScreen() {
   }
 
   function handleSkipStop(stop: { sequence: number; address?: string | null }) {
-    Alert.alert('Skip this stop?', `${stop.address ?? `Stop ${stop.sequence}`} will be removed from your trip. Any stop charge already added to your fare stays.`, [
+    confirmDialog('Skip this stop?', `${stop.address ?? `Stop ${stop.sequence}`} will be removed from your trip. Any stop charge already added to your fare stays.`, [
       { text: 'Keep stop', style: 'cancel' },
       { text: 'Skip stop', style: 'destructive', onPress: () => runSkip(stop.sequence) },
     ])
@@ -218,6 +236,12 @@ export default function RideTrackingScreen() {
       setPickupUpdating(false)
     }
   }
+
+  // The drive to pickup has no booked distance, so the bar's total is the first distance the ETA reported.
+  const [startKm, setStartKm] = useState<number | null>(null)
+  useEffect(() => {
+    if (ride?.status === 'accepted' && eta && startKm === null && eta.distanceKm > 0) setStartKm(eta.distanceKm)
+  }, [ride?.status, eta, startKm])
 
   if (driverCancelled) {
     return <DriverCancelledBanner />
@@ -260,13 +284,17 @@ export default function RideTrackingScreen() {
   const pendingStops = ride.stops.filter((s) => s.status === 'pending')
   const nextStop = canSkipStop ? pendingStops[0] : undefined
   const canCancel = ride.status === 'accepted' || ride.status === 'driver_arrived'
+  // Before pickup the red SOS button gives way to the calmer Safety pill (its toolkit opens the SOS sheet in one tap); on the trip itself SOS is always there.
+  const showSafetyPill = ride.status === 'accepted' || ride.status === 'driver_arrived'
   const canEditPickup = PICKUP_EDITABLE_STATUSES.has(ride.status)
   const fare = ride.totalFinal != null
     ? `₹${Math.round(parseFloat(ride.totalFinal))}`
     : ride.totalEstimated != null ? `₹${Math.round(parseFloat(ride.totalEstimated))}` : null
 
-  // A finished trip is a receipt, not a live map: full-screen summary, shared with My Trips.
-  if (isCompleted || isCancelled) return <TripSummary ride={ride} onRefresh={retry} />
+  // A return-cab ride that no return driver took stays on the map with a sheet offering the way forward; every other finished trip is a
+  // receipt, not a live map: full-screen summary, shared with My Trips.
+  const returnCabNoDriver = ride.status === 'no_drivers' && ride.isReturnCab === true
+  if (isCompleted || (isCancelled && !returnCabNoDriver)) return <TripSummary ride={ride} onRefresh={retry} />
 
   return (
     <View style={styles.screen}>
@@ -276,6 +304,9 @@ export default function RideTrackingScreen() {
           a form, not a live trip). Sheet below docks over it. */}
       <RideMapView
         pickup={pickup}
+        {...(showSafetyPill ? { pickupLabel: 'Your pickup' } : {})}
+        // Clear the status bar, the back button / Safety pill row and the Your pickup tag above the pin.
+        edgePadding={{ top: insets.top + 100, right: 60, bottom: 80, left: 60 }}
         drop={drop}
         driverPos={hasDriver ? driverPos : null}
         driverHeading={driverHeading}
@@ -293,10 +324,30 @@ export default function RideTrackingScreen() {
       />
 
       <View style={[styles.mapOverlayTop, { paddingTop: insets.top + spacing.sm }]} pointerEvents="box-none">
+        {isAssigned || returnCabNoDriver ? <View style={styles.backRow}><IconButton icon="arrow-left" label="Back" onPress={() => goBack(router)} /></View> : null}
+        {isInProgress ? (
+          <View style={styles.tripPill}>
+            <View style={styles.tripPillDot} />
+            <Text style={styles.tripPillText}>{ride.status === 'returning' ? 'Returning to pickup' : 'Trip in progress'}</Text>
+          </View>
+        ) : null}
         {!socketConnected ? <ReconnectBanner /> : null}
         {addStopError ? <Text style={styles.addStopError}>{addStopError}</Text> : null}
       </View>
 
+      {showSafetyPill ? (
+        <Pressable
+          onPress={() => setToolkitOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Safety tools"
+          style={({ pressed }) => [styles.safetyPill, { top: insets.top + spacing.sm }, pressed ? styles.safetyPillPressed : null]}
+        >
+          <Feather name="shield" size={16} color={h.tealText} />
+          <Text style={styles.safetyPillText}>Safety</Text>
+        </Pressable>
+      ) : null}
+
+      {returnCabNoDriver ? null : (
       <SOSButton
         enabled
         onTrigger={async () => {
@@ -310,19 +361,27 @@ export default function RideTrackingScreen() {
           return triggerSos(rideId, fix?.lat ?? storeLat ?? undefined, fix?.lng ?? storeLng ?? undefined)
         }}
         anchor="top-right"
+        look="redesign"
+        hideButton={showSafetyPill}
+        openSignal={sosSignal}
+        {...(canShare ? { onShareTrip: () => setShareOpen(true) } : {})}
       />
+      )}
 
       <Animated.View
         style={[styles.sheet, sheetEntranceStyle]}
         onLayout={(e) => {
-          const h = Math.round(e.nativeEvent.layout.height)
-          setSheetHeight((prev) => (Math.abs(prev - h) >= 4 ? h : prev))
+          const height = Math.round(e.nativeEvent.layout.height)
+          setSheetHeight((prev) => (Math.abs(prev - height) >= 4 ? height : prev))
         }}
       >
-        <View style={styles.handle} />
+        <Pressable onPress={() => hasDriver && setDetailsExpanded((v) => !v)} accessibilityRole="button" accessibilityLabel="Expand trip details" style={styles.handleHit}>
+          <View style={styles.handle} />
+        </Pressable>
         <ScrollView
+          ref={sheetScrollRef}
           style={styles.sheetScroll}
-          contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
+          contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, spacing.lg) + 24 }]}
           showsVerticalScrollIndicator={false}
         >
           {upgradeCategory ? <UpgradeToast categoryName={upgradeCategory} /> : null}
@@ -331,7 +390,10 @@ export default function RideTrackingScreen() {
             <FareDriftToast previousFare={fareDrift.previousFare} currentFare={fareDrift.currentFare} onDismiss={dismissFareDrift} />
           ) : null}
 
-          <StatusBanner status={status} eta={eta} {...(status === 'accepted' && !driverLocated ? { overrideSub: 'Locating your driver…' } : {})} />
+          {returnCabNoDriver ? <ReturnCabRecovery ride={ride} /> : null}
+
+          {returnCabNoDriver ? null : <StatusBanner status={status} eta={eta} totalKm={status === 'accepted' ? startKm : (ride.estimatedKm ?? null)}
+            {...(status === 'driver_arrived' && ride.startOtp ? { pin: ride.startOtp } : {})} {...(status === 'accepted' && !driverLocated ? { overrideSub: 'Locating your driver…' } : {})} />}
 
           {unreachableStop ? (
             <View style={styles.unreachableBanner} accessibilityRole="alert">
@@ -341,13 +403,14 @@ export default function RideTrackingScreen() {
               </Text>
               <View style={styles.unreachableActions}>
                 <Button
+                  variant="cta"
                   label="Skip stop"
                   loading={skippingStop}
                   onPress={() => runSkip(unreachableStop.sequence)}
                 />
                 <Button
                   label="Keep stop"
-                  variant="ghost"
+                  variant="soft"
                   disabled={skippingStop}
                   onPress={() => setKeptStops((k) => [...k, unreachableStop.sequence])}
                 />
@@ -392,7 +455,6 @@ export default function RideTrackingScreen() {
           {hasDriver && isAssigned ? (
             <MeetAtRow address={ride.originAddress} lat={ride.originLat} lng={ride.originLng} />
           ) : null}
-          {hasDriver && status === 'driver_arrived' ? <PinBand otp={ride.startOtp ?? null} phase="start" /> : null}
           {/* The end PIN is only released once the driver taps "Arrived at drop", so it is not on screen all trip. */}
           {hasDriver && isInProgress && ride.dropArrivedAt ? <PinBand otp={ride.endOtp ?? null} phase="end" /> : null}
           {hasDriver ? (
@@ -418,28 +480,39 @@ export default function RideTrackingScreen() {
               onSkip={handleSkipStop}
             />
           ) : null}
-          {canShare ? <SharingBanner count={tripShare.shares.length} onManage={() => setManageOpen(true)} onStop={() => confirmStopAll(() => { void tripShare.stopAll().then((ok) => { if (!ok) Alert.alert('Could not stop sharing', 'Check your connection and try again. Your links are still active.') }) }, tripShare.shares.some((s) => s.isSos))} /> : null}
+          {canShare ? <SharingBanner count={tripShare.shares.length} onManage={() => setManageOpen(true)} onStop={() => confirmStopAll(() => { void tripShare.stopAll().then((ok) => { if (!ok) confirmDialog('Could not stop sharing', 'Check your connection and try again. Your links are still active.') }) }, tripShare.shares.some((s) => s.isSos))} /> : null}
           {hasDriver ? (
-            <RideActions
+            <TripDetailsRow
+              open={detailsExpanded}
+              onToggle={() => setDetailsExpanded((v) => !v)}
+              hint={[canAddStop ? 'Add stop' : null, canCancel ? 'cancel' : null, !canAddStop && !canCancel ? 'Route and fare' : null].filter(Boolean).join(', ')}
               actions={[
-                ...(canShare ? [{ key: 'share', label: 'Share trip', icon: 'share-2' as const, onPress: () => setShareOpen(true) }] : []),
-                { key: 'details', label: detailsExpanded ? 'Hide details' : 'Trip details', icon: detailsExpanded ? 'chevron-up' : 'file-text', onPress: () => setDetailsExpanded((v) => !v) },
-                ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
                 ...(canAddStop ? [{ key: 'stop', label: 'Add stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),
-                ...(canCancel ? [{ key: 'cancel', label: 'Cancel ride', icon: 'x-circle' as const, destructive: true, onPress: () => setShowCancelSheet(true) }] : []),
+                ...(canShare ? [{ key: 'share', label: 'Share live trip', icon: 'share' as const, onPress: () => setShareOpen(true) }] : []),
+                ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
               ]}
-            />
-          ) : null}
-          {detailsExpanded && hasDriver ? (
-            <View style={styles.detailsExpanded}>
+              cancel={canCancel ? {
+                note: ride.status === 'driver_arrived'
+                  ? 'Your driver has arrived, so a small cancellation fee may apply.'
+                  : 'No fee before your driver arrives. A small fee may apply after.',
+                onPress: () => setShowCancelSheet(true),
+              } : null}
+            >
               <TripDetailsCard ride={ride} fare={fare} />
               {ride.stops.length > 0 ? <StopTimeline stops={ride.stops} {...(canSkipStop ? { onSkip: handleSkipStop } : {})} /> : null}
-            </View>
+            </TripDetailsRow>
           ) : null}
 
         </ScrollView>
       </Animated.View>
 
+      <SafetyToolkitSheet
+        visible={toolkitOpen}
+        onClose={() => setToolkitOpen(false)}
+        onEmergency={() => setSosSignal((n) => n + 1)}
+        {...(canShare ? { onShareTrip: () => setShareOpen(true) } : {})}
+        onContacts={() => router.push('/safety')}
+      />
       <ShareTripSheet visible={shareOpen} onClose={() => setShareOpen(false)} share={tripShare} />
       <ManageSharesSheet visible={manageOpen} onClose={() => setManageOpen(false)} share={tripShare} />
       <CancelSheet
@@ -474,8 +547,8 @@ export default function RideTrackingScreen() {
 const SCREEN_HEIGHT = Dimensions.get('window').height
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  container: { flex: 1, backgroundColor: colors.bg },
+  screen: { flex: 1, backgroundColor: h.canvas },
+  container: { flex: 1, backgroundColor: h.canvas },
   skeletonBlock: { marginBottom: spacing.md },
   mapOverlayTop: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: spacing.md, gap: spacing.xs, zIndex: 5 },
   sheet: {
@@ -484,56 +557,31 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     maxHeight: SCREEN_HEIGHT * MAX_SHEET_HEIGHT_RATIO,
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    boxShadow: '0 -10px 22px rgba(20,23,26,0.10)',
+    backgroundColor: h.surface,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    boxShadow: '0 -12px 32px rgba(20,23,26,0.12)',
   },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginTop: 10, marginBottom: 6 },
+  handleHit: { height: 28, justifyContent: 'center' },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.14)', alignSelf: 'center' },
   sheetScroll: { flexGrow: 0 },
-  sheetContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, gap: spacing.md },
-  searchingBlock: { gap: spacing.sm + 2, alignItems: 'center', paddingVertical: spacing.xs },
-  searchingTitle: { ...typography.title, color: colors.ink900 },
-  searchingBody: { ...typography.body, color: colors.ink600, textAlign: 'center' },
-  cancelButton: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  cancelButtonText: { ...typography.body, color: colors.error, fontFamily: fonts.semibold },
-  cancelLink: { alignItems: 'center', paddingVertical: spacing.xs },
-  cancelLinkText: { ...typography.label, color: colors.error, fontFamily: fonts.bold },
-  editPickupLink: { alignItems: 'center', paddingVertical: spacing.xs },
-  editPickupLinkText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
-  detailsExpanded: { gap: spacing.sm },
-  unreachableBanner: {
-    gap: spacing.xs,
-    backgroundColor: colors.warningLight,
-    borderRadius: radii.md,
-    padding: spacing.md,
-  },
-  unreachableTitle: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
-  unreachableBody: { ...typography.body, color: colors.ink600 },
-  unreachableActions: { gap: spacing.xs, marginTop: spacing.xs },
-  // Floats on the map, top-right below the "Add stop" pill.
-  addStopBtn: {
-    alignSelf: 'flex-end',
-    // Clears the SOS button (56px circle, anchored top-right by SOSButton's
-    // own `anchor="top-right"` positioning) -- both were landing in the same
-    // corner with no coordination between the two, since SOS is positioned
-    // by its own component and this pill only knew about its own container.
-    marginTop: 72,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs + 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.surface,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  addStopText: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
-  addStopError: { ...typography.caption, color: colors.error, alignSelf: 'flex-end', backgroundColor: colors.surface, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radii.md },
-  detailsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: spacing.xs },
-  detailsToggleText: { ...typography.caption, color: colors.ink400, fontFamily: fonts.semibold },
+  sheetContent: { paddingHorizontal: 18, paddingTop: 4, gap: 14 },
+  searchingBlock: { gap: 12, alignItems: 'center', paddingVertical: 4 },
+  searchingBody: { fontFamily: font.m, fontSize: 14, lineHeight: 21, color: h.muted, textAlign: 'center' },
+  cancelButton: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', minHeight: 52, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(194,59,59,0.28)' },
+  cancelButtonText: { fontFamily: font.b, fontSize: 15, color: h.danger },
+  editPickupLink: { alignItems: 'center', justifyContent: 'center', minHeight: 44 },
+  editPickupLinkText: { fontFamily: font.b, fontSize: 13.5, color: h.tealText },
+  unreachableBanner: { gap: 6, backgroundColor: h.goldWash, borderRadius: 18, padding: 16 },
+  unreachableTitle: { fontFamily: font.b, fontSize: 14.5, color: h.ivory },
+  unreachableBody: { fontFamily: font.m, fontSize: 13.5, lineHeight: 20, color: h.muted },
+  unreachableActions: { gap: 8, marginTop: 6 },
+  backRow: { alignSelf: 'flex-start' },
+  safetyPill: { position: 'absolute', right: spacing.md, zIndex: 10, height: 44, paddingHorizontal: 16, borderRadius: 22, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: h.surface, boxShadow: '0 4px 14px rgba(20,23,26,0.14)' },
+  safetyPillPressed: { transform: [{ scale: 0.97 }] },
+  safetyPillText: { fontFamily: font.sb, fontSize: 14, color: h.ivory },
+  tripPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 9, height: 44, paddingLeft: 14, paddingRight: 16, borderRadius: 22, backgroundColor: h.surface, boxShadow: '0 4px 14px rgba(20,23,26,0.14)' },
+  tripPillDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#1FA971', boxShadow: '0 0 0 4px rgba(31,169,113,0.18)' },
+  tripPillText: { fontFamily: font.b, fontSize: 14, color: h.ivory },
+  addStopError: { fontFamily: font.m, fontSize: 12.5, color: h.danger, alignSelf: 'flex-end', backgroundColor: h.surface, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, boxShadow: shadow.sm },
 })

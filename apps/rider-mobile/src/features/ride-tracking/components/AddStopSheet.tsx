@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import Animated, { useAnimatedStyle } from 'react-native-reanimated'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, useKeyboardOffset, fonts } from '@ocar/mobile-shared'
+import { font, h, useKeyboardOffset } from '@ocar/mobile-shared'
 import { PlaceAutocompleteField } from '@/features/booking/components/PlaceAutocompleteField'
 import type { StopInput } from '../api'
 
@@ -29,9 +29,12 @@ export function AddStopSheet({ visible, originLat, originLng, onClose, onSelect 
         <Animated.View style={[styles.sheet, keyboardStyle]}>
           <View style={styles.handle} />
           <View style={styles.headerRow}>
-            <Text style={styles.title}>Add a stop</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>Add a stop</Text>
+              <Text style={styles.sub}>Your driver will stop here on the way to the drop.</Text>
+            </View>
             <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={8}>
-              <Feather name="x" size={16} color={colors.ink600} />
+              <Feather name="x" size={16} color={h.muted} />
             </Pressable>
           </View>
           <PlaceAutocompleteField
@@ -52,10 +55,11 @@ export function AddStopSheet({ visible, originLat, originLng, onClose, onSelect 
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, paddingBottom: spacing.xl, minHeight: 260 },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.md },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
-  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  closeBtn: { width: 32, height: 32, borderRadius: radii.full, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.5)' },
+  sheet: { backgroundColor: h.surface, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingTop: 14, paddingHorizontal: 18, paddingBottom: 30, minHeight: 300, boxShadow: '0 -12px 32px rgba(20,23,26,0.16)' },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.14)', alignSelf: 'center', marginBottom: 18 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 },
+  title: { fontFamily: font.xb, fontSize: 20, letterSpacing: -0.3, color: h.ivory },
+  sub: { fontFamily: font.r, fontSize: 13.5, lineHeight: 19, color: h.muted, marginTop: 3 },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: h.chip, alignItems: 'center', justifyContent: 'center' },
 })

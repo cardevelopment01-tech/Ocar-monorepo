@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rental packages</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0}
+button,input{font-family:inherit}
+.press{transition:transform .16s cubic-bezier(.3,.7,.3,1),background-color .2s ease,border-color .2s ease,box-shadow .25s ease}
+.press:active{transform:scale(.98)}
+.hide-scroll{scrollbar-width:none}
+.hide-scroll::-webkit-scrollbar{display:none}
+.scrim{transition:opacity .25s ease}
+.overlay{transition:transform .45s cubic-bezier(.22,.9,.32,1)}
+.tabnum{font-variant-numeric:tabular-nums}
+.fadeio{transition:opacity .2s ease}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; background: #F6FBFB; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #14171A">
+
+<div class="hide-scroll" style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; overflow-y: auto; padding: 56px 18px 200px">
+
+<!-- header -->
+<div style="display: flex; align-items: center; gap: 12px">
+<a href="TripType.dc.html" class="press" aria-label="Back" style="width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; border: 1px solid rgba(20,23,26,0.08); box-shadow: 0 2px 8px rgba(20,23,26,0.06); display: flex; align-items: center; justify-content: center; text-decoration: none; flex-shrink: 0">
+<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M16 10H4.5M9.5 4.8L4.3 10l5.2 5.2" stroke="#14171A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</a>
+<div style="flex-grow: 1; min-width: 0">
+<h1 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.2px">City Rides</h1>
+<div style="font-size: 13px; color: #5F6468; margin-top: 1px">Book a driver by the hour</div>
+</div>
+<button class="press" style="height: 36px; padding: 0 14px 0 12px; border-radius: 18px; background: #F7F6F1; border: 1px solid rgba(20,23,26,0.06); display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 700; color: #14171A; cursor: pointer; flex-shrink: 0">
+<svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="6.8" r="3.2" stroke="#14171A" stroke-width="1.7"/><path d="M3.8 16.6c.9-3 3.3-4.4 6.2-4.4s5.3 1.4 6.2 4.4" stroke="#14171A" stroke-width="1.7" stroke-linecap="round"/></svg>
+For me
+</button>
+</div>
+
+<!-- route card -->
+<div style="margin-top: 18px; background: #FFFFFF; border: 1px solid rgba(20,23,26,0.07); border-radius: 22px; box-shadow: 0 2px 8px rgba(20,23,26,0.05), inset 0 1px 0 rgba(255,255,255,0.9); padding: 14px 16px 8px">
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px">
+<button class="press" style="height: 32px; padding: 0 12px 0 10px; border-radius: 16px; background: #E8F4F6; border: none; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #0A7788; cursor: pointer">
+<svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.2" stroke="#0A7788" stroke-width="1.6"/><path d="M10 6v4.2l2.8 1.6" stroke="#0A7788" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+Now
+</button>
+<span class="tabnum" style="font-size: 13.5px; font-weight: 600; color: #5F6468">{{tripLabel}}</span>
+</div>
+
+<div style="display: flex; align-items: center; gap: 12px; height: 38px">
+<span style="position: relative; width: 14px; align-self: stretch; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+<span style="position: absolute; left: 50%; margin-left: -0.75px; top: 50%; bottom: 0; border-left: 1.5px solid #CBD5D7"></span>
+<span style="position: relative; width: 10px; height: 10px; border-radius: 5px; background: #0E8FA3; box-shadow: 0 0 0 3px rgba(14,143,163,0.16)"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Bhubaneswar Airport</span>
+</div>
+
+<div style="display: flex; align-items: center; gap: 12px; height: 44px">
+<a href="RentalStops.dc.html" class="press" style="flex-grow: 1; min-width: 0; align-self: stretch; display: flex; align-items: center; gap: 12px; text-decoration: none; color: #14171A">
+<span style="position: relative; width: 14px; align-self: stretch; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+<span style="position: absolute; left: 50%; margin-left: -0.75px; top: 0; bottom: 0; border-left: 1.5px solid #CBD5D7"></span>
+<span style="position: relative; width: 9px; height: 9px; border-radius: 5px; background: #D6A552; box-shadow: 0 0 0 3px #FFFFFF"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; white-space: nowrap">
+<span style="font-size: 14px; font-weight: 700; flex-shrink: 0">{{stopsTitle}}</span>
+<span style="font-size: 13px; font-weight: 500; color: #5F6468; overflow: hidden; text-overflow: ellipsis; min-width: 0">{{stopsPreview}}</span>
+<span style="font-size: 13px; font-weight: 700; color: #5F6468; flex-shrink: 0; display: {{stopsMoreDisplay}}">{{stopsMore}}</span>
+</span>
+<span style="font-size: 13px; font-weight: 700; color: #0A7788; flex-shrink: 0">Edit</span>
+</a>
+<a href="RentalAddStop.dc.html" class="press" aria-label="Add a stop" style="width: 32px; height: 32px; border-radius: 16px; background: {{addBg}}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; pointer-events: {{addEvents}}">
+<svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="{{addColor}}" stroke-width="2" stroke-linecap="round"/></svg>
+</a>
+</div>
+
+<div style="display: flex; align-items: center; gap: 12px; height: 38px">
+<span style="position: relative; width: 14px; align-self: stretch; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+<span style="position: absolute; left: 50%; margin-left: -0.75px; top: 0; bottom: 50%; border-left: 1.5px solid #CBD5D7"></span>
+<span style="position: relative; width: 9px; height: 9px; border-radius: 2.5px; background: #14171A"></span>
+</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Bhubaneswar Junction</span>
+</div>
+</div>
+
+<!-- standard vehicles -->
+<div style="display: flex; align-items: baseline; justify-content: space-between; margin: 24px 2px 12px">
+<span style="font-size: 14px; font-weight: 600">Choose your ride</span>
+<span style="font-size: 12.5px; font-weight: 500; color: #6B7176">{{optionCount}}</span>
+</div>
+
+<sc-for list="{{above}}" as="v" hint-placeholder-count="2">
+<button class="press" onClick="{{v.pick}}" style="width: 100%; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; padding: 12px 14px 12px 12px; background: #FFFFFF; border: 1px solid rgba(20,23,26,0.08); border-radius: 20px; box-shadow: 0 2px 8px rgba(20,23,26,0.05); text-align: left; cursor: pointer; color: #14171A">
+<span style="width: 68px; height: 52px; flex-shrink: 0; border-radius: 14px; background: #F4F5F1; display: flex; align-items: center; justify-content: center"><img src="{{v.img}}" alt="" style="width: 56px; height: 40px; object-fit: contain"></span>
+<span style="flex-grow: 1; min-width: 0">
+<span style="display: block; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{v.name}}</span>
+<span style="display: flex; align-items: center; gap: 8px; margin-top: 5px"><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; color: #5F6468; white-space: nowrap">
+<svg width="13" height="13" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="6.8" r="3.2" stroke="#5F6468" stroke-width="1.8"/><path d="M3.8 16.6c.9-3 3.3-4.4 6.2-4.4s5.3 1.4 6.2 4.4" stroke="#5F6468" stroke-width="1.8" stroke-linecap="round"/></svg>
+{{v.seats}} seats
+</span><span style="display: {{v.premium}}; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 11px; background: #FBF1D9; color: #7A5410; font-size: 12px; font-weight: 700; white-space: nowrap"><svg width="11" height="11" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.8l2.1 4.5 4.9.6-3.6 3.4.9 4.9L10 13.7l-4.3 2.5.9-4.9L3 7.9l4.9-.6L10 2.8z" stroke="#7A5410" stroke-width="1.6" stroke-linejoin="round"/></svg>Premium</span></span>
+</span>
+<span style="flex-shrink: 0; width: 62px; text-align: right">
+<span style="display: block; font-size: 12px; font-weight: 500; color: #6B7176">from</span>
+<span class="tabnum" style="display: block; font-size: 17px; font-weight: 800; letter-spacing: -0.2px">{{v.price}}</span>
+</span>
+<svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true" style="flex-shrink: 0"><path d="M5 7.5l5 5 5-5" stroke="#8A9094" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+</sc-for>
+
+<div style="display: {{openDisplay}}; margin-bottom: 10px; background: #FFFFFF; border: 1.5px solid #0B8296; border-radius: 22px; box-shadow: 0 0 0 4px rgba(14,143,163,0.09), 0 2px 8px rgba(20,23,26,0.06); overflow: hidden">
+<button class="press" onClick="{{closeOpen}}" style="width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px 12px 12px; background: transparent; border: none; text-align: left; cursor: pointer; color: #14171A">
+<span style="width: 68px; height: 52px; flex-shrink: 0; border-radius: 14px; background: #F4F5F1; display: flex; align-items: center; justify-content: center"><img src="{{curImg}}" alt="" style="width: 56px; height: 40px; object-fit: contain"></span>
+<span style="flex-grow: 1; min-width: 0">
+<span style="display: block; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{curName}}</span>
+<span style="display: flex; align-items: center; gap: 8px; margin-top: 5px"><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; color: #5F6468; white-space: nowrap">
+<svg width="13" height="13" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="6.8" r="3.2" stroke="#5F6468" stroke-width="1.8"/><path d="M3.8 16.6c.9-3 3.3-4.4 6.2-4.4s5.3 1.4 6.2 4.4" stroke="#5F6468" stroke-width="1.8" stroke-linecap="round"/></svg>
+{{curSeats}} seats
+</span><span style="display: {{curPremium}}; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 11px; background: #FBF1D9; color: #7A5410; font-size: 12px; font-weight: 700; white-space: nowrap"><svg width="11" height="11" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.8l2.1 4.5 4.9.6-3.6 3.4.9 4.9L10 13.7l-4.3 2.5.9-4.9L3 7.9l4.9-.6L10 2.8z" stroke="#7A5410" stroke-width="1.6" stroke-linejoin="round"/></svg>Premium</span></span>
+</span>
+<span class="tabnum" style="flex-shrink: 0; width: 62px; text-align: right; font-size: 17px; font-weight: 800; letter-spacing: -0.2px">{{selPrice}}</span>
+<svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true" style="flex-shrink: 0"><path d="M5 12.5l5-5 5 5" stroke="#0A7788" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+<div style="margin: 0 16px; border-top: 1px solid rgba(20,23,26,0.07)"></div>
+<div style="padding: 14px 0 18px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; padding: 0 16px">
+<span style="font-size: 14px; font-weight: 600">{{titleS}}</span>
+<span style="display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; font-weight: 500; color: #6B7176">{{tierCount}} <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7.5 4.5L13 10l-5.5 5.5" stroke="#8A9094" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+</div>
+<div style="position: relative">
+<div ref="{{refS}}" data-scroll="{{scrollS}}" onScroll="{{onSlide}}" class="hide-scroll" style="display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-left: 16px; padding: 22px 16px 8px">
+<sc-for list="{{tilesS}}" as="t" hint-placeholder-count="6">
+<button class="press" onClick="{{t.pick}}" aria-pressed="{{t.pressed}}" style="position: relative; flex: 0 0 96px; height: 92px; scroll-snap-align: start; padding: 0; border-radius: 16px; background: {{t.bg}}; border: {{t.bw}} solid {{t.border}}; box-shadow: {{t.shadow}}; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; font-family: inherit">
+<span style="display: {{t.badge}}; position: absolute; top: -11px; left: 50%; transform: translateX(-50%); height: 22px; line-height: 22px; padding: 0 10px; border-radius: 11px; background: linear-gradient(135deg, #E5588A, #C93566); color: #FFFFFF; font-size: 12px; font-weight: 800; white-space: nowrap; box-shadow: 0 0 0 2.5px #FFFFFF, 0 4px 10px rgba(201,53,102,0.30)">Best fit</span>
+<span class="tabnum" style="font-size: 17px; font-weight: 800; letter-spacing: -0.2px; color: {{t.ink}}">{{t.hrs}}</span>
+<span class="tabnum" style="font-size: 12.5px; font-weight: 500; color: {{t.sub}}; margin-top: 2px">{{t.km}}</span>
+<span class="tabnum" style="font-size: 14px; font-weight: 700; color: {{t.priceColor}}; margin-top: 6px">{{t.price}}</span>
+</button>
+</sc-for>
+</div>
+<div class="fadeio" style="position: absolute; top: 0; bottom: 0; right: 0; width: 64px; background: linear-gradient(90deg, rgba(255,255,255,0), #FFFFFF 78%); pointer-events: none; opacity: {{opR}}"></div>
+<button class="press fadeio" onClick="{{slideRight}}" aria-label="Show more packages" style="position: absolute; right: 10px; top: 52px; width: 32px; height: 32px; border-radius: 16px; background: #FFFFFF; border: 1px solid rgba(20,23,26,0.08); box-shadow: 0 4px 12px rgba(20,23,26,0.14); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; opacity: {{opR}}; pointer-events: {{evR}}"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7.5 4.5L13 10l-5.5 5.5" stroke="#0A7788" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+<div class="fadeio" style="position: absolute; top: 0; bottom: 0; left: 0; width: 48px; background: linear-gradient(270deg, rgba(255,255,255,0), #FFFFFF 78%); pointer-events: none; opacity: {{opL}}"></div>
+<button class="press fadeio" onClick="{{slideLeft}}" aria-label="Show earlier packages" style="position: absolute; left: 10px; top: 52px; width: 32px; height: 32px; border-radius: 16px; background: #FFFFFF; border: 1px solid rgba(20,23,26,0.08); box-shadow: 0 4px 12px rgba(20,23,26,0.14); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; opacity: {{opL}}; pointer-events: {{evL}}"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M12.5 4.5L7 10l5.5 5.5" stroke="#0A7788" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+</div>
+<div style="display: flex; margin: 12px 16px 0; padding-top: 14px; border-top: 1px solid rgba(20,23,26,0.07)">
+<div style="flex: 1; min-width: 0">
+<div style="font-size: 12.5px; font-weight: 500; color: #6B7176; margin-bottom: 3px">Included</div>
+<div class="tabnum" style="font-size: 14.5px; font-weight: 700">{{included}}</div>
+</div>
+<div style="width: 1px; background: rgba(20,23,26,0.08); margin: 0 16px"></div>
+<div style="flex: 1; min-width: 0">
+<div style="font-size: 12.5px; font-weight: 500; color: #6B7176; margin-bottom: 3px">After that</div>
+<div class="tabnum" style="font-size: 14.5px; font-weight: 700; color: #0A7788">{{afterThat}}</div>
+</div>
+</div>
+<div style="display: flex; align-items: flex-start; gap: 10px; margin: 14px 16px 0; padding: 12px 14px; border-radius: 14px; background: {{estBg}}">
+<svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px"><circle cx="10" cy="10" r="7.4" stroke="{{estColor}}" stroke-width="1.6"/><path d="{{estIcon}}" stroke="{{estColor}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<span style="font-size: 13px; line-height: 1.45; font-weight: 500; color: {{estInk}}">{{estText}}</span>
+</div>
+</div>
+
+</div>
+
+<sc-for list="{{below}}" as="v" hint-placeholder-count="2">
+<button class="press" onClick="{{v.pick}}" style="width: 100%; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; padding: 12px 14px 12px 12px; background: #FFFFFF; border: 1px solid rgba(20,23,26,0.08); border-radius: 20px; box-shadow: 0 2px 8px rgba(20,23,26,0.05); text-align: left; cursor: pointer; color: #14171A">
+<span style="width: 68px; height: 52px; flex-shrink: 0; border-radius: 14px; background: #F4F5F1; display: flex; align-items: center; justify-content: center"><img src="{{v.img}}" alt="" style="width: 56px; height: 40px; object-fit: contain"></span>
+<span style="flex-grow: 1; min-width: 0">
+<span style="display: block; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{v.name}}</span>
+<span style="display: flex; align-items: center; gap: 8px; margin-top: 5px"><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; color: #5F6468; white-space: nowrap">
+<svg width="13" height="13" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="6.8" r="3.2" stroke="#5F6468" stroke-width="1.8"/><path d="M3.8 16.6c.9-3 3.3-4.4 6.2-4.4s5.3 1.4 6.2 4.4" stroke="#5F6468" stroke-width="1.8" stroke-linecap="round"/></svg>
+{{v.seats}} seats
+</span><span style="display: {{v.premium}}; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 11px; background: #FBF1D9; color: #7A5410; font-size: 12px; font-weight: 700; white-space: nowrap"><svg width="11" height="11" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.8l2.1 4.5 4.9.6-3.6 3.4.9 4.9L10 13.7l-4.3 2.5.9-4.9L3 7.9l4.9-.6L10 2.8z" stroke="#7A5410" stroke-width="1.6" stroke-linejoin="round"/></svg>Premium</span></span>
+</span>
+<span style="flex-shrink: 0; width: 62px; text-align: right">
+<span style="display: block; font-size: 12px; font-weight: 500; color: #6B7176">from</span>
+<span class="tabnum" style="display: block; font-size: 17px; font-weight: 800; letter-spacing: -0.2px">{{v.price}}</span>
+</span>
+<svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true" style="flex-shrink: 0"><path d="M5 7.5l5 5 5-5" stroke="#8A9094" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+</sc-for>
+
+
+</div>
+
+<!-- bottom bar -->
+<div style="position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 28px 28px 0 0; box-shadow: 0 -10px 30px rgba(20,23,26,0.08); padding: 14px 18px 24px">
+<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px">
+<button class="press" style="flex: 1; height: 46px; border-radius: 16px; background: #F7F6F1; border: 1px solid rgba(20,23,26,0.06); display: flex; align-items: center; gap: 10px; padding: 0 14px; font-size: 14px; font-weight: 600; color: #14171A; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.5" y="5" width="15" height="10" rx="2.5" stroke="#14171A" stroke-width="1.5"/><circle cx="10" cy="10" r="2.2" stroke="#14171A" stroke-width="1.5"/></svg>
+Cash
+<svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true" style="margin-left: auto"><path d="M5 7.5l5 5 5-5" stroke="#8A9094" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+<button class="press" onClick="{{openOffers}}" style="flex: 1; height: 46px; border-radius: 16px; background: {{offerBg}}; border: 1px solid {{offerBorder}}; display: flex; align-items: center; gap: 10px; padding: 0 14px; font-size: 14px; font-weight: 700; color: {{offerColor}}; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10.5V4.6A1.1 1.1 0 0 1 4.1 3.5h5.9l6.8 6.8a1.1 1.1 0 0 1 0 1.6l-4.9 4.9a1.1 1.1 0 0 1-1.6 0L3 10.5z" stroke="#0A7788" stroke-width="1.5" stroke-linejoin="round"/><circle cx="7" cy="7.4" r="1.2" fill="#0A7788"/></svg>
+{{offerLabel}}
+<svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true" style="margin-left: auto"><path d="M7.5 4.5L13 10l-5.5 5.5" stroke="#8A9094" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+</div>
+<a href="Driver.dc.html" class="press" style="height: 56px; border-radius: 18px; background: #0B8296; color: #FFFFFF; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none; box-shadow: 0 12px 24px rgba(14,143,163,0.30), inset 0 1px 0 rgba(255,255,255,0.18)">
+<span class="tabnum">{{cta}}</span>
+<span class="tabnum" style="display: {{oldCtaDisplay}}; font-size: 13.5px; font-weight: 600; color: rgba(255,255,255,0.62); text-decoration: line-through">{{oldCta}}</span>
+</a>
+</div>
+
+<!-- offers sheet -->
+<div class="scrim" onClick="{{closeOffers}}" style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(20,23,26,0.5); opacity: {{scrimOpacity}}; pointer-events: {{scrimEvents}}"></div>
+<div class="overlay" style="position: absolute; left: 0; right: 0; bottom: 0; background: #F6FBFB; border-radius: 30px 30px 0 0; padding: 12px 18px 30px; transform: translateY({{offersY}}); box-shadow: 0 -12px 32px rgba(20,23,26,0.16)">
+<div style="width: 36px; height: 4px; border-radius: 2px; background: rgba(20,23,26,0.14); margin: 0 auto 18px"></div>
+<div style="font-size: 20px; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 4px">Offers for this ride</div>
+<div style="font-size: 13.5px; color: #5F6468; margin-bottom: 16px">One coupon can be applied per ride.</div>
+<div style="display: flex; align-items: center; height: 52px; background: #FFFFFF; border: 1px solid rgba(20,23,26,0.10); border-radius: 16px; padding: 0 8px 0 16px; margin-bottom: 16px">
+<span style="flex-grow: 1; font-size: 14.5px; color: #8A9094">Enter coupon code</span>
+<span style="height: 36px; padding: 0 16px; border-radius: 12px; background: #F4F5F1; color: #8A9094; font-size: 13.5px; font-weight: 700; display: inline-flex; align-items: center">Apply</span>
+</div>
+<div style="font-size: 14px; font-weight: 600; margin: 0 2px 10px">Available coupons</div>
+<sc-for list="{{coupons}}" as="c" hint-placeholder-count="2">
+<div style="position: relative; display: flex; align-items: center; margin-bottom: 10px; background: #FFFFFF; border: 1.5px solid {{c.border}}; border-radius: 20px; box-shadow: 0 2px 8px rgba(20,23,26,0.05); overflow: hidden">
+<span style="position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(180deg, #F6DC9A, #D6A552)"></span>
+<div style="flex-grow: 1; min-width: 0; padding: 14px 8px 14px 20px">
+<span style="display: inline-block; height: 24px; line-height: 21px; padding: 0 10px; border-radius: 8px; border: 1.5px dashed rgba(214,165,82,0.8); background: #FFF8E8; color: #7A5410; font-size: 12.5px; font-weight: 800; letter-spacing: 1.2px; margin-bottom: 8px">{{c.code}}</span>
+<span style="display: block; font-size: 15px; font-weight: 700; margin-bottom: 2px">{{c.title}}</span>
+<span style="display: block; font-size: 12.5px; color: #5F6468">{{c.desc}}</span>
+</div>
+<button class="press" onClick="{{c.pick}}" style="margin-right: 14px; height: 38px; padding: 0 18px; border-radius: 19px; background: {{c.btnBg}}; border: 1.5px solid #0B8296; color: {{c.btnColor}}; font-size: 13.5px; font-weight: 700; cursor: pointer; flex-shrink: 0">{{c.btnLabel}}</button>
+</div>
+</sc-for>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  componentDidMount() { this.syncScroll(); }
+  componentDidUpdate() { this.syncScroll(); }
+  syncScroll() {
+    const w = this._want || {};
+    if (this._key === w.key) return;
+    this._key = w.key;
+    if (this._rS) { this._rS.scrollLeft = w.s; this.measure(); }
+  }
+  measure() {
+    const el = this._rS;
+    if (!el) return;
+    const l = el.scrollLeft > 4;
+    const r = el.scrollWidth - el.scrollLeft - el.clientWidth > 4;
+    const st = this.state || {};
+    if (l !== st.slL || r !== st.slR) this.setState({ slL: l, slR: r });
+  }
+  renderVals() {
+    const s = this.state || {};
+    const fmt = (n) => '₹' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const MAX = 8;
+    const TIERS = [
+      { h: 1, km: 10 }, { h: 2, km: 30 }, { h: 4, km: 40 }, { h: 6, km: 60 },
+      { h: 8, km: 80 }, { h: 10, km: 100 }, { h: 12, km: 120 }, { h: 24, km: 250 }
+    ];
+    const T_ALL = [0, 1, 2, 3, 4, 5, 6, 7];
+    const STD = [
+      { id: 'auto', name: 'Auto Rickshaw', seats: 3, img: '../assets/rental-auto.png', tiers: [0, 1, 2], prices: [40, 90, 160], rk: 6, rm: 1 },
+      { id: 'hatch', name: 'Hatchback', seats: 4, img: '../assets/rental-hatchback.png', tiers: T_ALL, prices: [100, 220, 400, 580, 760, 930, 1100, 2000], rk: 8, rm: 1 },
+      { id: 'sedan', name: 'Sedan', seats: 4, img: '../assets/rental-sedan.png', tiers: T_ALL, prices: [150, 330, 520, 750, 980, 1200, 1420, 2600], rk: 10, rm: 2 },
+      { id: 'suv', name: 'SUV', seats: 6, img: '../assets/rental-suv.png', tiers: T_ALL, prices: [200, 430, 700, 980, 1290, 1600, 1900, 3400], rk: 14, rm: 2 },
+      { id: 'lux', name: 'Luxury', seats: 4, premium: true, img: '../assets/rental-luxury.png', tiers: T_ALL, prices: [280, 600, 1100, 1550, 1950, 2350, 2750, 5200], rk: 22, rm: 3 },
+      { id: 'van', name: 'Van', seats: 8, img: '../assets/rental-van.png', tiers: T_ALL, prices: [240, 520, 880, 1250, 1600, 1980, 2300, 4100], rk: 16, rm: 2 }
+    ];
+    const ALL = STD;
+
+    const couponDefs = [
+      { code: 'OCAR20', title: '20% off your ride', desc: 'Up to ₹500 off on any ride', calc: (p) => Math.min(Math.round(p * 0.2), 500) },
+      { code: 'FLAT150', title: 'Flat ₹150 off', desc: 'On rides above ₹1,500', calc: (p) => (p >= 1500 ? 150 : 0) }
+    ];
+    const code = s.coupon === undefined ? '' : s.coupon;
+    const active = couponDefs.find((c) => c.code === code) || null;
+
+    const NAMES = ['Patia, Bhubaneswar', 'Triumph International Pvt Ltd'];
+    const stops = s.stops || NAMES;
+    const n = stops.length;
+    const dist = Math.round((31 + 6.13 * n) * 10) / 10;
+    const mins = 55 + 22 * n;
+    const dur = mins < 60 ? mins + ' min' : Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm';
+
+    const openId = ('open' in s) ? s.open : 'sedan';
+    const picks = s.pkg || {};
+    const cur = ALL.find((f) => f.id === openId) || null;
+
+    const bestIdx = (f) => {
+      const i = f.tiers.findIndex((t) => TIERS[t].km >= dist && TIERS[t].h * 60 >= mins);
+      return i === -1 ? f.tiers.length - 1 : i;
+    };
+    const selIdx = (f) => (picks[f.id] !== undefined ? picks[f.id] : bestIdx(f));
+
+    const stdIdx = cur ? STD.indexOf(cur) : -1;
+    const toRow = (f) => ({ premium: f.premium ? 'inline-flex' : 'none', name: f.name, seats: String(f.seats), img: f.img, price: fmt(f.prices[0]), pick: () => this.setState({ open: f.id }) });
+    const above = stdIdx === -1 ? STD.map(toRow) : STD.slice(0, stdIdx).map(toRow);
+    const below = stdIdx === -1 ? [] : STD.slice(stdIdx + 1).map(toRow);
+
+    let tiles = [], included = '', afterThat = '', estText = '', estBg = '#E8F4F6', estColor = '#0A7788', estInk = '#0A5666', estIcon = 'M6.6 10.3l2.4 2.4 4.4-4.6', price = 0, si = 0, bi = 0;
+    if (cur) {
+      bi = bestIdx(cur); si = selIdx(cur);
+      tiles = cur.tiers.map((tIdx, i) => {
+        const T = TIERS[tIdx]; const on = i === si;
+        return {
+          hrs: T.h + (T.h === 1 ? ' hr' : ' hrs'), km: T.km + ' km', price: fmt(cur.prices[i]),
+          badge: i === bi ? 'block' : 'none',
+          bg: on ? '#FFE6EE' : '#FDF1F4', border: on ? '#D23F6D' : '#F4D2DC', bw: on ? '1.5px' : '1px',
+          shadow: on ? '0 0 0 4px rgba(210,63,109,0.12)' : 'none',
+          ink: on ? '#8E1F47' : '#14171A', sub: on ? '#A33B5E' : '#7B5663', priceColor: on ? '#8E1F47' : '#14171A',
+          pressed: on ? 'true' : 'false',
+          pick: () => this.setState({ pkg: Object.assign({}, picks, { [cur.id]: i }) })
+        };
+      });
+      const T = TIERS[cur.tiers[si]];
+      price = cur.prices[si];
+      included = T.km + ' km · ' + T.h + (T.h === 1 ? ' hr' : ' hrs');
+      afterThat = '₹' + cur.rk + '/km · ₹' + cur.rm + '/min';
+      const overKm = Math.max(0, Math.ceil(dist - T.km));
+      const overMin = Math.max(0, mins - T.h * 60);
+      const extra = overKm * cur.rk + overMin * cur.rm;
+      const trip = 'Your trip is about ' + dist.toFixed(1) + ' km and ' + dur + '.';
+      if (extra === 0) {
+        estText = trip + ' It fits this package, so no extra charges are expected.';
+      } else {
+        const parts = [];
+        if (overKm > 0) parts.push(overKm + ' km');
+        if (overMin > 0) parts.push(overMin + ' min');
+        estText = trip + ' That is ' + parts.join(' and ') + ' over this package. Estimated extra ' + fmt(extra) + ', billed after the ride.';
+        estBg = '#FBF3E1'; estColor = '#9A6A12'; estInk = '#5A4310'; estIcon = 'M10 6.4v4.2M10 13.4v.1';
+      }
+    }
+    const disc = active && cur ? active.calc(price) : 0;
+    const has = disc > 0;
+
+    const coupons = couponDefs.map((c) => {
+      const applied = c.code === code;
+      return {
+        code: c.code, title: c.title, desc: c.desc,
+        border: applied ? '#0B8296' : 'rgba(20,23,26,0.08)',
+        btnLabel: applied ? 'Applied' : 'Apply',
+        btnBg: applied ? '#E8F4F6' : '#0B8296', btnColor: applied ? '#0A7788' : '#FFFFFF',
+        pick: () => this.setState({ coupon: applied ? '' : c.code, offers: false })
+      };
+    });
+    const sheetOpen = !!s.offers;
+
+    const short = (x) => x.split(',')[0].split(' ').slice(0, 2).join(' ');
+    const preview = stops.slice(0, 2).map(short).join(', ');
+    const full = n >= MAX;
+
+    const tierCount = cur ? cur.tiers.length + ' packages' : '';
+    const sc = (idx) => Math.max(0, (idx - 1) * 106);
+    this._want = { key: (cur ? cur.id : '') + ':' + si, s: sc(si) };
+    const nT = tiles.length;
+    const contentW = nT * 106 - 10 + 32;
+    const maxSc = Math.max(0, contentW - 352);
+    const atSc = Math.min(sc(si), maxSc);
+    const canL = s.slL !== undefined ? s.slL : atSc > 4;
+    const canR = s.slR !== undefined ? s.slR : maxSc - atSc > 4;
+
+    return {
+      tripLabel: dist.toFixed(1) + ' km · ~' + dur,
+      stopsTitle: n === 0 ? 'No stops' : n + (n === 1 ? ' stop' : ' stops'),
+      stopsPreview: preview, stopsMore: n > 2 ? '+' + (n - 2) : '', stopsMoreDisplay: n > 2 ? 'inline' : 'none',
+      addBg: full ? '#F4F5F1' : '#E8F4F6', addColor: full ? '#B6BBBE' : '#0A7788', addEvents: full ? 'none' : 'auto',
+      optionCount: ALL.length + ' options',
+      above, below,
+      openDisplay: cur ? 'block' : 'none',
+      curName: cur ? cur.name : '', curImg: cur ? cur.img : '', curSeats: cur ? String(cur.seats) : '', curPremium: cur && cur.premium ? 'inline-flex' : 'none',
+      closeOpen: () => this.setState({ open: null }),
+      selPrice: fmt(price),
+      titleS: 'Choose a package',
+      tierCount, tilesS: tiles, included, afterThat,
+      estText, estBg, estColor, estInk, estIcon,
+      refS: (el) => { this._rS = el; },
+      onSlide: () => this.measure(),
+      slideRight: () => { if (this._rS) this._rS.scrollBy({ left: 212, behavior: 'smooth' }); },
+      slideLeft: () => { if (this._rS) this._rS.scrollBy({ left: -212, behavior: 'smooth' }); },
+      opL: canL ? '1' : '0', evL: canL ? 'auto' : 'none', opR: canR ? '1' : '0', evR: canR ? 'auto' : 'none',
+      scrollS: String(sc(si)),
+      cta: cur ? 'Book ' + cur.name + ' · ' + fmt(price - disc) : 'Select a ride',
+      oldCta: fmt(price), oldCtaDisplay: has ? 'inline' : 'none',
+      offerLabel: active ? active.code : 'Offers',
+      offerBg: active ? '#E3F3F6' : '#F7F6F1', offerBorder: active ? 'rgba(14,143,163,0.4)' : 'rgba(20,23,26,0.06)', offerColor: active ? '#0A7788' : '#14171A',
+      scrimOpacity: sheetOpen ? '1' : '0', scrimEvents: sheetOpen ? 'auto' : 'none', offersY: sheetOpen ? '0px' : '110%',
+      openOffers: () => this.setState({ offers: true }), closeOffers: () => this.setState({ offers: false }),
+      coupons
+    };
+  }
+}
+</script>
+</body>
+</html>

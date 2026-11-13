@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { Button, Input, Text, colors, fonts, mapSaveError, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, Input, Text, fonts, h, shadow, mapSaveError, spacing, typography } from '@ocar/mobile-shared'
 import { ScreenHeader } from '@/features/profile/ScreenHeader'
 import { createSavedPlace, deleteSavedPlace, updateSavedPlace } from '@/features/profile/api'
 import { fetchSavedPlaces, type SavedPlace } from '@/features/booking/api'
 import { PlaceAutocompleteField } from '@/features/booking/components/PlaceAutocompleteField'
 import type { BookingPlace } from '@/features/booking/store'
+import { confirmDialog } from '@/components/ui/confirm'
 
 type Kind = SavedPlace['kind']
 type Editing = { kind: Kind; existing: SavedPlace | null }
@@ -63,7 +64,7 @@ export default function SavedPlacesScreen() {
   }
 
   function confirmRemove(p: SavedPlace) {
-    Alert.alert(`Remove ${p.label}?`, p.address, [
+    confirmDialog(`Remove ${p.label}?`, p.address, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -95,7 +96,7 @@ export default function SavedPlacesScreen() {
             onSelect={setPicked}
           />
           {err ? <Text style={styles.err}>{err}</Text> : null}
-          <Button label="Save place" onPress={save} loading={saving} disabled={!canSave} />
+          <Button variant="cta" label="Save place" onPress={save} loading={saving} disabled={!canSave} />
         </ScrollView>
       </View>
     )
@@ -103,17 +104,17 @@ export default function SavedPlacesScreen() {
 
   const renderRow = (kind: Kind, title: string, p: SavedPlace | null) => (
     <Pressable key={p?.id ?? kind} onPress={() => open(kind, p)} style={styles.row} accessibilityRole="button">
-      <View style={styles.icon}><Feather name={ICON[kind]} size={16} color={p ? colors.primary : colors.ink400} /></View>
+      <View style={styles.icon}><Feather name={ICON[kind]} size={16} color={p ? h.tealText : h.faint} /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowSub} numberOfLines={2}>{p ? p.address : `Add your ${title.toLowerCase()} address`}</Text>
       </View>
       {p ? (
         <Pressable onPress={() => confirmRemove(p)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Remove ${p.label}`}>
-          <Feather name="trash-2" size={17} color={colors.ink400} />
+          <Feather name="trash-2" size={17} color={h.faint} />
         </Pressable>
       ) : (
-        <Feather name="plus" size={16} color={colors.primary} />
+        <Feather name="plus" size={16} color={h.tealText} />
       )}
     </Pressable>
   )
@@ -122,7 +123,7 @@ export default function SavedPlacesScreen() {
     <View style={styles.container}>
       <ScreenHeader title="Saved places" />
       {loading ? (
-        <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
+        <ActivityIndicator color={h.teal} style={{ marginTop: spacing.xl }} />
       ) : failed ? (
         <Pressable onPress={() => { setLoading(true); load() }}>
           <Text style={styles.retry}>Couldn't load your places. Tap to retry.</Text>
@@ -140,7 +141,7 @@ export default function SavedPlacesScreen() {
               </View>
             ))}
           </View>
-          <Button label="Add a place" variant="ghost" icon="plus" onPress={() => open('other', null)} />
+          <Button label="Add a place" variant="soft" icon="plus" onPress={() => open('other', null)} />
         </ScrollView>
       )}
     </View>
@@ -148,14 +149,14 @@ export default function SavedPlacesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, gap: spacing.md },
-  card: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md },
+  container: { flex: 1, backgroundColor: h.canvas },
+  content: { padding: 18, gap: 14 },
+  card: { backgroundColor: h.surface, borderRadius: 22, borderWidth: 1, borderColor: h.line07, boxShadow: shadow.sm, paddingHorizontal: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
-  divider: { height: 1, backgroundColor: colors.borderLight },
-  icon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  rowTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
-  rowSub: { ...typography.caption, color: colors.ink400, marginTop: 1 },
-  err: { ...typography.caption, color: colors.error },
-  retry: { ...typography.body, color: colors.primary, textAlign: 'center', marginTop: spacing.xl },
+  divider: { height: 1, backgroundColor: h.line06, marginLeft: 54 },
+  icon: { width: 40, height: 40, borderRadius: 13, backgroundColor: h.chip, alignItems: 'center', justifyContent: 'center' },
+  rowTitle: { ...typography.body, color: h.ivory, fontFamily: fonts.semibold },
+  rowSub: { ...typography.caption, color: h.muted, marginTop: 1 },
+  err: { ...typography.caption, color: h.danger },
+  retry: { ...typography.body, color: h.tealText, textAlign: 'center', marginTop: spacing.xl },
 })
