@@ -7,7 +7,7 @@
 INSERT INTO rate_cards
   (category_id, ride_type, trip_mode, rate_per_km, rate_per_min, min_fare, base_fare, stop_charge, cancellation_fee, city_id, notes)
 SELECT rc.category_id, 'one_way', 'city', rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.base_fare, rc.stop_charge,
-       rc.cancellation_fee, rc.city_id, 'City ride card, copied from the rental card by seed-city-ride-cards.sql'
+       COALESCE(rc.cancellation_fee, 0), rc.city_id, 'City ride card, copied from the rental card by seed-city-ride-cards.sql'
 FROM rate_cards rc
 WHERE rc.ride_type = 'rental' AND rc.effective_to IS NULL
   -- A package rental never read these rates, so a placeholder (0 per km, 0 minimum) must not become a free city ride: set such a card
