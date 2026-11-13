@@ -361,6 +361,7 @@ export async function createRide(data: {
   paymentChannel?: string
   riderName?: string
   riderPhone?: string
+  tripMode?: 'standard' | 'city'
 }, client?: PoolClient) {
   const res = await (client ?? pool).query(
     `INSERT INTO rides (
@@ -369,14 +370,14 @@ export async function createRide(data: {
        origin_address, destination_address,
        origin_city_id, destination_city_id,
        rental_package_id, trip_hours, scheduled_for, return_at,
-       payment_channel, status, rider_name, rider_phone
+       payment_channel, status, rider_name, rider_phone, trip_mode
      ) VALUES (
        $1, $2, $3, $4,
        ST_SetSRID(ST_MakePoint($6::float8, $5::float8), 4326)::geography,
        CASE WHEN $7::float8 IS NOT NULL AND $8::float8 IS NOT NULL
          THEN ST_SetSRID(ST_MakePoint($8::float8, $7::float8), 4326)::geography
          ELSE NULL END,
-       $9, $10, $11, $12, $13, $14, $15, $16, $17, COALESCE($18::ride_status, 'requested'::ride_status), $19, $20
+       $9, $10, $11, $12, $13, $14, $15, $16, $17, COALESCE($18::ride_status, 'requested'::ride_status), $19, $20, $21
      )
      RETURNING *`,
     [
@@ -393,6 +394,7 @@ export async function createRide(data: {
       data.status ?? null,
       data.riderName ?? null,
       data.riderPhone ?? null,
+      data.tripMode ?? 'standard',
     ]
   )
   return res.rows[0]
@@ -400,7 +402,8 @@ export async function createRide(data: {
 
 export type FareSnapshotInput = {
   rideId: bigint | string
-  rateCardId: number
+  /** Null for a package rental: it is priced from its package, with no rate card (migration 136). */
+  rateCardId: number | null
   rentalPackageId: number | null
   rideType: string
   isReturnCab: boolean
@@ -435,13 +438,17 @@ export async function insertFareSnapshot(client: PoolClient, p: FareSnapshotInpu
        stop_fare, hour_surcharge, surge_fare,
        total_estimated, status,
        pricing_version, waiting_fare, discount_amount,
-       rental_km_limit, rental_duration_minutes, rental_extra_per_km, rental_extra_per_min
+       rental_km_limit, rental_duration_minutes, rental_extra_per_km, rental_extra_per_min,
+       rental_stop_charge, rental_cancellation_fee
      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'estimate',$19,$20,$21,
        -- pin the package terms quoted now; admins edit packages in place (migration 099)
        (SELECT km_limit         FROM rental_packages WHERE id = $3),
        (SELECT duration_minutes FROM rental_packages WHERE id = $3),
        (SELECT extra_per_km     FROM rental_packages WHERE id = $3),
-       (SELECT extra_per_min    FROM rental_packages WHERE id = $3))`,
+       (SELECT extra_per_min    FROM rental_packages WHERE id = $3),
+       -- the fees a rental is charged live on the package, not on a rate card (migration 136)
+       (SELECT stop_charge      FROM rental_packages WHERE id = $3),
+       (SELECT cancellation_fee FROM rental_packages WHERE id = $3))`,
     [
       p.rideId, p.rateCardId, p.rentalPackageId, p.rideType, p.isReturnCab, p.surgeEventId, p.surgeMultiplier,
       p.estimatedKm, p.estimatedMin, p.stopCount, p.tripHours,
@@ -565,13 +572,14 @@ export async function resequenceStops(
 // Stamp arrival at a stop so wait time can be measured server-side. Idempotent
 // (COALESCE) so a re-tap doesn't reset the clock. One-way only in practice —
 // the driver app only sends 'arrived' for one-way rides.
-// Per-stop price of the rate card a ride was quoted on (fare_snapshots.rate_card_id). 0 when the
-// snapshot or card is missing, which is the safe side: never invent a charge.
+// Per-stop price of a ride: the charge saved on a rental's snapshot (from its package) when there is one, else the rate card the ride
+// was quoted on (fare_snapshots.rate_card_id). A rental has no rate card after migration 136's detach, hence the LEFT JOIN. 0 when
+// neither gives a charge, which is the safe side: never invent a charge.
 export async function getRideStopCharge(rideId: bigint): Promise<number> {
   const res = await pool.query<{ stop_charge: string | null }>(
-    `SELECT rc.stop_charge::text AS stop_charge
+    `SELECT COALESCE(fs.rental_stop_charge, rc.stop_charge)::text AS stop_charge
        FROM fare_snapshots fs
-       JOIN rate_cards rc ON rc.id = fs.rate_card_id
+       LEFT JOIN rate_cards rc ON rc.id = fs.rate_card_id
       WHERE fs.ride_id = $1`,
     [rideId]
   )
@@ -1712,6 +1720,8 @@ export interface FareRecomputeInput {
   pricing_version:  1 | 2
   rental_package_id: number | null
   origin_city_id:   number | null
+  /** 'city' re-quotes on the city card; absent or 'standard' on the standard one. */
+  trip_mode?:       'standard' | 'city'
   total_estimated:  number
   /** The offer discount reserved on this quote; 0 when none. */
   discount_amount?: number
@@ -1719,7 +1729,7 @@ export interface FareRecomputeInput {
 
 export async function getFareRecomputeInput(rideId: bigint): Promise<FareRecomputeInput | null> {
   const res = await pool.query(
-    `SELECT r.category_id::int, r.origin_city_id::int,
+    `SELECT r.category_id::int, r.origin_city_id::int, r.trip_mode,
             fs.ride_type, fs.is_return_cab, fs.estimated_km::float8, fs.estimated_min::float8,
             fs.stop_count::int, fs.trip_hours::float8, fs.pricing_version::int, fs.rental_package_id::int,
             fs.total_estimated::float8, fs.discount_amount::float8 AS discount_amount
@@ -1734,7 +1744,7 @@ export async function getFareRecomputeInput(rideId: bigint): Promise<FareRecompu
 export async function updateFareSnapshotEstimate(
   rideId: bigint,
   fareEstimate: {
-    rate_card_id: number
+    rate_card_id: number | null
     surge_event_id: number | null
     surge_multiplier: number
     breakdown: {

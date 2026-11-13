@@ -388,6 +388,9 @@ export interface AdminRentalPackage {
   package_fare: string
   extra_per_km: string
   extra_per_min: string
+  /** What a rental is charged for each added stop, and for a late cancellation (rupees, numeric strings). */
+  stop_charge: string
+  cancellation_fee: string
   is_active: boolean
   city_id: number | null
   city_name?: string | null

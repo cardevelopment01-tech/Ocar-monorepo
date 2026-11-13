@@ -39,21 +39,21 @@ describe('createAdminRateCard — stop_charge', () => {
   it('keeps the previous stop_charge when the form does not send one', async () => {
     wire([OLD])
     await createAdminRateCard(BASE)
-    expect(insertedCard()[1].at(-3)).toBe(15)
+    expect(insertedCard()[1].at(-4)).toBe(15)
   })
 
   it('applies an explicit stop_charge, including 0', async () => {
     wire([OLD])
     await createAdminRateCard({ ...BASE, stopCharge: 0 })
-    expect(insertedCard()[1].at(-3)).toBe(0)
+    expect(insertedCard()[1].at(-4)).toBe(0)
     wire([OLD])
     await createAdminRateCard({ ...BASE, stopCharge: 30 })
-    expect(insertedCard()[1].at(-3)).toBe(30)
+    expect(insertedCard()[1].at(-4)).toBe(30)
   })
 
   it('carries the previous cancellation_fee forward instead of resetting it to NULL', async () => {
     wire([OLD])
     await createAdminRateCard(BASE)
-    expect(insertedCard()[1].at(-2)).toBe('50.00')
+    expect(insertedCard()[1].at(-3)).toBe('50.00')
   })
 })

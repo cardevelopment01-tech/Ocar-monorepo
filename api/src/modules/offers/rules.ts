@@ -55,9 +55,9 @@ registerRule({
   kind: 'ride_type',
   label: 'Ride type',
   fields: [{ key: 'types', type: 'multi', label: 'Ride types', options: [
-    { value: 'one_way', label: 'One way' }, { value: 'round_trip', label: 'Round trip' }, { value: 'rental', label: 'Rental' },
+    { value: 'one_way', label: 'One way' }, { value: 'round_trip', label: 'Round trip' }, { value: 'rental', label: 'Rental' }, { value: 'city', label: 'City ride' },
   ] }],
-  schema: z.object({ kind: z.literal('ride_type'), types: z.array(z.enum(['one_way', 'round_trip', 'rental'])).min(1) }),
+  schema: z.object({ kind: z.literal('ride_type'), types: z.array(z.enum(['one_way', 'round_trip', 'rental', 'city'])).min(1) }),
   evaluate: (c, ctx) => (c.types.includes(ctx.ride.rideType) ? ok : fail('RIDE_TYPE')),
   describe: (c) => c.types.map((t) => t.replace('_', ' ')).join('/'),
 })

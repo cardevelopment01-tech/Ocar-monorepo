@@ -570,6 +570,9 @@ export async function createAdminRateCard(data: Parameters<typeof repo.createAdm
   }
   // Rentals are priced from the package fare, so a base fare would be stored and shown but never charged.
   if (data.rideType === 'rental' && (data.baseFare ?? 0) > 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  // A city card is a one-way card with trip mode 'city': it is its own current row, so an edit must say which card it is a version of.
+  if (data.tripMode !== undefined && data.tripMode !== 'standard' && data.tripMode !== 'city') throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (data.tripMode === 'city' && data.rideType !== 'one_way') throw createHttpError(AppErrors.VALIDATION_ERROR)
   return repo.createAdminRateCard(data)
 }
 
@@ -673,6 +676,22 @@ function rethrowIfDuplicatePackage(err: unknown): never {
   throw err
 }
 
+const MAX_RENTAL_FEE = 5000
+
+/** A fee from a request body as a number: null, undefined, blank and non-numeric are NaN (rejected), never silently 0. */
+export function parseRentalFeeInput(v: unknown): number {
+  if (typeof v === 'number') return v
+  if (typeof v === 'string' && v.trim() !== '') return Number(v)
+  return NaN
+}
+
+/** A rental fee is 0 (free, chosen on purpose) up to MAX_RENTAL_FEE rupees. `required`: undefined is also rejected. */
+function assertRentalFee(name: 'stop_charge' | 'cancellation_fee', v: number | undefined, required: boolean): void {
+  if (v === undefined && !required) return
+  if (v === undefined || typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > MAX_RENTAL_FEE)
+    throw Object.assign(new Error(`${name} must be between 0 and ${MAX_RENTAL_FEE}`), { httpStatus: 400 })
+}
+
 export async function listAdminRentalPackages(cityId: number | null) {
   return repo.listAdminRentalPackages(cityId)
 }
@@ -682,9 +701,12 @@ export async function updateAdminRentalPackage(
   body: {
     package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
     duration_minutes?: number; km_limit?: number; display_order?: number; city_id?: number | null
+    stop_charge?: number; cancellation_fee?: number
   },
   adminId: bigint,
 ) {
+  assertRentalFee('stop_charge', body.stop_charge, false)
+  assertRentalFee('cancellation_fee', body.cancellation_fee, false)
   if (body.package_fare     !== undefined && (isNaN(body.package_fare)     || body.package_fare     <= 0))
     throw Object.assign(new Error('package_fare must be > 0'), { httpStatus: 400 })
   if (body.extra_per_km     !== undefined && (isNaN(body.extra_per_km)     || body.extra_per_km     <= 0))
@@ -728,6 +750,7 @@ export async function createAdminRentalPackage(
   body: {
     category_id: number; duration_minutes: number; km_limit: number
     package_fare: number; extra_per_km: number; extra_per_min: number
+    stop_charge: number; cancellation_fee: number
     display_order?: number; city_id?: number | null
   },
   adminId: bigint,
@@ -746,6 +769,9 @@ export async function createAdminRentalPackage(
     throw Object.assign(new Error('extra_per_min must be >= 0'), { httpStatus: 400 })
   if (body.city_id !== undefined && body.city_id !== null && (isNaN(body.city_id) || body.city_id <= 0))
     throw Object.assign(new Error('city_id must be a positive integer'), { httpStatus: 400 })
+  // Both fees are required on create: a forgotten field must not silently become a free cancellation or free stops.
+  assertRentalFee('stop_charge', body.stop_charge, true)
+  assertRentalFee('cancellation_fee', body.cancellation_fee, true)
 
   try {
     return await repo.createAdminRentalPackage(body, adminId)

@@ -15,6 +15,8 @@ export type PreviewRequest = {
   tripHours?: number
   stopCount?: number
   isReturnCab?: boolean
+  /** 'city' = a city ride: matched on the City ride offers, so the preview agrees with the booking. */
+  tripMode?: 'city'
   scheduledFor?: string
   code?: string
   autoOffer?: string
@@ -35,6 +37,7 @@ export async function previewOffer(input: PreviewRequest, signal?: AbortSignal):
   if (input.tripHours !== undefined) body['trip_hours'] = input.tripHours
   if (input.stopCount !== undefined) body['stop_count'] = input.stopCount
   if (input.isReturnCab) body['is_return_cab'] = true
+  if (input.tripMode === 'city') body['trip_mode'] = 'city'
   if (input.scheduledFor) body['scheduledFor'] = input.scheduledFor
   if (input.code) body['code'] = input.code
   if (input.autoOffer) body['autoOffer'] = input.autoOffer

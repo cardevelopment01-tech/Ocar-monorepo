@@ -7,6 +7,7 @@ import { computeBenefit, describeOffer, evaluateRules } from './engine'
 import { findActiveOffers, getOfferByCode, getUserUsage, type OfferRecord } from './offers.repository'
 import type { EvalContext, FareComponents, PaymentChannel, ReasonCode } from './offers.types'
 import { roundPaise, sumComponents } from './money'
+import { offerRideType } from './offer-ride-type'
 
 export type PreviewInput = FareEstimateRequest & {
   code?: string
@@ -154,7 +155,7 @@ export async function evaluateOffers(userId: bigint, input: PreviewInput, estima
     now: new Date(),
     user: { id: userId, completedRides: rideCount, createdAt: new Date(0) },
     ride: {
-      rideType: input.ride_type, categoryId: input.category_id, cityId: input.city_id ?? null,
+      rideType: offerRideType(input.ride_type, input.trip_mode), categoryId: input.category_id, cityId: input.city_id ?? null,
       originCityId: input.originCityId ?? null, destinationCityId: input.destinationCityId ?? null,
       paymentChannel: input.paymentChannel, scheduledFor: input.scheduledFor ? new Date(input.scheduledFor) : null,
     },

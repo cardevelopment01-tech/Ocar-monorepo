@@ -9,6 +9,7 @@ import { getPresignedUrl } from '@/lib/storage'
 import crypto from 'crypto'
 import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
+import { assertCityRideAllowed, parseTripMode } from './city-ride'
 import * as repo from './rides.repository'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { getBlockingChallenge } from '@/modules/drivers/driver-verification.service'
@@ -794,6 +795,10 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     }
   }
 
+  const tripMode = parseTripMode(data.tripMode)
+  // Filled in by the classification below when a drop is given; a city ride with no usable drop is refused before scope matters.
+  let cityScope: 'in_city' | 'outstation' = 'outstation'
+
   if (
     (data.rideType === 'one_way' || data.rideType === 'round_trip') &&
     data.destinationLat !== undefined &&
@@ -806,7 +811,9 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
     const classification = await classifyTrip(
       data.originLat, data.originLng, data.destinationLat, data.destinationLng
     )
-    if (classification.scope === 'in_city') {
+    if (tripMode === 'city') {
+      cityScope = classification.scope
+    } else if (classification.scope === 'in_city') {
       const tripDistanceMetres = distanceMetres(
         data.originLat, data.originLng, data.destinationLat, data.destinationLng
       )
@@ -817,6 +824,11 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
         )
       }
     }
+  }
+
+  // The one place a city ride is judged (owner decisions D3, D8): anything inside one city boundary, no distance cap.
+  if (tripMode === 'city') {
+    assertCityRideAllowed(data, { flagOn: (await getConfigValue('city_rides_enabled', 'false')) === 'true', scope: cityScope })
   }
 
   if (data.rideType === 'rental' && (data.destinationLat === undefined || data.destinationLng === undefined)) {
@@ -888,6 +900,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   }
   if (data.rentalPackageId !== undefined) fareReq.rental_package_id = data.rentalPackageId
   if (originCity           !== null)      fareReq.city_id           = originCity.id
+  if (tripMode === 'city')                fareReq.trip_mode         = 'city'
   const fareEstimate = await getFareEstimate(fareReq)
   const offer = await resolveBookingOffer(userId, data, fareReq, originCity?.id ?? null, fareEstimate)
 
@@ -906,6 +919,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   if (originCity              !== null)      rideInput.originCityId       = BigInt(originCity.id)
   if (data.destinationCityId  !== undefined) rideInput.destinationCityId  = BigInt(data.destinationCityId)
   if (data.rentalPackageId    !== undefined) rideInput.rentalPackageId    = BigInt(data.rentalPackageId)
+  if (tripMode === 'city')                   rideInput.tripMode           = 'city'
   const storedTripHours = fareEstimate.rental_hours ?? (effectiveTripHours > 0 ? effectiveTripHours : undefined)
   if (storedTripHours !== undefined) rideInput.tripHours = storedTripHours
   if (data.returnAt           !== undefined) rideInput.returnAt           = data.returnAt
@@ -997,11 +1011,13 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
       actorId:    userId,
     })
 
-    await repo.createAdvanceMeta({
+    const advanceMeta: Parameters<typeof repo.createAdvanceMeta>[0] = {
       rideId:                 BigInt(ride.id),
       dispatchBufferMinutes:  ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES,
-      rateCardIdAtBooking:    BigInt(fareEstimate.rate_card_id),
-    })
+    }
+    // A package rental has no rate card to remember.
+    if (fareEstimate.rate_card_id !== null) advanceMeta.rateCardIdAtBooking = BigInt(fareEstimate.rate_card_id)
+    await repo.createAdvanceMeta(advanceMeta)
 
     const dispatchAt = scheduledForDate.getTime() - ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES * 60_000
     const delay = Math.max(dispatchAt - Date.now(), 0)
@@ -1850,14 +1866,27 @@ async function readCancellationFee(
   categoryId: bigint,
   rideType: string,
   cityId: bigint | null,
+  rideId: bigint,
+  tripMode: 'standard' | 'city' = 'standard',
 ): Promise<number> {
+  // A rental is charged the fee saved on its ride from its package at booking (migration 136); the rate card below is only the
+  // fallback for a rental booked before that snapshot existed.
+  if (rideType === 'rental') {
+    const snap = await client.query<{ fee: string | null }>(
+      `SELECT rental_cancellation_fee::text AS fee FROM fare_snapshots WHERE ride_id = $1`,
+      [rideId]
+    )
+    const pinned = snap.rows[0]?.fee
+    if (pinned != null) return parseFloat(pinned)
+  }
   const res = await client.query<{ cancellation_fee: string | null }>(
     `SELECT cancellation_fee FROM rate_cards
       WHERE category_id = $1 AND ride_type = $2 AND effective_to IS NULL
         AND (city_id = $3 OR city_id IS NULL)
+        AND trip_mode = $4
       ORDER BY city_id NULLS LAST
       LIMIT 1`,
-    [categoryId, rideType, cityId]
+    [categoryId, rideType, cityId, tripMode]
   )
   const raw = res.rows[0]?.cancellation_fee
   return raw != null ? parseFloat(raw) : 0
@@ -1880,6 +1909,8 @@ async function chargeCancellationFee(
     BigInt(ride.category_id),
     ride.ride_type,
     ride.origin_city_id != null ? BigInt(ride.origin_city_id) : null,
+    rideId,
+    ride.trip_mode === 'city' ? 'city' : 'standard',
   )
   if (feeAmount > 0) {
     await client.query(
@@ -2166,7 +2197,26 @@ export async function endRideEarlyAsDriver(
     throw Object.assign(new Error('Ride is not in progress'), { httpStatus: 409 })
   }
 
-  const snapRes = await pool.query<{
+  // A rental is a reserved block of time: ended early it is billed the quoted package fare (owner decision D7). It has no rate card
+  // to recompute from, and what the driver app reports never changes the bill. One statement, so the fare is exactly the quote.
+  let rentalFinal: number | null = null
+  if (ride.ride_type === 'rental') {
+    const billed = await pool.query<{ total_final: string }>(
+      `UPDATE fare_snapshots
+       SET actual_km = $2, actual_min = $3, total_final = total_estimated,
+           status = 'final', finalised_at = now()
+       WHERE ride_id = $1
+         AND status = 'estimate'
+       RETURNING total_final::text AS total_final`,
+      [rideId, actualDistanceKm, actualDurationMin]
+    )
+    if (billed.rows[0]) {
+      rentalFinal = parseFloat(billed.rows[0].total_final)
+      await finaliseDiscount(pool, rideId)
+    }
+  }
+
+  const snapRes = ride.ride_type === 'rental' ? null : await pool.query<{
     surge_multiplier: string
     stop_fare: string
     is_return_cab: boolean
@@ -2189,9 +2239,9 @@ export async function endRideEarlyAsDriver(
      WHERE fs.ride_id = $1`,
     [rideId]
   )
-  const snap = snapRes.rows[0]
+  const snap = snapRes?.rows[0]
 
-  let finalFare: number | null = null
+  let finalFare: number | null = rentalFinal
   if (snap) {
     const recalc = calculateFare({
       rate_card: {

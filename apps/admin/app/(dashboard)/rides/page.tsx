@@ -1,5 +1,6 @@
 'use client'
 import React from 'react'
+import { cardMode } from '@/lib/rate-card-mode'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -233,7 +234,7 @@ function RidesPageContent() {
     },
     {
       key: 'ride_type', header: 'Type',
-      render: (r: AdminRideItem) => <StatusPill status={r.ride_type} />,
+      render: (r: AdminRideItem) => <StatusPill status={cardMode(r)} />,
     },
     {
       key: 'fare', header: 'Fare',
@@ -381,6 +382,7 @@ function RidesPageContent() {
                 options: [
                   { value: 'one_way',    label: 'One Way'     },
                   { value: 'round_trip', label: 'Round Trip'  },
+                  { value: 'city',       label: 'City Ride'   },
                   { value: 'rental',     label: 'Rental'      },
                 ],
                 value: rideTypeFilter,
@@ -421,7 +423,7 @@ function RidesPageContent() {
           <div className="p-6 space-y-5">
             <div className="flex items-center gap-2 flex-wrap">
               <StatusPill status={selected.status} />
-              <StatusPill status={selected.ride_type} />
+              <StatusPill status={cardMode(selected)} />
               {selected.is_return_cab && (
                 <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700">Return Cab</span>
               )}
