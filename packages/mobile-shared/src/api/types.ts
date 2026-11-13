@@ -27,7 +27,7 @@ export type RideStop = {
 }
 
 export type FareEstimate = {
-  rateCardId: number
+  rateCardId: number | null
   surgeEventId: number | null
   surgeMultiplier: number
   breakdown: {

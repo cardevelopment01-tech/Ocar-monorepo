@@ -42,12 +42,12 @@ describe('gross-fare readers are classified', () => {
 describe('every fare write re-derives the discount', () => {
   // Statements that SET a fare total, per file (an UPDATE assigning total_final = or total_estimated =).
   const WRITERS: Record<string, number> = {
-    'modules/rides/rides.service.ts': 6, // add stop, early end, force-complete, rental, generic settle, one-way wait
+    'modules/rides/rides.service.ts': 7, // add stop, early end, early end of a rental (billed the quote, D7), force-complete, rental, generic settle, one-way wait
     'modules/rides/rides.repository.ts': 1, // updateFareSnapshotEstimate, called by the scheduled re-quote
   }
   // finaliseDiscount call sites that cover them. updateFareSnapshotEstimate is covered by its only caller.
   const CALLERS: Record<string, number> = {
-    'modules/rides/rides.service.ts': 6,
+    'modules/rides/rides.service.ts': 7,
     'jobs/processors/dispatch-scheduled.processor.ts': 1,
   }
 
