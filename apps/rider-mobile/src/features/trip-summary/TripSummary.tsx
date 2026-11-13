@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import Animated, { FadeIn, FadeInDown, ZoomIn, useReducedMotion } from 'react-native-reanimated'
+import Animated, { Easing, FadeIn, FadeInDown, ReduceMotion, ZoomIn, useReducedMotion } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
@@ -128,7 +128,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
       >
         {/* Arrival header: a badge, what happened, and the trip in one line. */}
         <Animated.View entering={FadeIn.duration(300)} style={styles.arrive}>
-          <Animated.View entering={ZoomIn.springify().damping(12).delay(80)}>
+          <Animated.View entering={ZoomIn.duration(240).delay(80).easing(Easing.bezier(0.23, 1, 0.32, 1)).reduceMotion(ReduceMotion.System)}>
           <LinearGradient colors={completed ? ['#12A0B6', '#0A7788'] : ['#EE5A5E', '#C23B3B']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.badge, completed ? styles.badgeOk : styles.badgeBad]}>
             <Feather name={completed ? 'check' : 'x'} size={26} color="#FFFFFF" />
           </LinearGradient>
@@ -201,8 +201,8 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
                 </View>
                 <View style={styles.breakdown}>
                   <Text style={styles.sectionTitle}>Fare breakdown</Text>
-                  {invoice.rows.map((row, i) => (
-                    <View key={row.key} style={[styles.brRow, i > 0 ? styles.brRuled : null]}>
+                  {invoice.rows.map((row) => (
+                    <View key={row.key} style={styles.brRow}>
                       <Text style={styles.brLabel}>{row.label}</Text>
                       <Text style={styles.brDetail} numberOfLines={2}>{row.detail ?? ''}</Text>
                       <Text style={styles.brAmount} maxFontSizeMultiplier={1.3}>{row.negative ? `−${formatMoney(row.amount)}` : formatMoney(row.amount)}</Text>
@@ -332,8 +332,8 @@ const styles = StyleSheet.create({
   fare: { fontFamily: font.xb, fontSize: 42, lineHeight: 48, letterSpacing: -1, color: h.ivory, fontVariant: ['tabular-nums'] },
   arrive: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingTop: 4, paddingLeft: 8 },
   badge: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  badgeOk: { boxShadow: '0 0 0 8px rgba(14,143,163,0.14), 0 10px 22px rgba(14,143,163,0.28)' },
-  badgeBad: { boxShadow: '0 0 0 8px rgba(194,59,59,0.12), 0 10px 22px rgba(194,59,59,0.26)' },
+  badgeOk: { boxShadow: '0 0 0 4px rgba(14,143,163,0.10), 0 6px 14px rgba(14,143,163,0.22)' },
+  badgeBad: { boxShadow: '0 0 0 4px rgba(194,59,59,0.09), 0 6px 14px rgba(194,59,59,0.20)' },
   arriveTitle: { fontFamily: font.xb, fontSize: 24, lineHeight: 30, letterSpacing: -0.5, color: h.ivory },
   ticket: { backgroundColor: h.surface, borderRadius: 26, borderWidth: 1, borderColor: h.line07, boxShadow: '0 6px 20px rgba(20,23,26,0.06)', paddingTop: 20 },
   ticketTint: { position: 'absolute', top: 0, left: 0, right: 0, height: 150, borderTopLeftRadius: 26, borderTopRightRadius: 26 },
@@ -347,12 +347,11 @@ const styles = StyleSheet.create({
   perf: { height: 20, justifyContent: 'center' },
   perfLine: { marginHorizontal: 14, borderTopWidth: 1.5, borderTopColor: h.line10, borderStyle: 'dashed' },
   notch: { position: 'absolute', top: 0, width: 20, height: 20, borderRadius: 10, backgroundColor: h.canvas, borderWidth: 1, borderColor: h.line07 },
-  breakdown: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 4 },
-  brRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52 },
-  brRuled: { borderTopWidth: 1, borderTopColor: h.line06 },
-  brLabel: { fontFamily: font.sb, fontSize: 14.5, color: h.ivory, flexShrink: 0 },
+  breakdown: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 18, gap: 12 },
+  brRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  brLabel: { fontFamily: font.sb, fontSize: 14.5, lineHeight: 21, color: h.ivory, flexShrink: 0 },
   brDetail: { flex: 1, textAlign: 'right', fontFamily: font.m, fontSize: 12.5, color: h.muted, fontVariant: ['tabular-nums'] },
-  brAmount: { minWidth: 64, textAlign: 'right', fontFamily: font.b, fontSize: 14.5, color: h.ivory, fontVariant: ['tabular-nums'] },
+  brAmount: { minWidth: 64, textAlign: 'right', fontFamily: font.b, fontSize: 14.5, lineHeight: 21, color: h.ivory, fontVariant: ['tabular-nums'] },
   ticketFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, minHeight: 56 },
   receiptLink: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 },
   receiptLinkText: { fontFamily: font.b, fontSize: 14, color: h.tealText },
