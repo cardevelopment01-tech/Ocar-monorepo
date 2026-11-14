@@ -16,3 +16,14 @@ export function getSpeech(): SpeechModule | null {
   }
   return cached
 }
+
+// The first speak() after the app starts, or after a long idle, pays for the phone creating its speech engine (often a second or two)
+// before the first word. Asking the engine for its voice list makes it create itself now, in the background, so the first request is
+// read without that delay. Best effort: no engine or no module is the same as before.
+export function warmUpSpeech(speech: Pick<SpeechModule, 'getAvailableVoicesAsync'> | null = getSpeech()): void {
+  try {
+    void Promise.resolve(speech?.getAvailableVoicesAsync()).catch(() => {})
+  } catch {
+    // no voice on this build
+  }
+}

@@ -19,6 +19,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
 import { useRideRequestListener } from '@/features/ride-requests/useRideRequestListener'
+import { useWarmSpeech } from '@/features/ride-requests/useWarmSpeech'
 import { useFloatingIcon } from '@/features/floating-icon/useFloatingIcon'
 import { RideRequestOverlay } from '@/features/ride-requests/RideRequestOverlay'
 import { ConnectionBanner } from '@/features/connection/ConnectionBanner'
@@ -58,6 +59,7 @@ function RootLayout() {
   // never per-screen.
   useRideRequestListener()
   useFloatingIcon()
+  useWarmSpeech()
   useSessionSyncListener()
   useSessionResync()
   usePushNotificationRouting()
