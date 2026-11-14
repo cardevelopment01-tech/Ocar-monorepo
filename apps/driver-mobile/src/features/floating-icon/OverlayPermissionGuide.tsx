@@ -8,7 +8,7 @@ import { useOverlayGuideStore } from '@/store/useOverlayGuideStore'
 
 const STEPS = [
   'Find Ocar in the list',
-  'Turn on "Allow display over other apps"',
+  'Turn the switch on',
   'Press back to return here',
 ]
 
@@ -51,7 +51,7 @@ export function OverlayPermissionGuide() {
         <Text style={styles.body}>
           {granted
             ? 'You will see a small Ocar icon over other apps while you are online.'
-            : 'A small Ocar icon over other apps while you are online, so you can use Maps and come straight back, and new ride requests open Ocar for you.'}
+            : 'A small Ocar icon over other apps while you are online, so you can use Maps and come straight back.'}
         </Text>
 
         {granted ? null : (
@@ -65,7 +65,8 @@ export function OverlayPermissionGuide() {
               ))}
             </View>
 
-            {/* What the driver will look for on the system screen. Not interactive. */}
+            {/* What the driver will look for on the system screen. A picture, not a control. */}
+            <Text style={styles.previewCaption}>This is what you will see</Text>
             <View style={styles.preview} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
               <View style={styles.previewApp}><Text style={styles.previewAppText}>O</Text></View>
               <Text style={styles.previewLabel}>Ocar</Text>
@@ -95,7 +96,8 @@ const styles = StyleSheet.create({
   stepNumber: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
   stepNumberText: { fontFamily: fonts.bold, fontSize: 14, color: colors.primaryDark },
   stepText: { flex: 1, minWidth: 0, fontFamily: fonts.bold, fontSize: 15, lineHeight: 21, color: colors.ink900 },
-  preview: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginTop: spacing.sm + 2 },
+  previewCaption: { alignSelf: 'flex-start', fontFamily: fonts.regular, fontSize: 13, lineHeight: 18, color: colors.ink600, marginTop: spacing.sm + 2, marginLeft: spacing.xs },
+  preview: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginTop: spacing.xs, opacity: 0.85 },
   previewApp: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   previewAppText: { fontFamily: fonts.bold, fontSize: 16, color: colors.inkInverse },
   previewLabel: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: colors.ink900 },
