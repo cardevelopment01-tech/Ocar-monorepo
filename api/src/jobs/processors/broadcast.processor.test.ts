@@ -230,21 +230,32 @@ describe('processBroadcast return-cab pickup-distance cap', () => {
     )
   })
 
-  it('lets the standard search fill the remaining slots when return-cab drivers are filtered out', async () => {
+  it('never offers a return-cab ride to a standard driver, even when no return-cab driver survives the filters', async () => {
     mockFindReturnCabDrivers.mockResolvedValue([rc(7, null), rc(8, 50_000)])
     mockFindNearbyDrivers.mockResolvedValue([
       { driver_id: 30n, session_id: 300n, lat: 20.29, lng: 85.82, distance_metres: 400 },
     ])
     await processBroadcast({ ...base, rideType: 'one_way' })
-    // no return-cab driver survived, so the standard search may fill all 5 slots
-    expect(mockFindNearbyDrivers).toHaveBeenCalledWith(expect.objectContaining({ maxDrivers: 5, radiusMetres: 10_000 }))
-    expect(assignedIds()).toEqual([30n])
+    expect(mockFindNearbyDrivers).not.toHaveBeenCalled()
+    expect(mockCreateRideAssignment).not.toHaveBeenCalled()
   })
 
-  it('reduces the standard search size by the number of return-cab drivers kept', async () => {
-    mockFindReturnCabDrivers.mockResolvedValue([rc(1, 900), rc(2, 1_100), rc(9, null)])
+  it('does not top up a few return-cab drivers with standard drivers', async () => {
+    mockFindReturnCabDrivers.mockResolvedValue([rc(1, 900), rc(2, 1_100)])
+    mockFindNearbyDrivers.mockResolvedValue([
+      { driver_id: 30n, session_id: 300n, lat: 20.29, lng: 85.82, distance_metres: 400 },
+    ])
     await processBroadcast({ ...base, rideType: 'one_way' })
-    expect(mockFindNearbyDrivers).toHaveBeenCalledWith(expect.objectContaining({ maxDrivers: 3 }))
+    expect(mockFindNearbyDrivers).not.toHaveBeenCalled()
+    expect(assignedIds().sort()).toEqual([1n, 2n])
+  })
+
+  it('still lets a standard ride search standard drivers as before', async () => {
+    mockFindNearbyDrivers.mockResolvedValue([
+      { driver_id: 30n, session_id: 300n, lat: 20.29, lng: 85.82, distance_metres: 400 },
+    ])
+    await processBroadcast({ ...base, isReturnCab: false, rideType: 'one_way' })
+    expect(assignedIds()).toEqual([30n])
   })
 
   it('fails the ride only after round 3 when every return-cab driver is filtered out', async () => {
