@@ -23,6 +23,8 @@ import { useBookingDraftStore } from '@/features/booking/store'
 import { ScheduleSheet } from '@/features/booking/components/ScheduleSheet'
 import { useFreshness, useLocationStore, useLocationTracking } from '@/store/useLocationStore'
 import type { RideType } from '@/features/booking/api'
+import type { TripMode } from '@/features/booking/cityRideRoute'
+import { draftForIntent, type TripIntent } from '@/features/home/tripIntent'
 import { ease, geo, h } from '@/theme/homeTokens'
 import { MapHero } from '@/features/home/MapHero'
 import { SearchBar } from '@/features/home/SearchBar'
@@ -122,9 +124,14 @@ export default function HomeScreen() {
     [setPickup]
   )
 
-  function toBooking(rideType: RideType, declared = true) {
-    setRideType(rideType, declared)
+  function toBooking(rideType: RideType, declared = true, tripMode: TripMode = 'standard') {
+    setRideType(rideType, declared, tripMode)
     router.push('/booking')
+  }
+  // A home tile: Outstation, City Ride or Rental (see tripIntent.ts).
+  function toBookingIntent(intent: TripIntent) {
+    const d = draftForIntent(intent)
+    toBooking(d.rideType, d.declared, d.tripMode)
   }
   // Search bar / recents / vehicle taps declare no ride type; /booking classifies the route itself.
   const toBookingAuto = () => toBooking('one_way', false)
@@ -343,7 +350,7 @@ export default function HomeScreen() {
             </Animated.View>
 
             {recents.length > 0 ? <RecentsCard items={recents} /> : null}
-            <TripTypeCard onPick={toBooking} style={recents.length > 0 ? undefined : styles.noTop} />
+            <TripTypeCard onPick={toBookingIntent} style={recents.length > 0 ? undefined : styles.noTop} />
             <FleetPreview items={fleet} onViewAll={() => router.navigate('/fleet')} onPick={toBookingAuto} />
             <Reveal>
               <WaysRow ways={ways} />

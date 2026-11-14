@@ -40,24 +40,24 @@ describe('createRateCard — stop_charge', () => {
     wire([OLD])
     await createRateCard(BASE)
 
-    expect(insertedCard()[1].at(-3)).toBe(25)
+    expect(insertedCard()[1].at(-4)).toBe(25)
   })
 
   it('uses the supplied stop_charge, including 0 (= make stops free)', async () => {
     wire([OLD])
     await createRateCard({ ...BASE, stopCharge: 0 })
-    expect(insertedCard()[1].at(-3)).toBe(0)
+    expect(insertedCard()[1].at(-4)).toBe(0)
 
     wire([OLD])
     await createRateCard({ ...BASE, stopCharge: 40 })
-    expect(insertedCard()[1].at(-3)).toBe(40)
+    expect(insertedCard()[1].at(-4)).toBe(40)
   })
 
   it('a brand-new card (no previous version) defaults to 0', async () => {
     wire([])
     await createRateCard(BASE)
 
-    expect(insertedCard()[1].at(-3)).toBe(0)
+    expect(insertedCard()[1].at(-4)).toBe(0)
   })
 
   it('records the replaced version\'s stop_charge in the history row', async () => {
@@ -70,6 +70,6 @@ describe('createRateCard — stop_charge', () => {
   it('carries the previous cancellation_fee forward instead of resetting it to NULL', async () => {
     wire([OLD])
     await createRateCard(BASE)
-    expect(insertedCard()[1].at(-2)).toBe('50.00')
+    expect(insertedCard()[1].at(-3)).toBe('50.00')
   })
 })

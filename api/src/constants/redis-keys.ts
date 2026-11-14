@@ -76,9 +76,11 @@ export function rateCardKey(
   version: string,
   categoryId: number,
   rideType: string,
-  cityId: number | null
+  cityId: number | null,
+  tripMode: 'standard' | 'city' = 'standard'
 ): string {
-  return `ref:v1:rate_card:${version}:${categoryId}:${rideType}:${cityId ?? 'global'}`
+  // v2: the key now carries the trip mode, so a standard and a city card for the same city and category never share an entry.
+  return `ref:v2:rate_card:${version}:${categoryId}:${rideType}:${cityId ?? 'global'}:${tripMode}`
 }
 
 // Coordinates rounded to 4 decimal places (~11m precision) so nearby-identical

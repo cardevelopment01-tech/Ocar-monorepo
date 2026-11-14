@@ -6,6 +6,8 @@ import type { GpsTrackPayload } from './geo.types'
 import { getJSON, setWithTTL } from '@/db/redis'
 import { routeKey } from '@/constants/redis-keys'
 import { ROUTE_CACHE_TTL_SECONDS } from '@/constants/limits'
+import { geoRouteCacheTotal } from '@/observability/google-metrics'
+import { getConfigValue } from '@/lib/system-config'
 export type { PlaceSuggestion, PlaceDetail, RouteResult, RouteStep } from './providers/google.provider'
 
 export async function getCities() {
@@ -122,13 +124,20 @@ export async function getRoute(
   opts?: RouteOptions,
 ) {
   const cacheKey = routeKey(originLat, originLng, destLat, destLng, opts)
+  const caller = opts?.caller ?? 'other'
   const cached = await getJSON<google.RouteResult>(cacheKey)
-  if (cached) return cached
+  if (cached) {
+    geoRouteCacheTotal.inc({ result: 'hit', caller })
+    return cached
+  }
 
   // Single-flight: concurrent identical misses (rider + driver opening the same trip,
   // client retries) share one upstream call instead of each paying Google latency.
   let pending = inflightRoutes.get(cacheKey)
-  if (!pending) {
+  if (pending) {
+    geoRouteCacheTotal.inc({ result: 'coalesced', caller })
+  } else {
+    geoRouteCacheTotal.inc({ result: 'miss', caller })
     pending = google.getRoute(originLat, originLng, destLat, destLng, opts)
       .then(async result => {
         // Only cache full-quality results: a cached OSRM/straight-line fallback would pin
@@ -155,11 +164,17 @@ export async function classifyTrip(
   originLng: number,
   destLat: number,
   destLng: number,
-) {
+  // The classify-trip endpoint asks for the city ride hint; the booking path only needs the scope and must not pay for a config read.
+  opts: { withCityRide?: boolean } = {},
+): Promise<{ scope: 'in_city' | 'outstation'; cityId: number | null; cityName: string | null; city_ride_available?: boolean }> {
   const city = await repo.findContainingCity(originLat, originLng, destLat, destLng)
-  return city
+  const scope = city
     ? { scope: 'in_city' as const, cityId: city.id, cityName: city.name }
     : { scope: 'outstation' as const, cityId: null, cityName: null }
+  if (!opts.withCityRide) return scope
+  // A city ride is offered for any trip inside one city boundary (no distance cap), once the switch is on.
+  const on = city !== null && (await getConfigValue('city_rides_enabled', 'false')) === 'true'
+  return { ...scope, city_ride_available: on }
 }
 
 export async function createCity(data: {

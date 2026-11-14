@@ -88,7 +88,8 @@ export function paymentState(
   return { kind: 'paid', text: channel === 'wallet' ? 'Paid via wallet' : 'Paid online' }
 }
 
-const rideTypeLabels: Record<string, string> = { round_trip: 'Round trip', rental: 'City ride' }
+// The hourly mode is Rental; a city ride is a one-way ride booked as City ride (trip mode city).
+const rideTypeLabels: Record<string, string> = { round_trip: 'Round trip', rental: 'Rental' }
 
 export function formatTripWhen(iso: string | null): string | null {
   if (!iso) return null
@@ -99,9 +100,9 @@ export function formatTripWhen(iso: string | null): string | null {
   return `${date} · ${time.toUpperCase()}`
 }
 
-export function tripTitle(r: Pick<RideDetail, 'rideType' | 'assignedCategoryName' | 'bookedCategoryName'>): string {
+export function tripTitle(r: Pick<RideDetail, 'rideType' | 'assignedCategoryName' | 'bookedCategoryName'> & { tripMode?: 'standard' | 'city' }): string {
   const cat = r.assignedCategoryName ?? r.bookedCategoryName
-  const type = rideTypeLabels[r.rideType]
+  const type = r.rideType === 'one_way' && r.tripMode === 'city' ? 'City ride' : rideTypeLabels[r.rideType]
   return [cat, type].filter(Boolean).join(' · ') || 'Ride'
 }
 

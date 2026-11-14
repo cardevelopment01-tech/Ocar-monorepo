@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import Animated, { useAnimatedStyle } from 'react-native-reanimated'
 import { Feather } from '@expo/vector-icons'
-import { colors, radii, spacing, typography, useKeyboardOffset, fonts } from '@ocar/mobile-shared'
+import { Button, font, h, useKeyboardOffset } from '@ocar/mobile-shared'
 
 // Same reason lists + copy as apps/user/app/(main)/ride/[id]/CancelSheet.tsx.
 const BEFORE_REASONS = [
@@ -74,20 +74,20 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
           <View style={styles.headerRow}>
             <Text style={styles.title}>Cancel your ride?</Text>
             <Pressable onPress={onClose} disabled={submitting} style={({ pressed }) => [styles.closeBtn, pressed ? styles.pressedScale : null]} hitSlop={8}>
-              <Feather name="x" size={16} color={colors.ink600} />
+              <Feather name="x" size={16} color={h.muted} />
             </Pressable>
           </View>
 
           {feeWarning ? (
             <View style={styles.feeWarning}>
-              <Feather name="alert-circle" size={15} color={colors.warning} style={{ marginTop: 1 }} />
+              <Feather name="alert-circle" size={17} color={h.goldInk} style={{ marginTop: 1 }} />
               <Text style={styles.feeWarningText}>
                 A small cancellation fee may apply since your driver has already arrived at your pick up point.
               </Text>
             </View>
           ) : null}
 
-          <Text style={styles.reasonHeading}>WHY ARE YOU CANCELLING?</Text>
+          <Text style={styles.reasonHeading}>Why are you cancelling?</Text>
           <View style={styles.reasonList}>
             {reasons.map((r) => {
               const active = selected === r.code
@@ -99,7 +99,7 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
                   accessibilityRole="radio"
                   accessibilityState={{ selected: active }}
                 >
-                  <View style={[styles.radio, active ? styles.radioActive : null]} />
+                  <View style={[styles.radio, active ? styles.radioActive : null]}>{active ? <Feather name="check" size={13} color="#FFFFFF" /> : null}</View>
                   <Text style={[styles.reasonLabel, active ? styles.reasonLabelActive : null]}>{r.label}</Text>
                 </Pressable>
               )
@@ -111,9 +111,9 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
               value={otherText}
               onChangeText={setOtherText}
               placeholder="Tell us more…"
-              placeholderTextColor={colors.ink400}
-              selectionColor={colors.primary}
-              cursorColor={colors.primary}
+              placeholderTextColor={h.faint}
+              selectionColor={h.teal}
+              cursorColor={h.teal}
               multiline
               maxLength={200}
               style={styles.otherInput}
@@ -129,13 +129,12 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
           <Pressable
             onPress={handleConfirm}
             disabled={!canSubmit || submitting}
-            style={({ pressed }) => [styles.confirmBtn, (!canSubmit || submitting) ? styles.disabled : null, pressed && canSubmit && !submitting ? styles.pressedScale : null]}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.confirmBtn, !canSubmit || submitting ? styles.confirmOff : null, pressed && canSubmit && !submitting ? styles.pressedScale : null]}
           >
             <Text style={styles.confirmText}>{submitting ? 'Cancelling…' : 'Confirm cancellation'}</Text>
           </Pressable>
-          <Pressable onPress={onClose} disabled={submitting} style={({ pressed }) => [styles.keepBtn, pressed ? styles.pressedScale : null]}>
-            <Text style={styles.keepText}>Keep my ride</Text>
-          </Pressable>
+          <Button variant="soft" label="Keep my ride" onPress={onClose} disabled={submitting} />
         </Animated.View>
       </View>
     </Modal>
@@ -143,28 +142,26 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, paddingBottom: spacing.xl },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.md },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
-  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
-  feeWarning: { flexDirection: 'row', gap: spacing.sm, backgroundColor: colors.warningLight, borderWidth: 1, borderColor: colors.warning, borderRadius: radii.lg, padding: spacing.sm + 4, marginBottom: spacing.md },
-  feeWarningText: { ...typography.body, color: colors.ink900, flex: 1, fontFamily: fonts.medium },
-  reasonHeading: { ...typography.caption, color: colors.ink400, fontFamily: fonts.bold, letterSpacing: 0.5, marginBottom: spacing.sm },
-  reasonList: { gap: spacing.sm, marginBottom: spacing.md },
-  reasonRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border },
-  reasonRowActive: { backgroundColor: colors.errorLight, borderColor: colors.error },
-  radio: { width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: colors.border },
-  radioActive: { borderWidth: 5, borderColor: colors.error },
-  reasonLabel: { ...typography.body, color: colors.ink600, fontFamily: fonts.medium },
-  reasonLabelActive: { color: colors.error },
-  otherInput: { ...typography.body, color: colors.ink900, backgroundColor: colors.surface2, borderWidth: 1.5, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.md, minHeight: 72, textAlignVertical: 'top', marginBottom: spacing.md },
-  confirmBtn: { backgroundColor: colors.error, borderRadius: radii.lg, paddingVertical: spacing.md, alignItems: 'center', marginBottom: spacing.sm },
-  failedText: { ...typography.caption, color: colors.error, marginBottom: spacing.sm },
-  disabled: { opacity: 0.4 },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.5)' },
+  sheet: { backgroundColor: h.surface, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingTop: 14, paddingHorizontal: 18, paddingBottom: 30, boxShadow: '0 -12px 32px rgba(20,23,26,0.16)' },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.14)', alignSelf: 'center', marginBottom: 18 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  title: { fontFamily: font.xb, fontSize: 20, letterSpacing: -0.3, color: h.ivory },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: h.chip, alignItems: 'center', justifyContent: 'center' },
+  feeWarning: { flexDirection: 'row', gap: 10, backgroundColor: h.goldWash, borderRadius: 16, padding: 14, marginBottom: 16 },
+  feeWarningText: { fontFamily: font.m, fontSize: 13.5, lineHeight: 20, color: h.ivory, flex: 1 },
+  reasonHeading: { fontFamily: font.sb, fontSize: 14, color: h.ivory, marginBottom: 10 },
+  reasonList: { gap: 8, marginBottom: 16 },
+  reasonRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, paddingHorizontal: 16, borderRadius: 18, backgroundColor: h.chip, borderWidth: 1.5, borderColor: 'transparent' },
+  reasonRowActive: { backgroundColor: h.dangerWash, borderColor: h.danger },
+  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: 'rgba(20,23,26,0.16)', alignItems: 'center', justifyContent: 'center' },
+  radioActive: { backgroundColor: h.danger, borderColor: h.danger },
+  reasonLabel: { fontFamily: font.sb, fontSize: 14.5, color: h.ivory },
+  reasonLabelActive: { color: h.danger },
+  otherInput: { fontFamily: font.m, fontSize: 14.5, color: h.ivory, backgroundColor: h.chip, borderWidth: 1.5, borderColor: h.line08, borderRadius: 18, padding: 16, minHeight: 80, textAlignVertical: 'top', marginBottom: 16 },
+  confirmBtn: { height: 56, backgroundColor: h.danger, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 10, boxShadow: '0 12px 24px rgba(194,59,59,0.28)' },
+  confirmOff: { backgroundColor: '#E8C9C9', boxShadow: 'none' },
+  failedText: { fontFamily: font.m, fontSize: 13, color: h.danger, marginBottom: 10 },
   pressedScale: { transform: [{ scale: 0.97 }] },
-  confirmText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
-  keepBtn: { backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, paddingVertical: spacing.sm + 4, alignItems: 'center' },
-  keepText: { ...typography.body, color: colors.ink600, fontFamily: fonts.semibold },
+  confirmText: { fontFamily: font.b, fontSize: 15.5, color: '#FFFFFF' },
 })

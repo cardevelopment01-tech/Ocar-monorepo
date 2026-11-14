@@ -88,3 +88,19 @@
 **Effort:** M
 **Priority:** P3
 **Depends on:** Round-trip booked-window change shipping
+
+### Voice messages in ride chat
+
+**What:** Let rider and driver send short voice notes in the in-ride chat (hold to record, up to 60 s, play/pause bubble with a waveform).
+
+**Why:** Drivers are often hands-busy and riders often stand at a noisy pickup; a voice note is faster than typing. Requested during the rider redesign (2026-11).
+
+**Pros:** Faster pickup coordination; helps riders and drivers who type slowly.
+
+**Cons:** Chat is text-only today (`body` is a string, no message type) and neither mobile app has an audio package. Needs a retention and deletion decision, since stored audio between two people is personal data.
+
+**Context:** Backend: add a message type plus audio URL and duration on `ride_chat_messages`, a presigned S3 upload with size and length caps, the same rate limit and read receipts, and push text like "Voice message". Apps (both rider and driver, or the other side gets an empty bubble): mic permission, recorder with timer and cancel, playback bubble, upload progress with retry. Keep v1 simple: hold-to-record, 60 s max, plain play bar. Do it as its own PR, not inside the redesign.
+
+**Effort:** L (about 2-3 days across the API and both apps)
+**Priority:** P2
+**Depends on:** Retention and deletion policy for voice data

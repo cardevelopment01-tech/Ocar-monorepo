@@ -15,4 +15,14 @@ describe('resolveSelectedCategory', () => {
     expect(resolveSelectedCategory([], 2)).toBeNull()
     expect(resolveSelectedCategory([], null)).toBeNull()
   })
+
+  it('skips a stored pick that has no cars nearby', () => {
+    expect(resolveSelectedCategory([1, 2, 3], 1, [1])).toBe(2)
+  })
+  it('falls back to the first bookable card, not the first visible one', () => {
+    expect(resolveSelectedCategory([1, 2, 3], null, [1, 2])).toBe(3)
+  })
+  it('keeps the first visible card when none can be booked', () => {
+    expect(resolveSelectedCategory([1, 2], null, [1, 2])).toBe(1)
+  })
 })

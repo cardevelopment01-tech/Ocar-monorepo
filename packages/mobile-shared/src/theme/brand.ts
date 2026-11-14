@@ -15,6 +15,23 @@ export const h = {
   gold: '#D6A552',
   goldLight: '#E7C27D',
   live: '#25B87A',
+  // Rider redesign additions (docs/designs/ocar-redesign, brief section 3). Additive only.
+  muted: '#5F6468',
+  label: '#6B7176',
+  faint: '#8A9094',
+  tealCta: '#0B8296', // primary button fill: white text at 4.5:1
+  tealText: '#0A7788',
+  tealWash: '#E8F4F6',
+  goldWash: 'rgba(214,165,82,0.18)',
+  goldInk: '#3E2A05',
+  danger: '#C23B3B',
+  dangerWash: '#FCEBEC',
+  // Rose: rental package tiles and their Best fit badge only (brief section 7 item 7). Keep it out of every other screen.
+  rose: '#D23F6D',
+  roseWash: '#FDF1F4',
+  roseLine: '#F4D2DC',
+  roseSelected: '#FFE6EE',
+  roseInk: '#8E1F47',
   // hairlines used across the file (border / divider alphas)
   line06: 'rgba(20,23,26,0.06)',
   line07: 'rgba(20,23,26,0.07)',
@@ -49,6 +66,7 @@ export const font = {
   m: 'PlusJakartaSans_500Medium',
   sb: 'PlusJakartaSans_600SemiBold',
   b: 'PlusJakartaSans_700Bold',
+  xb: 'PlusJakartaSans_800ExtraBold', // big numerals (fare totals, ETA)
 } as const
 
 // Sheet / map geometry (px), the reference's PEEK / EXPANDED and paddings.

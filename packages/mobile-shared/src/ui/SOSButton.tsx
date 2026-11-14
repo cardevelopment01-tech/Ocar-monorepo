@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
+import { LinearGradient } from 'expo-linear-gradient'
 import { colors, radii, shadows, spacing, typography, fonts } from '../theme/tokens'
+import { font, h } from '../theme/brand'
 import type { SOSTriggerResult } from '../api/types'
 
 export type { SOSTriggerResult } from '../api/types'
@@ -19,6 +21,14 @@ export type SOSButtonProps = {
   anchor?: 'top-right' | 'bottom-right'
   /** Distance from the anchored edge, overriding the default (safe-area top / spacing.xl bottom). */
   offset?: number
+  /** 'redesign' = the rider app's 48px gradient button, looping ring and "Emergency help" sheet. Default keeps the original look (driver app). */
+  look?: 'redesign'
+  /** Redesign look only: when set, the sheet offers "Share live trip with contacts" and calls this (after closing the sheet). */
+  onShareTrip?: () => void
+  /** Hide the floating button but keep its sheet (opened through `openSignal`), for screens that offer another way in. */
+  hideButton?: boolean
+  /** Raise this number to open the sheet from outside. */
+  openSignal?: number
 }
 
 type Phase = 'idle' | 'sending' | 'sent' | 'error' | 'rate_limited'
@@ -32,7 +42,8 @@ const OPEN_LABEL = 'Emergency SOS, double tap for safety options'
  * stray touch cannot page the safety team. The alert is sent by holding the red button for about a
  * second; calling the emergency number is one tap and always available.
  */
-export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = 'bottom-right', offset }: SOSButtonProps) {
+export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = 'bottom-right', offset, look, onShareTrip, hideButton = false, openSignal = 0 }: SOSButtonProps) {
+  const rd = look === 'redesign'
   const insets = useSafeAreaInsets()
   const [open, setOpen] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
@@ -41,6 +52,17 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
   const number = emergencyPhoneNumber || DEFAULT_EMERGENCY_NUMBER
   // scaleX from the left edge, not `width`: no layout pass per frame during the 1.2s hold.
   const fillStyle = useAnimatedStyle(() => ({ transform: [{ scaleX: fill.get() }] }))
+  // Redesign only: a soft ring that expands and fades around the button, looping.
+  const pulse = useSharedValue(0)
+  useEffect(() => {
+    if (!rd) return
+    pulse.set(withRepeat(withTiming(1, { duration: 2200, easing: Easing.out(Easing.quad) }), -1, false))
+  }, [rd, pulse])
+  const ringStyle = useAnimatedStyle(() => ({ opacity: 0.45 * (1 - pulse.get()), transform: [{ scale: 1 + 0.7 * pulse.get() }] }))
+
+  useEffect(() => {
+    if (openSignal > 0) setOpen(true)
+  }, [openSignal])
 
   useEffect(() => {
     if (!open) {
@@ -76,18 +98,34 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
 
   return (
     <>
-      <View style={[styles.wrap, anchorStyle]} pointerEvents="box-none">
-        <Pressable
-          onPress={() => setOpen(true)}
-          hitSlop={8}
-          accessible
-          accessibilityLabel={OPEN_LABEL}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.circle, pressed ? styles.pressed : null]}
-        >
-          {/* Fixed 56px circle: uncapped, the system font scale pushes "SOS" out of it. */}
-          <Text style={styles.icon} maxFontSizeMultiplier={1.15}>SOS</Text>
-        </Pressable>
+      <View style={[styles.wrap, anchorStyle, hideButton ? styles.hidden : null]} pointerEvents="box-none">
+        {rd ? (
+          <Pressable
+            onPress={() => setOpen(true)}
+            hitSlop={8}
+            accessible
+            accessibilityLabel={OPEN_LABEL}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.rdBox, pressed ? styles.pressed : null]}
+          >
+            <Animated.View pointerEvents="none" style={[styles.rdRing, ringStyle]} />
+            <LinearGradient colors={['#EE5A5E', h.danger]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rdCircle}>
+              <Text style={styles.rdIcon} maxFontSizeMultiplier={1.15}>SOS</Text>
+            </LinearGradient>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => setOpen(true)}
+            hitSlop={8}
+            accessible
+            accessibilityLabel={OPEN_LABEL}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.circle, pressed ? styles.pressed : null]}
+          >
+            {/* Fixed 56px circle: uncapped, the system font scale pushes "SOS" out of it. */}
+            <Text style={styles.icon} maxFontSizeMultiplier={1.15}>SOS</Text>
+          </Pressable>
+        )}
       </View>
 
       <Modal visible={open} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => !busy && setOpen(false)}>
@@ -102,6 +140,14 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
                 <Text style={styles.title}>Alert sent</Text>
                 <Text style={styles.body}>The Ocar safety team has your live location and will follow up. If you are in danger, call {number} now.</Text>
               </View>
+            ) : rd ? (
+              <View style={styles.rdHead}>
+                <View style={styles.rdShield}><Feather name="shield" size={24} color={h.danger} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rdTitle}>Emergency help</Text>
+                  <Text style={styles.rdSub}>Your live location and trip details are shared when you alert.</Text>
+                </View>
+              </View>
             ) : (
               <View style={styles.block}>
                 <Text style={styles.title}>Need help?</Text>
@@ -111,6 +157,15 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
 
             {phase === 'error' ? <Text style={styles.error} accessibilityLiveRegion="polite">The alert was not sent. Hold the button to try again, or call {number}.</Text> : null}
             {phase === 'rate_limited' ? <Text style={styles.error} accessibilityLiveRegion="polite">Too many alerts sent. Call {number} or contact support if this is urgent.</Text> : null}
+
+            {rd ? (
+              <Pressable onPress={call} accessibilityRole="button" accessibilityLabel={`Call ${number}`} style={({ pressed }) => [pressed ? styles.pressed : null]}>
+                <LinearGradient colors={['#EE5A5E', h.danger]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rdCall}>
+                  <Feather name="phone" size={18} color="#FFFFFF" />
+                  <Text style={styles.rdCallText}>Call emergency services ({number})</Text>
+                </LinearGradient>
+              </Pressable>
+            ) : null}
 
             {phase !== 'sent' && phase !== 'rate_limited' ? (
               <Pressable
@@ -123,23 +178,38 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
                 accessibilityLabel="Send SOS alert, press and hold"
                 accessibilityActions={[{ name: 'activate', label: 'Send SOS alert' }]}
                 onAccessibilityAction={() => void send()}
-                style={styles.hold}
+                style={rd ? styles.rdHold : styles.hold}
               >
-                <Animated.View style={[styles.holdFill, fillStyle]} pointerEvents="none" />
+                <Animated.View style={[rd ? styles.rdHoldFill : styles.holdFill, fillStyle]} pointerEvents="none" />
                 <View style={styles.holdRow} pointerEvents="none">
-                  {busy ? <ActivityIndicator color={colors.inkInverse} testID="sos-sending-indicator" /> : <Feather name="alert-triangle" size={20} color={colors.inkInverse} />}
-                  <Text style={styles.holdText}>{busy ? 'Sending alert' : phase === 'error' ? 'Hold to try again' : 'Hold to send alert'}</Text>
+                  {busy ? <ActivityIndicator color={rd ? h.danger : colors.inkInverse} testID="sos-sending-indicator" /> : <Feather name="alert-triangle" size={20} color={rd ? h.danger : colors.inkInverse} />}
+                  <Text style={[styles.holdText, rd ? { color: h.danger, fontSize: 15 } : null]}>
+                    {busy ? 'Sending alert' : phase === 'error' ? 'Hold to try again' : rd ? 'Hold to alert Ocar safety team' : 'Hold to send alert'}
+                  </Text>
                 </View>
               </Pressable>
             ) : null}
 
-            <Pressable onPress={call} accessibilityRole="button" accessibilityLabel={`Call ${number}`} style={({ pressed }) => [styles.call, pressed ? styles.callPressed : null]}>
-              <Feather name="phone" size={18} color={colors.error} />
-              <Text style={styles.callText}>Call {number}</Text>
-            </Pressable>
+            {rd && onShareTrip && phase !== 'sent' ? (
+              <Pressable
+                onPress={() => { if (busy) return; setOpen(false); setTimeout(onShareTrip, 260) }}
+                accessibilityRole="button"
+                accessibilityLabel="Share live trip with contacts"
+                style={({ pressed }) => [styles.rdShare, pressed ? styles.pressed : null]}
+              >
+                <Text style={styles.rdShareText}>Share live trip with contacts</Text>
+              </Pressable>
+            ) : null}
+
+            {!rd ? (
+              <Pressable onPress={call} accessibilityRole="button" accessibilityLabel={`Call ${number}`} style={({ pressed }) => [styles.call, pressed ? styles.callPressed : null]}>
+                <Feather name="phone" size={18} color={colors.error} />
+                <Text style={styles.callText}>Call {number}</Text>
+              </Pressable>
+            ) : null}
 
             <Pressable onPress={() => !busy && setOpen(false)} accessibilityRole="button" style={styles.close} hitSlop={8}>
-              <Text style={styles.closeText}>{phase === 'sent' ? 'Done' : 'Cancel'}</Text>
+              <Text style={[styles.closeText, rd ? styles.rdCloseText : null]}>{phase === 'sent' ? 'Done' : rd ? 'I am safe, close' : 'Cancel'}</Text>
             </Pressable>
           </View>
         </View>
@@ -150,6 +220,7 @@ export function SOSButton({ enabled, onTrigger, emergencyPhoneNumber, anchor = '
 
 const styles = StyleSheet.create({
   wrap: { position: 'absolute', right: spacing.md, zIndex: 10, alignItems: 'flex-end', gap: spacing.xs },
+  hidden: { display: 'none' },
   circle: { width: 56, height: 56, borderRadius: radii.full, backgroundColor: colors.error, alignItems: 'center', justifyContent: 'center', ...shadows.buttonPrimary },
   pressed: { transform: [{ scale: 0.96 }] },
   icon: { ...typography.label, color: colors.inkInverse, fontFamily: fonts.bold },
@@ -171,4 +242,20 @@ const styles = StyleSheet.create({
   callText: { ...typography.label, fontFamily: fonts.bold, color: colors.error },
   close: { alignItems: 'center', paddingVertical: spacing.sm },
   closeText: { ...typography.label, color: colors.ink600 },
+  // ---- redesign look (rider app) ----
+  rdBox: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  rdRing: { position: 'absolute', width: 48, height: 48, borderRadius: 24, backgroundColor: '#E5484D' },
+  rdCircle: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 18px rgba(194,59,59,0.38)' },
+  rdIcon: { fontFamily: font.xb, fontSize: 13, letterSpacing: 0.6, color: '#FFFFFF' },
+  rdHead: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 12 },
+  rdShield: { width: 52, height: 52, borderRadius: 26, backgroundColor: h.dangerWash, alignItems: 'center', justifyContent: 'center' },
+  rdTitle: { fontFamily: font.xb, fontSize: 20, letterSpacing: -0.3, color: h.ivory, marginBottom: 3 },
+  rdSub: { fontFamily: font.r, fontSize: 13.5, lineHeight: 19, color: h.muted },
+  rdCall: { height: 56, borderRadius: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 12px 24px rgba(194,59,59,0.3)' },
+  rdCallText: { fontFamily: font.b, fontSize: 15.5, color: '#FFFFFF' },
+  rdHold: { height: 54, borderRadius: 18, borderWidth: 1.5, borderColor: 'rgba(194,59,59,0.35)', backgroundColor: '#FFFFFF', overflow: 'hidden', justifyContent: 'center', marginTop: 2 },
+  rdHoldFill: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, transformOrigin: 'left', backgroundColor: 'rgba(194,59,59,0.16)' },
+  rdShare: { height: 54, borderRadius: 18, backgroundColor: h.chip, alignItems: 'center', justifyContent: 'center' },
+  rdShareText: { fontFamily: font.b, fontSize: 15, color: h.ivory },
+  rdCloseText: { fontFamily: font.sb, fontSize: 14.5, color: h.muted },
 })

@@ -1,33 +1,23 @@
 import { useEffect, useState } from 'react'
-import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
-import { h } from '@/theme/homeTokens'
+import { h, font, geo, sectionLabel, shadow } from '@/theme/homeTokens'
 import { useNavClearance } from '@/features/home/FloatingTabBar'
-import { card, geo, sectionLabel } from '@/theme/homeTokens'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Feather } from '@expo/vector-icons'
+import { Feather, Ionicons } from "@expo/vector-icons"
 import Animated, { FadeInDown, FadeIn, useAnimatedStyle } from 'react-native-reanimated'
-import { colors, gradientPrimary, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, sendTestError, fonts, useKeyboardOffset, mapSaveError, hasStorePage, openStorePage } from '@ocar/mobile-shared'
+import { Button, Press, colors, radii, spacing, typography, TERMS_URL, DELETE_ACCOUNT_WARNING, getApiErrorMessage, requestAccountDeletion, sendTestError, useKeyboardOffset, mapSaveError, hasStorePage, openStorePage } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { EMAIL_ERROR, isPlausibleEmail } from '@/utils/email'
 import { teardownPushNotifications } from '@/services/notifications'
 import { fetchProfile, updateProfile, type ProfileStats } from '@/features/profile/api'
+import { Chip, GroupedList, IconButton, ListRow } from '@/components/ui'
+import { confirmDialog } from '@/components/ui/confirm'
 
-// `go` = live row (chevron); rows without it are inert and show `badge` (default "Soon").
-type Go = 'notifications' | 'places' | 'safety' | 'offers' | 'support'
-type MenuItem = { icon: React.ComponentProps<typeof Feather>['name']; label: string; sub: string; go?: Go; badge?: string }
-const MENU: MenuItem[] = [
-  { icon: 'bell', label: 'Notifications', sub: 'Alerts & preferences', go: 'notifications' },
-  { icon: 'map-pin', label: 'Saved places', sub: 'Home, Work & more', go: 'places' },
-  { icon: 'shield', label: 'Safety', sub: 'Emergency contacts', go: 'safety' },
-  { icon: 'tag', label: 'Offers', sub: 'Discounts for your rides', go: 'offers' },
-  { icon: 'credit-card', label: 'Payment', sub: 'Pay your driver in cash', badge: 'Cash' },
-  { icon: 'help-circle', label: 'Help & Support', sub: 'Email our support team', go: 'support' },
-]
-const ROUTES: Record<Exclude<Go, 'support'>, string> = { notifications: '/notification-settings', places: '/saved-places', safety: '/safety', offers: '/offers' }
+const ROUTES = { notifications: '/notification-settings', places: '/saved-places', safety: '/safety', offers: '/offers' } as const
 const SUPPORT_EMAIL = 'grievance@ocarindia.com'
 const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=Ocar%20rider%20support`
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0'
@@ -105,7 +95,7 @@ export default function ProfileScreen() {
   }
 
   function confirmDeleteAccount() {
-    Alert.alert('Delete your account?', DELETE_ACCOUNT_WARNING, [
+    confirmDialog('Delete your account?', DELETE_ACCOUNT_WARNING, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => void deleteAccountNow() },
     ])
@@ -115,7 +105,7 @@ export default function ProfileScreen() {
     try {
       await requestAccountDeletion(api)
     } catch (err) {
-      Alert.alert('Could not delete your account', getApiErrorMessage(err, 'Please try again, or contact support.'))
+      confirmDialog('Could not delete your account', getApiErrorMessage(err, 'Please try again, or contact support.'))
       return
     }
     // The server already removed this device's push token; this clears the local FCM registration too.
@@ -123,103 +113,86 @@ export default function ProfileScreen() {
     clearAuth()
   }
 
+  const openSupport = () => void Linking.openURL(SUPPORT_MAILTO).catch(() => confirmDialog('Email us', SUPPORT_EMAIL))
+  const go = (r: keyof typeof ROUTES) => () => router.push(ROUTES[r] as never)
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md, paddingBottom: clearance }]}>
-        <Animated.View entering={FadeIn.duration(420)} style={styles.headerCard}>
-          <View style={styles.headerRow}>
-            <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
-              <Text style={styles.avatarText}>{initial}</Text>
-            </LinearGradient>
-            <View style={styles.headerInfo}>
-              <Text style={styles.name} numberOfLines={2}>{displayName}</Text>
-              <Text style={styles.phone}>+91 {displayPhone}</Text>
-              {displayEmail ? <Text style={styles.email} numberOfLines={1}>{displayEmail}</Text> : null}
-            </View>
-            <Pressable onPress={openEdit} style={({ pressed }) => [styles.editBtn, pressed ? styles.pressedScale : null]} accessibilityRole="button" accessibilityLabel="Edit profile">
-              <Text style={styles.editBtnText}>Edit</Text>
-            </Pressable>
-          </View>
+        <Text style={styles.title}>Account</Text>
 
-          <View style={styles.statsRow}>
-            {[
-              { value: String(stats?.total_rides ?? 0), label: 'Rides' },
-              { value: stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '-', label: 'Rating', star: true },
-              { value: formatWallet(stats?.wallet_balance ?? 0), label: 'Wallet' },
-            ].map((s) => (
-              <View key={s.label} style={styles.statTile}>
-                <View style={styles.statValueRow}>
-                  {s.star ? <Feather name="star" size={11} color={colors.warning} /> : null}
-                  <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{s.value}</Text>
-                </View>
-                <Text style={styles.statLabel}>{s.label}</Text>
+        <Animated.View entering={FadeIn.duration(420)}>
+          <LinearGradient colors={['#FFFFFF', '#EEF8F9']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={styles.hero}>
+            <LinearGradient colors={['rgba(214,165,82,0)', 'rgba(214,165,82,0.8)', 'rgba(214,165,82,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.goldLine} />
+            <View style={styles.headerRow}>
+              <LinearGradient colors={['#12A0B6', '#0A7788']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
+                <Text style={styles.avatarText}>{initial}</Text>
+              </LinearGradient>
+              <View style={styles.headerInfo}>
+                <Text style={styles.name} numberOfLines={2}>{displayName}</Text>
+                <Text style={styles.phone}>+91 {displayPhone}</Text>
+                {displayEmail ? <Text style={styles.email} numberOfLines={1}>{displayEmail}</Text> : null}
               </View>
-            ))}
-          </View>
+              <IconButton icon="edit-2" label="Edit profile" color={h.tealText} onPress={openEdit} />
+            </View>
+
+            {/* The wallet stat is gone from the UI by design; `stats.wallet_balance` is still fetched. */}
+            <View style={styles.statsRow}>
+              <View style={styles.statTile}>
+                <Text style={styles.statValue}>{String(stats?.total_rides ?? 0)}</Text>
+                <Text style={styles.statLabel}>Rides taken</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statTile}>
+                <View style={styles.statValueRow}>
+                  <Ionicons name="star" size={17} color="#E2A93B" />
+                  <Text style={styles.statValue}>{stats?.rating_avg != null ? stats.rating_avg.toFixed(1) : '-'}</Text>
+                </View>
+                <Text style={styles.statLabel}>Your rating</Text>
+              </View>
+            </View>
+          </LinearGradient>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(120).duration(360)}>
-          <Text style={styles.sectionLabel}>Account</Text>
-          <View style={styles.menuCard}>
-            {MENU.map((item) => {
-              const live = item.go !== undefined
-              const onPress = () => (item.go === 'support' ? void Linking.openURL(SUPPORT_MAILTO).catch(() => Alert.alert('Email us', SUPPORT_EMAIL)) : item.go ? router.push(ROUTES[item.go] as never) : undefined)
-              return (
-                <Pressable key={item.label} disabled={!live} onPress={onPress} style={[styles.menuRow, styles.menuRowBorder]}>
-                  <View style={styles.menuIcon}>
-                    <Feather name={item.icon} size={15} color={live ? colors.primary : colors.ink400} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.menuLabel}>{item.label}</Text>
-                    <Text style={styles.menuSub}>{item.sub}</Text>
-                  </View>
-                  {live ? (
-                    <Feather name="chevron-right" size={14} color={colors.ink400} />
-                  ) : (
-                    <View style={styles.soonBadge}>
-                      <Text style={styles.soonBadgeText}>{item.badge ?? 'Soon'}</Text>
-                    </View>
-                  )}
-                </Pressable>
-              )
-            })}
-            {hasStorePage() ? (
-              <Pressable style={[styles.menuRow, styles.menuRowBorder]} onPress={() => void openStorePage(null, { writeReview: true })} accessibilityRole="button">
-                <View style={styles.menuIcon}>
-                  <Feather name="star" size={15} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.menuLabel}>Rate Ocar</Text>
-                  <Text style={styles.menuSub}>Tell others what you think</Text>
-                </View>
-                <Feather name="chevron-right" size={14} color={colors.ink400} />
-              </Pressable>
-            ) : null}
-            {/* The only functional row in this menu -- deep-links to apps/user's
-                hosted /legal/terms (which itself cross-links to /legal/privacy)
-                rather than duplicating the legal text natively. */}
-            <Pressable style={styles.menuRow} onPress={() => void Linking.openURL(TERMS_URL)}>
-              <View style={styles.menuIcon}>
-                <Feather name="file-text" size={15} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.menuLabel}>Terms & Privacy</Text>
-                <Text style={styles.menuSub}>Legal information</Text>
-              </View>
-              <Feather name="chevron-right" size={14} color={colors.ink400} />
-            </Pressable>
-          </View>
+        <Animated.View entering={FadeInDown.delay(80).duration(360)} style={styles.tiles}>
+          <Press onPress={go('places')} scaleTo={0.98} label="Saved places" hit={styles.tileHit} style={styles.tile}>
+            <View style={[styles.tileIcon, { backgroundColor: h.tealWash }]}><Feather name="map-pin" size={20} color={h.tealText} /></View>
+            <Text style={styles.tileTitle}>Saved places</Text>
+            <Text style={styles.tileSub}>Home, Work and more</Text>
+          </Press>
+          <Press onPress={go('offers')} scaleTo={0.98} label="Offers" hit={styles.tileHit} style={styles.tile}>
+            <View style={[styles.tileIcon, { backgroundColor: h.goldWash }]}><Feather name="tag" size={20} color="#8A5F12" /></View>
+            <Text style={styles.tileTitle}>Offers</Text>
+            <Text style={styles.tileSub}>Discounts for rides</Text>
+          </Press>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(140).duration(360)}>
+          <Text style={styles.sectionLabel}>Preferences</Text>
+          <GroupedList>
+            <ListRow icon="credit-card" title="Payment" subtitle="Pay your driver in cash" right={<Chip label="Cash" tone="neutral" />} />
+            <ListRow icon="bell" title="Notifications" subtitle="Alerts and preferences" onPress={go('notifications')} />
+            <ListRow icon="shield" title="Safety" subtitle="Emergency contacts" onPress={go('safety')} />
+          </GroupedList>
+
+          <Text style={[styles.sectionLabel, { marginTop: 26 }]}>Support</Text>
+          <GroupedList>
+            <ListRow icon="help-circle" title="Help and support" subtitle="Email our support team" onPress={openSupport} />
+            {hasStorePage() ? <ListRow icon="star" title="Rate Ocar" subtitle="Tell others what you think" onPress={() => void openStorePage(null, { writeReview: true })} /> : null}
+            {/* Deep-links to the hosted /legal/terms (which cross-links /legal/privacy). */}
+            <ListRow icon="file-text" title="Terms and privacy" subtitle="Legal information" onPress={() => void Linking.openURL(TERMS_URL)} />
+          </GroupedList>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(200).duration(360)}>
-          <Pressable onPress={() => setShowSignOut(true)} style={({ pressed }) => [styles.signOutBtn, pressed ? styles.pressedScale : null]}>
-            <Feather name="log-out" size={15} color={colors.error} />
+          <Press onPress={() => setShowSignOut(true)} scaleTo={0.98} label="Sign out" style={styles.signOutBtn}>
+            <Feather name="log-out" size={17} color={h.danger} />
             <Text style={styles.signOutText}>Sign out</Text>
-          </Pressable>
+          </Press>
           <Pressable onPress={confirmDeleteAccount} style={styles.deleteBtn} accessibilityRole="button">
             <Text style={styles.deleteText}>Delete account</Text>
           </Pressable>
-          <Text style={styles.version} onLongPress={() => { sendTestError('rider'); Alert.alert('Monitoring test', 'Test error sent.') }}>Ocar v{APP_VERSION}</Text>
+          <Text style={styles.version} onLongPress={() => { sendTestError('rider'); confirmDialog('Monitoring test', 'Test error sent.') }}>Ocar v{APP_VERSION}</Text>
         </Animated.View>
       </ScrollView>
 
@@ -228,16 +201,12 @@ export default function ProfileScreen() {
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowSignOut(false)} />
           <View style={styles.sheet}>
             <View style={styles.handle} />
-            <Text style={styles.sheetTitle}>Sign out?</Text>
-            <Text style={styles.sheetBody}>You will be signed out of your Ocar account.</Text>
-            <View style={styles.sheetActions}>
-              <Pressable onPress={() => setShowSignOut(false)} style={({ pressed }) => [styles.sheetCancelBtn, pressed ? styles.pressedScale : null]}>
-                <Text style={styles.sheetCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={handleLogout} style={({ pressed }) => [styles.sheetConfirmBtn, pressed ? styles.pressedScale : null]}>
-                <Text style={styles.sheetConfirmText}>Sign out</Text>
-              </Pressable>
-            </View>
+            <Text style={styles.sheetTitle}>Sign out of Ocar?</Text>
+            <Text style={styles.sheetBody}>You can sign back in anytime with your phone number. Your trip history stays safe.</Text>
+            <Button variant="cta" label="Stay signed in" onPress={() => setShowSignOut(false)} />
+            <Pressable onPress={handleLogout} style={styles.sheetSignOut} accessibilityRole="button">
+              <Text style={styles.sheetSignOutText}>Sign out</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -248,7 +217,7 @@ export default function ProfileScreen() {
           <View style={styles.sheet}>
             <View style={styles.handle} />
             <View style={styles.editHeaderRow}>
-              <Text style={styles.sheetTitle}>Edit profile</Text>
+              <Text style={[styles.sheetTitle, { marginBottom: 0 }]}>Edit profile</Text>
               <Pressable onPress={() => setEditing(false)} style={({ pressed }) => [styles.closeBtn, pressed ? styles.pressedScale : null]} hitSlop={8}>
                 <Feather name="x" size={15} color={colors.ink600} />
               </Pressable>
@@ -282,15 +251,7 @@ export default function ProfileScreen() {
               />
             </View>
             {saveErr ? <Text style={styles.saveErr}>{saveErr}</Text> : null}
-            <Pressable
-              onPress={saveEdit}
-              disabled={saving || editName.trim().length < 2}
-              style={({ pressed }) => [styles.saveBtn, (saving || editName.trim().length < 2) ? styles.disabled : null, pressed && !saving ? styles.pressedScale : null]}
-            >
-              <LinearGradient colors={gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.saveGradient}>
-                <Text style={styles.saveText}>{saving ? 'Saving…' : 'Save changes'}</Text>
-              </LinearGradient>
-            </Pressable>
+            <Button variant="cta" label="Save changes" onPress={saveEdit} loading={saving} disabled={editName.trim().length < 2} />
           </View>
         </Animated.View>
       </Modal>
@@ -298,62 +259,50 @@ export default function ProfileScreen() {
   )
 }
 
-// whole rupees when there are no paise, otherwise two decimals; en-IN digit grouping
-const formatWallet = (n: number) =>
-  `₹${new Intl.NumberFormat('en-IN', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }).format(n)}`
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: h.canvas },
   // paddingBottom clears the floating tab bar (see _layout.tsx)
-  content: { padding: geo.gutter, gap: spacing.md },
-  headerCard: { ...card, padding: spacing.lg },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  avatar: { width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 26, fontFamily: fonts.bold, color: colors.inkInverse },
-  headerInfo: { flex: 1, gap: 2 },
-  name: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, fontSize: 17 },
-  phone: { ...typography.caption, color: colors.ink600 },
-  email: { ...typography.caption, color: colors.ink400 },
-  editBtn: { paddingHorizontal: spacing.sm + 4, paddingVertical: spacing.xs + 2, borderRadius: radii.lg, backgroundColor: colors.primarySubtle },
-  editBtnText: { ...typography.caption, color: colors.primary, fontFamily: fonts.bold },
-  statsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.borderLight },
-  statTile: { flex: 1, alignItems: 'center', paddingHorizontal: 6, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingVertical: spacing.sm + 4 },
-  statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statValue: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  statLabel: { ...typography.caption, color: colors.ink400, marginTop: 2 },
-  sectionLabel: { ...sectionLabel, marginBottom: 10, marginTop: spacing.sm },
-  menuCard: { ...card, overflow: 'hidden' },
-  menuRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 6 },
-  menuRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  menuIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' },
-  menuLabel: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
-  menuSub: { ...typography.caption, color: colors.ink400, marginTop: 1 },
-  soonBadge: { paddingHorizontal: spacing.xs + 2, paddingVertical: 2, borderRadius: radii.full, backgroundColor: colors.surface2 },
-  soonBadgeText: { fontSize: 10, fontFamily: fonts.bold, color: colors.ink400 },
-  signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: spacing.sm + 6, marginTop: spacing.md },
-  deleteBtn: { alignItems: 'center', paddingVertical: spacing.sm, marginTop: spacing.xs },
-  deleteText: { ...typography.caption, color: colors.ink400, textDecorationLine: 'underline' },
-  signOutText: { ...typography.body, color: colors.error, fontFamily: fonts.bold },
-  version: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginTop: spacing.md },
+  content: { padding: geo.gutter, gap: 14 },
+  title: { fontFamily: font.xb, fontSize: 28, letterSpacing: -0.7, color: h.ivory, marginHorizontal: 2, marginBottom: 4 },
+  hero: { borderRadius: 26, borderWidth: 1, borderColor: h.line07, boxShadow: '0 6px 20px rgba(20,23,26,0.06), inset 0 1px 0 rgba(255,255,255,0.95)', paddingTop: 20, paddingHorizontal: 18, paddingBottom: 18, overflow: 'hidden' },
+  goldLine: { position: 'absolute', top: 0, left: 24, right: 24, height: 1 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  avatar: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 3px #FFFFFF, 0 0 0 4.5px rgba(214,165,82,0.75), 0 10px 22px rgba(14,143,163,0.28)' },
+  avatarText: { fontSize: 29, fontFamily: font.b, color: '#FFFFFF' },
+  headerInfo: { flex: 1, gap: 3 },
+  name: { fontFamily: font.xb, fontSize: 20, lineHeight: 24, letterSpacing: -0.3, color: h.ivory },
+  phone: { fontFamily: font.m, fontSize: 13.5, color: h.muted, fontVariant: ['tabular-nums'] },
+  email: { fontFamily: font.m, fontSize: 12.5, color: h.faint },
+  statsRow: { flexDirection: 'row', marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: h.line08 },
+  statTile: { flex: 1, alignItems: 'center' },
+  statDivider: { width: 1, backgroundColor: h.line08 },
+  statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statValue: { fontFamily: font.xb, fontSize: 22, letterSpacing: -0.4, color: h.ivory, fontVariant: ['tabular-nums'] },
+  statLabel: { fontFamily: font.m, fontSize: 12, color: h.muted, marginTop: 2 },
+  tiles: { flexDirection: 'row', gap: 12 },
+  tileHit: { flex: 1 },
+  tile: { minHeight: 148, padding: 16, backgroundColor: h.surface, borderRadius: 22, borderWidth: 1, borderColor: h.line07, boxShadow: shadow.sm },
+  tileIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  tileTitle: { fontFamily: font.b, fontSize: 15, color: h.ivory, marginBottom: 2 },
+  tileSub: { fontFamily: font.r, fontSize: 12.5, color: h.muted },
+  sectionLabel: { ...sectionLabel, marginHorizontal: 2, marginTop: 14, marginBottom: 10 },
+  signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(194,59,59,0.28)', marginTop: 10 },
+  signOutText: { fontFamily: font.b, fontSize: 15, color: h.danger },
+  deleteBtn: { alignItems: 'center', paddingVertical: 10, marginTop: 8 },
+  deleteText: { fontFamily: font.sb, fontSize: 13, color: h.label },
+  version: { fontFamily: font.r, fontSize: 12, color: h.faint, textAlign: 'center', marginTop: 2 },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,23,26,0.45)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, paddingBottom: spacing.xl },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.md },
-  sheetTitle: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  sheetBody: { ...typography.body, color: colors.ink600, marginTop: spacing.xs, marginBottom: spacing.lg },
-  sheetActions: { flexDirection: 'row', gap: spacing.sm },
-  sheetCancelBtn: { flex: 1, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
-  sheetCancelText: { ...typography.body, color: colors.ink600, fontFamily: fonts.semibold },
-  sheetConfirmBtn: { flex: 1, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, backgroundColor: colors.error, alignItems: 'center' },
-  sheetConfirmText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
+  sheet: { backgroundColor: h.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 14, paddingHorizontal: 18, paddingBottom: 30, boxShadow: '0 -10px 30px rgba(20,23,26,0.12)' },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.12)', alignSelf: 'center', marginBottom: 20 },
+  sheetTitle: { fontFamily: font.xb, fontSize: 20, letterSpacing: -0.3, color: h.ivory, marginBottom: 6 },
+  sheetBody: { fontFamily: font.r, fontSize: 14, lineHeight: 21, color: h.muted, marginBottom: 20 },
+  sheetSignOut: { height: 54, marginTop: 10, alignItems: 'center', justifyContent: 'center' },
+  sheetSignOutText: { fontFamily: font.b, fontSize: 15.5, color: h.danger },
   editHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
   closeBtn: { width: 32, height: 32, borderRadius: radii.full, backgroundColor: colors.surface3, alignItems: 'center', justifyContent: 'center' },
   inputWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.surface2, borderRadius: radii.lg, paddingHorizontal: spacing.sm + 4, marginBottom: spacing.sm },
   inputIcon: { marginRight: 2 },
   input: { flex: 1, ...typography.body, color: colors.ink900, paddingVertical: spacing.sm + 4 },
-  saveErr: { ...typography.caption, color: colors.error, marginBottom: spacing.sm },
-  saveBtn: { borderRadius: radii.lg, overflow: 'hidden', marginTop: spacing.xs },
-  disabled: { opacity: 0.5 },
+  saveErr: { ...typography.caption, color: h.danger, marginBottom: spacing.sm },
   pressedScale: { transform: [{ scale: 0.97 }] },
-  saveGradient: { paddingVertical: spacing.sm + 6, alignItems: 'center' },
-  saveText: { ...typography.body, color: colors.inkInverse, fontFamily: fonts.bold },
 })

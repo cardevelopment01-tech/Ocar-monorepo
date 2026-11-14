@@ -4,6 +4,8 @@ export interface RateCard {
   category_name: string
   category_slug: string
   ride_type: 'one_way' | 'round_trip' | 'rental'
+  /** 'city' = the metered in-city card (ride_type stays one_way); 'standard' = every other card. */
+  trip_mode: 'standard' | 'city'
   rate_per_km: number
   rate_per_min: number
   min_fare: number
@@ -60,6 +62,9 @@ export interface RentalPackage {
   package_fare: number
   extra_per_km: number
   extra_per_min: number
+  /** Fees a rental is charged, kept here since migration 136 (numeric strings from Postgres). */
+  stop_charge: string
+  cancellation_fee: string
   is_active: boolean
   city_id: number | null
   city_name: string | null
@@ -75,6 +80,8 @@ export interface FareEstimateRequest {
   trip_hours?: number
   rental_package_id?: number
   city_id?: number
+  /** 'city' = quote on the city ride card (ride_type stays one_way). Anything else is the standard card. */
+  trip_mode?: 'standard' | 'city'
   /** Pin the round-trip formula (scheduled-ride re-quote keeps the version it was booked under). Default: current. */
   pricing_version?: 1 | 2
 }
@@ -82,7 +89,8 @@ export interface FareEstimateRequest {
 export interface FareEstimateResponse {
   /** 2 for round trips quoted under the hourly window model, else 1. Stored on the snapshot. */
   pricing_version: 1 | 2
-  rate_card_id: number
+  /** The rate card this quote used; null for a package rental, which is priced from its package alone. */
+  rate_card_id: number | null
   surge_event_id: number | null
   surge_multiplier: number
   /** Flat fee per stop on the rate card this quote used (0 = free). Stops added at booking are stamped with it. */

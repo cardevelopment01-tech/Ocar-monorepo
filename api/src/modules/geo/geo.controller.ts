@@ -71,6 +71,7 @@ export async function getRoute(req: Request, res: Response, next: NextFunction):
       withSteps: req.query['withSteps'] === 'true',
       trafficAware: req.query['trafficAware'] === 'true',
       withTrafficIntervals: req.query['withTrafficIntervals'] === 'true',
+      caller: 'http', // set here, never read from the request
     }
     if (language) opts.language = language
     const result = await service.getRoute(oLat, oLng, dLat, dLng, opts)
@@ -90,7 +91,7 @@ export async function getTripClassification(req: Request, res: Response, next: N
       res.status(422).json({ error: 'originLat, originLng, destLat, destLng query params required', code: 'VALIDATION_ERROR' })
       return
     }
-    res.json(await service.classifyTrip(originLat, originLng, destLat, destLng))
+    res.json(await service.classifyTrip(originLat, originLng, destLat, destLng, { withCityRide: true }))
   } catch (err) { next(err) }
 }
 

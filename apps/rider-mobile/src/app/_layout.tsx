@@ -15,6 +15,7 @@ import {
   useAppFonts,
   wrapRoot,
 } from '@ocar/mobile-shared'
+import { ConfirmHost } from '@/components/ui/confirm'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useLocationStore } from '@/store/useLocationStore'
 import { useSocketLifecycle } from '@/services/socket/useSocketLifecycle'
@@ -96,6 +97,7 @@ function RootLayout() {
         <KeyboardProvider>
           <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false, freezeOnBlur: true }} />
+          <ConfirmHost />
           <UpdateGate app="rider" baseURL={API_URL} isBusy={updateBusy} logoSource={logoMarkImage} supportMailto="mailto:grievance@ocarindia.com?subject=Ocar%20rider%20support" />
           {showSplashOverlay ? (
             <SplashOverlay

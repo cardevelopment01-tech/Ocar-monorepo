@@ -6,6 +6,7 @@ import { socketEvents } from '@/websocket/socket.server'
 import type { BroadcastJobData } from './broadcast.processor'
 import { pool } from '@/db/client'
 import { finaliseDiscount } from '@/modules/offers/settlement'
+import { logger } from '@/lib/logger'
 
 const FARE_DRIFT_DISCLOSURE_THRESHOLD = 0.10
 
@@ -57,20 +58,28 @@ export async function processDispatchScheduled(data: DispatchScheduledJobData): 
     }
     if (recomputeInput.rental_package_id != null) fareReq.rental_package_id = recomputeInput.rental_package_id
     if (recomputeInput.origin_city_id    != null) fareReq.city_id           = recomputeInput.origin_city_id
+    // A city ride is re-priced on the city card, and keeps pointing at it.
+    if (recomputeInput.trip_mode === 'city') fareReq.trip_mode = 'city'
 
-    const freshEstimate = await getFareEstimate(fareReq)
-    await repo.updateFareSnapshotEstimate(rideId, freshEstimate)
-    // The discount was reserved on the old quote: re-derive it on the new one (it can shrink, never grow).
-    const newDiscount = await finaliseDiscount(pool, rideId)
+    // The ride is already 'requested' here, so a failed re-quote (a rental package deactivated since booking, no rate card for
+    // the city any more) must not stop it being dispatched: it keeps the quote the rider was shown.
+    try {
+      const freshEstimate = await getFareEstimate(fareReq)
+      await repo.updateFareSnapshotEstimate(rideId, freshEstimate)
+      // The discount was reserved on the old quote: re-derive it on the new one (it can shrink, never grow).
+      const newDiscount = await finaliseDiscount(pool, rideId)
 
-    // Disclose what the rider pays, not the gross fare: that is the number they were shown.
-    const oldTotal = Math.max(recomputeInput.total_estimated - (recomputeInput.discount_amount ?? 0), 0)
-    const newTotal = Math.max(freshEstimate.breakdown.total - newDiscount, 0)
-    if (oldTotal > 0 && Math.abs(newTotal - oldTotal) / oldTotal > FARE_DRIFT_DISCLOSURE_THRESHOLD) {
-      socketEvents.sendRideStatusUpdate(data.rideId, {
-        status: 'requested',
-        fareDrift: { previousFare: oldTotal, currentFare: newTotal },
-      })
+      // Disclose what the rider pays, not the gross fare: that is the number they were shown.
+      const oldTotal = Math.max(recomputeInput.total_estimated - (recomputeInput.discount_amount ?? 0), 0)
+      const newTotal = Math.max(freshEstimate.breakdown.total - newDiscount, 0)
+      if (oldTotal > 0 && Math.abs(newTotal - oldTotal) / oldTotal > FARE_DRIFT_DISCLOSURE_THRESHOLD) {
+        socketEvents.sendRideStatusUpdate(data.rideId, {
+          status: 'requested',
+          fareDrift: { previousFare: oldTotal, currentFare: newTotal },
+        })
+      }
+    } catch (err) {
+      logger.warn({ err, rideId: data.rideId }, 'scheduled ride: fare re-quote failed, dispatching on the booked quote')
     }
   }
 

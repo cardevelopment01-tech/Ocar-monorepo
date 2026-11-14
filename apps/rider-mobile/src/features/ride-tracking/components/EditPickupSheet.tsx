@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState } from 'react'
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Modal, StyleSheet, Text, View } from 'react-native'
 import MapView, { Circle, Marker, Polyline, type MarkerDragStartEndEvent } from 'react-native-maps'
 import { Feather } from '@expo/vector-icons'
-import { Button, PinGlyph, colors, fonts, haversineMetres, radii, spacing, typography } from '@ocar/mobile-shared'
+import { Button, PinGlyph, font, h, haversineMetres } from '@ocar/mobile-shared'
+import { IconButton } from '@/components/ui'
 import { OCAR_MAP_PROPS } from '@ocar/mobile-shared'
 import { fetchReverseGeocode } from '@/features/booking/api'
 import { clampToRadius } from '../clampToRadius'
@@ -73,7 +74,7 @@ export function EditPickupSheet({
   }
 
   const distanceToUser = userPos ? Math.round(haversineMetres(userPos, pinPos)) : null
-  const edgeColor = proximity >= 0.85 ? colors.warning : colors.primary
+  const edgeColor = proximity >= 0.85 ? h.gold : h.teal
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} onShow={resetOnOpen}>
@@ -98,7 +99,7 @@ export function EditPickupSheet({
             <>
               <Polyline
                 coordinates={[{ latitude: userPos[0], longitude: userPos[1] }, { latitude: pinPos[0], longitude: pinPos[1] }]}
-                strokeColor={colors.primary}
+                strokeColor={h.teal}
                 strokeWidth={2}
                 lineDashPattern={[1, 8]}
               />
@@ -121,9 +122,7 @@ export function EditPickupSheet({
         </MapView>
 
         <View style={styles.header}>
-          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" style={styles.backBtn}>
-            <Feather name="arrow-left" size={18} color={colors.ink900} />
-          </Pressable>
+          <IconButton icon="arrow-left" label="Close" onPress={onClose} />
           <View style={styles.headerPill}>
             <Text style={styles.headerTitle}>Edit pickup</Text>
           </View>
@@ -140,7 +139,7 @@ export function EditPickupSheet({
           <Text style={styles.title}>Confirm your pickup point</Text>
           <View style={styles.addressRow}>
             <View style={styles.addressIcon}>
-              <Feather name="map-pin" size={14} color={colors.primary} />
+              <Feather name="map-pin" size={16} color={h.tealText} />
             </View>
             {address ? (
               <Text style={styles.address}>{address}</Text>
@@ -149,13 +148,15 @@ export function EditPickupSheet({
             )}
           </View>
           <Text style={styles.hint}>
-            {distanceToUser != null ? `${distanceToUser} m from your live location · ` : ''}
-            drag the pin to fine-tune.
+            {distanceToUser != null ? `${distanceToUser >= 1000 ? `${(distanceToUser / 1000).toFixed(1)} km` : `${distanceToUser} m`} from your live location · ` : ''}
+            Drag the pin to fine-tune.
           </Text>
           {driverAssigned ? <Text style={styles.hint}>Your driver will be notified of the update.</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
+          <View style={{ height: 10 }} />
           <Button
+            variant="cta"
             label="Confirm pickup"
             loading={confirming || geocoding}
             onPress={() => onConfirm({ lat: pinPos[0], lng: pinPos[1], address })}
@@ -167,21 +168,20 @@ export function EditPickupSheet({
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  header: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: 54 },
-  backBtn: { width: 40, height: 40, borderRadius: radii.full, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', elevation: 3, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  headerPill: { backgroundColor: colors.surface, borderRadius: radii.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, elevation: 3, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  headerTitle: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold },
-  boundaryPill: { position: 'absolute', top: 128, alignSelf: 'center', backgroundColor: colors.warningLight, borderRadius: radii.full, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2 },
-  boundaryText: { ...typography.caption, color: colors.warning, fontFamily: fonts.semibold },
-  userDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.primaryBright, borderWidth: 2, borderColor: '#FFFFFF' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.lg, paddingBottom: spacing.xl, gap: spacing.xs },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', alignSelf: 'center', marginBottom: spacing.sm },
-  title: { ...typography.title, color: colors.ink900, fontFamily: fonts.bold, marginBottom: spacing.xs },
-  addressRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  addressIcon: { width: 28, height: 28, borderRadius: radii.md, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  address: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold, flex: 1 },
-  addressSkeleton: { flex: 1, height: 16, borderRadius: 4, backgroundColor: colors.surface3 },
-  hint: { ...typography.caption, color: colors.ink400, marginLeft: 36 },
-  error: { ...typography.caption, color: colors.error, fontFamily: fonts.semibold, marginTop: spacing.xs },
+  screen: { flex: 1, backgroundColor: h.canvas },
+  header: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingTop: 54 },
+  headerPill: { height: 44, justifyContent: 'center', backgroundColor: h.surface, borderRadius: 22, paddingHorizontal: 18, boxShadow: '0 4px 14px rgba(20,23,26,0.14)' },
+  headerTitle: { fontFamily: font.b, fontSize: 15, color: h.ivory },
+  boundaryPill: { position: 'absolute', top: 118, alignSelf: 'center', backgroundColor: h.goldWash, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
+  boundaryText: { fontFamily: font.sb, fontSize: 12.5, color: h.goldInk },
+  userDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: h.teal, borderWidth: 2, borderColor: '#FFFFFF' },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: h.surface, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingTop: 14, paddingHorizontal: 18, paddingBottom: 30, gap: 6, boxShadow: '0 -12px 32px rgba(20,23,26,0.14)' },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.14)', alignSelf: 'center', marginBottom: 12 },
+  title: { fontFamily: font.xb, fontSize: 20, letterSpacing: -0.3, color: h.ivory, marginBottom: 6 },
+  addressRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  addressIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: h.tealWash, alignItems: 'center', justifyContent: 'center' },
+  address: { fontFamily: font.b, fontSize: 15, lineHeight: 21, color: h.ivory, flex: 1, paddingTop: 5 },
+  addressSkeleton: { flex: 1, height: 16, borderRadius: 4, backgroundColor: h.chip, marginTop: 8 },
+  hint: { fontFamily: font.m, fontSize: 13, lineHeight: 19, color: h.muted, marginLeft: 44 },
+  error: { fontFamily: font.sb, fontSize: 13, color: h.danger, marginTop: 4 },
 })

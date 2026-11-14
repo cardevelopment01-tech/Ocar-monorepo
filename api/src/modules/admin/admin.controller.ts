@@ -688,7 +688,10 @@ export async function postAdminRateCard(
       baseFare?: number;
       cityId?: number | null;
       notes?: string | null;
+      tripMode?: "standard" | "city";
     } = {};
+    // Omitted = the standard card (old admin screens). Anything else is passed on for the service to refuse.
+    if (req.body.trip_mode !== undefined) data.tripMode = req.body.trip_mode;
     if (req.body.return_rate_per_km !== undefined)
       data.returnRatePerKm =
         req.body.return_rate_per_km != null
@@ -1354,6 +1357,8 @@ export async function patchAdminRentalPackage(
       km_limit,
       display_order,
       city_id,
+      stop_charge,
+      cancellation_fee,
     } = req.body as Record<string, unknown>;
     const fields: {
       package_fare?: number;
@@ -1364,6 +1369,8 @@ export async function patchAdminRentalPackage(
       km_limit?: number;
       display_order?: number;
       city_id?: number | null;
+      stop_charge?: number;
+      cancellation_fee?: number;
     } = {};
     if (package_fare !== undefined) fields.package_fare = Number(package_fare);
     if (extra_per_km !== undefined) fields.extra_per_km = Number(extra_per_km);
@@ -1377,6 +1384,9 @@ export async function patchAdminRentalPackage(
       fields.display_order = Number(display_order);
     if (city_id !== undefined)
       fields.city_id = city_id === null ? null : Number(city_id);
+    if (stop_charge !== undefined) fields.stop_charge = service.parseRentalFeeInput(stop_charge);
+    if (cancellation_fee !== undefined)
+      fields.cancellation_fee = service.parseRentalFeeInput(cancellation_fee);
     res.json(
       await service.updateAdminRentalPackage(
         BigInt(req.params["id"]!),
@@ -1417,6 +1427,8 @@ export async function postAdminRentalPackage(
       extra_per_min,
       display_order,
       city_id,
+      stop_charge,
+      cancellation_fee,
     } = req.body as Record<string, unknown>;
     const pkg = await service.createAdminRentalPackage(
       {
@@ -1426,6 +1438,9 @@ export async function postAdminRentalPackage(
         package_fare: Number(package_fare),
         extra_per_km: Number(extra_per_km),
         extra_per_min: Number(extra_per_min),
+        // A missing, null or blank fee is NaN, which the service rejects: both fees are required on create.
+        stop_charge: service.parseRentalFeeInput(stop_charge),
+        cancellation_fee: service.parseRentalFeeInput(cancellation_fee),
         ...(display_order !== undefined
           ? { display_order: Number(display_order) }
           : {}),

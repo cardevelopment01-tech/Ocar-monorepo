@@ -6,6 +6,8 @@ export interface RateCard {
   category_name: string
   category_slug: string
   ride_type: 'one_way' | 'round_trip' | 'rental'
+  /** 'city' = the City Ride card (a one-way card with its own rates); 'standard' = every other card. */
+  trip_mode: 'standard' | 'city'
   city_id: number | null
   city_name: string | null
   rate_per_km: string
@@ -24,8 +26,10 @@ export interface RateCard {
 }
 
 export interface RateCardHistoryRow {
+  /** 'city' for a version of the City Ride card; the API sends it so history can tell the two one-way cards apart. */
+  trip_mode?: 'standard' | 'city'
   id: number
-  rate_card_id: number
+  rate_card_id: number | null
   category_name: string
   ride_type: string
   city_id: number | null
@@ -63,6 +67,8 @@ export const pricingApi = {
   createRateCard: (data: {
     category_id: number
     ride_type: string
+    /** Omit for a standard card; 'city' makes this a version of the City Ride card. */
+    trip_mode?: 'standard' | 'city'
     city_id?: number | null
     rate_per_km: number
     rate_per_min: number
@@ -105,6 +111,9 @@ export interface RentalPackageAdmin {
   package_fare: string
   extra_per_km: string
   extra_per_min: string
+  /** What a rental is charged for each added stop and for a late cancellation (rupees). */
+  stop_charge: string
+  cancellation_fee: string
   is_active: boolean
   city_id: number | null
   city_name: string | null
@@ -120,12 +129,15 @@ export const rentalPackageApi = {
   update: (id: number, data: {
     package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
     duration_minutes?: number; km_limit?: number; display_order?: number; city_id?: number | null
+    stop_charge?: number; cancellation_fee?: number
   }): Promise<RentalPackageAdmin> =>
     api.patch(`/api/v1/admin/pricing/rental-packages/${id}`, data).then(r => r.data as RentalPackageAdmin),
 
   create: (data: {
     category_id: number; duration_minutes: number; km_limit: number
-    package_fare: number; extra_per_km: number; extra_per_min: number; display_order?: number
+    package_fare: number; extra_per_km: number; extra_per_min: number
+    stop_charge: number; cancellation_fee: number
+    display_order?: number
     city_id?: number | null
   }): Promise<RentalPackageAdmin> =>
     api.post('/api/v1/admin/pricing/rental-packages', data).then(r => r.data as RentalPackageAdmin),

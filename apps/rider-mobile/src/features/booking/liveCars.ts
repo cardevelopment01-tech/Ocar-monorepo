@@ -27,7 +27,9 @@ export const MAX_SHOWN = 8
  * showing a car further out would show a driver who will never get the request; other trips reach 10 km, but the map shows only
  * the near ones.
  */
-export function showWithinMetres(rideType: string | null | undefined, categorySlug: string | null | undefined): number {
+export function showWithinMetres(rideType: string | null | undefined, categorySlug: string | null | undefined, tripMode?: string | null): number {
+  // A city ride is offered within the same radius as a short rental (2 km for an auto, 2.5 km otherwise), so the map shows the same.
+  if (tripMode === 'city' && rideType === 'one_way') return Math.min(SHOW_WITHIN_M, categorySlug === 'auto' || categorySlug === 'auto_rickshaw' ? 2_000 : 2_500)
   if (rideType === 'rental') return Math.min(SHOW_WITHIN_M, categorySlug === 'auto' || categorySlug === 'auto_rickshaw' ? 2_000 : 2_500)
   return SHOW_WITHIN_M
 }

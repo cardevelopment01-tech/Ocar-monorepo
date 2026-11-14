@@ -40,3 +40,15 @@ export function recommendPackage(
     overMin: Math.max(0, Math.ceil(durationMin - largest.durationMinutes - GRACE_MIN)),
   }
 }
+
+export type OverageEstimate = { overKm: number; overMin: number; extra: number }
+
+/**
+ * What running past one package would add: km over x extraPerKm + minutes over x extraPerMin, counted only beyond the
+ * package limit plus the grace the server does not bill. An estimate for the screen, never the booked price.
+ */
+export function estimateOverage(p: Pick<RentalPackage, 'kmLimit' | 'durationMinutes' | 'extraPerKm' | 'extraPerMin'>, distanceKm: number, durationMin: number): OverageEstimate {
+  const overKm = Math.max(0, Math.ceil(distanceKm - p.kmLimit - GRACE_KM))
+  const overMin = Math.max(0, Math.ceil(durationMin - p.durationMinutes - GRACE_MIN))
+  return { overKm, overMin, extra: Math.round(overKm * p.extraPerKm + overMin * p.extraPerMin) }
+}

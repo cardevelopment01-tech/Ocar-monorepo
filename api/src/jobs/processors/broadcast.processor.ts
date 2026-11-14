@@ -34,7 +34,7 @@ async function withRoadDistance<T extends { lat: number; lng: number; distance_m
   return Promise.all(drivers.map(async (d) => {
     try {
       const route = await Promise.race([
-        getRoute(d.lat, d.lng, toLat, toLng),
+        getRoute(d.lat, d.lng, toLat, toLng, { caller: 'dispatch' }),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), ROAD_DISTANCE_TIMEOUT_MS)),
       ])
       if (!route || route.source === 'fallback' || !(route.distanceKm > 0)) return d
@@ -124,8 +124,10 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     radiusM?: number
   }> = []
 
-  const slug = data.rideType === 'rental' ? await repo.getCategorySlug(categoryId) : null
-  const cap = maxPickupRadiusMetres(data.rideType, slug, data.tripHours, data.broadcastRound)
+  // A city ride's mode is read from its ride row (stamped at booking), not from the job: jobs already queued carry no such field.
+  const tripMode: 'standard' | 'city' = ride.trip_mode === 'city' ? 'city' : 'standard'
+  const slug = data.rideType === 'rental' || tripMode === 'city' ? await repo.getCategorySlug(categoryId) : null
+  const cap = maxPickupRadiusMetres(data.rideType, slug, data.tripHours, data.broadcastRound, tripMode)
   const roundRadius = Math.min(cap, data.radiusMetres ?? cap)
   // Dispatch phase 0 (migration 135): what the round did, recorded at the end. Both helpers answer "off" on any failure.
   const logOn = phase1 && await decisionLogEnabled()
@@ -231,7 +233,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   // instead of leaving the ride to wait for the next round's timer. Off unless the switch is on; never for return-cab matches or a job
   // that carries its own radius.
   if (!drivers.length && maxThisRound > 0 && phase1 && !data.isReturnCab && data.radiusMetres == null && await fastRoundsEnabled()) {
-    const capMax = maxPickupRadiusMetres(data.rideType, slug, data.tripHours, BROADCAST_ROUND_MAX)
+    const capMax = maxPickupRadiusMetres(data.rideType, slug, data.tripHours, BROADCAST_ROUND_MAX, tripMode)
     const steps = fastRoundSteps(data.broadcastRound, roundRadius, capMax, BROADCAST_ROUND_STEP_METRES)
     const fallbackIds = steps.some((s) => !s.exactOnly) && data.broadcastRound === 1 ? await repo.getEligibleDriverCategoryIds(categoryId) : categoryIds
     // Like the normal search, each step first leaves out everyone this ride should skip (open offers, decliners, spread's busy and
@@ -334,20 +336,23 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     await Promise.all(driversWithWindow.map(driver => {
       const id = driver.driver_id.toString()
       const seen = straightById.get(id)
-      offeredCount++
-      return repo.createRideAssignment({
-        rideId,
-        driverId:       driver.driver_id,
-        sessionId:      driver.session_id,
-        expiresAt:      driver.expiresAt,
-        broadcastRound: data.broadcastRound,
-        driverLat:      driver.lat,
-        driverLng:      driver.lng,
-        ...(logOn && seen ? { log: {
-          straightM: seen.straightM, shownM: Math.round(driver.distance_metres), radiusM: Math.round(driver.radiusM ?? roundRadius), rank: seen.rank,
-          reach: driver.isBackgrounded ? 'background' as const : offline.has(id) ? 'no_socket' as const : 'live' as const, fastStep,
-        } } : {}),
-      })
+      return (async () => {
+        const created = await repo.createRideAssignment({
+          rideId,
+          driverId:       driver.driver_id,
+          sessionId:      driver.session_id,
+          expiresAt:      driver.expiresAt,
+          broadcastRound: data.broadcastRound,
+          driverLat:      driver.lat,
+          driverLng:      driver.lng,
+          ...(logOn && seen ? { log: {
+            straightM: seen.straightM, shownM: Math.round(driver.distance_metres), radiusM: Math.round(driver.radiusM ?? roundRadius), rank: seen.rank,
+            reach: driver.isBackgrounded ? 'background' as const : offline.has(id) ? 'no_socket' as const : 'live' as const, fastStep,
+          } } : {}),
+        })
+        offeredCount++ // counted once the assignment exists, not when it is attempted
+        return created
+      })()
     }))
 
     // Delivery tracking for the closed-app ride request work (docs/superpowers/plans/2026-11-05-driver-app-closed-ride-alert-overlay.md,

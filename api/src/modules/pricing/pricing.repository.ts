@@ -21,21 +21,23 @@ async function getRateCardVersion(): Promise<string> {
   }
 }
 
-export async function getCurrentRateCard(categoryId: number, rideType: string, cityId: number | null) {
+export type TripMode = 'standard' | 'city'
+
+export async function getCurrentRateCard(categoryId: number, rideType: string, cityId: number | null, tripMode: TripMode = 'standard') {
   const version = await getRateCardVersion()
-  const key = rateCardKey(version, categoryId, rideType, cityId)
+  const key = rateCardKey(version, categoryId, rideType, cityId, tripMode)
   const card = await cachedRead('rate_cards', key, RATE_CARD_CACHE_TTL_SECONDS, () =>
-    fetchCurrentRateCardFromDb(categoryId, rideType, cityId)
+    fetchCurrentRateCardFromDb(categoryId, rideType, cityId, tripMode)
   )
-  // A card cached by a build that predates rate_cards.base_fare (migration 121) has no such
-  // field; read through to the DB rather than quote without the base fare for up to the 1h cache TTL.
-  if (card && (card as { base_fare?: unknown }).base_fare === undefined) {
-    return fetchCurrentRateCardFromDb(categoryId, rideType, cityId)
+  // A card cached by a build that predates rate_cards.base_fare (migration 121) or rate_cards.trip_mode (migration 137) has no
+  // such field; read through to the DB rather than quote on a stale shape for up to the 1h cache TTL.
+  if (card && ((card as { base_fare?: unknown }).base_fare === undefined || (card as { trip_mode?: unknown }).trip_mode === undefined)) {
+    return fetchCurrentRateCardFromDb(categoryId, rideType, cityId, tripMode)
   }
   return card
 }
 
-async function fetchCurrentRateCardFromDb(categoryId: number, rideType: string, cityId: number | null) {
+async function fetchCurrentRateCardFromDb(categoryId: number, rideType: string, cityId: number | null, tripMode: TripMode) {
   const res = await pool.query(
     `SELECT rc.*,
             vc.display_name AS category_name,
@@ -46,16 +48,17 @@ async function fetchCurrentRateCardFromDb(categoryId: number, rideType: string, 
        AND rc.ride_type = $2
        AND rc.effective_to IS NULL
        AND (rc.city_id = $3 OR rc.city_id IS NULL)
+       AND rc.trip_mode = $4
      ORDER BY rc.city_id NULLS LAST
      LIMIT 1`,
-    [categoryId, rideType, cityId]
+    [categoryId, rideType, cityId, tripMode]
   )
   return res.rows[0] ?? null
 }
 
 export async function getAllCurrentRateCards() {
   const res = await pool.query(
-    `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type,
+    `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type, rc.trip_mode,
             rc.city_id::int AS city_id, rc.rate_per_km, rc.rate_per_min, rc.min_fare,
             rc.return_rate_per_km, rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day,
             rc.cancellation_fee, rc.stop_charge, rc.base_fare, rc.effective_from, rc.effective_to, rc.notes,
@@ -67,7 +70,8 @@ export async function getAllCurrentRateCards() {
      JOIN vehicle_categories vc ON vc.id = rc.category_id
      LEFT JOIN cities c ON c.id = rc.city_id
      WHERE rc.effective_to IS NULL
-     ORDER BY c.name NULLS FIRST, vc.display_name, rc.ride_type`
+       AND rc.trip_mode = 'standard' -- the public list is the intercity price list; city cards would overwrite the one-way row
+     ORDER BY c.name NULLS FIRST, vc.display_name, rc.ride_type, rc.trip_mode`
   )
   return res.rows
 }
@@ -80,7 +84,7 @@ export async function getRateCardHistory() {
             rch.changed_by::int AS changed_by, rch.change_reason, rch.created_at,
             rch.city_id::int AS city_id,
             vc.display_name AS category_name,
-            rc.ride_type,
+            rc.ride_type, rc.trip_mode,
             c.name AS city_name
      FROM rate_card_history rch
      JOIN rate_cards rc ON rc.id = rch.rate_card_id
@@ -93,12 +97,18 @@ export async function getRateCardHistory() {
 }
 
 export async function getRentalPackage(packageId: number) {
-  return cachedRead(
+  const pkg = await cachedRead(
     'rental_packages',
     rentalPackageKey(packageId),
     RATE_CARD_CACHE_TTL_SECONDS,
     () => fetchRentalPackageFromDb(packageId)
   )
+  // A package cached by a build that predates rental_packages.stop_charge (migration 136) has no such field; read through to the
+  // DB rather than quote a rental's stops as free for up to the cache TTL (same guard as getCurrentRateCard's base_fare).
+  if (pkg && (pkg as { stop_charge?: unknown }).stop_charge === undefined) {
+    return fetchRentalPackageFromDb(packageId)
+  }
+  return pkg
 }
 
 async function fetchRentalPackageFromDb(packageId: number) {
@@ -308,7 +318,10 @@ export async function createRateCard(data: {
   cityId?: number | null
   notes?: string | null
   adminId: number
+  /** Which card this is a new version of. Omitted = the standard (intercity) card; a city card is a separate current row. */
+  tripMode?: TripMode
 }) {
+  const tripMode: TripMode = data.tripMode ?? 'standard'
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -318,9 +331,10 @@ export async function createRateCard(data: {
        SET effective_to = now()
        WHERE category_id = $1 AND ride_type = $2
          AND COALESCE(city_id, 0) = COALESCE($3::bigint, 0)
+         AND trip_mode = $4
          AND effective_to IS NULL
        RETURNING *`,
-      [data.categoryId, data.rideType, data.cityId ?? null]
+      [data.categoryId, data.rideType, data.cityId ?? null, tripMode]
     )
 
     if (expired.rows.length > 0) {
@@ -343,8 +357,8 @@ export async function createRateCard(data: {
       `INSERT INTO rate_cards
          (category_id, ride_type, rate_per_km, rate_per_min,
           min_fare, return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-          city_id, notes, created_by, stop_charge, cancellation_fee, base_fare)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          city_id, notes, created_by, stop_charge, cancellation_fee, base_fare, trip_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        RETURNING *`,
       [
         data.categoryId, data.rideType,
@@ -363,6 +377,7 @@ export async function createRateCard(data: {
         expired.rows[0]?.cancellation_fee ?? null,
         // Same carry-forward for the flat base fare.
         data.baseFare ?? Number(expired.rows[0]?.base_fare ?? 0),
+        tripMode,
       ]
     )
 
