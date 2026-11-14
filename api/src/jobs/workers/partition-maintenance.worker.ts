@@ -5,6 +5,7 @@ import { processPurgeOldPartitions } from '@/jobs/processors/partition-purge.pro
 import { processPurgeOldNotifications } from '@/jobs/processors/notification-purge.processor'
 import { processPurgeAuthTables } from '@/jobs/processors/auth-tables-purge.processor'
 import { processPurgeRideShares } from '@/jobs/processors/ride-shares-purge.processor'
+import { processPurgeEtaShadow } from '@/jobs/processors/eta-shadow-purge.processor'
 import { createWorkerLogger } from '@/lib/worker-logger'
 
 const log = createWorkerLogger('partition-maintenance')
@@ -35,6 +36,10 @@ export const partitionMaintenanceWorker = new Worker(
     }
     if (job.name === 'purge_ride_shares') {
       await processPurgeRideShares()
+      return
+    }
+    if (job.name === 'purge_eta_shadow') {
+      await processPurgeEtaShadow()
       return
     }
   },

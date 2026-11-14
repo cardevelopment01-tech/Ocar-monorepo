@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import * as service from './geo.service'
+import { recordShadowGoogle } from '@/modules/rides/eta-shadow'
 
 export async function getCities(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -73,7 +74,10 @@ export async function getRoute(req: Request, res: Response, next: NextFunction):
       caller: 'http', // set here, never read from the request
     }
     if (language) opts.language = language
-    res.json(await service.getRoute(oLat, oLng, dLat, dLng, opts))
+    const result = await service.getRoute(oLat, oLng, dLat, dLng, opts)
+    res.json(result)
+    // Shadow ETA (phase B): after the answer is sent, note what a rider was shown. Off unless eta_shadow_enabled; never throws.
+    if (opts?.trafficAware && req.user) void recordShadowGoogle(req.user.id, { lat: dLat, lng: dLng }, result)
   } catch (err) { next(err) }
 }
 

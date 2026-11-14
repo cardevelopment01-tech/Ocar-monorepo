@@ -2109,3 +2109,21 @@ export async function insertEtaSnapshot(
     [rideId, leg, predictedDurationMin]
   )
 }
+
+// Shadow ETA samples (migration 136). Callers wrap this: a failed write must never touch a ride or a location ping.
+export async function insertEtaShadow(row: {
+  rideId: bigint
+  leg: 'to_pickup' | 'to_destination'
+  kind: 'ours' | 'google'
+  etaSec: number
+  etaBaseSec?: number | null
+  remainingM?: number | null
+  offRouteM?: number | null
+}): Promise<void> {
+  await pool.query(
+    `INSERT INTO ride_eta_shadow (ride_id, leg, kind, eta_sec, eta_base_sec, remaining_m, off_route_m)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [row.rideId, row.leg, row.kind, Math.round(row.etaSec), row.etaBaseSec == null ? null : Math.round(row.etaBaseSec),
+     row.remainingM == null ? null : Math.round(row.remainingM), row.offRouteM == null ? null : Math.round(row.offRouteM)]
+  )
+}

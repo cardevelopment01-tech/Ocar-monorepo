@@ -11,6 +11,7 @@ import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
 import { assertCityRideAllowed, parseTripMode } from './city-ride'
 import * as repo from './rides.repository'
+import { storeShadowLeg, recordShadowPing } from './eta-shadow'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { getBlockingChallenge } from '@/modules/drivers/driver-verification.service'
 import { maybeOpenSpotCheck } from '@/modules/drivers/spot-check.engine'
@@ -88,6 +89,8 @@ async function logEtaSnapshot(
     const route = await getRoute(originLat, originLng, destLat, destLng, { trafficAware: true, caller: 'eta_snapshot' })
     const predicted = route.trafficDurationMin ?? route.durationMin
     await repo.insertEtaSnapshot(rideId, leg, predicted)
+    // Shadow ETA (phase B): keep this same route for the comparison. Off unless eta_shadow_enabled; never throws.
+    await storeShadowLeg(rideId.toString(), leg, route, { lat: destLat, lng: destLng })
   } catch { /* best-effort instrumentation only */ }
 }
 
@@ -557,6 +560,8 @@ export async function updateLocation(driverId: bigint, data: {
     heading:    heading ?? 0,
     speed_kmph: speed ?? 0,
   })
+  // Shadow ETA (phase B): off unless eta_shadow_enabled, samples at most every 30 s per ride, never throws or delays the ping.
+  void recordShadowPing(rideId, current.lat, current.lng)
 
   let trail = trailByDriver.get(driverKey)
   if (!trail || trail.rideId !== rideId) {
