@@ -18,6 +18,8 @@ interface DriverSessionState {
   mode: 'standard' | 'return_cab' | null
   destinationCityName: string | null
   activeRide: ActiveRideSummary | null
+  /** Background location tracking could not be started for this online session (Home tells the driver and offers a retry). */
+  trackingFailed: boolean
   setOnline: (session: {
     id: string
     vehicleId: number
@@ -27,6 +29,7 @@ interface DriverSessionState {
   }) => void
   setOffline: () => void
   setActiveRide: (ride: ActiveRideSummary | null) => void
+  setTrackingFailed: (failed: boolean) => void
 }
 
 export const useDriverSessionStore = create<DriverSessionState>()((set) => ({
@@ -37,6 +40,7 @@ export const useDriverSessionStore = create<DriverSessionState>()((set) => ({
   mode: null,
   destinationCityName: null,
   activeRide: null,
+  trackingFailed: false,
 
   setOnline: (session) => {
     persistSessionId(session.id)
@@ -47,13 +51,15 @@ export const useDriverSessionStore = create<DriverSessionState>()((set) => ({
       categoryId: session.categoryId,
       mode: session.mode ?? 'standard',
       destinationCityName: session.destinationCityName ?? null,
+      trackingFailed: false,
     })
   },
 
   setOffline: () => {
     clearPersistedSessionId()
-    set({ sessionId: null, isOnline: false, vehicleId: null, categoryId: null, mode: null, destinationCityName: null, activeRide: null })
+    set({ sessionId: null, isOnline: false, vehicleId: null, categoryId: null, mode: null, destinationCityName: null, activeRide: null, trackingFailed: false })
   },
 
   setActiveRide: (ride) => set({ activeRide: ride }),
+  setTrackingFailed: (failed) => set({ trackingFailed: failed }),
 }))

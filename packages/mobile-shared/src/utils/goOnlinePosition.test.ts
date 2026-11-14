@@ -47,4 +47,34 @@ describe('resolveGoOnlinePosition', () => {
     })
     expect(out).toEqual(P(2))
   })
+
+  it('does not wait for a recent-fix lookup that never answers', async () => {
+    vi.useFakeTimers()
+    try {
+      const never = new Promise<never>(() => undefined)
+      const p = resolveGoOnlinePosition({ recent: () => never, fresh: async () => P(2), last: async () => P(3) }, { lookupCapMs: 500 })
+      await vi.advanceTimersByTimeAsync(600)
+      await expect(p).resolves.toEqual(P(2))
+    } finally { vi.useRealTimers() }
+  })
+
+  it('does not wait for a last-known lookup that never answers either', async () => {
+    vi.useFakeTimers()
+    try {
+      const never = new Promise<never>(() => undefined)
+      const p = resolveGoOnlinePosition({ recent: async () => null, fresh: async () => { throw new Error('location_timeout') }, last: () => never }, { lookupCapMs: 500 })
+      const assertion = expect(p).rejects.toThrow('no_location_available')
+      await vi.advanceTimersByTimeAsync(600)
+      await assertion
+    } finally { vi.useRealTimers() }
+  })
+
+  it('treats a lookup that throws immediately as no fix', async () => {
+    const out = await resolveGoOnlinePosition({
+      recent: () => { throw new Error('sync boom') },
+      fresh: async () => P(2),
+      last: async () => P(3),
+    })
+    expect(out).toEqual(P(2))
+  })
 })

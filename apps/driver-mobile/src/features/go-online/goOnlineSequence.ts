@@ -2,8 +2,13 @@
 //
 // Order: position -> server call -> mark online -> socket -> Home. Background tracking is started AFTER the driver is already on Home:
 // it used to be awaited before leaving the screen (about 3 s of spinner on a real phone) although nothing on Home needs it first.
-// A failed tracking start is retried once and then reported; it must not turn a successful go-online into "Failed to go online" (the
-// session is already live on the server by then). useSessionResync also re-arms tracking each time the app returns to the foreground.
+//
+// Once the server has said yes the session is live, so nothing after that may turn into "Failed to go online": each later step that can
+// fail is isolated and reported instead. A failed tracking start is retried once, then reported (the hook shows a warning on Home so the
+// driver is never left "online" without knowing tracking is off), and a start is never attempted for a driver who has gone offline since.
+// useSessionResync also re-arms tracking each time the app returns to the foreground.
+
+export type GoOnlineStep = 'socket' | 'home' | 'after_online' | 'tracking'
 
 export type GoOnlineDeps = {
   getPosition: () => Promise<{ coords: { latitude: number; longitude: number } }>
@@ -14,7 +19,9 @@ export type GoOnlineDeps = {
   /** Runs after Home is shown (for example the one-time overlay permission prompt). */
   afterOnline: () => void
   startTracking: () => Promise<void>
-  reportTrackingFailure: (err: unknown) => void
+  /** False once the driver has gone offline: a tracking start must not run for them. */
+  isStillOnline: () => boolean
+  reportError: (err: unknown, where: GoOnlineStep) => void
   /** Used when no position is available at all. */
   defaultPosition: { lat: number; lng: number }
   retryDelayMs: number
@@ -29,6 +36,7 @@ export type GoOnlineResult = {
 }
 
 async function startTrackingWithRetry(d: GoOnlineDeps): Promise<void> {
+  if (!d.isStillOnline()) return
   try {
     await d.startTracking()
     return
@@ -37,9 +45,18 @@ async function startTrackingWithRetry(d: GoOnlineDeps): Promise<void> {
   }
   try {
     await d.wait(d.retryDelayMs)
+    if (!d.isStillOnline()) return
     await d.startTracking()
   } catch (err) {
-    d.reportTrackingFailure(err)
+    d.reportError(err, 'tracking')
+  }
+}
+
+function safely(d: GoOnlineDeps, where: GoOnlineStep, step: () => void): void {
+  try {
+    step()
+  } catch (err) {
+    d.reportError(err, where)
   }
 }
 
@@ -57,8 +74,8 @@ export async function runGoOnline(d: GoOnlineDeps): Promise<GoOnlineResult> {
 
   const session = await d.callApi({ lat, lng }) // a refusal throws here, before anything has changed
   d.markOnline(session.id)
-  d.connectSocket()
-  d.goHome()
-  d.afterOnline()
+  safely(d, 'socket', d.connectSocket)
+  safely(d, 'home', d.goHome)
+  safely(d, 'after_online', d.afterOnline)
   return { locationWarning, tracking: startTrackingWithRetry(d) }
 }

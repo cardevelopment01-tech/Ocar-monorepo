@@ -14,6 +14,7 @@ import { useGoOnlineFlow } from '@/features/go-online/useGoOnlineFlow'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { walletBlockMessage } from '@/features/go-online/walletGateMessage'
 import { useSocketConnected } from '@/features/go-online/useSocketConnected'
+import { ensureBackgroundTracking } from '@/services/location/backgroundTask'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
 import { useNotificationPrimer } from '@/features/notifications/usePushSetup'
 import { fetchEarningsSummary } from '@/features/earnings/api'
@@ -48,6 +49,8 @@ export default function HomeScreen() {
   const mode = useDriverSessionStore((s) => s.mode)
   const destinationCityName = useDriverSessionStore((s) => s.destinationCityName)
   const flow = useGoOnlineFlow()
+  const trackingFailed = useDriverSessionStore((s) => s.trackingFailed)
+  const setTrackingFailed = useDriverSessionStore((s) => s.setTrackingFailed)
   const walletGate = useWalletGate()
   const socketConnected = useSocketConnected()
   const showReconnecting = isOnline && !socketConnected
@@ -224,6 +227,12 @@ export default function HomeScreen() {
               <Pressable onPress={() => void Linking.openSettings()}>
                 <Text style={[styles.subtext, { color: colors.error }]}>
                   Location is off, so you won't get ride requests. Tap to turn it on in Settings.
+                </Text>
+              </Pressable>
+            ) : isOnline && trackingFailed ? (
+              <Pressable onPress={() => { void ensureBackgroundTracking().then(() => setTrackingFailed(false)).catch(() => {}) }}>
+                <Text style={[styles.subtext, { color: colors.error }]}>
+                  Location tracking did not start, so you may miss ride requests. Tap to try again.
                 </Text>
               </Pressable>
             ) : (
