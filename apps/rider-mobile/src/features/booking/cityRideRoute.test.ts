@@ -78,10 +78,10 @@ describe('declared outstation and rental choices keep working', () => {
       .toMatchObject({ path: '/booking/round-trip', rideType: 'round_trip', tripMode: 'standard', toast: null })
   })
 
-  it('Rental inside the city is unchanged, and outside the city is sent to One Way with a toast', () => {
+  it('Rental inside the city is unchanged, and outside the city goes to the Outstation chooser (One way or Round trip), not straight to One Way', () => {
     expect(resolveInCityRoute({ rideTypeDeclared: true, rideType: 'rental', tripMode: 'standard', classification: IN_CITY_ON }))
       .toEqual({ path: '/booking/rental', rideType: 'rental', rideTypeDeclared: true, tripMode: 'standard', toast: null })
     expect(resolveInCityRoute({ rideTypeDeclared: true, rideType: 'rental', tripMode: 'standard', classification: OUTSIDE }))
-      .toEqual({ path: '/booking/fare', rideType: 'one_way', rideTypeDeclared: true, tripMode: 'standard', toast: 'to_one_way' })
+      .toEqual({ path: '/booking/trip-type', rideType: 'one_way', rideTypeDeclared: false, tripMode: 'standard', toast: 'to_outstation' })
   })
 })

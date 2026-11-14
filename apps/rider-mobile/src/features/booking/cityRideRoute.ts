@@ -7,7 +7,7 @@ export type TripClassification =
   | { scope: 'in_city'; cityId: number; cityName: string; cityRideAvailable?: boolean }
   | { scope: 'outstation' }
 
-export type RouteToast = 'to_city' | 'to_rental' | 'to_outstation' | 'to_one_way' | null
+export type RouteToast = 'to_city' | 'to_rental' | 'to_outstation' | null
 
 export type InCityRoute = {
   path: '/booking/fare' | '/booking/rental' | '/booking/trip-type' | '/booking/round-trip'
@@ -56,8 +56,9 @@ export function resolveInCityRoute(args: {
       ? route('/booking/fare', 'one_way', true, 'city', 'to_city')
       : route('/booking/rental', 'rental', true, 'standard', 'to_rental')
   }
-  // Rental cannot serve a trip that leaves the city.
-  if (rideType === 'rental' && !inCity) return route('/booking/fare', 'one_way', true, 'standard', 'to_one_way')
+  // Rental cannot serve a trip that leaves the city: it becomes an Outstation trip, so the rider chooses One way or Round trip
+  // (the same as the web search page) instead of being put on a one-way fare without being asked.
+  if (rideType === 'rental' && !inCity) return route('/booking/trip-type', 'one_way', false, 'standard', 'to_outstation')
 
   return route(rideType === 'round_trip' ? '/booking/round-trip' : rideType === 'rental' ? '/booking/rental' : '/booking/fare', rideType, true, 'standard', null)
 }
