@@ -263,7 +263,6 @@ export default function BookingPickersScreen() {
         to_city: `That's inside ${cityLabel}, switching to City Ride`,
         to_rental: `That's inside ${cityLabel}, switching to Rental`,
         to_outstation: `That's outside ${cityLabel}, switching to Outstation`,
-        to_one_way: `That's outside ${cityLabel}, switching to One Way`,
       } as const
 
       if (next.toast) {
