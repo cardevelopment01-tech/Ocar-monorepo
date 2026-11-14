@@ -44,6 +44,9 @@ interface BookingDraftState {
   setRoute: (distanceKm: number, durationMin: number, originCityId: number | null, routePoints: [number, number][]) => void
   setSelectedCategoryId: (id: number) => void
   setRideType: (rideType: RideType, declared?: boolean, tripMode?: TripMode) => void
+  /** Begins a new search from Home: sets the ride type like setRideType and clears everything the previous search left behind
+   *  (destination, stops, route, chosen category, trip hours). The pickup, the scheduled time and who it is for are kept. */
+  startSearch: (rideType: RideType, declared?: boolean, tripMode?: TripMode) => void
   setTripHours: (hours: number) => void
   addStop: (place: BookingPlace) => void
   removeStop: (index: number) => void
@@ -81,6 +84,20 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
   setSelectedCategoryId: (id) => set({ selectedCategoryId: id }),
   // Any ride type picked without a trip mode is a standard ride, so a leftover City Ride choice never leaks into Rental or Outstation.
   setRideType: (rideType, declared = true, tripMode = 'standard') => set({ rideType, rideTypeDeclared: declared, tripMode }),
+  startSearch: (rideType, declared = true, tripMode = 'standard') =>
+    set({
+      rideType,
+      rideTypeDeclared: declared,
+      tripMode,
+      drop: null,
+      distanceKm: null,
+      durationMin: null,
+      originCityId: null,
+      routePoints: [],
+      selectedCategoryId: null,
+      tripHours: null,
+      stops: [],
+    }),
   setTripHours: (hours) => set({ tripHours: hours }),
   addStop: (place) => set((s) => (s.stops.length >= MAX_STOPS ? s : { stops: [...s.stops, place] })),
   removeStop: (index) => set((s) => ({ stops: s.stops.filter((_, i) => i !== index) })),

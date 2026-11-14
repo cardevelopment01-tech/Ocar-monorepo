@@ -157,7 +157,11 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     }))
   }
 
-  if (drivers.length < maxThisRound) {
+  // A return-cab ride is priced at the discounted return rate, which only a driver heading that way has agreed to. It is therefore
+  // NEVER offered to a standard driver, however few return-cab drivers match: it ends as no_drivers and the rider books a standard cab.
+  const standardAllowed = !data.isReturnCab
+
+  if (standardAllowed && drivers.length < maxThisRound) {
     const radiusMetres = Math.min(cap, data.radiusMetres ?? cap)
     const nearbyParams: Parameters<typeof repo.findNearbyDrivers>[0] = {
       lat: data.originLat,
@@ -188,7 +192,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   // another ride, (3) also allow drivers offered before who did not decline, (4) everyone except open offers, decliners included. So the
   // rule can never leave a ride with fewer drivers than a non-spread ride would have had.
   let spreadLevel = 1
-  if (spread && !drivers.length && maxThisRound > 0) {
+  if (standardAllowed && spread && !drivers.length && maxThisRound > 0) {
     const offeredIds = offeredBefore.map((o) => o.driver_id)
     const declined = offeredBefore.filter((o) => o.status === 'declined').map((o) => o.driver_id)
     const steps: bigint[][] = [[...liveDriverIds, ...offeredIds], [...liveDriverIds, ...declined], [...liveDriverIds]]
@@ -213,7 +217,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   }
 
   // A pool smaller than the wave: if skipping the drivers who declined left nobody, offer to them rather than burn the round.
-  if (phase1 && !spread && !drivers.length && declinedDriverIds.length > 0) {
+  if (standardAllowed && phase1 && !spread && !drivers.length && declinedDriverIds.length > 0) {
     const retry: Parameters<typeof repo.findNearbyDrivers>[0] = {
       lat: data.originLat, lng: data.originLng, categoryIds, maxDrivers: maxThisRound,
       radiusMetres: Math.min(cap, data.radiusMetres ?? cap), minWalletBalance,
@@ -336,20 +340,23 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     await Promise.all(driversWithWindow.map(driver => {
       const id = driver.driver_id.toString()
       const seen = straightById.get(id)
-      offeredCount++
-      return repo.createRideAssignment({
-        rideId,
-        driverId:       driver.driver_id,
-        sessionId:      driver.session_id,
-        expiresAt:      driver.expiresAt,
-        broadcastRound: data.broadcastRound,
-        driverLat:      driver.lat,
-        driverLng:      driver.lng,
-        ...(logOn && seen ? { log: {
-          straightM: seen.straightM, shownM: Math.round(driver.distance_metres), radiusM: Math.round(driver.radiusM ?? roundRadius), rank: seen.rank,
-          reach: driver.isBackgrounded ? 'background' as const : offline.has(id) ? 'no_socket' as const : 'live' as const, fastStep,
-        } } : {}),
-      })
+      return (async () => {
+        const created = await repo.createRideAssignment({
+          rideId,
+          driverId:       driver.driver_id,
+          sessionId:      driver.session_id,
+          expiresAt:      driver.expiresAt,
+          broadcastRound: data.broadcastRound,
+          driverLat:      driver.lat,
+          driverLng:      driver.lng,
+          ...(logOn && seen ? { log: {
+            straightM: seen.straightM, shownM: Math.round(driver.distance_metres), radiusM: Math.round(driver.radiusM ?? roundRadius), rank: seen.rank,
+            reach: driver.isBackgrounded ? 'background' as const : offline.has(id) ? 'no_socket' as const : 'live' as const, fastStep,
+          } } : {}),
+        })
+        offeredCount++ // counted once the assignment exists, not when it is attempted
+        return created
+      })()
     }))
 
     // Delivery tracking for the closed-app ride request work (docs/superpowers/plans/2026-11-05-driver-app-closed-ride-alert-overlay.md,

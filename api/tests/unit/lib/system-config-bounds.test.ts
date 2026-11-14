@@ -33,7 +33,7 @@ describe('validateConfigBounds', () => {
 })
 
 describe('dispatch switches', () => {
-  it.each(['dispatch_no_resend_enabled', 'dispatch_head_start_enabled', 'dispatch_spread_enabled', 'dispatch_fast_rounds_enabled', 'dispatch_decision_log_enabled', 'city_rides_enabled'])('%s accepts only true or false', (key) => {
+  it.each(['dispatch_no_resend_enabled', 'dispatch_head_start_enabled', 'dispatch_spread_enabled', 'dispatch_fast_rounds_enabled', 'dispatch_decision_log_enabled', 'city_rides_enabled', 'eta_shadow_enabled'])('%s accepts only true or false', (key) => {
     expect(validateConfigBounds(key, 'true')).toBeNull()
     expect(validateConfigBounds(key, 'false')).toBeNull()
     expect(validateConfigBounds(key, 'yes')).not.toBeNull()
