@@ -143,13 +143,33 @@ export default function HomeScreen() {
   // Bring the camera onto the driver once the native map is ready and a position exists, and again once per online session
   // when live GPS arrives (see features/map/recenter.ts). Never on every GPS tick, so a driver who pans is not dragged back.
   const recenter = useRef<RecenterState>(INITIAL_RECENTER)
+  // animateToRegion was a one-shot with no check, and on a real phone the camera sometimes stayed on the default Bhubaneswar view while
+  // the car sat off screen. This moves with animateCamera (what the active-ride map uses), then reads the camera back and tries again,
+  // up to 3 times, if it did not arrive. The log lines say which step failed if it ever happens again.
+  const cameraTries = useRef(0)
+  function moveCameraTo(target: [number, number]) {
+    const attempt = () => {
+      const map = mapRef.current
+      if (!map) { console.log('[recenter] no map ref'); return }
+      cameraTries.current += 1
+      console.log('[recenter] move', cameraTries.current, target)
+      map.animateCamera({ center: { latitude: target[0], longitude: target[1] }, zoom: 14 }, { duration: 600 })
+      setTimeout(() => {
+        map.getCamera().then((cam) => {
+          const close = Math.abs(cam.center.latitude - target[0]) < 0.01 && Math.abs(cam.center.longitude - target[1]) < 0.01
+          console.log('[recenter] arrived', close)
+          if (!close && cameraTries.current < 3) attempt()
+        }).catch(() => { if (cameraTries.current < 3) attempt() })
+      }, 1000)
+    }
+    cameraTries.current = 0
+    attempt()
+  }
   const livePosition = live?.position ?? null
   useEffect(() => {
     const out = nextRecenter(recenter.current, { mapReady, position: carPosition, livePosition, isOnline })
     recenter.current = out.state
-    if (out.target) {
-      mapRef.current?.animateToRegion({ latitude: out.target[0], longitude: out.target[1], latitudeDelta: 0.03, longitudeDelta: 0.03 }, 600)
-    }
+    if (out.target) moveCameraTo(out.target)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- carPosition/livePosition are fresh arrays each render; the rules are idempotent
   }, [mapReady, isOnline, carPosition?.[0], carPosition?.[1], livePosition?.[0], livePosition?.[1]])
 
