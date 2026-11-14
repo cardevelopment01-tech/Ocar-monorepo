@@ -4,6 +4,8 @@ import MapView, { Polyline } from 'react-native-maps'
 import * as Location from 'expo-location'
 import { OCAR_MAP_PROPS, colors, distanceToPolylineMetres, simplifyPolyline, spacing, typography, Text } from '@ocar/mobile-shared'
 import CarMarker from '@/features/map/components/CarMarker'
+import { useVehicleKind } from '@/features/map/useVehicleKind'
+import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import LocationPin from '@/features/map/components/LocationPin'
 import { useDriverLivePosition } from '../useDriverLivePosition'
 import { fetchRouteLeg } from '../api'
@@ -51,6 +53,7 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
   const mapRef = useRef<MapView>(null)
   const [permissionDenied, setPermissionDenied] = useState(false)
   const live = useDriverLivePosition(!permissionDenied)
+  const vehicleKind = useVehicleKind(useDriverSessionStore((s) => s.categoryId))
   const [overview, setOverview] = useState(true)
   const userPannedAt = useRef(0)
   const [routePoints, setRoutePoints] = useState<[number, number][]>([])
@@ -163,7 +166,7 @@ export function ActiveRideMap({ pickup, destination, leg, stops = [] }: ActiveRi
           <LocationPin key={`stop-${i}-${lat}-${lng}`} position={[lat, lng]} variant="stop" />
         ))}
         {destination ? <LocationPin position={destination} variant="drop" /> : null}
-        {live ? <CarMarker position={live.position} heading={live.heading} headingKnown={live.headingKnown} /> : null}
+        {live ? <CarMarker position={live.position} heading={live.heading} headingKnown={live.headingKnown} kind={vehicleKind} /> : null}
         {routePoints.length >= 2 ? (
           <>
             {/* White halo under the color line, matching web's RoutePolyline.tsx layering. */}

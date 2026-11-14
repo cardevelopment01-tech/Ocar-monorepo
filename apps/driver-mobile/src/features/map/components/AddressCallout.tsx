@@ -3,30 +3,35 @@ import { StyleSheet, View } from 'react-native'
 import { Marker } from 'react-native-maps'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, shadows, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { MARKER_Z } from '../markerZ'
 
 export type AddressCalloutProps = {
   position: [number, number]
   address: string
+  /** Half the height of the vehicle image under the pill (dp), so the pill clears its roof. A sedan's is 18. */
+  carHalfHeight?: number
 }
 
 // A real map-anchored Marker, not a screen-fixed overlay -- anchor {x:0.5,
 // y:1} puts the tail's tip (not the pill's center) exactly on `position`, so
 // react-native-maps reprojects the whole thing correctly on every pan/zoom
 // instead of it drifting away from the car marker the moment the map moves.
-function AddressCallout({ position, address }: AddressCalloutProps) {
+function AddressCallout({ position, address, carHalfHeight = 18 }: AddressCalloutProps) {
   return (
     <Marker
       coordinate={{ latitude: position[0], longitude: position[1] }}
       anchor={{ x: 0.5, y: 1 }}
       tracksViewChanges={false}
-      zIndex={9}
+      zIndex={MARKER_Z.pill}
+      // the picture is frozen after its first draw, so a different clearance needs a new marker to be drawn again
+      key={carHalfHeight}
     >
       {/* collapsable={false} is load-bearing, not a hint: with no background of
           its own this View is a collapse candidate, and Android drops it (and
           therefore its paddingBottom) from the native hierarchy before
           react-native-maps snapshots the marker -- which silently deletes the
           car clearance below. */}
-      <View style={styles.wrap} collapsable={false}>
+      <View style={[styles.wrap, { paddingBottom: carHalfHeight + 8 }]} collapsable={false}>
         <View style={styles.pill}>
           <Feather name="map-pin" size={11} color={colors.primary} />
           <Text style={styles.pillText} numberOfLines={1}>{address}</Text>
@@ -79,5 +84,6 @@ const styles = StyleSheet.create({
 export default memo(AddressCallout, (a, b) =>
   a.position[0] === b.position[0] &&
   a.position[1] === b.position[1] &&
+  (a.carHalfHeight ?? 18) === (b.carHalfHeight ?? 18) &&
   a.address === b.address
 )
