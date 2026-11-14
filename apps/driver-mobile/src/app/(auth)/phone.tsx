@@ -3,7 +3,6 @@ import axios from 'axios'
 import { BackHandler, Dimensions, Image, Linking, ScrollView, StyleSheet, View } from 'react-native'
 import Animated, { Easing, FadeIn, SlideInLeft, SlideInRight, SlideOutLeft, SlideOutRight } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
-import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Button, Input, OtpBoxInput, colors, spacing, typography, mapOtpErrorCode, TERMS_URL, PRIVACY_URL, fonts, Text, track } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
@@ -49,7 +48,6 @@ function formatPhone(input: string): string {
 }
 
 export default function PhoneScreen() {
-  const router = useRouter()
   const insets = useSafeAreaInsets()
   const setAuth = useAuthStore((s) => s.setAuth)
 
@@ -154,14 +152,8 @@ export default function PhoneScreen() {
       track('login_success')
       void setupPushNotifications()
       setVerified(true)
-      // Hold on the verified checkmark for a beat before swapping screens --
-      // otherwise success is invisible, the OTP screen just vanishes.
-      setTimeout(() => {
-        // Route through "/" rather than straight to the tab shell -- its onboarding
-        // gate decides between the wizard, pending-review, and the tabs/active-ride
-        // relaunch check based on the driver's real status/onboarding_step.
-        router.replace('/')
-      }, 550)
+      // No navigation here: signing in makes (auth)/_layout redirect to "/", the gate that picks the onboarding wizard,
+      // a ride in progress or Home. Navigating again from here opened Home a second time.
     } catch (err) {
       const code = axios.isAxiosError(err) ? (err.response?.data as { code?: string } | undefined)?.code : undefined
       setOtp('')
