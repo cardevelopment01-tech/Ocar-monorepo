@@ -225,10 +225,18 @@ describe('review fixes', () => {
     expect(lastRecord()).toMatchObject({ found: 4, offered: 2 })
   })
 
+  it('when one of two assignments fails, only the one that was created is counted as offered', async () => {
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValue([drv(1, 800), drv(2, 900)] as never)
+    vi.mocked(repo.createRideAssignment).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('deadlock'))
+    await expect(processBroadcast(data(1))).rejects.toThrow('deadlock')
+    expect(lastRecord()).toMatchObject({ found: 2, offered: 1 })
+  })
+
   it('the record is written even if sending the offers fails', async () => {
     vi.mocked(repo.findNearbyDrivers).mockResolvedValue([drv(1, 800)] as never)
     vi.mocked(repo.createRideAssignment).mockRejectedValueOnce(new Error('db down'))
     await expect(processBroadcast(data(1))).rejects.toThrow('db down')
     expect(recordRound).toHaveBeenCalledTimes(1)
+    expect(lastRecord()).toMatchObject({ found: 1, offered: 0 }) // the assignment was never created, so nothing was offered
   })
 })
