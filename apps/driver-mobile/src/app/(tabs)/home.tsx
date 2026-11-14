@@ -147,21 +147,27 @@ export default function HomeScreen() {
   // the car sat off screen. This moves with animateCamera (what the active-ride map uses), then reads the camera back and tries again,
   // up to 3 times, if it did not arrive. "Arrived" is within about 5 km: the map's bottom padding makes getCamera() report a centre
   // about 1 km off the target even when the car is correctly framed, so a tighter check kept retrying for nothing.
-  const cameraTries = useRef(0)
+  // Each call gets its own generation: a newer call (or leaving the screen) makes every pending retry of an older one stop, so a late
+  // retry can never drag the map back to a stale position, and each call has its own 3 tries.
+  const cameraGen = useRef(0)
+  useEffect(() => () => { cameraGen.current += 1 }, [])
   function moveCameraTo(target: [number, number]) {
+    const gen = ++cameraGen.current
+    let tries = 0
     const attempt = () => {
       const map = mapRef.current
-      if (!map) return
-      cameraTries.current += 1
+      if (!map || gen !== cameraGen.current) return
+      tries += 1
       map.animateCamera({ center: { latitude: target[0], longitude: target[1] }, zoom: 14 }, { duration: 600 })
       setTimeout(() => {
+        if (gen !== cameraGen.current) return
         map.getCamera().then((cam) => {
+          if (gen !== cameraGen.current) return
           const close = Math.abs(cam.center.latitude - target[0]) < 0.05 && Math.abs(cam.center.longitude - target[1]) < 0.05
-          if (!close && cameraTries.current < 3) attempt()
-        }).catch(() => { if (cameraTries.current < 3) attempt() })
+          if (!close && tries < 3) attempt()
+        }).catch(() => { if (tries < 3) attempt() })
       }, 1000)
     }
-    cameraTries.current = 0
     attempt()
   }
   const livePosition = live?.position ?? null
