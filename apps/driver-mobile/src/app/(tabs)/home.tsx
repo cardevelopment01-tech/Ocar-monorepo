@@ -52,8 +52,8 @@ export default function HomeScreen() {
   const destinationCityName = useDriverSessionStore((s) => s.destinationCityName)
   const flow = useGoOnlineFlow()
   const sessionCategoryId = useDriverSessionStore((s) => s.categoryId)
-  // The driver's own vehicle on the map: the session's category once online, the vehicle on file before that.
-  const vehicleKind = useVehicleKind(isOnline ? sessionCategoryId : flow.vehicle?.categoryId ?? null)
+  // The driver's own vehicle on the map: the session's category once online (the vehicle on file if the session has none yet), the vehicle on file before that.
+  const vehicleKind = useVehicleKind((isOnline ? sessionCategoryId : null) ?? flow.vehicle?.categoryId ?? null)
   const trackingFailed = useDriverSessionStore((s) => s.trackingFailed)
   const setTrackingFailed = useDriverSessionStore((s) => s.setTrackingFailed)
   const retryingTracking = useRef(false)
