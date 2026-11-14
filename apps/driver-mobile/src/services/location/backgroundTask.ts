@@ -97,6 +97,12 @@ export async function startBackgroundTracking(): Promise<void> {
   const hasRide = !!useDriverSessionStore.getState().activeRide
   currentProfileKey = hasRide ? 'active' : 'idle'
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, taskOptions(hasRide))
+  // The start takes seconds on a real phone and Go online no longer waits for it, so the driver can go offline meanwhile; stopping now
+  // is what stops the foreground service for them (the offline flow already ran its own stop, before this start finished).
+  if (!useDriverSessionStore.getState().isOnline) {
+    await stopBackgroundTracking()
+    return
+  }
   ensureRideIntervalSubscription()
 }
 

@@ -20,9 +20,10 @@ export function intervalForRideState(hasActiveRide: boolean): number {
 }
 
 // One background stream feeds everything (server track, map marker, SOS, speed alert), so its
-// accuracy follows the ride state: Balanced (Wi-Fi/cell, a few mA) while idle-online, High GPS
-// only while a ride needs a precise trace. 'balanced'/'high' map to expo-location's Accuracy
-// enum in backgroundTask.ts (this file stays free of native imports so vitest can load it).
+// accuracy follows the ride state: High GPS the whole time the driver is online. Idle used to be Balanced (Wi-Fi/cell), which
+// on a real phone in a rural area gave fixes of about 100 m: the home pin sat 100-200 m off, and every such fix failed the 80 m
+// check below, so no live position was stored or sent. Only the interval differs now: slow while idle, tight during a ride.
+// 'high' maps to expo-location's Accuracy enum in backgroundTask.ts (this file stays free of native imports so vitest can load it).
 export function trackingProfileForRideState(hasActiveRide: boolean): {
   intervalMs: number
   distanceMeters: number
@@ -30,5 +31,5 @@ export function trackingProfileForRideState(hasActiveRide: boolean): {
 } {
   return hasActiveRide
     ? { intervalMs: ACTIVE_RIDE_INTERVAL_MS, distanceMeters: 5, highAccuracy: true }
-    : { intervalMs: IDLE_INTERVAL_MS, distanceMeters: 0, highAccuracy: false }
+    : { intervalMs: IDLE_INTERVAL_MS, distanceMeters: 0, highAccuracy: true }
 }
