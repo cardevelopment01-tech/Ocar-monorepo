@@ -58,7 +58,9 @@ export function resolveInCityRoute(args: {
   }
   // Rental cannot serve a trip that leaves the city: it becomes an Outstation trip, so the rider chooses One way or Round trip
   // (the same as the web search page) instead of being put on a one-way fare without being asked.
-  if (rideType === 'rental' && !inCity) return route('/booking/trip-type', 'one_way', false, 'standard', 'to_outstation')
+  // A failed classification (flaky network) stays on Rental, like the City Ride tile: the server judges the trip, and the rider is not
+  // told it leaves the city when nobody checked.
+  if (rideType === 'rental' && classification !== null && !inCity) return route('/booking/trip-type', 'one_way', false, 'standard', 'to_outstation')
 
   return route(rideType === 'round_trip' ? '/booking/round-trip' : rideType === 'rental' ? '/booking/rental' : '/booking/fare', rideType, true, 'standard', null)
 }

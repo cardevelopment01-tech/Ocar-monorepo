@@ -84,4 +84,9 @@ describe('declared outstation and rental choices keep working', () => {
     expect(resolveInCityRoute({ rideTypeDeclared: true, rideType: 'rental', tripMode: 'standard', classification: OUTSIDE }))
       .toEqual({ path: '/booking/trip-type', rideType: 'one_way', rideTypeDeclared: false, tripMode: 'standard', toast: 'to_outstation' })
   })
+
+  it('Rental stays on Rental when the classification failed (no claim that the trip leaves the city)', () => {
+    expect(resolveInCityRoute({ rideTypeDeclared: true, rideType: 'rental', tripMode: 'standard', classification: null }))
+      .toEqual({ path: '/booking/rental', rideType: 'rental', rideTypeDeclared: true, tripMode: 'standard', toast: null })
+  })
 })
