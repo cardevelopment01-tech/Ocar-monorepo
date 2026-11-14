@@ -791,6 +791,12 @@ const RIDE_SELECT_SQL = `SELECT
        hrc.hour_rate  AS round_trip_hour_rate,
        rc.reason      AS cancellation_reason,
        rc.reason_code AS cancellation_reason_code,
+       -- Who cancelled (user / driver / admin / system), so a rider who missed the live socket event can still tell
+       -- "your driver cancelled" from a cancel of their own.
+       rc.actor       AS cancellation_actor,
+       -- The late-cancel fee charged to the rider (0 when none or waived by an admin), so the receipt can show it.
+       (CASE WHEN rc.fee_waived THEN 0 ELSE rc.fee_amount END)::float8 AS cancellation_fee,
+       rc.fee_waived         AS cancellation_fee_waived,
        ur.score AS user_rating_given,
        drt.score AS driver_rating_given,
        dv.number_plate  AS vehicle_number_plate,

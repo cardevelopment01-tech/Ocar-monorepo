@@ -104,6 +104,9 @@ export interface Ride {
   resolved_by?: 'admin' | 'timeout' | null
   /** 'city' for a city ride (migration 137); standard for every other ride. */
   trip_mode?: 'standard' | 'city'
+  cancellation_actor?: 'user' | 'driver' | 'admin' | 'system' | null
+  cancellation_fee?: number | null
+  cancellation_fee_waived?: boolean | null
   /** Cash the driver collects and the rider-offer discount already taken off it (numeric strings). */
   cash_due?: string | null
   discount_amount?: string | null
@@ -122,7 +125,7 @@ export type RideCore = Omit<Ride,
   | 'vehicle_number_plate' | 'vehicle_color' | 'vehicle_name' | 'vehicle_model' | 'vehicle_brand'
   | 'booked_category_name' | 'assigned_category_name'
   | 'driver_current_lat' | 'driver_current_lng'
-  | 'payment_status' | 'resolved_by' | 'cash_due' | 'discount_amount'
+  | 'payment_status' | 'resolved_by' | 'cancellation_actor' | 'cancellation_fee' | 'cancellation_fee_waived' | 'cash_due' | 'discount_amount'
 >
 
 export interface StopInput {
