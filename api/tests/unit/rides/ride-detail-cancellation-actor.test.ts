@@ -27,7 +27,8 @@ describe('getRideById: who cancelled, and what it cost', () => {
     vi.mocked(pool.query).mockResolvedValueOnce({ rows: [] } as never)
     await getRideById(7n)
     const sql = String(vi.mocked(pool.query).mock.calls[0]![0])
-    expect(sql).toMatch(/rc\.fee_amount::float8\s+AS cancellation_fee/)
+    // a waived fee reads as 0, not the amount that was waived
+    expect(sql).toMatch(/CASE WHEN rc\.fee_waived THEN 0 ELSE rc\.fee_amount END\)::float8\s+AS cancellation_fee/)
     expect(sql).toMatch(/rc\.fee_waived\s+AS cancellation_fee_waived/)
   })
 })

@@ -795,7 +795,7 @@ const RIDE_SELECT_SQL = `SELECT
        -- "your driver cancelled" from a cancel of their own.
        rc.actor       AS cancellation_actor,
        -- The late-cancel fee charged to the rider (0 when none or waived by an admin), so the receipt can show it.
-       rc.fee_amount::float8 AS cancellation_fee,
+       (CASE WHEN rc.fee_waived THEN 0 ELSE rc.fee_amount END)::float8 AS cancellation_fee,
        rc.fee_waived         AS cancellation_fee_waived,
        ur.score AS user_rating_given,
        drt.score AS driver_rating_given,
