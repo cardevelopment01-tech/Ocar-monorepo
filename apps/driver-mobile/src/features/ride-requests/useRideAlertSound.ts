@@ -25,9 +25,10 @@ const RIDE_ALERT_SOUND = rideAlertSoundAsset
 // Uber-style pattern: buzz, pause, buzz, repeat -- not a single blip.
 const VIBRATION_PATTERN = [0, 400, 200, 400]
 
-// Ring once (long enough to get the driver's attention), then read the request aloud, then ring again until the request
-// is answered. The ring is paused while speaking so the two never fight over the speaker.
-const RING_BEFORE_SPEECH_MS = 1600
+// Ring once, then read the request aloud straight away, then ring again until the request is answered. The ring is paused while
+// speaking so the two never fight over the speaker. One ring is exactly the length of assets/sounds/ride-request.wav (1.3 s); an
+// extra pause here only used up the accept window.
+const RING_BEFORE_SPEECH_MS = 1300
 const FALLBACK_AFTER_MS = 1200 // no word positions this long after the voice starts: follow the clock instead
 
 let audioModeSet = false
