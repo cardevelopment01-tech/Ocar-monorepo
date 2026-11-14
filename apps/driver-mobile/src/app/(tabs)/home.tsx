@@ -146,19 +146,17 @@ export default function HomeScreen() {
   // animateToRegion was a one-shot with no check, and on a real phone the camera sometimes stayed on the default Bhubaneswar view while
   // the car sat off screen. This moves with animateCamera (what the active-ride map uses), then reads the camera back and tries again,
   // up to 3 times, if it did not arrive. "Arrived" is within about 5 km: the map's bottom padding makes getCamera() report a centre
-  // about 1 km off the target even when the car is correctly framed, so a tighter check kept retrying for nothing. The log lines say which step failed if it ever happens again.
+  // about 1 km off the target even when the car is correctly framed, so a tighter check kept retrying for nothing.
   const cameraTries = useRef(0)
   function moveCameraTo(target: [number, number]) {
     const attempt = () => {
       const map = mapRef.current
-      if (!map) { console.log('[recenter] no map ref'); return }
+      if (!map) return
       cameraTries.current += 1
-      console.log('[recenter] move', cameraTries.current, target)
       map.animateCamera({ center: { latitude: target[0], longitude: target[1] }, zoom: 14 }, { duration: 600 })
       setTimeout(() => {
         map.getCamera().then((cam) => {
           const close = Math.abs(cam.center.latitude - target[0]) < 0.05 && Math.abs(cam.center.longitude - target[1]) < 0.05
-          console.log('[recenter] arrived', close)
           if (!close && cameraTries.current < 3) attempt()
         }).catch(() => { if (cameraTries.current < 3) attempt() })
       }, 1000)
