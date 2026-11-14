@@ -1,7 +1,7 @@
-import { memo, useEffect, useState } from 'react'
+import { memo } from 'react'
 import { Marker } from 'react-native-maps'
-import Svg, { Path, Line, Rect, Circle } from 'react-native-svg'
-import { colors } from '@ocar/mobile-shared'
+import { VEHICLE_IMAGES } from '../vehicleImages'
+import type { VehicleKind } from '../vehicleKind'
 
 export type CarMarkerProps = {
   position: [number, number]
@@ -13,52 +13,24 @@ export type CarMarkerProps = {
    *  home screen) that want the marker to read as more solid without
    *  dishonestly claiming a real bearing via headingKnown. */
   opacity?: number
+  /** Which vehicle is drawn (a sedan unless told otherwise): one top-down image per vehicle category. */
+  kind?: VehicleKind
 }
 
-// Ported from rider-mobile's features/map/components/CarMarker.tsx (itself a
-// pixel-match of web's apps/user/components/map/CarMarker.tsx) -- same car
-// silhouette everywhere in the product, not a driver-mobile-specific redesign.
-// react-native-maps rotates the whole Marker natively (rotation + flat), so no
-// manual transform is needed here.
-// How long the marker's picture keeps being re-captured after it appears. The child is an SVG that has usually not painted
-// by the first render pass, and a marker frozen at that moment can keep a blank picture on some phones. Tracked briefly, then
-// frozen: rotating or moving the marker is native and needs no re-capture, so there is no steady CPU/battery cost.
-const SNAPSHOT_MS = 700
-
-function CarMarker({ position, heading = 0, headingKnown = true, opacity }: CarMarkerProps) {
-  const [track, setTrack] = useState(true)
-  // The picture is frozen after SNAPSHOT_MS, so re-open the window when what it shows changes (the car starts dimmed, with no
-  // heading yet, and turns solid): otherwise it stayed washed-out for the whole session.
-  useEffect(() => {
-    setTrack(true)
-    const t = setTimeout(() => setTrack(false), SNAPSHOT_MS)
-    return () => clearTimeout(t)
-  }, [headingKnown, opacity])
+// The driver's own vehicle on the map. A ready-made image (see vehicleImages.ts), not a drawing: the map takes it as a native icon, so
+// there is nothing to capture and no way to end up with a blank marker. react-native-maps rotates the whole Marker natively
+// (rotation + flat), so the image, drawn facing up, needs no manual transform.
+function CarMarker({ position, heading = 0, headingKnown = true, opacity, kind = 'sedan' }: CarMarkerProps) {
   return (
     <Marker
       coordinate={{ latitude: position[0], longitude: position[1] }}
       anchor={{ x: 0.5, y: 0.5 }}
       rotation={heading % 360}
       flat
-      tracksViewChanges={track}
+      image={VEHICLE_IMAGES[kind]}
+      opacity={opacity ?? (headingKnown ? 1 : 0.55)}
       zIndex={10}
-    >
-      <Svg width={22} height={36} viewBox="0 0 32 52" style={{ opacity: opacity ?? (headingKnown ? 1 : 0.55) }}>
-        <Path
-          d="M4,20 C4,11 8,4 16,4 C24,4 28,11 28,20 L28,42 C28,48 23,51 16,51 C9,51 4,48 4,42 Z"
-          fill={colors.ink900}
-        />
-        <Path d="M8,8 L24,8 L25,18 L7,18 Z" fill="rgba(255,255,255,0.82)" />
-        <Line x1={8} y1={8} x2={24} y2={8} stroke="rgba(255,255,255,0.20)" strokeWidth={1} />
-        <Rect x={7} y={20} width={18} height={12} rx={2} fill="rgba(255,255,255,0.07)" />
-        <Line x1={5} y1={29} x2={27} y2={29} stroke="rgba(255,255,255,0.12)" strokeWidth={0.8} />
-        <Rect x={9} y={36} width={14} height={8} rx={2} fill="rgba(255,255,255,0.30)" />
-        <Circle cx={9} cy={7} r={2} fill="#FCD34D" />
-        <Circle cx={23} cy={7} r={2} fill="#FCD34D" />
-        <Circle cx={9} cy={47} r={1.5} fill="#F87171" opacity={0.8} />
-        <Circle cx={23} cy={47} r={1.5} fill="#F87171" opacity={0.8} />
-      </Svg>
-    </Marker>
+    />
   )
 }
 
@@ -67,5 +39,6 @@ export default memo(CarMarker, (a, b) =>
   a.position[1] === b.position[1] &&
   (a.heading ?? 0) === (b.heading ?? 0) &&
   (a.headingKnown ?? true) === (b.headingKnown ?? true) &&
-  a.opacity === b.opacity
+  a.opacity === b.opacity &&
+  (a.kind ?? 'sedan') === (b.kind ?? 'sedan')
 )

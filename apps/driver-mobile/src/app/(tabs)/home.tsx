@@ -20,6 +20,8 @@ import { fetchEarningsSummary } from '@/features/earnings/api'
 import type { EarningsSummary } from '@/features/earnings/types'
 import CarMarker from '@/features/map/components/CarMarker'
 import AddressCallout from '@/features/map/components/AddressCallout'
+import { useVehicleKind } from '@/features/map/useVehicleKind'
+import { MARKER_DP } from '@/features/map/vehicleKind'
 import { fetchReverseGeocode } from '@/features/map/api'
 import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosition'
 import { INITIAL_RECENTER, nextRecenter, type RecenterState } from '@/features/map/recenter'
@@ -48,6 +50,9 @@ export default function HomeScreen() {
   const mode = useDriverSessionStore((s) => s.mode)
   const destinationCityName = useDriverSessionStore((s) => s.destinationCityName)
   const flow = useGoOnlineFlow()
+  const sessionCategoryId = useDriverSessionStore((s) => s.categoryId)
+  // The driver's own vehicle on the map: the session's category once online, the vehicle on file before that.
+  const vehicleKind = useVehicleKind(isOnline ? sessionCategoryId : flow.vehicle?.categoryId ?? null)
   const walletGate = useWalletGate()
   const socketConnected = useSocketConnected()
   const showReconnecting = isOnline && !socketConnected
@@ -190,12 +195,12 @@ export default function HomeScreen() {
             bearing, matching CarMarker's own contract for "no real bearing yet"
             (dimmed, not a fake north snap). */}
         {carPosition ? (
-          <CarMarker position={carPosition} headingKnown={live?.headingKnown ?? false} opacity={0.85} />
+          <CarMarker position={carPosition} headingKnown={live?.headingKnown ?? false} opacity={0.85} kind={vehicleKind} />
         ) : null}
         {/* Real map-anchored Marker (see AddressCallout's own comment), not a
             screen-fixed overlay -- stays correctly pinned above the car
             through every pan/zoom instead of drifting off it. */}
-        {carPosition && address ? <AddressCallout position={carPosition} address={address} /> : null}
+        {carPosition && address ? <AddressCallout position={carPosition} address={address} carHalfHeight={MARKER_DP[vehicleKind].h / 2} /> : null}
       </MapView>
       {!isOnline ? <View style={styles.mapDim} pointerEvents="none" /> : null}
 
