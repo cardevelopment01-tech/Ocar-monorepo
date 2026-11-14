@@ -6,6 +6,8 @@ import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
+import { stopBackgroundTracking } from '@/services/location/backgroundTask'
+import { closeOcar } from './closeOcar'
 import { shouldShowIcon, shouldAutoOpen, speedKmhFromMps, onPendingChange, type AppStateName } from './policy'
 
 // Mounted once at the root layout, next to useRideRequestListener. Android only; a build without the native module does nothing.
@@ -45,8 +47,13 @@ export function useFloatingIcon(): void {
   // Keep the icon in step with: the opt-in, being online, and whether Ocar is in front.
   useEffect(() => {
     if (!overlay.available) return
+    // A cold start (for example from the Recents card after the icon was dragged to the X) begins while Android still reports the app as
+    // not in front, which showed the icon for a blink before "active" arrived. The icon only makes sense once Ocar has been in front
+    // in this process and then left, so until the first "active" the app is treated as being in front.
+    let seenActive = false
     const sync = (appState: AppStateName) => {
-      const i = inputs(appState)
+      if (appState === 'active') seenActive = true
+      const i = inputs(seenActive ? appState : 'active')
       if (shouldShowIcon(i)) overlay.showIcon()
       else overlay.hideIcon()
       // The dot has done its job when the driver is back in Ocar (the request card itself is showing), and it must not outlive the
@@ -68,6 +75,23 @@ export function useFloatingIcon(): void {
     // which hides or shows the icon as needed; going offline or switching the icon off do exactly that.
     return () => { sub.remove() }
   }, [iconEnabled, hydrated, isOnline, isAuthenticated])
+
+  // Drag-to-close: the X is offered only while there is no ride (closing the app mid-ride would stop its tracking). Dropping the
+  // icon on it closes Ocar and the location service; the driver is not taken offline (the server ends the session after its period).
+  useEffect(() => {
+    if (!overlay.available) return
+    let last: boolean | null = null
+    const apply = () => {
+      const on = useDriverSessionStore.getState().activeRide === null
+      if (on === last) return // the session store changes often; cross the native bridge only when the answer changes
+      last = on
+      overlay.setDismissEnabled(on)
+    }
+    apply()
+    const unsubscribe = useDriverSessionStore.subscribe(apply)
+    const stopListening = overlay.onDismissed(() => { void closeOcar({ stopTracking: stopBackgroundTracking, exitApp: () => overlay.exitApp() }) })
+    return () => { unsubscribe(); stopListening() }
+  }, [])
 
   // A new request while Ocar is in the background.
   useEffect(() => {

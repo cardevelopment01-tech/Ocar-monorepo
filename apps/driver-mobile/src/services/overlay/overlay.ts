@@ -13,6 +13,10 @@ export interface NativeOverlay {
   /** Optional, same reason: removes a delivered notification by tag. */
   dismissNotification?(tag: string): void
   bringToFront(): boolean
+  /** Optional: a binary built before drag-to-close does not have these. */
+  setDismissEnabled?(on: boolean): void
+  exitApp?(): void
+  addListener?(event: 'onIconDismissed', listener: () => void): { remove(): void }
 }
 
 export interface Overlay {
@@ -30,6 +34,12 @@ export interface Overlay {
   dismissRideNotification(rideId: string): void
   /** True when Android accepted the launch. A refusal is expected on some phones and is not an error. */
   bringToFront(): boolean
+  /** The X shown while the icon is dragged: on, or off (it is off during a ride, when closing the app would stop the ride's tracking). */
+  setDismissEnabled(on: boolean): void
+  /** The driver dropped the icon on the X. Returns how to stop listening. Never fires on a binary without drag-to-close. */
+  onDismissed(listener: () => void): () => void
+  /** Stops the location service and ends the app's process. */
+  exitApp(): void
 }
 
 const guard = <T>(fn: () => T, fallback: T): T => {
@@ -52,6 +62,9 @@ export function createOverlay(native: NativeOverlay | null | undefined): Overlay
       setAlert: () => {},
       dismissRideNotification: () => {},
       bringToFront: () => false,
+      setDismissEnabled: () => {},
+      onDismissed: () => () => {},
+      exitApp: () => {},
     }
   }
   return {
@@ -64,5 +77,11 @@ export function createOverlay(native: NativeOverlay | null | undefined): Overlay
     setAlert: (on) => guard(() => native.setAlert?.(on), undefined),
     dismissRideNotification: (rideId) => guard(() => native.dismissNotification?.(`ride-${rideId}`), undefined),
     bringToFront: () => guard(() => native.bringToFront(), false),
+    setDismissEnabled: (on) => guard(() => native.setDismissEnabled?.(on), undefined),
+    onDismissed: (listener) => {
+      const sub = guard(() => native.addListener?.('onIconDismissed', listener), undefined)
+      return () => guard(() => sub?.remove(), undefined)
+    },
+    exitApp: () => guard(() => native.exitApp?.(), undefined),
   }
 }
