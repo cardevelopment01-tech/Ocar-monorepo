@@ -1,5 +1,6 @@
 import * as Location from 'expo-location'
 import { FIX_TIMEOUT_MS, type Fix } from './locationPolicy'
+import { resolveGoOnlinePosition } from './goOnlinePosition'
 
 // Matches web's own reference pattern (apps/driver/src/pages/GoOnline/StandardConfirm.tsx's
 // getCurrentPosition: enableHighAccuracy: false, timeout: 8000) -- getCurrentPositionAsync
@@ -38,6 +39,20 @@ export async function getCurrentOrLastKnownPosition(): Promise<Location.Location
     if (!last) throw new Error('no_location_available')
     return last
   }
+}
+
+// The position a driver sends when going online (see goOnlinePosition.ts for why it does not wait for a fresh fix).
+// An OS fix up to 2 minutes old and within 1 km counts as recent; otherwise one fresh coarse fix is tried for at most 2.5 s.
+const GO_ONLINE_RECENT_MAX_AGE_MS = 2 * 60_000
+const GO_ONLINE_RECENT_MAX_ACCURACY_M = 1000
+const GO_ONLINE_FRESH_CAP_MS = 2500
+
+export function getGoOnlinePosition(): Promise<Location.LocationObject> {
+  return resolveGoOnlinePosition<Location.LocationObject>({
+    recent: () => Location.getLastKnownPositionAsync({ maxAge: GO_ONLINE_RECENT_MAX_AGE_MS, requiredAccuracy: GO_ONLINE_RECENT_MAX_ACCURACY_M }),
+    fresh: () => withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }), GO_ONLINE_FRESH_CAP_MS),
+    last: () => Location.getLastKnownPositionAsync(),
+  })
 }
 
 // Rider "instant location" helpers (eng review D2). Deliberately separate from getCurrentOrLastKnownPosition above:

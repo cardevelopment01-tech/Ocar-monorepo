@@ -1,12 +1,13 @@
 import { useCallback, useState } from 'react'
 import * as Location from 'expo-location'
 import { useRouter } from 'expo-router'
-import { getApiErrorMessage, getCurrentOrLastKnownPosition } from '@ocar/mobile-shared'
+import { captureError, getApiErrorMessage, getGoOnlinePosition } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { connectSocket } from '@/services/socket'
 import { startBackgroundTracking } from '@/services/location/backgroundTask'
 import { promptOverlayPermissionOnce } from '@/features/floating-icon/promptOverlayPermission'
 import { goOnline as apiGoOnline } from './api'
+import { runGoOnline } from './goOnlineSequence'
 import type { VehicleInfo } from './types'
 
 const DEFAULT_LAT = 20.2961
@@ -53,32 +54,31 @@ export function useConfirmGoOnline(
     setError(null)
     setLocationWarning(false)
     try {
-      let lat = DEFAULT_LAT
-      let lng = DEFAULT_LNG
-      try {
-        const position = await getCurrentOrLastKnownPosition()
-        lat = position.coords.latitude
-        lng = position.coords.longitude
-      } catch {
-        setLocationWarning(true)
-      }
-
-      const input: Parameters<typeof apiGoOnline>[0] = { mode, vehicleId: vehicle.id, categoryId: vehicle.categoryId, lat, lng }
-      if (destinationCityId != null) input.destinationCityId = destinationCityId
-      const session = await apiGoOnline(input)
-
-      setOnline({
-        id: session.id,
-        vehicleId: vehicle.id,
-        categoryId: vehicle.categoryId,
-        mode,
-        destinationCityName: mode === 'return_cab' ? (destinationCityName ?? null) : null,
+      const { locationWarning: noPosition } = await runGoOnline({
+        getPosition: getGoOnlinePosition,
+        callApi: ({ lat, lng }) => {
+          const input: Parameters<typeof apiGoOnline>[0] = { mode, vehicleId: vehicle.id, categoryId: vehicle.categoryId, lat, lng }
+          if (destinationCityId != null) input.destinationCityId = destinationCityId
+          return apiGoOnline(input)
+        },
+        markOnline: (id) => setOnline({
+          id,
+          vehicleId: vehicle.id,
+          categoryId: vehicle.categoryId,
+          mode,
+          destinationCityName: mode === 'return_cab' ? (destinationCityName ?? null) : null,
+        }),
+        connectSocket,
+        goHome: () => router.dismissTo('/(tabs)/home'),
+        // Asked once, the first time the driver goes online. A prompt that fails never blocks going online.
+        afterOnline: () => { void promptOverlayPermissionOnce().catch(() => {}) },
+        startTracking: startBackgroundTracking,
+        reportTrackingFailure: (err) => captureError(err, { where: 'go_online_start_tracking' }),
+        defaultPosition: { lat: DEFAULT_LAT, lng: DEFAULT_LNG },
+        retryDelayMs: 2000,
+        wait: (ms) => new Promise((r) => setTimeout(r, ms)),
       })
-      await startBackgroundTracking()
-      connectSocket()
-      router.dismissTo('/(tabs)/home')
-      // Asked once, the first time the driver goes online. A prompt that fails never blocks going online.
-      void promptOverlayPermissionOnce().catch(() => {})
+      if (noPosition) setLocationWarning(true)
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to go online. Please try again.'))
     } finally {
