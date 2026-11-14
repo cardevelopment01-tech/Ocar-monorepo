@@ -10,8 +10,9 @@ import { useDriverSessionStore } from './useDriverSessionStore'
 describe('trackingFailed', () => {
   beforeEach(() => { useDriverSessionStore.getState().setOffline() })
 
-  it('starts false and can be set and cleared', () => {
+  it('starts false and can be set and cleared while online', () => {
     expect(useDriverSessionStore.getState().trackingFailed).toBe(false)
+    useDriverSessionStore.getState().setOnline({ id: 's0', vehicleId: 1, categoryId: 2 })
     useDriverSessionStore.getState().setTrackingFailed(true)
     expect(useDriverSessionStore.getState().trackingFailed).toBe(true)
     useDriverSessionStore.getState().setTrackingFailed(false)
@@ -26,8 +27,26 @@ describe('trackingFailed', () => {
   })
 
   it('is cleared when a new session goes online', () => {
+    useDriverSessionStore.getState().setOnline({ id: 's1', vehicleId: 1, categoryId: 2 })
     useDriverSessionStore.getState().setTrackingFailed(true)
     useDriverSessionStore.getState().setOnline({ id: 's2', vehicleId: 1, categoryId: 2 })
     expect(useDriverSessionStore.getState().trackingFailed).toBe(false)
+  })
+})
+
+describe('trackingFailed guards', () => {
+  beforeEach(() => { useDriverSessionStore.getState().setOffline() })
+
+  it('ignores a failure reported while the driver is offline', () => {
+    useDriverSessionStore.getState().setTrackingFailed(true)
+    expect(useDriverSessionStore.getState().trackingFailed).toBe(false)
+  })
+
+  it('ignores a result that belongs to an older session', () => {
+    useDriverSessionStore.getState().setOnline({ id: 'B', vehicleId: 1, categoryId: 2 })
+    useDriverSessionStore.getState().setTrackingFailed(true, 'A') // session A's late failure
+    expect(useDriverSessionStore.getState().trackingFailed).toBe(false)
+    useDriverSessionStore.getState().setTrackingFailed(true, 'B')
+    expect(useDriverSessionStore.getState().trackingFailed).toBe(true)
   })
 })

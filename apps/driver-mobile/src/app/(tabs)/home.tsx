@@ -5,7 +5,7 @@ import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, Card, NotificationBell, OCAR_MAP_PROPS, PushPrimerSheet, useUnreadCount, PulseDot, card, colors, geo, h, shadow, useNavBottom, getCurrentOrLastKnownPosition, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, Card, captureError, NotificationBell, OCAR_MAP_PROPS, PushPrimerSheet, useUnreadCount, PulseDot, card, colors, geo, h, shadow, useNavBottom, getCurrentOrLastKnownPosition, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { OnlineToggle } from '@/features/go-online/components/OnlineToggle'
@@ -51,6 +51,16 @@ export default function HomeScreen() {
   const flow = useGoOnlineFlow()
   const trackingFailed = useDriverSessionStore((s) => s.trackingFailed)
   const setTrackingFailed = useDriverSessionStore((s) => s.setTrackingFailed)
+  const retryingTracking = useRef(false)
+  function retryTracking() {
+    if (retryingTracking.current) return
+    retryingTracking.current = true
+    const sid = useDriverSessionStore.getState().sessionId ?? undefined
+    ensureBackgroundTracking()
+      .then(() => setTrackingFailed(false, sid))
+      .catch((err) => captureError(err, { where: 'home_retry_tracking' }))
+      .finally(() => { retryingTracking.current = false })
+  }
   const walletGate = useWalletGate()
   const socketConnected = useSocketConnected()
   const showReconnecting = isOnline && !socketConnected
@@ -230,7 +240,7 @@ export default function HomeScreen() {
                 </Text>
               </Pressable>
             ) : isOnline && trackingFailed ? (
-              <Pressable onPress={() => { void ensureBackgroundTracking().then(() => setTrackingFailed(false)).catch(() => {}) }}>
+              <Pressable onPress={retryTracking}>
                 <Text style={[styles.subtext, { color: colors.error }]}>
                   Location tracking did not start, so you may miss ride requests. Tap to try again.
                 </Text>

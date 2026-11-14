@@ -32,9 +32,10 @@ export async function resyncSessionFromServer(): Promise<void> {
   // Covers a cold relaunch while online (persisted store or server-restored session): the
   // task may survive but its ride-interval subscription never does.
   if (useDriverSessionStore.getState().isOnline) {
+    const sid = useDriverSessionStore.getState().sessionId ?? undefined
     await ensureBackgroundTracking()
-      .then(() => useDriverSessionStore.getState().setTrackingFailed(false))
-      .catch(() => useDriverSessionStore.getState().setTrackingFailed(true))
+      .then(() => useDriverSessionStore.getState().setTrackingFailed(false, sid))
+      .catch(() => useDriverSessionStore.getState().setTrackingFailed(true, sid))
   }
 }
 

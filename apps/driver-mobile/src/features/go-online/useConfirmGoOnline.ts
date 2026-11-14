@@ -53,6 +53,7 @@ export function useConfirmGoOnline(
   const goOnlineCore = useCallback(async () => {
     if (!vehicle || inFlight.current) return
     inFlight.current = true
+    let sessionId: string | undefined
     setGoingOnline(true)
     setError(null)
     setLocationWarning(false)
@@ -64,23 +65,23 @@ export function useConfirmGoOnline(
           if (destinationCityId != null) input.destinationCityId = destinationCityId
           return apiGoOnline(input)
         },
-        markOnline: (id) => setOnline({
+        markOnline: (id) => { sessionId = id; setOnline({
           id,
           vehicleId: vehicle.id,
           categoryId: vehicle.categoryId,
           mode,
           destinationCityName: mode === 'return_cab' ? (destinationCityName ?? null) : null,
-        }),
+        }) },
         connectSocket,
         goHome: () => router.dismissTo('/(tabs)/home'),
         // Asked once, the first time the driver goes online. A prompt that fails never blocks going online.
         afterOnline: () => { void promptOverlayPermissionOnce().catch(() => {}) },
-        startTracking: async () => { await startBackgroundTracking(); setTrackingFailed(false) },
+        startTracking: async () => { await startBackgroundTracking(); setTrackingFailed(false, sessionId) },
         isStillOnline: () => useDriverSessionStore.getState().isOnline,
         reportError: (err, where) => {
           captureError(err, { where: `go_online_${where}` })
           // the driver is online but nothing is tracking them: say so on Home instead of leaving them waiting for requests
-          if (where === 'tracking') setTrackingFailed(true)
+          if (where === 'tracking') setTrackingFailed(true, sessionId)
         },
         defaultPosition: { lat: DEFAULT_LAT, lng: DEFAULT_LNG },
         retryDelayMs: 2000,

@@ -29,7 +29,8 @@ interface DriverSessionState {
   }) => void
   setOffline: () => void
   setActiveRide: (ride: ActiveRideSummary | null) => void
-  setTrackingFailed: (failed: boolean) => void
+  /** `sessionId`, when given, makes a late result from an older session a no-op; a failure is never recorded while offline. */
+  setTrackingFailed: (failed: boolean, sessionId?: string) => void
 }
 
 export const useDriverSessionStore = create<DriverSessionState>()((set) => ({
@@ -61,5 +62,6 @@ export const useDriverSessionStore = create<DriverSessionState>()((set) => ({
   },
 
   setActiveRide: (ride) => set({ activeRide: ride }),
-  setTrackingFailed: (failed) => set({ trackingFailed: failed }),
+  setTrackingFailed: (failed, sessionId) =>
+    set((s) => ((sessionId !== undefined && s.sessionId !== sessionId) || (failed && !s.isOnline) ? s : { trackingFailed: failed })),
 }))
