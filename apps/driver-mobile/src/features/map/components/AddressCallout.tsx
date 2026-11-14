@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import { Marker } from 'react-native-maps'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, shadows, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { MARKER_Z } from '../markerZ'
 
 export type AddressCalloutProps = {
   position: [number, number]
@@ -21,7 +22,7 @@ function AddressCallout({ position, address, carHalfHeight = 18 }: AddressCallou
       coordinate={{ latitude: position[0], longitude: position[1] }}
       anchor={{ x: 0.5, y: 1 }}
       tracksViewChanges={false}
-      zIndex={9}
+      zIndex={MARKER_Z.pill}
       // the picture is frozen after its first draw, so a different clearance needs a new marker to be drawn again
       key={carHalfHeight}
     >

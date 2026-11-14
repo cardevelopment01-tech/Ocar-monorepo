@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Marker } from 'react-native-maps'
 import { VEHICLE_IMAGES } from '../vehicleImages'
 import type { VehicleKind } from '../vehicleKind'
+import { MARKER_Z } from '../markerZ'
 
 export type CarMarkerProps = {
   position: [number, number]
@@ -29,7 +30,7 @@ function CarMarker({ position, heading = 0, headingKnown = true, opacity, kind =
       flat
       image={VEHICLE_IMAGES[kind]}
       opacity={opacity ?? (headingKnown ? 1 : 0.55)}
-      zIndex={10}
+      zIndex={MARKER_Z.car}
     />
   )
 }
