@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router'
 import { NotificationSettings, useNotificationPreferences } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { usePushEnableAction } from '@/features/notifications/usePushSetup'
+import { useOverlayGuideStore } from '@/store/useOverlayGuideStore'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 import { playTestAlert } from '@/features/ride-requests/testAlert'
 import { overlay } from '@/services/overlay'
@@ -37,13 +38,13 @@ export default function NotificationSettingsScreen() {
         ? 'A small Ocar icon over other apps while you are online. Tap it to come back to Ocar.'
         : 'A small Ocar icon over other apps while you are online. Allow "Display over other apps" for Ocar when asked.',
       icon: 'circle', tone: 'ride' as const, value: floatingIconEnabled,
-      onChange: (v: boolean) => { if (v && !overlay.hasPermission()) overlay.openPermissionSettings(); setFloatingIconEnabled(v) },
+      onChange: (v: boolean) => { if (v && !overlay.hasPermission()) useOverlayGuideStore.getState().open(); setFloatingIconEnabled(v) },
     },
     {
       label: 'Open Ocar for new requests',
       description: 'Brings Ocar to the front by itself when a request arrives and you are not moving fast. The loud notification still rings.',
       icon: 'external-link', tone: 'ride' as const, value: floatingIconEnabled && autoOpenEnabled,
-      onChange: (v: boolean) => { if (v) { if (!floatingIconEnabled) setFloatingIconEnabled(true); if (!overlay.hasPermission()) overlay.openPermissionSettings() } setAutoOpenEnabled(v) },
+      onChange: (v: boolean) => { if (v) { if (!floatingIconEnabled) setFloatingIconEnabled(true); if (!overlay.hasPermission()) useOverlayGuideStore.getState().open() } setAutoOpenEnabled(v) },
     },
   ] : []
   // Always shown (they are on this phone, not on the server), ahead of the server-side category switches.
