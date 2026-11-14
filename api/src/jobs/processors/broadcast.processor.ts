@@ -157,7 +157,11 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     }))
   }
 
-  if (drivers.length < maxThisRound) {
+  // A return-cab ride is priced at the discounted return rate, which only a driver heading that way has agreed to. It is therefore
+  // NEVER offered to a standard driver, however few return-cab drivers match: it ends as no_drivers and the rider books a standard cab.
+  const standardAllowed = !data.isReturnCab
+
+  if (standardAllowed && drivers.length < maxThisRound) {
     const radiusMetres = Math.min(cap, data.radiusMetres ?? cap)
     const nearbyParams: Parameters<typeof repo.findNearbyDrivers>[0] = {
       lat: data.originLat,
@@ -188,7 +192,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   // another ride, (3) also allow drivers offered before who did not decline, (4) everyone except open offers, decliners included. So the
   // rule can never leave a ride with fewer drivers than a non-spread ride would have had.
   let spreadLevel = 1
-  if (spread && !drivers.length && maxThisRound > 0) {
+  if (standardAllowed && spread && !drivers.length && maxThisRound > 0) {
     const offeredIds = offeredBefore.map((o) => o.driver_id)
     const declined = offeredBefore.filter((o) => o.status === 'declined').map((o) => o.driver_id)
     const steps: bigint[][] = [[...liveDriverIds, ...offeredIds], [...liveDriverIds, ...declined], [...liveDriverIds]]
@@ -213,7 +217,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
   }
 
   // A pool smaller than the wave: if skipping the drivers who declined left nobody, offer to them rather than burn the round.
-  if (phase1 && !spread && !drivers.length && declinedDriverIds.length > 0) {
+  if (standardAllowed && phase1 && !spread && !drivers.length && declinedDriverIds.length > 0) {
     const retry: Parameters<typeof repo.findNearbyDrivers>[0] = {
       lat: data.originLat, lng: data.originLng, categoryIds, maxDrivers: maxThisRound,
       radiusMetres: Math.min(cap, data.radiusMetres ?? cap), minWalletBalance,

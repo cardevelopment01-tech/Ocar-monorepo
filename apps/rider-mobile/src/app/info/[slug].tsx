@@ -108,7 +108,7 @@ export default function InfoScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>()
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const setRideType = useBookingDraftStore((s) => s.setRideType)
+  const startSearch = useBookingDraftStore((s) => s.startSearch)
   const info = slug ? INFO[slug] : undefined
   if (!slug || !info) return <Redirect href="/home" />
 
@@ -138,7 +138,7 @@ export default function InfoScreen() {
         </View>
         <Press
           onPress={() => {
-            setRideType('one_way', false)
+            startSearch('one_way', false)
             router.replace('/booking')
           }}
           scaleTo={0.98}

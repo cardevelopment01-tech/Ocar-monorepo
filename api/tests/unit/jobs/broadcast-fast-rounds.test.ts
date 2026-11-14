@@ -115,12 +115,17 @@ describe('fast rounds', () => {
   it.each([
     ['the switch is off', () => vi.mocked(fastRoundsEnabled).mockResolvedValue(false), data(1)],
     ['the job carries its own radius', () => {}, data(1, { radiusMetres: 2000 })],
-    ['it is a return-cab match', () => {}, data(1, { isReturnCab: true })],
   ])('does not widen when %s', async (_name, arrange, job) => {
     arrange()
     vi.mocked(repo.findNearbyDrivers).mockResolvedValue([])
     await processBroadcast(job)
     expect(searches()).toHaveLength(1)
+  })
+
+  it('never searches standard drivers for a return-cab match, so there is nothing to widen', async () => {
+    vi.mocked(repo.findNearbyDrivers).mockResolvedValue([])
+    await processBroadcast(data(1, { isReturnCab: true }))
+    expect(searches()).toHaveLength(0)
   })
 
   it('does not widen for a ride on the old dispatch rules (variant 0)', async () => {

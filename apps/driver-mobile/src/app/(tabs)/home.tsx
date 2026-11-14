@@ -5,7 +5,7 @@ import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, Card, NotificationBell, OCAR_MAP_PROPS, PushPrimerSheet, useUnreadCount, PulseDot, card, colors, geo, h, shadow, useNavBottom, getCurrentOrLastKnownPosition, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, Card, captureError, NotificationBell, OCAR_MAP_PROPS, PushPrimerSheet, useUnreadCount, PulseDot, card, colors, geo, h, shadow, useNavBottom, getCurrentOrLastKnownPosition, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { OnlineToggle } from '@/features/go-online/components/OnlineToggle'
@@ -14,12 +14,15 @@ import { useGoOnlineFlow } from '@/features/go-online/useGoOnlineFlow'
 import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { walletBlockMessage } from '@/features/go-online/walletGateMessage'
 import { useSocketConnected } from '@/features/go-online/useSocketConnected'
+import { ensureBackgroundTracking } from '@/services/location/backgroundTask'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
 import { useNotificationPrimer } from '@/features/notifications/usePushSetup'
 import { fetchEarningsSummary } from '@/features/earnings/api'
 import type { EarningsSummary } from '@/features/earnings/types'
 import CarMarker from '@/features/map/components/CarMarker'
 import AddressCallout from '@/features/map/components/AddressCallout'
+import { useVehicleKind } from '@/features/map/useVehicleKind'
+import { MARKER_DP } from '@/features/map/vehicleKind'
 import { fetchReverseGeocode } from '@/features/map/api'
 import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosition'
 import { INITIAL_RECENTER, nextRecenter, type RecenterState } from '@/features/map/recenter'
@@ -48,6 +51,21 @@ export default function HomeScreen() {
   const mode = useDriverSessionStore((s) => s.mode)
   const destinationCityName = useDriverSessionStore((s) => s.destinationCityName)
   const flow = useGoOnlineFlow()
+  const sessionCategoryId = useDriverSessionStore((s) => s.categoryId)
+  // The driver's own vehicle on the map: the session's category once online (the vehicle on file if the session has none yet), the vehicle on file before that.
+  const vehicleKind = useVehicleKind((isOnline ? sessionCategoryId : null) ?? flow.vehicle?.categoryId ?? null)
+  const trackingFailed = useDriverSessionStore((s) => s.trackingFailed)
+  const setTrackingFailed = useDriverSessionStore((s) => s.setTrackingFailed)
+  const retryingTracking = useRef(false)
+  function retryTracking() {
+    if (retryingTracking.current) return
+    retryingTracking.current = true
+    const sid = useDriverSessionStore.getState().sessionId ?? undefined
+    ensureBackgroundTracking()
+      .then(() => setTrackingFailed(false, sid))
+      .catch((err) => captureError(err, { where: 'home_retry_tracking' }))
+      .finally(() => { retryingTracking.current = false })
+  }
   const walletGate = useWalletGate()
   const socketConnected = useSocketConnected()
   const showReconnecting = isOnline && !socketConnected
@@ -130,13 +148,38 @@ export default function HomeScreen() {
   // Bring the camera onto the driver once the native map is ready and a position exists, and again once per online session
   // when live GPS arrives (see features/map/recenter.ts). Never on every GPS tick, so a driver who pans is not dragged back.
   const recenter = useRef<RecenterState>(INITIAL_RECENTER)
+  // animateToRegion was a one-shot with no check, and on a real phone the camera sometimes stayed on the default Bhubaneswar view while
+  // the car sat off screen. This moves with animateCamera (what the active-ride map uses), then reads the camera back and tries again,
+  // up to 3 times, if it did not arrive. "Arrived" is within about 5 km: the map's bottom padding makes getCamera() report a centre
+  // about 1 km off the target even when the car is correctly framed, so a tighter check kept retrying for nothing.
+  // Each call gets its own generation: a newer call (or leaving the screen) makes every pending retry of an older one stop, so a late
+  // retry can never drag the map back to a stale position, and each call has its own 3 tries.
+  const cameraGen = useRef(0)
+  useEffect(() => () => { cameraGen.current += 1 }, [])
+  function moveCameraTo(target: [number, number]) {
+    const gen = ++cameraGen.current
+    let tries = 0
+    const attempt = () => {
+      const map = mapRef.current
+      if (!map || gen !== cameraGen.current) return
+      tries += 1
+      map.animateCamera({ center: { latitude: target[0], longitude: target[1] }, zoom: 14 }, { duration: 600 })
+      setTimeout(() => {
+        if (gen !== cameraGen.current) return
+        map.getCamera().then((cam) => {
+          if (gen !== cameraGen.current) return
+          const close = Math.abs(cam.center.latitude - target[0]) < 0.05 && Math.abs(cam.center.longitude - target[1]) < 0.05
+          if (!close && tries < 3) attempt()
+        }).catch(() => { if (tries < 3) attempt() })
+      }, 1000)
+    }
+    attempt()
+  }
   const livePosition = live?.position ?? null
   useEffect(() => {
     const out = nextRecenter(recenter.current, { mapReady, position: carPosition, livePosition, isOnline })
     recenter.current = out.state
-    if (out.target) {
-      mapRef.current?.animateToRegion({ latitude: out.target[0], longitude: out.target[1], latitudeDelta: 0.03, longitudeDelta: 0.03 }, 600)
-    }
+    if (out.target) moveCameraTo(out.target)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- carPosition/livePosition are fresh arrays each render; the rules are idempotent
   }, [mapReady, isOnline, carPosition?.[0], carPosition?.[1], livePosition?.[0], livePosition?.[1]])
 
@@ -190,12 +233,12 @@ export default function HomeScreen() {
             bearing, matching CarMarker's own contract for "no real bearing yet"
             (dimmed, not a fake north snap). */}
         {carPosition ? (
-          <CarMarker position={carPosition} headingKnown={live?.headingKnown ?? false} opacity={0.85} />
+          <CarMarker position={carPosition} headingKnown={live?.headingKnown ?? false} opacity={0.85} kind={vehicleKind} />
         ) : null}
         {/* Real map-anchored Marker (see AddressCallout's own comment), not a
             screen-fixed overlay -- stays correctly pinned above the car
             through every pan/zoom instead of drifting off it. */}
-        {carPosition && address ? <AddressCallout position={carPosition} address={address} /> : null}
+        {carPosition && address ? <AddressCallout position={carPosition} address={address} carHalfHeight={MARKER_DP[vehicleKind].h / 2} /> : null}
       </MapView>
       {!isOnline ? <View style={styles.mapDim} pointerEvents="none" /> : null}
 
@@ -224,6 +267,12 @@ export default function HomeScreen() {
               <Pressable onPress={() => void Linking.openSettings()}>
                 <Text style={[styles.subtext, { color: colors.error }]}>
                   Location is off, so you won't get ride requests. Tap to turn it on in Settings.
+                </Text>
+              </Pressable>
+            ) : isOnline && trackingFailed ? (
+              <Pressable onPress={retryTracking}>
+                <Text style={[styles.subtext, { color: colors.error }]}>
+                  Location tracking did not start, so you may miss ride requests. Tap to try again.
                 </Text>
               </Pressable>
             ) : (

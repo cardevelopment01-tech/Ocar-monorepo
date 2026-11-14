@@ -1,20 +1,20 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import * as Location from 'expo-location'
 import { useRouter } from 'expo-router'
-import { getApiErrorMessage, getCurrentOrLastKnownPosition } from '@ocar/mobile-shared'
+import { captureError, getApiErrorMessage, getGoOnlinePosition } from '@ocar/mobile-shared'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { connectSocket } from '@/services/socket'
 import { startBackgroundTracking } from '@/services/location/backgroundTask'
 import { promptOverlayPermissionOnce } from '@/features/floating-icon/promptOverlayPermission'
 import { goOnline as apiGoOnline } from './api'
+import { runGoOnline } from './goOnlineSequence'
 import type { VehicleInfo } from './types'
 
 const DEFAULT_LAT = 20.2961
 const DEFAULT_LNG = 85.8245
 
-// getCurrentOrLastKnownPosition (mobile-shared) is already timeout-capped and
-// falls back to a cached last-known fix on its own -- this only needs to
-// handle the doubly-unlikely case where THAT also has nothing to offer
+// getGoOnlinePosition (mobile-shared) uses a recent OS fix straight away, else a fresh one for at most 2.5 s, else any last-known one --
+// this default only covers the unlikely case where there is nothing at all
 // (fresh install, permission just granted, no OS location history at all).
 // A location this coarse is only ever used as the driver's initial map
 // position; the real live position starts flowing from startBackgroundTracking
@@ -41,6 +41,9 @@ export function useConfirmGoOnline(
 ): ConfirmGoOnlineState {
   const router = useRouter()
   const setOnline = useDriverSessionStore((s) => s.setOnline)
+  const setTrackingFailed = useDriverSessionStore((s) => s.setTrackingFailed)
+  // React state is not read until the next render, so a quick second tap could start a second go-online; a ref closes that gap.
+  const inFlight = useRef(false)
 
   const [goingOnline, setGoingOnline] = useState(false)
   const [showDisclosure, setShowDisclosure] = useState(false)
@@ -48,43 +51,50 @@ export function useConfirmGoOnline(
   const [error, setError] = useState<string | null>(null)
 
   const goOnlineCore = useCallback(async () => {
-    if (!vehicle) return
+    if (!vehicle || inFlight.current) return
+    inFlight.current = true
+    let sessionId: string | undefined
     setGoingOnline(true)
     setError(null)
     setLocationWarning(false)
     try {
-      let lat = DEFAULT_LAT
-      let lng = DEFAULT_LNG
-      try {
-        const position = await getCurrentOrLastKnownPosition()
-        lat = position.coords.latitude
-        lng = position.coords.longitude
-      } catch {
-        setLocationWarning(true)
-      }
-
-      const input: Parameters<typeof apiGoOnline>[0] = { mode, vehicleId: vehicle.id, categoryId: vehicle.categoryId, lat, lng }
-      if (destinationCityId != null) input.destinationCityId = destinationCityId
-      const session = await apiGoOnline(input)
-
-      setOnline({
-        id: session.id,
-        vehicleId: vehicle.id,
-        categoryId: vehicle.categoryId,
-        mode,
-        destinationCityName: mode === 'return_cab' ? (destinationCityName ?? null) : null,
+      const { locationWarning: noPosition } = await runGoOnline({
+        getPosition: getGoOnlinePosition,
+        callApi: ({ lat, lng }) => {
+          const input: Parameters<typeof apiGoOnline>[0] = { mode, vehicleId: vehicle.id, categoryId: vehicle.categoryId, lat, lng }
+          if (destinationCityId != null) input.destinationCityId = destinationCityId
+          return apiGoOnline(input)
+        },
+        markOnline: (id) => { sessionId = id; setOnline({
+          id,
+          vehicleId: vehicle.id,
+          categoryId: vehicle.categoryId,
+          mode,
+          destinationCityName: mode === 'return_cab' ? (destinationCityName ?? null) : null,
+        }) },
+        connectSocket,
+        goHome: () => router.dismissTo('/(tabs)/home'),
+        // Asked once, the first time the driver goes online. A prompt that fails never blocks going online.
+        afterOnline: () => { void promptOverlayPermissionOnce().catch(() => {}) },
+        startTracking: async () => { await startBackgroundTracking(); setTrackingFailed(false, sessionId) },
+        isStillOnline: () => useDriverSessionStore.getState().isOnline,
+        reportError: (err, where) => {
+          captureError(err, { where: `go_online_${where}` })
+          // the driver is online but nothing is tracking them: say so on Home instead of leaving them waiting for requests
+          if (where === 'tracking') setTrackingFailed(true, sessionId)
+        },
+        defaultPosition: { lat: DEFAULT_LAT, lng: DEFAULT_LNG },
+        retryDelayMs: 2000,
+        wait: (ms) => new Promise((r) => setTimeout(r, ms)),
       })
-      await startBackgroundTracking()
-      connectSocket()
-      router.dismissTo('/(tabs)/home')
-      // Asked once, the first time the driver goes online. A prompt that fails never blocks going online.
-      void promptOverlayPermissionOnce().catch(() => {})
+      if (noPosition) setLocationWarning(true)
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to go online. Please try again.'))
     } finally {
+      inFlight.current = false
       setGoingOnline(false)
     }
-  }, [vehicle, mode, destinationCityId, destinationCityName, setOnline, router])
+  }, [vehicle, mode, destinationCityId, destinationCityName, setOnline, setTrackingFailed, router])
 
   // Only shows the Play-Store-required disclosure card (and re-requests OS
   // permissions) when location access isn't already granted -- previously this

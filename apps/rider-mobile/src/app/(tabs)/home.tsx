@@ -90,7 +90,7 @@ export default function HomeScreen() {
   const locationEnabled = useLocationStore((s) => s.permission === 'granted')
   const freshness = useFreshness()
   useLocationTracking()
-  const setRideType = useBookingDraftStore((s) => s.setRideType)
+  const startSearch = useBookingDraftStore((s) => s.startSearch)
   // An auto-filled pickup is only the draft's copy of the live location: the home map follows the live fix, not that copy.
   const draftPickup = useBookingDraftStore((s) => s.pickup)
   const pickupAuto = useBookingDraftStore((s) => s.pickupAuto)
@@ -125,7 +125,8 @@ export default function HomeScreen() {
   )
 
   function toBooking(rideType: RideType, declared = true, tripMode: TripMode = 'standard') {
-    setRideType(rideType, declared, tripMode)
+    // A new search from Home never starts on the previous trip's destination (it would also auto-continue with it).
+    startSearch(rideType, declared, tripMode)
     router.push('/booking')
   }
   // A home tile: Outstation, City Ride or Rental (see tripIntent.ts).

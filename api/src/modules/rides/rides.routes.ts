@@ -10,6 +10,8 @@ import { requireSupportedApp } from '@/modules/app-version/app-version.routes'
 import * as service from './rides.service'
 import * as repo from './rides.repository'
 import * as paymentsService from '@/modules/payments/payments.service'
+import { returnCabAvailability } from './return-cab-availability'
+import { maxPickupRadiusMetres } from '@/constants/limits'
 
 const HISTORY_LIMIT = 20
 
@@ -208,7 +210,8 @@ router.get('/return-cab-available', authenticate(), async (req, res, next) => {
     const minWalletBalance = await paymentsService.getMinWalletBalance()
     const categoryIds = await repo.getEligibleDriverCategoryIds(categoryId)
     const drivers = await repo.findReturnCabDrivers({ pickupLat, pickupLng, dropLat, dropLng, categoryIds, minWalletBalance })
-    res.json({ count: drivers.length })
+    // `count` is unchanged for older apps; `nearest_m` lets the rider app show an honest wait next to the saving.
+    res.json(returnCabAvailability(drivers, maxPickupRadiusMetres('one_way', null)))
   } catch (err) { next(err) }
 })
 
