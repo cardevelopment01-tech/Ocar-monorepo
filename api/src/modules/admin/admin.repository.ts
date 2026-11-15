@@ -12,7 +12,7 @@ import { invalidate, cachedRead } from "@/lib/cache/reference-cache";
 import { RATE_CARD_CACHE_TTL_SECONDS } from "@/constants/limits";
 import { logger } from "@/lib/logger";
 import { hasApprovedRequiredDocs, docIssueExistsSql } from "@/modules/drivers/drivers.repository";
-import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, sqlList } from "@/modules/drivers/required-docs";
+import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, sqlList, sqlVehicleDocApplies } from "@/modules/drivers/required-docs";
 import { invalidateSurgeCache } from "@/modules/pricing/pricing.repository";
 import { deleteFile } from "@/lib/storage";
 import type { PoolClient, QueryResult, QueryResultRow } from "pg";
@@ -151,7 +151,7 @@ const PENDING_REQUIRED_DOCS_SQL = `(
   EXISTS (SELECT 1 FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'pending'
           AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)}))
   OR EXISTS (SELECT 1 FROM driver_vehicle_documents dvd JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
-             WHERE dv.driver_id = d.id AND dvd.status = 'pending'
+             WHERE dv.driver_id = d.id AND dvd.status = 'pending' AND ${sqlVehicleDocApplies('dv', 'dvd')}
              AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)}))
 )`;
 // The one list of statuses the review queue covers: used by the filter, the card count and the per-row badge.
@@ -251,7 +251,7 @@ export async function listDrivers(
            (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'pending'
               AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)}))
            + (SELECT COUNT(*) FROM driver_vehicle_documents dvd JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
-              WHERE dv.driver_id = d.id AND dvd.status = 'pending' AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)}))
+              WHERE dv.driver_id = d.id AND dvd.status = 'pending' AND ${sqlVehicleDocApplies('dv', 'dvd')} AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)}))
          ELSE 0 END AS docs_pending
        ${DRIVER_LIST_FROM}
        ${main.where}

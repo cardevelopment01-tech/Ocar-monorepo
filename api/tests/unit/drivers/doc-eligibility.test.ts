@@ -7,6 +7,7 @@ vi.mock('@/db/client', () => ({
 
 import { query } from '@/db/client'
 import { docIssueExistsSql, hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
+import { sqlVehicleDocApplies } from '@/modules/drivers/required-docs'
 
 describe('docIssueExistsSql', () => {
   it('builds an EXISTS check over both doc tables using the given driver-id expression', () => {
@@ -26,7 +27,9 @@ describe('docIssueExistsSql', () => {
     expect(sql).toContain("'aadhaar_front'")
     expect(sql).toContain("dvd.status = 'pending'")
     expect(sql).toContain("'vehicle_rc_front'")
-    expect(sql).not.toContain('pollution_cert')
+    // optional certificates are not in any required list; the only mention is the electric-vehicle exclusion fragment
+    const withoutEvClause = sql.replace(sqlVehicleDocApplies('dv', 'dvd'), '')
+    expect(withoutEvClause).not.toContain('pollution_cert')
     expect(sql).not.toContain('fitness_cert')
   })
 

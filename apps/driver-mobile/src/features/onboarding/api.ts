@@ -43,6 +43,8 @@ export type DocumentStatus = {
   identity: { license_number: string | null; aadhaar_number: string | null }
   photos: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null; rejection_count: number }>
   vehicle_docs: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null; rejection_count: number }>
+  /** Fuel type of the primary vehicle (an older server omits it). 'electric' needs no permit or PUC. */
+  vehicle_fuel_type?: string | null
   all_required_complete: boolean
   rejection_reason: string | null
   /** What blocks going online and why (expired / rejected / waiting for review / missing). Missing from an older server. */

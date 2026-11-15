@@ -5,6 +5,7 @@ import { getUploadUrl, promotePendingUpload, getPresignedUrl } from '@/lib/stora
 import { notificationsQueue } from '@/jobs/queues'
 import * as repo from './drivers.repository'
 import { findDocIssues, type DocIssue } from './doc-issues'
+import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, requiredVehicleDocs } from './required-docs'
 import * as safetyRepo from '@/modules/safety/safety.repository'
 import type { Driver, DriverVehicle, OnboardingStatus } from './drivers.types'
 
@@ -50,8 +51,6 @@ function isPersonalInfoComplete(d: Driver): boolean {
   )
 }
 
-const REQUIRED_IDENTITY_DOCS = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
-const REQUIRED_VEHICLE_DOCS  = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
 
 async function checkDocuments(driverId: bigint): Promise<{ complete: boolean; missing: string[] }> {
   const driver = await repo.findDriverById(driverId)
@@ -69,7 +68,7 @@ async function checkDocuments(driverId: bigint): Promise<{ complete: boolean; mi
   if (vehicle) {
     const vehicleDocs = await repo.findVehicleDocuments(vehicle.id)
     const uploadedVehicle = new Set(vehicleDocs.map((d) => d.doc_type))
-    for (const dt of REQUIRED_VEHICLE_DOCS) {
+    for (const dt of requiredVehicleDocs(vehicle.fuel_type)) {
       if (!uploadedVehicle.has(dt)) missing.push(dt)
     }
   } else {
@@ -301,6 +300,8 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
   identity: { license_number: string | null; aadhaar_number: string | null }
   photos: Record<string, DocumentStatusEntry>
   vehicle_docs: Record<string, DocumentStatusEntry>
+  /** Fuel type of the primary vehicle; the app uses it to show which vehicle documents apply ('electric' needs no permit or PUC). */
+  vehicle_fuel_type: string | null
   all_required_complete: boolean
   rejection_reason: string | null
   /** Documents that keep the driver from going online and why (expired / rejected / waiting for review / missing). */
@@ -362,6 +363,7 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
     },
     photos,
     vehicle_docs: vehicleDocs,
+    vehicle_fuel_type: vehicle?.fuel_type ?? null,
     all_required_complete: complete,
     rejection_reason: rejectionReason,
     doc_issues: await findDocIssues(driverId),

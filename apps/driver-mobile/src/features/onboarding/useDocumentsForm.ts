@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { onboardingApi, type DocumentStatus, type PickedFile } from './api'
-import { DRIVER_DOC_GROUPS, VEHICLE_DOC_GROUPS, ALL_DOC_KEYS, PROFILE_PHOTO_KEY } from './constants'
+import { DRIVER_DOC_GROUPS, VEHICLE_DOC_GROUPS, ALL_DOC_KEYS, PROFILE_PHOTO_KEY, EV_IGNORED_DOC_KEYS, vehicleDocGroupsFor } from './constants'
 import { getApiErrorMessage } from '@ocar/mobile-shared'
 
 export type SlotState = { state: 'idle' | 'uploading' | 'done' | 'error'; url: string | null; docStatus: string | null; rejectionNote: string | null; rejectionCount: number; error: string | null }
@@ -9,7 +9,7 @@ function initSlotState(): Record<string, SlotState> {
   return Object.fromEntries(ALL_DOC_KEYS.map((k) => [k, { state: 'idle' as const, url: null, docStatus: null, rejectionNote: null, rejectionCount: 0, error: null }]))
 }
 
-const VEHICLE_DOC_KEYS = new Set(VEHICLE_DOC_GROUPS.flatMap((g) => g.slots.map((s) => s.key)))
+const VEHICLE_DOC_KEYS: ReadonlySet<string> = new Set(VEHICLE_DOC_GROUPS.flatMap((g) => g.slots.map((s) => s.key)))
 const ALL_LABELS: Record<string, string> = {
   [PROFILE_PHOTO_KEY]: 'Profile photo',
   ...Object.fromEntries(
@@ -35,6 +35,7 @@ export function useDocumentsForm() {
   const [validUntil, setValidUntil] = useState<Record<string, string>>({})
   const [expiredDocs, setExpiredDocs] = useState<ExpiredDoc[]>([])
   const [isFetching, setIsFetching] = useState(true)
+  const [fuelType, setFuelType] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export function useDocumentsForm() {
         if (status.identity.license_number) setLicenseNumber(status.identity.license_number)
         if (status.identity.aadhaar_number) setAadhaarNumber(status.identity.aadhaar_number)
         if (status.identity.license_number && status.identity.aadhaar_number) setIdentitySaved(true)
+        setFuelType(status.vehicle_fuel_type ?? null)
 
         const merged = initSlotState()
         for (const [k, v] of Object.entries({ ...status.photos, ...status.vehicle_docs })) {
@@ -93,10 +95,11 @@ export function useDocumentsForm() {
   }
 
   const requiredDriverKeys = DRIVER_DOC_GROUPS.flatMap((g) => g.slots.map((s) => s.key))
-  const requiredVehicleKeys = VEHICLE_DOC_GROUPS.filter((g) => g.required).flatMap((g) => g.slots.map((s) => s.key))
+  const vehicleGroups = vehicleDocGroupsFor(fuelType)
+  const requiredVehicleKeys = vehicleGroups.filter((g) => g.required).flatMap((g) => g.slots.map((s) => s.key))
   const requiredKeys = [...requiredDriverKeys, ...requiredVehicleKeys]
   const allDocsUploaded = requiredKeys.every((k) => slotState[k]?.state === 'done')
-  const requiredExpiryGroups = [...DRIVER_DOC_GROUPS, ...VEHICLE_DOC_GROUPS].filter((g) => g.required && g.hasExpiry && g.expiryRequired)
+  const requiredExpiryGroups = [...DRIVER_DOC_GROUPS, ...vehicleGroups].filter((g) => g.required && g.hasExpiry && g.expiryRequired)
   const allExpiriesFilled = requiredExpiryGroups.every((g) => !!validUntil[g.groupKey])
   const identityFilled = /^[A-Z]{2}[A-Z0-9]{13,14}$/.test(licenseNumber) && aadhaarNumber.length === 12
   const canContinue = allDocsUploaded && allExpiriesFilled && (identitySaved || identityFilled)
@@ -116,10 +119,12 @@ export function useDocumentsForm() {
     }
   }
 
-  const rejectedDocs: RejectedDoc[] = ALL_DOC_KEYS
+  // A document that does not apply to this vehicle (an electric vehicle's permit or PUC) is never flagged.
+  const applicableKeys = ALL_DOC_KEYS.filter((k) => !(fuelType === 'electric' && EV_IGNORED_DOC_KEYS.has(k)))
+  const rejectedDocs: RejectedDoc[] = applicableKeys
     .filter((k) => slotState[k]?.docStatus === 'rejected')
     .map((k) => ({ key: k, label: ALL_LABELS[k] ?? k, note: slotState[k]?.rejectionNote ?? null, count: slotState[k]?.rejectionCount ?? 0 }))
-  const pendingCount = ALL_DOC_KEYS.filter((k) => slotState[k]?.docStatus === 'pending').length
+  const pendingCount = applicableKeys.filter((k) => slotState[k]?.docStatus === 'pending').length
 
   return {
     isFetching, isSaving,
@@ -130,6 +135,7 @@ export function useDocumentsForm() {
     allDocsUploaded, allExpiriesFilled, identityFilled, canContinue,
     rejectedDocs, expiredDocs, pendingCount,
     vehicleDocKeys: VEHICLE_DOC_KEYS,
+    vehicleGroups,
   }
 }
 

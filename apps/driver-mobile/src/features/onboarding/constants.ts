@@ -44,6 +44,20 @@ export const VEHICLE_DOC_GROUPS = [
   { groupKey: 'fitness_cert', label: 'Fitness Certificate', hasExpiry: true, expiryRequired: false, required: false, slots: [{ key: 'fitness_cert', slotLabel: '' }] },
 ] as const
 
+type VehicleDocGroup = {
+  groupKey: string; label: string; hasExpiry: boolean; expiryRequired: boolean; required: boolean
+  slots: ReadonlyArray<{ key: string; slotLabel: string }>
+}
+
+// An electric vehicle needs no commercial permit (shown as optional) and has no PUC (hidden). Mirrors the server's
+// required-docs.ts, which is the real guard; the server also tells this app the fuel type (vehicle_fuel_type).
+export const EV_IGNORED_DOC_KEYS: ReadonlySet<string> = new Set(['permit', 'pollution_cert'])
+export function vehicleDocGroupsFor(fuelType: string | null | undefined): ReadonlyArray<VehicleDocGroup> {
+  if (fuelType !== 'electric') return VEHICLE_DOC_GROUPS
+  return VEHICLE_DOC_GROUPS.filter((g) => g.groupKey !== 'pollution_cert')
+    .map((g) => (g.groupKey === 'permit' ? { ...g, required: false, expiryRequired: false } : g))
+}
+
 export const REQUIRED_VEHICLE_DOC_KEYS = VEHICLE_DOC_GROUPS.filter((g) => g.required).flatMap((g) => g.slots.map((s) => s.key))
 export const REQUIRED_DRIVER_DOC_KEYS = DRIVER_DOC_GROUPS.flatMap((g) => g.slots.map((s) => s.key))
 // Collected by the onboarding selfie step, so it is NOT in DRIVER_DOC_GROUPS (the onboarding Documents

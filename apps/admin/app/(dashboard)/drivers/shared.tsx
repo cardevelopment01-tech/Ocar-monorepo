@@ -46,7 +46,7 @@ export function docLabel(key: string) {
 }
 
 export const REQUIRED_DRIVER_DOCS  = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
-export const REQUIRED_VEHICLE_DOCS = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
+export { REQUIRED_VEHICLE_DOCS, requiredVehicleDocs } from '@/lib/vehicle-docs'
 
 export function DocCheckItem({
   docType, fileUrl, status, rejectionNote, issue, onClick, uploadedByAdmin,

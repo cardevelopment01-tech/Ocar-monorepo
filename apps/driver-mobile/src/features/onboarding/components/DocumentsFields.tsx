@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
-import { DRIVER_DOC_GROUPS, VEHICLE_DOC_GROUPS, PROFILE_PHOTO_KEY } from '../constants'
+import { DRIVER_DOC_GROUPS, PROFILE_PHOTO_KEY } from '../constants'
 import { Field, FieldError, TextField } from './FormPrimitives'
 import { DateField } from './DateField'
 import { DocSlot } from './DocSlot'
@@ -90,7 +90,7 @@ export function DocumentsFields({ form, showProfilePhoto }: { form: DocumentsFor
       ))}
 
       <Text style={styles.sectionLabel}>Vehicle documents</Text>
-      {VEHICLE_DOC_GROUPS.map((group) => (
+      {form.vehicleGroups.map((group) => (
         <View key={group.groupKey} style={styles.groupCard}>
           <View style={styles.groupHeaderRow}>
             <Text style={styles.groupLabel}>{group.label}</Text>

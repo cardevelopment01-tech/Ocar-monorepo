@@ -4,7 +4,7 @@ import { Button, colors, typography, Text } from '@ocar/mobile-shared'
 import { OnboardingShell } from '@/features/onboarding/components/OnboardingShell'
 import { DocumentsFields } from '@/features/onboarding/components/DocumentsFields'
 import { useDocumentsForm } from '@/features/onboarding/useDocumentsForm'
-import { DRIVER_DOC_GROUPS, VEHICLE_DOC_GROUPS } from '@/features/onboarding/constants'
+import { DRIVER_DOC_GROUPS } from '@/features/onboarding/constants'
 
 export default function DocumentsScreen() {
   const router = useRouter()
@@ -18,7 +18,7 @@ export default function DocumentsScreen() {
     )
   }
 
-  const requiredExpiryGroups = [...DRIVER_DOC_GROUPS, ...VEHICLE_DOC_GROUPS].filter((g) => g.required && g.hasExpiry && g.expiryRequired)
+  const requiredExpiryGroups = [...DRIVER_DOC_GROUPS, ...form.vehicleGroups].filter((g) => g.required && g.hasExpiry && g.expiryRequired)
   const missingHint = !form.identityFilled
     ? 'Enter your licence and Aadhaar numbers'
     : !form.allDocsUploaded

@@ -3,7 +3,7 @@ import { createApp } from '@/app'
 import request from 'supertest'
 import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
-import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
+import { hasApprovedRequiredDocs, hasAllRequiredDocsApproved, findDocsNeedingExpiryNotice } from '@/modules/drivers/drivers.repository'
 import { findDocIssues } from '@/modules/drivers/doc-issues'
 import { loginDriver, seedActiveDriverWithVehicle, cleanupRideAndDriverData, completeDailyVerification, goOnline } from '../helpers/fixtures/rides.fixture'
 import { seedAdmin, loginAdmin, cleanupAdmins } from '../helpers/fixtures/safety.fixture'
@@ -103,6 +103,72 @@ describe('findDocIssues agrees with the SQL go-online gate', () => {
     expect(issues[0]).toMatchObject({ scope: 'vehicle', doc_type: 'insurance', reason: 'expired', label: 'Insurance' })
     const { rows } = await pool.query<{ d: string }>('SELECT (CURRENT_DATE - 1)::text AS d')
     expect(issues[0]!.valid_until).toBe(rows[0]!.d)
+  })
+})
+
+// An electric vehicle needs no commercial permit and has no PUC: neither is required, and neither can block it. Real SQL, so
+// the gate (dispatch / go-online), the issue list, the completeness check and the expiry reminders are all checked together.
+describe('electric vehicle: permit and PUC do not apply', () => {
+  const evBase = (): { identity: Doc[]; vehicle: Doc[] } => {
+    const g = good(); g.vehicle = g.vehicle.filter((d) => d[0] !== 'permit'); return g
+  }
+  const scenarios: Array<[string, () => { identity: Doc[]; vehicle: Doc[] }, blocked: boolean]> = [
+    ['no permit uploaded at all', evBase, false],
+    ['permit pending review', () => { const g = evBase(); g.vehicle.push(['permit', 'pending']); return g }, false],
+    ['permit rejected', () => { const g = evBase(); g.vehicle.push(['permit', 'rejected']); return g }, false],
+    ['permit expired', () => { const g = evBase(); g.vehicle.push(['permit', 'approved', 'yesterday']); return g }, false],
+    ['PUC expired', () => { const g = evBase(); g.vehicle.push(['pollution_cert', 'approved', 'yesterday']); return g }, false],
+    ['PUC rejected', () => { const g = evBase(); g.vehicle.push(['pollution_cert', 'rejected']); return g }, false],
+    ['insurance expired still blocks', () => { const g = evBase(); g.vehicle[2] = ['insurance', 'approved', 'yesterday']; return g }, true],
+    ['insurance pending still blocks', () => { const g = evBase(); g.vehicle[2] = ['insurance', 'pending']; return g }, true],
+    ['RC back missing still blocks', () => { const g = evBase(); g.vehicle = g.vehicle.filter((d) => d[0] !== 'vehicle_rc_back'); return g }, true],
+    ['optional fitness certificate expired still blocks (it applies to an EV)', () => { const g = evBase(); g.vehicle.push(['fitness_cert', 'approved', 'yesterday']); return g }, true],
+  ]
+
+  beforeAll(async () => { await pool.query(`UPDATE driver_vehicles SET fuel_type = 'electric' WHERE id = $1`, [vehicleId]) })
+  afterAll(async () => { await pool.query(`UPDATE driver_vehicles SET fuel_type = 'petrol' WHERE id = $1`, [vehicleId]) })
+
+  it.each(scenarios)('%s', async (_name, build, blocked) => {
+    const { identity, vehicle } = build()
+    await setDocs(identity, vehicle)
+    const gateAllows = await hasApprovedRequiredDocs(BigInt(driverId))
+    const issues = await findDocIssues(BigInt(driverId))
+    expect(gateAllows, `issues=${JSON.stringify(issues.map((i) => `${i.doc_type}:${i.reason}`))}`).toBe(!blocked)
+    expect(issues.length === 0).toBe(!blocked)
+  })
+
+  it('a complete EV needs no permit to count as fully approved, but a petrol vehicle with the same documents does not', async () => {
+    const g = evBase()
+    await setDocs(g.identity, g.vehicle)
+    expect(await hasAllRequiredDocsApproved(BigInt(driverId))).toBe(true)
+    await pool.query(`UPDATE driver_vehicles SET fuel_type = 'petrol' WHERE id = $1`, [vehicleId])
+    expect(await hasAllRequiredDocsApproved(BigInt(driverId))).toBe(false)
+    await pool.query(`UPDATE driver_vehicles SET fuel_type = 'electric' WHERE id = $1`, [vehicleId])
+  })
+
+  it('an expiring EV permit or PUC gets no reminder, while an expiring insurance does', async () => {
+    const g = evBase()
+    g.vehicle.push(['permit', 'approved', 'tomorrow'], ['pollution_cert', 'approved', 'tomorrow'])
+    g.vehicle[2] = ['insurance', 'approved', 'tomorrow']
+    await setDocs(g.identity, g.vehicle)
+    const mine = (await findDocsNeedingExpiryNotice()).filter((n) => n.driverId === driverId && n.daysRemaining === 1)
+    expect(mine.map((n) => n.docType).sort()).toEqual(['insurance'])
+  })
+
+  it("the admin 'Docs to review' queue lists a petrol driver with a pending permit but not an electric one", async () => {
+    await seedAdmin(pool, ADMIN_EMAIL)
+    const { accessToken } = await loginAdmin(app, ADMIN_EMAIL)
+    const g = evBase(); g.vehicle.push(['permit', 'pending'])
+    await setDocs(g.identity, g.vehicle)
+    const inQueue = async () => {
+      const res = await request(app).get('/api/v1/admin/drivers?status=docs_review&limit=100').set('Authorization', `Bearer ${accessToken}`)
+      expect(res.status).toBe(200)
+      return ((res.body.data ?? res.body.drivers ?? res.body) as Array<{ id: string }>).some((d) => String(d.id) === String(driverId))
+    }
+    expect(await inQueue()).toBe(false)
+    await pool.query(`UPDATE driver_vehicles SET fuel_type = 'petrol' WHERE id = $1`, [vehicleId])
+    expect(await inQueue()).toBe(true)
+    await pool.query(`UPDATE driver_vehicles SET fuel_type = 'electric' WHERE id = $1`, [vehicleId])
   })
 })
 
