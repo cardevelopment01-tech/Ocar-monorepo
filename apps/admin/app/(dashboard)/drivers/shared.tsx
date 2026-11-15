@@ -32,8 +32,8 @@ export const REQUIRED_DRIVER_DOCS  = ['profile_photo', 'driving_license_front', 
 export const REQUIRED_VEHICLE_DOCS = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
 
 export function DocCheckItem({
-  docType, fileUrl, status, rejectionNote, onClick,
-}: { docType: string; fileUrl: string | null; status: string; rejectionNote?: string | null; onClick: () => void }) {
+  docType, fileUrl, status, rejectionNote, onClick, uploadedByAdmin,
+}: { docType: string; fileUrl: string | null; status: string; rejectionNote?: string | null; onClick: () => void; uploadedByAdmin?: string | null }) {
   const isMissing = !fileUrl || status === 'missing'
   const isPdf = fileUrl && /\.pdf(\?|$)/i.test(fileUrl)
 
@@ -62,6 +62,9 @@ export function DocCheckItem({
       {/* Info */}
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-text-primary truncate">{docLabel(docType)}</p>
+        {uploadedByAdmin && !isMissing && (
+          <p className="text-[10px] text-text-muted truncate" title={`Uploaded by ${uploadedByAdmin}`}>Uploaded by {uploadedByAdmin}</p>
+        )}
         {rejectionNote && status === 'rejected'
           ? <p className="text-[10px] text-danger mt-0.5 truncate">{rejectionNote}</p>
           : <p className={cn('text-[10px] mt-0.5 capitalize',
