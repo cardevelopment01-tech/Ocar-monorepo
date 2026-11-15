@@ -25,14 +25,19 @@ export type NameResult = { ok: true; name: string } | { ok: false; message: stri
 // Bound the work done on hostile input before any regex runs. Far above any real name plus heavy padding.
 const MAX_RAW_LENGTH = 2000
 
-// Zero-width joiner / non-joiner are real parts of some Indic and Persian spellings, so they are kept inside a word
-// (but never at a word's edge). Every other invisible "format" character (zero-width space, bidi controls, BOM, soft
-// hyphen) is only ever noise or a spoofing trick, and is removed.
+// Zero-width joiner / non-joiner are real parts of some Indic and Persian spellings (a Malayalam chillu, a Persian
+// plural suffix), including at the END of a word, so one that follows a letter or mark is kept. A joiner that has
+// nothing to join (at the start of a word, after a space or digit, or repeated) is noise and is removed, as is every
+// other invisible "format" character (zero-width space, bidi controls, BOM, soft hyphen).
 const JOINERS = '‌‍'
 const FORMAT_CHAR = /\p{Cf}/gu
 const CONTROL_CHAR = /\p{Cc}/gu
-const WORD_EDGE_JOINERS = new RegExp(`[${JOINERS}]+(?= |$)|(?<=^| )[${JOINERS}]+`, 'g')
+const WORD_START_JOINERS = new RegExp(`(?<=^| )[${JOINERS}]+`, 'g')
+const JOINER_RUNS = new RegExp(`([${JOINERS}])[${JOINERS}]+`, 'g')
+const STRAY_END_JOINERS = new RegExp(`(?<![\\p{L}\\p{M}])[${JOINERS}]+(?= |$)`, 'gu')
 const SEPARATORS = /([-'’.])/
+// Generational suffixes survive title-casing of an all-caps name ("RAVI KUMAR III" -> "Ravi Kumar III").
+const ROMAN_SUFFIX = /^(?:I{2,3}|IV|VI{0,3}|IX)$/
 
 const letterCount = (s: string) => s.match(/\p{L}/gu)?.length ?? 0
 const capFirstLetter = (seg: string) => seg.replace(/\p{L}/u, (c) => c.toUpperCase())
@@ -43,7 +48,9 @@ const hasUpper = (s: string) => /\p{Lu}/u.test(s)
 // letters down to Title case ("SAHOO" -> "Sahoo"; two-letter "SK" stays, it is almost always initials).
 function fixSegment(seg: string, titleCaps: boolean): string {
   if (hasLower(seg) && !hasUpper(seg)) return capFirstLetter(seg)
-  if (titleCaps && hasUpper(seg) && !hasLower(seg) && letterCount(seg) >= 3) return capFirstLetter(seg.toLowerCase())
+  if (titleCaps && hasUpper(seg) && !hasLower(seg) && letterCount(seg) >= 3 && !ROMAN_SUFFIX.test(seg)) {
+    return capFirstLetter(seg.toLowerCase())
+  }
   return seg
 }
 
@@ -69,7 +76,8 @@ export function cleanPersonName(input: string): string {
   s = s.replace(CONTROL_CHAR, ' ')                                          // tabs, newlines, other controls
   s = s.replace(FORMAT_CHAR, (ch) => (JOINERS.includes(ch) ? ch : ''))      // invisible noise, except joiners
   s = s.replace(/[\p{Z}\s]+/gu, ' ').trim()
-  s = s.replace(WORD_EDGE_JOINERS, '').replace(/ {2,}/g, ' ').trim()       // a joiner between two spaces leaves a double space
+  s = s.replace(WORD_START_JOINERS, '').replace(JOINER_RUNS, '$1').replace(STRAY_END_JOINERS, '')
+  s = s.replace(/ {2,}/g, ' ').trim()                                       // removing a joiner can leave a double space
   const shouted = hasUpper(s) && !hasLower(s)                               // the whole name typed in capitals
   s = s.split(' ').map((w) => fixWord(w, shouted)).join(' ')
   return s.normalize('NFC')
@@ -77,20 +85,26 @@ export function cleanPersonName(input: string): string {
 
 const charCount = (s: string) => Array.from(s).length
 
-/** Why a cleaned name is not acceptable, or null. Messages are written for the person typing. */
-export function checkPersonName(name: string, { min, max }: NameOptions): string | null {
+/** Why a cleaned name is not acceptable, or null. Messages are written for the person typing.
+ *  `skipContent` keeps only the length limits (used for a name that is unchanged from the one on file). */
+export function checkPersonName(name: string, { min, max }: NameOptions, opts: { skipContent?: boolean } = {}): string | null {
   const n = charCount(name)
   if (n === 0) return 'Enter a name'
   if (n < min) return `Name must be at least ${min} characters`
   if (n > max) return `Name must be at most ${max} characters`
+  if (opts.skipContent) return null
   if (letterCount(name) < Math.min(min, 2)) return 'Name must contain letters'
-  if (/\p{Extended_Pictographic}/u.test(name)) return "Name can't include emoji"
-  if (/[<>@]|:\/\/|\bwww\.|\d{4,}/i.test(name)) return "Name can't include links, email addresses, long numbers or symbols like < >"
+  // Emoji, but not the text symbols that are only "emoji-capable" (™ © ®) and can sit in a brand-style name.
+  if (/\p{Emoji_Presentation}|\p{Extended_Pictographic}️/u.test(name)) return "Name can't include emoji"
+  // A phone or PIN number in any digit script, with or without spaces: 6+ digits in total is not a name.
+  if (/[<>@]|:\/\/|\bwww\./i.test(name) || (name.match(/\p{Nd}/gu)?.length ?? 0) >= 6) {
+    return "Name can't include links, email addresses, long numbers or symbols like < >"
+  }
   return null
 }
 
 export function normalizePersonName(raw: string, opts: NameOptions): NameResult {
-  if (raw.length > MAX_RAW_LENGTH) return { ok: false, message: `Name must be at most ${opts.max} characters` }
+  if (raw.length > MAX_RAW_LENGTH) return { ok: false, message: 'Name is too long' }
   const name = cleanPersonName(raw)
   const problem = checkPersonName(name, opts)
   return problem ? { ok: false, message: problem } : { ok: true, name }
@@ -99,26 +113,41 @@ export function normalizePersonName(raw: string, opts: NameOptions): NameResult 
 /** For write paths: the cleaned name, or a 422 with a message fit to show the person.
  *
  *  `current` is the name already on file. A client that echoes it back unchanged (a rider changing only their email, a
- *  driver resuming onboarding) must not be blocked by rules that did not exist when the name was saved, so an unchanged
- *  name is accepted and stored cleaned, whatever the content rules say. */
+ *  driver resuming onboarding) must not be blocked by CONTENT rules that did not exist when the name was saved, so an
+ *  unchanged name skips those (emoji, links, numbers, letters) and is stored cleaned. Length limits still apply. */
 export function requirePersonName(raw: string, opts: NameOptions, current?: string | null): string {
   if (typeof raw !== 'string') throw httpError(422, 'Enter a name', 'VALIDATION_ERROR')
+  const r = normalizePersonName(raw, opts)
+  if (r.ok) return r.name
   if (current && raw.length <= MAX_RAW_LENGTH) {
     const cleaned = cleanPersonName(raw)
-    if (cleaned.length > 0 && cleaned === cleanPersonName(current)) return cleaned
+    if (cleaned === cleanPersonName(current) && checkPersonName(cleaned, opts, { skipContent: true }) === null) return cleaned
   }
-  const r = normalizePersonName(raw, opts)
-  if (!r.ok) throw httpError(422, r.message, 'VALIDATION_ERROR')
-  return r.name
+  throw httpError(422, r.message, 'VALIDATION_ERROR')
+}
+
+/** Same, for callers that only want to read the stored name when the new one fails the rules, so the common case
+ *  (a perfectly good name) costs no extra query. */
+export async function resolvePersonName(
+  raw: string,
+  opts: NameOptions,
+  loadCurrent: () => Promise<string | null | undefined>,
+): Promise<string> {
+  if (typeof raw === 'string') {
+    const r = normalizePersonName(raw, opts)
+    if (r.ok) return r.name
+    return requirePersonName(raw, opts, await loadCurrent())
+  }
+  return requirePersonName(raw, opts)
 }
 
 /** Request-shape check only: a string of sensible size that is not blank. The content rules (and the "unchanged name"
  *  allowance, which needs the stored name) live in requirePersonName, because the validate() middleware only checks a
  *  body and does not replace it, so the service is the one place that sees what is stored. */
-export const personNameSchema = (opts: NameOptions) =>
+export const personNameSchema = (_opts: NameOptions) =>
   z.string().superRefine((raw, ctx) => {
     if (raw.length > MAX_RAW_LENGTH) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Name must be at most ${opts.max} characters` })
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Name is too long' })
     } else if (cleanPersonName(raw).length === 0) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a name' })
     }

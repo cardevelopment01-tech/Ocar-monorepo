@@ -38,6 +38,7 @@ describe('driver names', () => {
     vi.mocked(driverRepo.findDriverById).mockResolvedValue({ id: '1', full_name: 'Old Name' } as never)
     await driverService.updateProfile(1n, { full_name: '  sujal   kumar sahoo ' })
     expect(driverRepo.updateProfile).toHaveBeenCalledWith(1n, { full_name: 'Sujal Kumar Sahoo' })
+    expect(driverRepo.findDriverById).not.toHaveBeenCalled() // a good name costs no extra read
   })
 
   it('a driver changing only their email is not blocked by a legacy name that would fail today', async () => {
@@ -95,6 +96,7 @@ describe('rider names', () => {
     expect(userRepo.updateProfile).toHaveBeenCalledWith(7n, { name: 'Priya Das', email: null })
     await userService.updateProfile(7n, { full_name: 'priya das' })
     expect(userRepo.updateProfile).toHaveBeenLastCalledWith(7n, { name: 'Priya Das' })
+    expect(findUserById).not.toHaveBeenCalled()
   })
 
   it('a rider changing only their email is not blocked by a legacy name', async () => {

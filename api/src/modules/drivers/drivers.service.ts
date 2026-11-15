@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
-import { requirePersonName } from '@/lib/person-name'
+import { requirePersonName, resolvePersonName } from '@/lib/person-name'
 import { getUploadUrl, promotePendingUpload, getPresignedUrl } from '@/lib/storage'
 import { notificationsQueue } from '@/jobs/queues'
 import * as repo from './drivers.repository'
@@ -129,8 +129,8 @@ export async function updateProfile(
   driverId: bigint,
   data: { full_name: string; email?: string | null }
 ): Promise<Driver> {
-  const current = await repo.findDriverById(driverId)
-  return repo.updateProfile(driverId, { ...data, full_name: requirePersonName(data.full_name, { min: 2, max: 120 }, current?.full_name) })
+  const full_name = await resolvePersonName(data.full_name, { min: 2, max: 120 }, async () => (await repo.findDriverById(driverId))?.full_name)
+  return repo.updateProfile(driverId, { ...data, full_name })
 }
 
 export async function getPersonalInfo(driverId: bigint): Promise<Partial<Driver>> {

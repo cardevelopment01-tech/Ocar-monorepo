@@ -34,6 +34,12 @@ describe('cleanPersonName: capitals', () => {
     expect(cleanPersonName('KR SAHOO')).toBe('KR Sahoo')
   })
 
+  it('title-casing an all-caps name keeps generational suffixes: III, IV', () => {
+    expect(cleanPersonName('RAVI KUMAR III')).toBe('Ravi Kumar III')
+    expect(cleanPersonName('JOHN SMITH IV')).toBe('John Smith IV')
+    expect(cleanPersonName('JOHN SMITH VIII')).toBe('John Smith VIII')
+  })
+
   it('does not touch capital initials or numerals inside a name that is otherwise mixed-case', () => {
     for (const name of ['KRS Naidu', 'MBA Das', 'KVS Rao', 'Ravi Kumar III', 'John Smith IV', 'A P J Abdul Kalam']) {
       expect(cleanPersonName(name)).toBe(name)
@@ -61,11 +67,17 @@ describe('cleanPersonName: whitespace and invisible characters', () => {
     expect(cleanPersonName('‮Sujal‬ Kumar')).toBe('Sujal Kumar')
   })
 
-  it('keeps a zero-width joiner / non-joiner inside a word but never at the edge of the name or of any word', () => {
+  it('keeps a joiner that joins something (inside a word, or ending a word after a letter or mark) and drops the rest', () => {
+    const chillu = `ന്${ZWJ}` // Malayalam chillu written with a final ZWJ
     expect(cleanPersonName(`क्${ZWJ}ष`)).toContain(ZWJ)
-    expect(cleanPersonName(`${ZWJ}Sujal${ZWNJ}`)).toBe('Sujal')
+    expect(cleanPersonName(chillu)).toBe(chillu)
+    expect(cleanPersonName(`${chillu} Kumar`)).toBe(`${chillu} Kumar`)
+    expect(cleanPersonName(`Sujal${ZWNJ} Kumar`)).toBe(`Sujal${ZWNJ} Kumar`)
+    // nothing to join: leading, after a space, after a digit, or repeated
+    expect(cleanPersonName(`${ZWJ}Sujal`)).toBe('Sujal')
     expect(cleanPersonName(`Sujal ${ZWJ}Kumar`)).toBe('Sujal Kumar')
-    expect(cleanPersonName(`Sujal${ZWNJ} Kumar`)).toBe('Sujal Kumar')
+    expect(cleanPersonName(`Sujal 2${ZWJ}`)).toBe('Sujal 2')
+    expect(cleanPersonName(`Ku${ZWJ}${ZWJ}${ZWNJ}mar`)).toBe(`Ku${ZWJ}mar`)
     expect(cleanPersonName(`Sujal ${ZWJ}${ZWNJ} Kumar`)).toBe('Sujal Kumar')
   })
 
@@ -81,6 +93,7 @@ describe('cleanPersonName: stable', () => {
     'sujal kumar sahoo', 'SUJAL  KUMAR', "  d'souza  ", 'abdul-rahman', 'b.k.sahoo', 'McDonald', 'SK das', 'ସୁଜଲ  କୁମାର',
     'Su​jal', 'José alvarez', 'ÉCOLE', 'İSTANBUL', 'ǅemal', 'MARY-JANE O’NEIL', 'x', '',
     "dad's office", 'KRS NAIDU', `Sujal ${ZWJ}Kumar`, `Sujal ${ZWJ}${ZWNJ} Kumar`, 'k.sahoo', 'sujal KUMAR',
+    'RAVI KUMAR III', `Sujal${ZWNJ} Kumar`, `Ku${ZWJ}${ZWJ}${ZWNJ}mar`, `Sujal 2${ZWJ}`, `ന്${ZWJ}`,
   ]
   it.each(samples)('cleaning twice equals cleaning once: %j', (s) => {
     const once = cleanPersonName(s)
@@ -120,6 +133,23 @@ describe('checkPersonName / normalizePersonName', () => {
     }
   })
 
+  it('refuses a phone or PIN number however it is written: spaced, dashed, or in another digit script', () => {
+    for (const bad of ['Call 90000 00001', 'Ravi 9000-000-001', 'Ravi ९००००००००१', 'Ravi 751001']) {
+      expect(normalizePersonName(bad, DRIVER)).toMatchObject({ ok: false })
+    }
+    expect(normalizePersonName('Ravi 2024', DRIVER)).toMatchObject({ ok: true })
+  })
+
+  it('refuses emoji but not text symbols like ™ © ®', () => {
+    expect(normalizePersonName('Sujal™', DRIVER)).toMatchObject({ ok: true })
+    expect(normalizePersonName('Sujal ©', DRIVER)).toMatchObject({ ok: true })
+    expect(normalizePersonName('Sujal ❤️', DRIVER)).toMatchObject({ ok: false, message: "Name can't include emoji" })
+  })
+
+  it('says a huge paste is too long without claiming a wrong limit', () => {
+    expect(normalizePersonName('x'.repeat(2500), { min: 1, max: 60 })).toEqual({ ok: false, message: 'Name is too long' })
+  })
+
   it('allows short digits and dots, which real names sometimes have', () => {
     expect(normalizePersonName('Ravi Kumar 2', DRIVER)).toMatchObject({ ok: true })
     expect(normalizePersonName('St. John', DRIVER)).toMatchObject({ ok: true })
@@ -152,6 +182,11 @@ describe('requirePersonName', () => {
     expect(() => requirePersonName(legacy, DRIVER)).toThrow()
     expect(requirePersonName(legacy, DRIVER, legacy)).toBe(legacy)
     expect(requirePersonName('  Ravi   Kumar 🚕 9000000001 ', DRIVER, legacy)).toBe(legacy) // still stored cleaned
+  })
+
+  it('the allowance waives only the content rules: length limits still apply to an unchanged name', () => {
+    const tooLong = 'a'.repeat(130)
+    expect(() => requirePersonName(tooLong, DRIVER, tooLong)).toThrow(/at most 120/)
   })
 
   it('but a CHANGED name is held to the rules, and the allowance never applies without a name on file', () => {

@@ -1,5 +1,5 @@
 import { createHttpError, httpError } from '@/lib/errors'
-import { requirePersonName } from '@/lib/person-name'
+import { resolvePersonName } from '@/lib/person-name'
 import { AppErrors } from '@/constants/errors'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
@@ -231,8 +231,7 @@ export async function updateDriverProfile(
   }
 
   if (fields.full_name !== undefined) {
-    const current = await findDriverById(driverId)
-    fields.full_name = requirePersonName(fields.full_name, { min: 2, max: 120 }, current?.full_name)
+    fields.full_name = await resolvePersonName(fields.full_name, { min: 2, max: 120 }, async () => (await findDriverById(driverId))?.full_name)
   }
 
   await repo.updateDriverProfile(driverId, adminId, fields, reason, ipAddress)

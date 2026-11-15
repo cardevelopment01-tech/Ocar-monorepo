@@ -130,7 +130,7 @@ export async function updateDriverProfile(
     };
     // A name that is not text (null, a number) must not be turned into the word "null" and saved.
     if (body["full_name"] !== undefined && typeof body["full_name"] !== "string") {
-      throw Object.assign(new Error("full_name must be text"), { httpStatus: 422 });
+      throw httpError(422, "full_name must be text", "VALIDATION_ERROR");
     }
     for (const field of PROFILE_STRING_FIELDS) {
       if (body[field] !== undefined) payload[field] = String(body[field]);
