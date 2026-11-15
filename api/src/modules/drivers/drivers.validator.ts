@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { personNameSchema } from '@/lib/person-name'
 
 const ALLOWED_COLORS = [
   'White', 'Black', 'Silver', 'Grey', 'Red', 'Blue',
@@ -6,12 +7,12 @@ const ALLOWED_COLORS = [
 ] as const
 
 export const updateProfileSchema = z.object({
-  full_name: z.string().min(2, 'Name must be at least 2 characters').max(120).trim(),
+  full_name: personNameSchema({ min: 2, max: 120 }),
   email: z.string().email('Invalid email address').nullable().optional(),
 })
 
 export const personalInfoSchema = z.object({
-  full_name: z.string().min(2).max(120),
+  full_name: personNameSchema({ min: 2, max: 120 }),
   email: z.string().email().optional(),
   gender: z.enum(['male', 'female', 'other']),
   date_of_birth: z

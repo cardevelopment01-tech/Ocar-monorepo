@@ -1,13 +1,14 @@
 import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import * as repo from './emergency-contacts.repository'
+import { requirePersonName } from '@/lib/person-name'
 
 export const MAX_CONTACTS = 3
 
 export const listContacts = repo.list
 
 export async function addContact(userId: bigint, name: string, phone: string) {
-  const r = await repo.insertWithinLimit(userId, name, phone, MAX_CONTACTS)
+  const r = await repo.insertWithinLimit(userId, requirePersonName(name, { min: 1, max: 60 }), phone, MAX_CONTACTS)
   if (r.result === 'added') return r.contact
   if (r.result === 'limit') throw httpError(422, `You can add up to ${MAX_CONTACTS} emergency contacts`, 'EMERGENCY_CONTACT_LIMIT')
   if (r.result === 'duplicate') throw httpError(409, 'This number is already one of your emergency contacts', 'EMERGENCY_CONTACT_DUPLICATE')

@@ -2,6 +2,7 @@ import { pool } from '@/db/client'
 import type { PoolClient } from 'pg'
 import { httpError, createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
+import { requirePersonName, cleanPersonName } from '@/lib/person-name'
 import { client as redis } from '@/db/redis'
 import { withTimeout } from '@/lib/with-timeout'
 import { startOtpKey, endOtpKey, activeRideByDriverKey, rideAckKey, driverHeartbeatKey, driverHeartbeatThrottleKey, driverSweepPausedKey } from '@/constants/redis-keys'
@@ -110,10 +111,10 @@ const INDIAN_PHONE_RE = /^\+91[6-9]\d{9}$/
 
 function validateRider(data: BookingRequest): void {
   if (data.riderName === undefined && data.riderPhone === undefined) return
-  const name = data.riderName?.trim()
-  if (!name || name.length > 50) {
+  if (!data.riderName?.trim()) {
     throw Object.assign(new Error('Rider name is required and must be under 50 characters'), { httpStatus: 422 })
   }
+  requirePersonName(data.riderName, { min: 1, max: 50 }) // the name is shown to the driver, so it gets the same rules
   if (!data.riderPhone || !INDIAN_PHONE_RE.test(data.riderPhone)) {
     throw Object.assign(new Error('Rider phone must be a valid Indian mobile number (+91XXXXXXXXXX)'), { httpStatus: 422 })
   }
@@ -938,7 +939,7 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   const storedTripHours = fareEstimate.rental_hours ?? (effectiveTripHours > 0 ? effectiveTripHours : undefined)
   if (storedTripHours !== undefined) rideInput.tripHours = storedTripHours
   if (data.returnAt           !== undefined) rideInput.returnAt           = data.returnAt
-  if (data.riderName          !== undefined) rideInput.riderName          = data.riderName.trim()
+  if (data.riderName          !== undefined) rideInput.riderName          = cleanPersonName(data.riderName)
   if (data.riderPhone         !== undefined) rideInput.riderPhone         = data.riderPhone
   rideInput.paymentChannel = data.paymentChannel ?? 'cash'
   if (scheduledForDate && data.scheduledFor !== undefined) {

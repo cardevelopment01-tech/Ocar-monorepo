@@ -1,4 +1,5 @@
 import { createHttpError, httpError } from '@/lib/errors'
+import { resolvePersonName } from '@/lib/person-name'
 import { AppErrors } from '@/constants/errors'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
@@ -227,6 +228,10 @@ export async function updateDriverProfile(
   // field) can never overwrite the real Aadhaar number with the mask.
   if (fields.aadhaar_number !== undefined && /^X{4}-X{4}-\d{4}$/.test(fields.aadhaar_number)) {
     throw httpError(422, 'Enter the full Aadhaar number, not the masked value', AppErrors.VALIDATION_ERROR.code)
+  }
+
+  if (fields.full_name !== undefined) {
+    fields.full_name = await resolvePersonName(fields.full_name, { min: 2, max: 120 }, async () => (await findDriverById(driverId))?.full_name)
   }
 
   await repo.updateDriverProfile(driverId, adminId, fields, reason, ipAddress)

@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
+import { requirePersonName, resolvePersonName } from '@/lib/person-name'
 import { getUploadUrl, promotePendingUpload, getPresignedUrl } from '@/lib/storage'
 import { notificationsQueue } from '@/jobs/queues'
 import * as repo from './drivers.repository'
@@ -127,7 +128,8 @@ export async function updateProfile(
   driverId: bigint,
   data: { full_name: string; email?: string | null }
 ): Promise<Driver> {
-  return repo.updateProfile(driverId, data)
+  const full_name = await resolvePersonName(data.full_name, { min: 2, max: 120 }, async () => (await repo.findDriverById(driverId))?.full_name)
+  return repo.updateProfile(driverId, { ...data, full_name })
 }
 
 export async function getPersonalInfo(driverId: bigint): Promise<Partial<Driver>> {
@@ -163,7 +165,7 @@ export async function savePersonalInfo(
     throw httpError(422, 'Emergency contact cannot be your own number', 'VALIDATION_ERROR')
   }
 
-  const updated = await repo.updatePersonalInfo(driverId, data)
+  const updated = await repo.updatePersonalInfo(driverId, { ...data, full_name: requirePersonName(data.full_name, { min: 2, max: 120 }, driver.full_name) })
 
   await repo.createStatusHistory({
     driverId,
