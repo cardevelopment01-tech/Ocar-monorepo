@@ -110,13 +110,17 @@ export async function uploadDriverDocumentForDriver(
     if (approved) status = 'approved'
   }
 
+  // Filed against the driver so it shows on the driver's History tab as well as the global Audit Log.
+  const previous = existing as { uploaded_by_admin_id?: string | null } | undefined
   await recordAuditLog({
     adminId,
     action: 'driver_documents.admin_upload',
-    targetTable: isVehicle ? 'driver_vehicle_documents' : 'driver_documents',
-    targetId: BigInt(doc.id),
-    beforeState: existing ? { file_url: existing.file_url, status: existing.status } : null,
-    afterState: { driver_id: String(driverId), doc_type: input.doc_type, file_url: fileUrl, status },
+    targetTable: 'drivers',
+    targetId: driverId,
+    beforeState: existing
+      ? { document: input.doc_type, status: existing.status, file_url: existing.file_url, uploaded_by_admin_id: previous?.uploaded_by_admin_id ?? null }
+      : { document: input.doc_type, status: 'missing', file_url: null, uploaded_by_admin_id: null },
+    afterState: { document: input.doc_type, status, file_url: fileUrl, uploaded_by_admin_id: String(adminId), document_id: String(doc.id) },
     reason: input.ticket_ref ? `${input.reason} [${input.ticket_ref}]` : input.reason,
     ipAddress,
   })

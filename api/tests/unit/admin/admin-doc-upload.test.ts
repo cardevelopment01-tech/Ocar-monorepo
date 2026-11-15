@@ -100,7 +100,8 @@ describe('uploadDriverDocumentForDriver', () => {
     expect(driverRepo.upsertDriverDocument).toHaveBeenCalledWith(9n, 'aadhaar_front', expect.any(String), undefined, undefined, 1n)
     expect(adminRepo.approveDriverDoc).not.toHaveBeenCalled()
     expect(recordAuditLog).toHaveBeenCalledWith(expect.objectContaining({
-      action: 'driver_documents.admin_upload', reason: 'Driver could not upload [T-42]',
+      action: 'driver_documents.admin_upload', targetTable: 'drivers', targetId: 9n, reason: 'Driver could not upload [T-42]',
+      afterState: expect.objectContaining({ uploaded_by_admin_id: '1', document: 'aadhaar_front' }),
     }))
   })
 
