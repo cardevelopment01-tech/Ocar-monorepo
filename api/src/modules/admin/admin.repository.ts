@@ -368,15 +368,20 @@ export async function getDriverById(
     recentRidesRes,
   ] = await Promise.all([
     pool.query(
-      `SELECT id::text, doc_type, file_url, status, rejection_note, claimed_valid_until, verified_valid_until, updated_at
-       FROM driver_documents WHERE driver_id = $1 ORDER BY doc_type`,
+      `SELECT dd.id::text, dd.doc_type, dd.file_url, dd.status, dd.rejection_note, dd.claimed_valid_until, dd.verified_valid_until, dd.updated_at,
+              dd.uploaded_by_admin_id::text, ua.email AS uploaded_by_admin_email
+       FROM driver_documents dd
+       LEFT JOIN admins ua ON ua.id = dd.uploaded_by_admin_id
+       WHERE dd.driver_id = $1 ORDER BY dd.doc_type`,
       [id],
     ),
     pool.query(
       `SELECT dvd.id::text, dvd.doc_type, dvd.file_url, dvd.status, dvd.rejection_note,
-              dvd.claimed_valid_until, dvd.verified_valid_until, dvd.updated_at
+              dvd.claimed_valid_until, dvd.verified_valid_until, dvd.updated_at,
+              dvd.uploaded_by_admin_id::text, ua.email AS uploaded_by_admin_email
        FROM driver_vehicle_documents dvd
        JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+       LEFT JOIN admins ua ON ua.id = dvd.uploaded_by_admin_id
        WHERE dv.driver_id = $1
        ORDER BY dvd.doc_type`,
       [id],

@@ -49,8 +49,8 @@ export const REQUIRED_DRIVER_DOCS  = ['profile_photo', 'driving_license_front', 
 export const REQUIRED_VEHICLE_DOCS = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
 
 export function DocCheckItem({
-  docType, fileUrl, status, rejectionNote, issue, onClick,
-}: { docType: string; fileUrl: string | null; status: string; rejectionNote?: string | null; issue?: DocIssue | null; onClick: () => void }) {
+  docType, fileUrl, status, rejectionNote, issue, onClick, uploadedByAdmin,
+}: { docType: string; fileUrl: string | null; status: string; rejectionNote?: string | null; issue?: DocIssue | null; onClick: () => void; uploadedByAdmin?: string | null }) {
   const isMissing = !fileUrl || status === 'missing'
   // An approved document past its validity date still has status 'approved'; it blocks the driver, so it must not look fine.
   const isExpired = issue?.reason === 'expired' && status === 'approved'
@@ -81,6 +81,9 @@ export function DocCheckItem({
       {/* Info */}
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-text-primary truncate">{docLabel(docType)}</p>
+        {uploadedByAdmin && !isMissing && (
+          <p className="text-[10px] text-text-muted truncate" title={`Uploaded by ${uploadedByAdmin}`}>Uploaded by {uploadedByAdmin}</p>
+        )}
         {isExpired
           ? <p className="text-[10px] font-semibold text-danger mt-0.5 truncate">Expired {formatDocDate(issue!.valid_until)}</p>
           : rejectionNote && status === 'rejected'

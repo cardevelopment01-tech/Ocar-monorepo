@@ -387,12 +387,21 @@ export async function submitApplication(
     throw err
   }
 
+  await moveToPendingApproval(driver, 'Driver submitted application')
+
+  return { success: true, status: 'pending_approval' }
+}
+
+// Shared by the driver's own submit and an admin finishing the documents for them.
+async function moveToPendingApproval(driver: Driver, reason: string, changedBy?: bigint): Promise<void> {
+  const driverId = BigInt(driver.id)
   await repo.updateDriverStatus(driverId, 'pending_approval', 'submitted')
   await repo.createStatusHistory({
     driverId,
     fromStatus: driver.status,
     toStatus: 'pending_approval',
-    reason: 'Driver submitted application',
+    reason,
+    ...(changedBy !== undefined && { changedBy }),
   })
 
   await notificationsQueue.add(
@@ -405,6 +414,14 @@ export async function submitApplication(
     },
     { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
   )
+}
 
-  return { success: true, status: 'pending_approval' }
+// After an admin uploads documents for a driver still in onboarding: if that
+// completed the application, submit it for them. Returns true if it moved.
+export async function submitIfCompleteByAdmin(driverId: bigint, adminId: bigint): Promise<boolean> {
+  const driver = await repo.findDriverById(driverId)
+  if (!driver || driver.status !== 'pending_docs' || !isPersonalInfoComplete(driver)) return false
+  if (!(await checkDocuments(driverId)).complete) return false
+  await moveToPendingApproval(driver, 'Documents completed by admin', adminId)
+  return true
 }

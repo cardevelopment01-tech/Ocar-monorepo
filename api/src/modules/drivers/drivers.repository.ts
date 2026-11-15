@@ -281,20 +281,22 @@ export async function upsertDriverDocument(
   docType: string,
   fileUrl: string,
   validFrom?: Date,
-  validUntil?: Date
+  validUntil?: Date,
+  uploadedByAdminId?: bigint
 ): Promise<DriverDocument> {
   const rows = await query<DriverDocument>(
-    `INSERT INTO driver_documents (driver_id, doc_type, file_url, valid_from, claimed_valid_until)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO driver_documents (driver_id, doc_type, file_url, valid_from, claimed_valid_until, uploaded_by_admin_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (driver_id, doc_type)
      DO UPDATE SET
        file_url            = EXCLUDED.file_url,
        valid_from          = COALESCE(EXCLUDED.valid_from,          driver_documents.valid_from),
        claimed_valid_until = COALESCE(EXCLUDED.claimed_valid_until, driver_documents.claimed_valid_until),
+       uploaded_by_admin_id = EXCLUDED.uploaded_by_admin_id,
        status              = 'pending',
        updated_at          = now()
      RETURNING *`,
-    [driverId.toString(), docType, fileUrl, validFrom ?? null, validUntil ?? null]
+    [driverId.toString(), docType, fileUrl, validFrom ?? null, validUntil ?? null, uploadedByAdminId?.toString() ?? null]
   )
   return rows[0]!
 }
@@ -313,20 +315,22 @@ export async function upsertVehicleDocument(
   docType: string,
   fileUrl: string,
   docNumber?: string,
-  validUntil?: Date
+  validUntil?: Date,
+  uploadedByAdminId?: bigint
 ): Promise<DriverVehicleDocument> {
   const rows = await query<DriverVehicleDocument>(
-    `INSERT INTO driver_vehicle_documents (vehicle_id, doc_type, file_url, doc_number, claimed_valid_until)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO driver_vehicle_documents (vehicle_id, doc_type, file_url, doc_number, claimed_valid_until, uploaded_by_admin_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (vehicle_id, doc_type)
      DO UPDATE SET
        file_url            = EXCLUDED.file_url,
        doc_number          = COALESCE(EXCLUDED.doc_number,          driver_vehicle_documents.doc_number),
        claimed_valid_until = COALESCE(EXCLUDED.claimed_valid_until, driver_vehicle_documents.claimed_valid_until),
+       uploaded_by_admin_id = EXCLUDED.uploaded_by_admin_id,
        status              = 'pending',
        updated_at          = now()
      RETURNING *`,
-    [vehicleId, docType, fileUrl, docNumber ?? null, validUntil ?? null]
+    [vehicleId, docType, fileUrl, docNumber ?? null, validUntil ?? null, uploadedByAdminId?.toString() ?? null]
   )
   return rows[0]!
 }

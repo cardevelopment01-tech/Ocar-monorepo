@@ -382,7 +382,7 @@ export async function listPendingVehicleDocs() { return repo.listPendingVehicleD
 // as "never expires" in the goOnline gate). Any date sent for these is ignored.
 const NO_EXPIRY_DOC_TYPES = new Set(['profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license_back', 'vehicle_rc_front', 'vehicle_rc_back'])
 
-function validateVerifiedExpiry(docType: string, verifiedValidUntil: string): string | null {
+export function validateVerifiedExpiry(docType: string, verifiedValidUntil: string): string | null {
   if (NO_EXPIRY_DOC_TYPES.has(docType)) return null
   if (!verifiedValidUntil) {
     throw httpError(422, 'Verified expiry date is required to approve a document.', 'VALIDATION_ERROR')
@@ -398,7 +398,7 @@ function validateVerifiedExpiry(docType: string, verifiedValidUntil: string): st
 
 // The doc row is already committed when this runs. A notify/status-sync failure must not
 // surface as a 500 — the admin UI would keep the old updated_at and every retry would 409.
-async function afterDocChange(driverId: bigint, adminId: bigint, notify?: () => Promise<unknown>) {
+export async function afterDocChange(driverId: bigint, adminId: bigint, notify?: () => Promise<unknown>) {
   try {
     await notify?.()
   } catch (err) {

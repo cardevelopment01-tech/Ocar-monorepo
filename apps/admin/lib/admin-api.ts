@@ -100,8 +100,8 @@ export interface DriverDetail {
   } | null
   /** Documents blocking this driver from going online, and why. Empty when nothing blocks. */
   doc_issues: DocIssue[]
-  documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null; claimed_valid_until: string | null; verified_valid_until: string | null; updated_at: string }[]
-  vehicle_documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null; claimed_valid_until: string | null; verified_valid_until: string | null; updated_at: string }[]
+  documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null; claimed_valid_until: string | null; verified_valid_until: string | null; updated_at: string; uploaded_by_admin_id: string | null; uploaded_by_admin_email: string | null }[]
+  vehicle_documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null; claimed_valid_until: string | null; verified_valid_until: string | null; updated_at: string; uploaded_by_admin_id: string | null; uploaded_by_admin_email: string | null }[]
   status_history: { from_status: string | null; to_status: string; reason: string | null; created_at: string }[]
   wallet: { balance: string; is_frozen: boolean } | null
   rating_avg: string
@@ -181,6 +181,21 @@ export const adminDriverApi = {
 
   reinstate: async (id: string): Promise<void> => {
     await api.patch(`/api/v1/admin/drivers/${id}/status`, { status: 'active' })
+  },
+
+  /** Upload a document for the driver (multipart; the API checks the real file type). */
+  uploadDocument: async (
+    driverId: string,
+    fields: { kind: 'driver' | 'vehicle'; doc_type: string; reason: string; ticket_ref?: string; valid_until?: string; doc_number?: string; approve: boolean; verified_valid_until?: string; seen_updated_at?: string; confirm_reference_selfie?: boolean },
+    file: File,
+  ): Promise<{ kind: string; doc_type: string; status: string; driver_status: string; submitted: boolean }> => {
+    const form = new FormData()
+    for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== '') form.append(k, String(v))
+    form.append('file', file)
+    const res = await api.post(`/api/v1/admin/drivers/${driverId}/documents/upload`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000,
+    })
+    return res.data.data
   },
 
   approveDriverDoc: async (docId: string, verifiedValidUntil: string, seenUpdatedAt: string): Promise<void> => {

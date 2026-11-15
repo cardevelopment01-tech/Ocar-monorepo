@@ -92,6 +92,8 @@ export interface AdminDriverDetail {
     claimed_valid_until: string | null
     verified_valid_until: string | null
     updated_at: string
+    uploaded_by_admin_id: string | null
+    uploaded_by_admin_email: string | null
   }[]
   /** Documents that keep the driver from going online, and why (see drivers/doc-issues.ts). Empty when nothing blocks. */
   doc_issues: DocIssue[]
@@ -104,6 +106,8 @@ export interface AdminDriverDetail {
     claimed_valid_until: string | null
     verified_valid_until: string | null
     updated_at: string
+    uploaded_by_admin_id: string | null
+    uploaded_by_admin_email: string | null
   }[]
   status_history: {
     from_status: string | null

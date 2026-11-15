@@ -5,11 +5,14 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import * as Dialog from '@radix-ui/react-dialog'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Pencil, Layers, AlertCircle, AlertTriangle, Trash2, MoreHorizontal } from 'lucide-react'
+import { Pencil, Layers, AlertCircle, AlertTriangle, Trash2, MoreHorizontal, Upload } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import ReasonDialog from '@/components/ui/ReasonDialog'
 import DocReviewModal, { buildDocs, docRank } from '@/components/ui/DocReviewModal'
+import UploadDocDrawer, { type UploadTarget } from '@/components/ui/UploadDocDrawer'
+import SuccessToast from '@/components/ui/SuccessToast'
+import { useAdminAuth } from '@/lib/auth-context'
 import {
   adminDriverApi, type DriverDetail, type DriverPaymentRow, type DriverAuditLogEntry,
 } from '@/lib/admin-api'
@@ -126,6 +129,11 @@ export default function DriverDetailPage() {
   const [deleteConfirm, setDeleteConfirm]   = useState('')
   const [deleteLoading, setDeleteLoading]   = useState(false)
   const [deleteError, setDeleteError]       = useState('')
+
+  const { admin: currentAdmin } = useAdminAuth()
+  const canUploadDocs = currentAdmin?.role === 'super_admin' || currentAdmin?.role === 'ops_admin'
+  const [uploadTarget, setUploadTarget] = useState<UploadTarget | null>(null)
+  const [uploadToast, setUploadToast]   = useState<string | null>(null)
 
   const [reviewOpen, setReviewOpen]       = useState(false)
   const [reviewInitIdx, setReviewInitIdx] = useState(0)
@@ -500,6 +508,34 @@ export default function DriverDetailPage() {
   const unacknowledgedWarnings = d.warnings.filter(w => !w.acknowledged_at).length
   // The same ordered list the review modal builds, so a position here opens the same document there.
   const allDocs = buildDocs(d)
+  // One row per document slot: the existing DocCheckItem plus, for ops/super admins, an upload/replace button.
+  function docRow(kind: 'driver' | 'vehicle', type: string, doc: { file_url: string; status: string; rejection_note: string | null; updated_at: string; uploaded_by_admin_email: string | null } | null) {
+    const noVehicle = kind === 'vehicle' && !d.vehicle
+    return (
+      <div key={`${kind}:${type}`} className="flex items-stretch gap-1.5">
+        <div className="flex-1 min-w-0">
+          {doc
+            ? <DocCheckItem docType={type} fileUrl={doc.file_url} status={doc.status} rejectionNote={doc.rejection_note} issue={issueFor(type)} uploadedByAdmin={doc.uploaded_by_admin_email} onClick={() => openReview(docIdx(type))} />
+            : <DocCheckItem docType={type} fileUrl={null} status="missing" onClick={() => {}} />}
+        </div>
+        {canUploadDocs && (
+          <button
+            type="button"
+            disabled={noVehicle}
+            onClick={() => setUploadTarget({ kind, docType: type, existing: doc ? { status: doc.status, fileUrl: doc.file_url, updatedAt: doc.updated_at, uploadedByEmail: doc.uploaded_by_admin_email } : null })}
+            title={noVehicle ? 'Add the driver’s vehicle details first' : doc ? 'Replace this file' : 'Upload for the driver'}
+            aria-label={`${doc ? 'Replace' : 'Upload'} ${docLabel(type)}`}
+            className={cn(
+              'flex-shrink-0 w-10 rounded-xl border flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+              doc ? 'border-border text-text-muted hover:text-primary hover:border-primary/40' : 'border-primary/40 text-primary bg-primary/5 hover:bg-primary/10',
+            )}
+          >
+            <Upload size={14} />
+          </button>
+        )}
+      </div>
+    )
+  }
   const selfie = d.documents.find(x => x.doc_type === 'profile_photo')
   function docIdx(docType: string) {
     const idx = allDocs.findIndex(x => x.docType === docType)
@@ -809,13 +845,14 @@ export default function DriverDetailPage() {
                 </div>
               )}
 
-              {d.documents.length > 0 && (
+              {(d.documents.length > 0 || (canUploadDocs && missingDriver.length > 0)) && (
                 <div>
                   <p className="text-xs font-semibold text-text-secondary mb-2">Identity Documents</p>
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-1.5">
-                    {[...d.documents].sort((a, b) => docRank(a.doc_type) - docRank(b.doc_type)).map(doc => (
-                      <DocCheckItem key={doc.doc_type} docType={doc.doc_type} fileUrl={doc.file_url} status={doc.status} rejectionNote={doc.rejection_note} issue={issueFor(doc.doc_type)} onClick={() => openReview(docIdx(doc.doc_type))} />
-                    ))}
+                    {[
+                      ...d.documents.map(doc => ({ type: doc.doc_type, doc })),
+                      ...(canUploadDocs ? missingDriver.map(key => ({ type: key, doc: null })) : []),
+                    ].sort((a, b) => docRank(a.type) - docRank(b.type)).map(({ type, doc }) => docRow('driver', type, doc))}
                   </div>
                 </div>
               )}
@@ -827,11 +864,7 @@ export default function DriverDetailPage() {
                     {[
                       ...d.vehicle_documents.map(doc => ({ type: doc.doc_type, doc })),
                       ...missingVehicle.map(key => ({ type: key, doc: null })),
-                    ].sort((a, b) => docRank(a.type) - docRank(b.type)).map(({ type, doc }) => (
-                      doc
-                        ? <DocCheckItem key={type} docType={type} fileUrl={doc.file_url} status={doc.status} rejectionNote={doc.rejection_note} issue={issueFor(type)} onClick={() => openReview(docIdx(type))} />
-                        : <DocCheckItem key={type} docType={type} fileUrl={null} status="missing" onClick={() => {}} />
-                    ))}
+                    ].sort((a, b) => docRank(a.type) - docRank(b.type)).map(({ type, doc }) => docRow('vehicle', type, doc))}
                   </div>
                 </div>
               )}
@@ -1217,6 +1250,15 @@ export default function DriverDetailPage() {
           )}
         </div>
       </div>
+
+      <UploadDocDrawer
+        driverId={d.id}
+        target={uploadTarget}
+        onClose={() => setUploadTarget(null)}
+        onStale={() => { setUploadTarget(null); setUploadToast('That document changed. Reloaded. Check it and try again.'); void fetchDetail() }}
+        onDone={msg => { setUploadTarget(null); setUploadToast(msg); void fetchDetail() }}
+      />
+      <SuccessToast message={uploadToast} onDismiss={() => setUploadToast(null)} />
 
       {/* Approve / Reinstate confirm */}
       <ConfirmDialog

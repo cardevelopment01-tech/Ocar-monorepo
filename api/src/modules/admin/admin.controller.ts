@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import * as service from "./admin.service";
-import { createHttpError } from "@/lib/errors";
+import { createHttpError, httpError } from "@/lib/errors";
+import { adminDocUploadSchema, uploadDriverDocumentForDriver } from "./admin-doc-upload.service";
 import { AppErrors } from "@/constants/errors";
 import * as sosService from "@/modules/safety/sos.service";
 import * as disputeService from "@/modules/safety/disputes.service";
@@ -1545,5 +1546,24 @@ export async function getAdminActiveSessions(
     res.json({ sessions });
   } catch (err) {
     next(err);
+  }
+}
+
+export async function uploadDriverDocument(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const parsed = adminDocUploadSchema.safeParse(req.body)
+    if (!parsed.success) {
+      throw httpError(422, parsed.error.issues[0]?.message ?? 'Invalid upload', 'VALIDATION_ERROR')
+    }
+    const data = await uploadDriverDocumentForDriver(
+      BigInt(req.params['id']!), req.admin!.id, req.file, parsed.data, req.ip ?? null,
+    )
+    res.status(201).json({ success: true, data })
+  } catch (err) {
+    next(err)
   }
 }
