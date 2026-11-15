@@ -104,7 +104,7 @@ export default function UploadDocDrawer({ driverId, target, onClose, onDone, onS
               <AlertTriangle size={15} className="text-warning flex-shrink-0 mt-0.5" />
               <div className="text-xs text-text-secondary">
                 <p className="font-semibold text-text-primary">This replaces an approved document.</p>
-                <p className="mt-0.5">It goes back to pending unless you choose Upload &amp; approve.</p>
+                <p className="mt-0.5">It goes back to pending unless you choose Upload &amp; approve. While it is pending, an active driver is taken offline and cannot go online.</p>
                 <a href={existing.fileUrl} target="_blank" rel="noreferrer" className="text-primary font-semibold hover:underline mt-1 inline-block">View current file</a>
               </div>
             </div>

@@ -121,7 +121,8 @@ export async function uploadDriverDocumentForDriver(
       ? { document: input.doc_type, status: existing.status, file_url: existing.file_url, uploaded_by_admin_id: previous?.uploaded_by_admin_id ?? null }
       : { document: input.doc_type, status: 'missing', file_url: null, uploaded_by_admin_id: null },
     afterState: { document: input.doc_type, status, file_url: fileUrl, uploaded_by_admin_id: String(adminId), document_id: String(doc.id) },
-    reason: input.ticket_ref ? `${input.reason} [${input.ticket_ref}]` : input.reason,
+    // Leads with the document so History and the Audit Log say WHICH one without opening the diff.
+    reason: `${docLabel(input.doc_type)}: ${input.reason}${input.ticket_ref ? ` [${input.ticket_ref}]` : ''}`,
     ipAddress,
   })
 
