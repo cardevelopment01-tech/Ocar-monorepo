@@ -22,7 +22,7 @@ import { payoutsApi } from '@/lib/payouts-api'
 import { packageApi, type DriverPackageDetail } from '@/lib/package-api'
 import { cn } from '@/lib/utils'
 import {
-  InitialsAvatar, fmt, docLabel, REQUIRED_DRIVER_DOCS, REQUIRED_VEHICLE_DOCS, DocCheckItem,
+  InitialsAvatar, fmt, docLabel, REQUIRED_DRIVER_DOCS, requiredVehicleDocs, DocCheckItem,
 } from '../shared'
 import { extractErrorMessage } from '@/lib/http-errors'
 
@@ -45,7 +45,7 @@ function AlertStrip({ d }: { d: DriverDetail }) {
   // Approval status, not just upload presence — a driver with every file
   // uploaded but still pending review must still show as not-ready-to-activate.
   const unapprovedDriver  = REQUIRED_DRIVER_DOCS.filter(k => d.documents.find(x => x.doc_type === k)?.status !== 'approved')
-  const unapprovedVehicle = REQUIRED_VEHICLE_DOCS.filter(k => d.vehicle_documents.find(x => x.doc_type === k)?.status !== 'approved')
+  const unapprovedVehicle = requiredVehicleDocs(d.vehicle?.fuel_type).filter(k => d.vehicle_documents.find(x => x.doc_type === k)?.status !== 'approved')
   const totalUnapproved = unapprovedDriver.length + unapprovedVehicle.length
   const unacknowledged = d.warnings.filter(w => !w.acknowledged_at).length
   const balance = d.wallet ? parseFloat(d.wallet.balance) : 0
@@ -61,7 +61,7 @@ function AlertStrip({ d }: { d: DriverDetail }) {
     if (issue.reason === 'pending_review' && inQueue) continue
     alerts.push({ text: `Can't go online: ${issue.short}`, tone: issue.reason === 'pending_review' ? 'warning' : 'danger' })
   }
-  const requiredTotal = REQUIRED_DRIVER_DOCS.length + REQUIRED_VEHICLE_DOCS.length
+  const requiredTotal = REQUIRED_DRIVER_DOCS.length + requiredVehicleDocs(d.vehicle?.fuel_type).length
   // pending_approval already shows this as the header button count and summary tile
   if (totalUnapproved > 0 && d.status !== 'pending_approval') alerts.push({ text: `${requiredTotal - totalUnapproved} of ${requiredTotal} required documents approved`, tone: 'warning' })
   if (unacknowledged > 0) alerts.push({ text: `${unacknowledged} unacknowledged warning${unacknowledged !== 1 ? 's' : ''}`, tone: 'danger' })
@@ -493,13 +493,13 @@ export default function DriverDetailPage() {
 
   const d = detail
   const missingDriver  = REQUIRED_DRIVER_DOCS.filter(k => !d.documents.find(x => x.doc_type === k))
-  const missingVehicle = REQUIRED_VEHICLE_DOCS.filter(k => !d.vehicle_documents.find(x => x.doc_type === k))
+  const missingVehicle = requiredVehicleDocs(d.vehicle?.fuel_type).filter(k => !d.vehicle_documents.find(x => x.doc_type === k))
   const issueFor = (docType: string) => (d.doc_issues ?? []).find(i => i.doc_type === docType) ?? null
   const totalMissing   = missingDriver.length + missingVehicle.length
   const requiredUnapprovedCount =
     REQUIRED_DRIVER_DOCS.filter(k => d.documents.find(x => x.doc_type === k)?.status !== 'approved').length +
-    REQUIRED_VEHICLE_DOCS.filter(k => d.vehicle_documents.find(x => x.doc_type === k)?.status !== 'approved').length
-  const requiredTotal = REQUIRED_DRIVER_DOCS.length + REQUIRED_VEHICLE_DOCS.length
+    requiredVehicleDocs(d.vehicle?.fuel_type).filter(k => d.vehicle_documents.find(x => x.doc_type === k)?.status !== 'approved').length
+  const requiredTotal = REQUIRED_DRIVER_DOCS.length + requiredVehicleDocs(d.vehicle?.fuel_type).length
   const canActivate = requiredUnapprovedCount === 0
   const isQueue = d.status === 'pending_approval' || d.status === 'pending_docs'
   // time in the review queue (latest move into pending_approval), not account age: a resubmitted driver starts over

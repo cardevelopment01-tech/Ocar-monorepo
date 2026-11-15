@@ -8,6 +8,7 @@ import {
   FileText, ZoomIn, ZoomOut, ExternalLink, Minimize2, RotateCw,
 } from 'lucide-react'
 import type { DriverDetail } from '@/lib/admin-api'
+import { requiredVehicleDocs } from '@/lib/vehicle-docs'
 import StatusPill from './StatusPill'
 import { cn } from '@/lib/utils'
 import { extractErrorMessage } from '@/lib/http-errors'
@@ -71,7 +72,6 @@ export const docRank = (type: string): number => {
 }
 
 const REQUIRED_DRIVER  = ['profile_photo', 'aadhaar_front', 'aadhaar_back', 'driving_license_front', 'driving_license_back']
-const REQUIRED_VEHICLE = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
 
 function nextActionableIdx(docs: FlatDoc[], from: number): number | null {
   for (let i = from + 1; i < docs.length; i++) {
@@ -88,7 +88,7 @@ export function buildDocs(d: DriverDetail): FlatDoc[] {
   for (const x of d.documents)         { list.push({ kind: 'driver',  docType: x.doc_type, fileUrl: x.file_url, status: x.status, rejectionNote: x.rejection_note, claimedValidUntil: x.claimed_valid_until, verifiedValidUntil: x.verified_valid_until, updatedAt: x.updated_at, id: x.id }); addedD.add(x.doc_type) }
   for (const x of d.vehicle_documents) { list.push({ kind: 'vehicle', docType: x.doc_type, fileUrl: x.file_url, status: x.status, rejectionNote: x.rejection_note, claimedValidUntil: x.claimed_valid_until, verifiedValidUntil: x.verified_valid_until, updatedAt: x.updated_at, id: x.id }); addedV.add(x.doc_type) }
   for (const k of REQUIRED_DRIVER)  if (!addedD.has(k)) list.push({ kind: 'driver',  docType: k, fileUrl: '', status: 'missing', rejectionNote: null, claimedValidUntil: null, verifiedValidUntil: null, updatedAt: null })
-  for (const k of REQUIRED_VEHICLE) if (!addedV.has(k)) list.push({ kind: 'vehicle', docType: k, fileUrl: '', status: 'missing', rejectionNote: null, claimedValidUntil: null, verifiedValidUntil: null, updatedAt: null })
+  for (const k of requiredVehicleDocs(d.vehicle?.fuel_type)) if (!addedV.has(k)) list.push({ kind: 'vehicle', docType: k, fileUrl: '', status: 'missing', rejectionNote: null, claimedValidUntil: null, verifiedValidUntil: null, updatedAt: null })
   return list.sort((a, b) => docRank(a.docType) - docRank(b.docType))
 }
 
@@ -531,7 +531,7 @@ export default function DocReviewModal({
   // Activation gate — mirrors the backend's hasAllRequiredDocsApproved check.
   // Kept here only as a UI hint (disable + explain); the backend is the real
   // guard and rejects the request either way if this ever drifts out of sync.
-  const REQUIRED_TYPES = [...REQUIRED_DRIVER, ...REQUIRED_VEHICLE]
+  const REQUIRED_TYPES = [...REQUIRED_DRIVER, ...requiredVehicleDocs(detail.vehicle?.fuel_type)]
   const requiredMissingCount = REQUIRED_TYPES.filter(
     t => allDocs.find(d => d.docType === t)?.status !== 'approved'
   ).length

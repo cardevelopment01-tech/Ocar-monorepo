@@ -6,7 +6,7 @@ import type {
   DriverDocument,
   DriverVehicleDocument,
 } from './drivers.types'
-import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, sqlList } from './required-docs'
+import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, requiredVehicleDocs, sqlList, sqlVehicleDocApplies } from './required-docs'
 
 // ── Drivers ───────────────────────────────────────────────────────────────────
 
@@ -362,7 +362,7 @@ export function docIssueExistsSql(driverIdExpr: string): string {
        UNION ALL
        SELECT 1 FROM driver_vehicle_documents dvd
        JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
-       WHERE dv.driver_id = ${driverIdExpr} AND dv.is_primary = true
+       WHERE dv.driver_id = ${driverIdExpr} AND dv.is_primary = true AND ${sqlVehicleDocApplies('dv', 'dvd')}
          AND (dvd.status = 'rejected' OR (dvd.status = 'approved' AND dvd.verified_valid_until < CURRENT_DATE)
               OR (dvd.status = 'pending' AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)})))
        UNION ALL
@@ -395,19 +395,20 @@ export async function hasApprovedRequiredDocs(driverId: bigint, client?: PoolCli
 // first-time activation: every required identity doc and every required doc
 // on the primary vehicle must exist AND be 'approved'.
 export async function hasAllRequiredDocsApproved(driverId: bigint): Promise<boolean> {
-  const rows = await query<{ identity_count: string; vehicle_count: string }>(
+  const rows = await query<{ identity_count: string; vehicle_count: string; fuel_type: string | null }>(
     `SELECT
+       (SELECT fuel_type FROM driver_vehicles WHERE driver_id = $1 AND is_primary = true LIMIT 1) AS fuel_type,
        (SELECT COUNT(DISTINCT dd.doc_type) FROM driver_documents dd
         WHERE dd.driver_id = $1 AND dd.status = 'approved' AND dd.doc_type::text = ANY($2::text[])) AS identity_count,
        (SELECT COUNT(DISTINCT dvd.doc_type) FROM driver_vehicle_documents dvd
         JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
         WHERE dv.driver_id = $1 AND dv.is_primary = true AND dvd.status = 'approved'
-          AND dvd.doc_type::text = ANY($3::text[])) AS vehicle_count`,
-    [driverId.toString(), REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS]
+          AND dvd.doc_type::text = ANY(CASE WHEN dv.fuel_type = 'electric' THEN $4::text[] ELSE $3::text[] END)) AS vehicle_count`,
+    [driverId.toString(), REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, requiredVehicleDocs('electric')]
   )
   const row = rows[0]!
   return Number(row.identity_count) === REQUIRED_IDENTITY_DOCS.length
-    && Number(row.vehicle_count) === REQUIRED_VEHICLE_DOCS.length
+    && Number(row.vehicle_count) === requiredVehicleDocs(row.fuel_type).length
 }
 
 const EXPIRY_REMINDER_DAYS = [30, 15, 7, 1]
@@ -439,7 +440,7 @@ export async function findDocsNeedingExpiryNotice(): Promise<ExpiringDocNotice[]
               (dvd.verified_valid_until - CURRENT_DATE) AS days_remaining
        FROM driver_vehicle_documents dvd
        JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
-       WHERE dvd.status = 'approved' AND dvd.verified_valid_until IS NOT NULL
+       WHERE dvd.status = 'approved' AND dvd.verified_valid_until IS NOT NULL AND ${sqlVehicleDocApplies('dv', 'dvd')}
      ) v
      WHERE days_remaining = ANY($1::int[])`,
     [thresholds]

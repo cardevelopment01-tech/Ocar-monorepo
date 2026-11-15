@@ -1,6 +1,6 @@
 import type { PoolClient } from 'pg'
 import { query } from '@/db/client'
-import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS } from './required-docs'
+import { REQUIRED_IDENTITY_DOCS, requiredVehicleDocs, isIgnoredVehicleDoc } from './required-docs'
 
 // WHICH documents keep a driver off the road, and WHY. One list feeds the go-online error, the driver app's Documents banner and the
 // admin driver profile, so a driver, an admin and the server always say the same thing. Before this, the go-online gate said only
@@ -88,12 +88,14 @@ function classifyRows(scope: DocIssue['scope'], rows: DocRow[], required: readon
 
 /**
  * Pure rule set. `vehicle` is the PRIMARY vehicle's documents, or null when the driver has no primary vehicle.
- * `today` is a YYYY-MM-DD date (the database's CURRENT_DATE, so it matches the SQL gate).
+ * `today` is a YYYY-MM-DD date (the database's CURRENT_DATE, so it matches the SQL gate). `fuelType` is the primary
+ * vehicle's: documents that do not apply to it (an electric vehicle's permit and PUC) are ignored.
  */
-export function classifyDocIssues(input: { identity: DocRow[]; vehicle: DocRow[] | null; today: string }): DocIssue[] {
+export function classifyDocIssues(input: { identity: DocRow[]; vehicle: DocRow[] | null; today: string; fuelType?: string | null }): DocIssue[] {
   const out = classifyRows('identity', input.identity, REQUIRED_IDENTITY_DOCS, input.today)
   if (input.vehicle) {
-    out.push(...classifyRows('vehicle', input.vehicle, REQUIRED_VEHICLE_DOCS, input.today))
+    const applicable = input.vehicle.filter((r) => !isIgnoredVehicleDoc(input.fuelType, r.doc_type))
+    out.push(...classifyRows('vehicle', applicable, requiredVehicleDocs(input.fuelType), input.today))
     const has = (t: string) => input.vehicle!.some((r) => r.doc_type === t)
     if (has('vehicle_rc_front') && !has('vehicle_rc_back')) out.push(issue('vehicle', { doc_type: 'vehicle_rc_back' }, 'missing_back'))
   }
@@ -112,13 +114,13 @@ export async function findDocIssues(driverId: bigint, client?: PoolClient): Prom
   const run: Runner = client ? async (sql, params) => (await client.query(sql, params)).rows : query
   // One statement, so the documents and CURRENT_DATE come from the same snapshot, in one round trip.
   // The vehicle half is a LEFT JOIN: a primary vehicle with no documents yet still counts as "has a primary vehicle" (one row, doc_type null).
-  const rows = await run<DocRow & { scope: 'identity' | 'vehicle'; doc_type: string | null; today: string }>(
+  const rows = await run<DocRow & { scope: 'identity' | 'vehicle'; doc_type: string | null; today: string; fuel_type: string | null }>(
     `SELECT 'identity' AS scope, doc_type::text AS doc_type, status::text AS status, rejection_note,
-            verified_valid_until::text AS verified_valid_until, CURRENT_DATE::text AS today
+            verified_valid_until::text AS verified_valid_until, CURRENT_DATE::text AS today, NULL::text AS fuel_type
        FROM driver_documents WHERE driver_id = $1
      UNION ALL
      SELECT 'vehicle', dvd.doc_type, dvd.status::text, dvd.rejection_note,
-            dvd.verified_valid_until::text, CURRENT_DATE::text
+            dvd.verified_valid_until::text, CURRENT_DATE::text, dv.fuel_type
        FROM driver_vehicles dv LEFT JOIN driver_vehicle_documents dvd ON dvd.vehicle_id = dv.id
       WHERE dv.driver_id = $1 AND dv.is_primary = true`,
     [driverId.toString()],
@@ -129,5 +131,6 @@ export async function findDocIssues(driverId: bigint, client?: PoolClient): Prom
       .map(({ doc_type, status, rejection_note, verified_valid_until }) => ({ doc_type, status, rejection_note, verified_valid_until }))
       .sort((a, b) => a.doc_type.localeCompare(b.doc_type))
   const hasPrimaryVehicle = rows.some((r) => r.scope === 'vehicle')
-  return classifyDocIssues({ identity: docs('identity'), vehicle: hasPrimaryVehicle ? docs('vehicle') : null, today: rows[0]!.today })
+  const fuelType = rows.find((r) => r.scope === 'vehicle')?.fuel_type ?? null
+  return classifyDocIssues({ identity: docs('identity'), vehicle: hasPrimaryVehicle ? docs('vehicle') : null, today: rows[0]!.today, fuelType })
 }
