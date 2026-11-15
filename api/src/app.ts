@@ -15,7 +15,7 @@ import { testConnection as testRedis } from '@/db/redis'
 import { errorMiddleware } from '@/middleware/error.middleware'
 import { maintenanceCheck } from '@/middleware/maintenance.middleware'
 import { compressResponses } from '@/middleware/compression.middleware'
-import { generalLimiter, authLimiter } from '@/middleware/rateLimit.middleware'
+import { generalLimiter } from '@/middleware/rateLimit.middleware'
 import authRouter from '@/modules/auth/auth.routes'
 import driversRouter from '@/modules/drivers/drivers.routes'
 import vehiclesRouter from '@/modules/vehicles/vehicles.routes'
@@ -167,7 +167,7 @@ export function createApp(): Application {
   // 6. API router
   const apiRouter = Router()
   apiRouter.use(generalLimiter)
-  apiRouter.use('/auth', authLimiter, authRouter)
+  apiRouter.use('/auth', authRouter) // per-route auth limiters live in auth.routes.ts
   apiRouter.use('/drivers', driversRouter)
   apiRouter.use('/vehicles', vehiclesRouter)
   // Registered before '/admin' — admin.routes.ts applies authenticate() to
