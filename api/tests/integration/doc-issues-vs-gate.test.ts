@@ -5,7 +5,7 @@ import { pool } from '@/db/client'
 import { client as redis } from '@/db/redis'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { findDocIssues } from '@/modules/drivers/doc-issues'
-import { loginDriver, seedActiveDriverWithVehicle, cleanupRideAndDriverData } from '../helpers/fixtures/rides.fixture'
+import { loginDriver, seedActiveDriverWithVehicle, cleanupRideAndDriverData, completeDailyVerification, goOnline } from '../helpers/fixtures/rides.fixture'
 import { seedAdmin, loginAdmin, cleanupAdmins } from '../helpers/fixtures/safety.fixture'
 
 vi.mock('@/lib/storage', () => ({
@@ -26,6 +26,8 @@ const PHONE = '+919700005001'
 const ADMIN_EMAIL = 'doc-issues-admin@test.ocar'
 let driverId: string
 let vehicleId: string
+let driverToken: string
+let categoryId: number
 
 type Doc = [docType: string, status: string, validUntil?: string | 'yesterday' | 'today' | 'tomorrow']
 const ALL_IDENTITY = ['profile_photo', 'driving_license_front', 'driving_license_back', 'aadhaar_front', 'aadhaar_back']
@@ -54,9 +56,12 @@ async function setDocs(identity: Doc[], vehicle: Doc[]) {
 }
 
 beforeAll(async () => {
-  const { driverId: id } = await loginDriver(app, redis, PHONE)
+  const { driverId: id, accessToken } = await loginDriver(app, redis, PHONE)
   driverId = id
-  vehicleId = (await seedActiveDriverWithVehicle(pool, driverId)).vehicleId
+  driverToken = accessToken
+  const seeded = await seedActiveDriverWithVehicle(pool, driverId)
+  vehicleId = seeded.vehicleId
+  categoryId = seeded.categoryId
 })
 
 afterAll(async () => {
@@ -114,6 +119,29 @@ describe('the admin driver profile returns the same list', () => {
     expect((body.doc_issues as Array<{ doc_type: string; reason: string }>).map((i) => `${i.doc_type}:${i.reason}`)).toEqual(['insurance:expired', 'pollution_cert:expired'])
     // the document rows themselves still say approved: the list is what tells the admin they have expired
     expect((body.vehicle_documents as Array<{ doc_type: string; status: string }>).find((d) => d.doc_type === 'insurance')!.status).toBe('approved')
+  })
+})
+
+describe('the go-online error reaches the driver with the list', () => {
+  it('POST /rides/sessions/online answers 403 DRIVER_DOCS_REJECTED, names the expired documents, and carries details.issues', async () => {
+    const g = good(); g.vehicle[2] = ['insurance', 'approved', 'yesterday']; g.vehicle.push(['pollution_cert', 'approved', 'yesterday'])
+    await setDocs(g.identity, g.vehicle)
+    await completeDailyVerification(app, driverToken)
+
+    const res = await goOnline(app, driverToken, vehicleId, categoryId)
+    expect(res.status).toBe(403)
+    expect(res.body.code).toBe('DRIVER_DOCS_REJECTED')
+    expect(res.body.error).toContain("You can't go online yet:")
+    expect(res.body.error).toContain('Insurance expired on')
+    expect(res.body.error).toContain('Pollution certificate (PUC) expired on')
+    expect((res.body.details.issues as Array<{ doc_type: string; reason: string }>).map((i) => `${i.doc_type}:${i.reason}`)).toEqual(['insurance:expired', 'pollution_cert:expired'])
+  })
+
+  it('the same driver with valid documents is not refused by the document gate', async () => {
+    const g = good()
+    await setDocs(g.identity, g.vehicle)
+    const res = await goOnline(app, driverToken, vehicleId, categoryId)
+    expect(res.body.code).not.toBe('DRIVER_DOCS_REJECTED')
   })
 })
 

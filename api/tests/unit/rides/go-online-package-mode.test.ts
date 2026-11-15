@@ -9,8 +9,6 @@ vi.mock('@/modules/drivers/driver-verification.service', () => ({ getBlockingCha
 vi.mock('@/modules/drivers/driver-verification.repository', () => ({
   getTodayStatus: vi.fn(() => Promise.resolve({ selfieDone: true, plateDone: true })),
 }))
-// goOnline names the blocking documents through findDocIssues; none block here.
-vi.mock('@/modules/drivers/doc-issues', () => ({ findDocIssues: vi.fn(() => Promise.resolve([])), summarizeDocIssues: vi.fn(() => '') }))
 vi.mock('@/modules/drivers/drivers.repository', () => ({
   hasApprovedRequiredDocs: vi.fn(() => Promise.resolve(true)),
 }))

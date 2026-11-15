@@ -18,7 +18,7 @@ export type DocSlotProps = {
   thumbnailUrl: string | null
   docStatus?: string | null
   rejectionNote?: string | null
-  /** Set when this approved document has expired (YYYY-MM-DD, or true-ish text when the date is unknown): shown instead of "Verified". */
+  /** Set when this approved document has expired (the date, "30 Oct 2026"): shown instead of "Verified". */
   expiredOn?: string | null
   error?: string | null
   onPick: (file: PickedFile) => void
@@ -104,7 +104,7 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
 
   const rejected = docStatus === 'rejected'
   // An approved document past its validity still has docStatus 'approved'; it keeps the driver offline, so it must not read "Verified".
-  const expired = !rejected && docStatus === 'approved' && !!expiredOn
+  const expired = !rejected && docStatus === 'approved' && expiredOn != null
   const needsAction = rejected || expired
   const uploading = state === 'uploading' || busy
 
@@ -144,7 +144,7 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
           <View style={styles.statusRow}>
             <Feather name={needsAction ? 'alert-circle' : 'check-circle'} size={12} color={needsAction ? colors.error : colors.success} />
             <Text style={[styles.statusText, needsAction ? styles.statusRejected : styles.statusDone]}>
-              {rejected ? 'Rejected. Tap to reupload' : expired ? `Expired ${expiredOn}. Tap to upload a new one` : docStatus === 'pending' ? 'Pending review' : docStatus === 'approved' ? 'Verified' : 'Uploaded'}
+              {rejected ? 'Rejected. Tap to reupload' : expired ? `Expired${expiredOn ? ` ${expiredOn}` : ''}. Tap to upload a new one` : docStatus === 'pending' ? 'Pending review' : docStatus === 'approved' ? 'Verified' : 'Uploaded'}
             </Text>
           </View>
         ) : error ? (

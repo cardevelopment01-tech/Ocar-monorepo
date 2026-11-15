@@ -110,22 +110,24 @@ type Runner = <T extends object>(sql: string, params: unknown[]) => Promise<T[]>
 
 export async function findDocIssues(driverId: bigint, client?: PoolClient): Promise<DocIssue[]> {
   const run: Runner = client ? async (sql, params) => (await client.query(sql, params)).rows : query
-  const id = driverId.toString()
-  const [today, identity, vehicle] = await Promise.all([
-    run<{ today: string }>('SELECT CURRENT_DATE::text AS today', []),
-    run<DocRow>(
-      `SELECT doc_type::text, status::text, rejection_note, verified_valid_until::text
-         FROM driver_documents WHERE driver_id = $1 ORDER BY doc_type::text`,
-      [id],
-    ),
-    // LEFT JOIN: a primary vehicle with no documents yet still counts as "has a primary vehicle" (one row, doc_type null).
-    run<DocRow & { doc_type: string | null }>(
-      `SELECT dvd.doc_type, dvd.status::text AS status, dvd.rejection_note, dvd.verified_valid_until::text AS verified_valid_until
-         FROM driver_vehicles dv LEFT JOIN driver_vehicle_documents dvd ON dvd.vehicle_id = dv.id
-        WHERE dv.driver_id = $1 AND dv.is_primary = true ORDER BY dvd.doc_type`,
-      [id],
-    ),
-  ])
-  const vehicleRows = vehicle.length === 0 ? null : vehicle.filter((r): r is DocRow => r.doc_type !== null)
-  return classifyDocIssues({ identity, vehicle: vehicleRows, today: today[0]!.today })
+  // One statement, so the documents and CURRENT_DATE come from the same snapshot, in one round trip.
+  // The vehicle half is a LEFT JOIN: a primary vehicle with no documents yet still counts as "has a primary vehicle" (one row, doc_type null).
+  const rows = await run<DocRow & { scope: 'identity' | 'vehicle'; doc_type: string | null; today: string }>(
+    `SELECT 'identity' AS scope, doc_type::text AS doc_type, status::text AS status, rejection_note,
+            verified_valid_until::text AS verified_valid_until, CURRENT_DATE::text AS today
+       FROM driver_documents WHERE driver_id = $1
+     UNION ALL
+     SELECT 'vehicle', dvd.doc_type, dvd.status::text, dvd.rejection_note,
+            dvd.verified_valid_until::text, CURRENT_DATE::text
+       FROM driver_vehicles dv LEFT JOIN driver_vehicle_documents dvd ON dvd.vehicle_id = dv.id
+      WHERE dv.driver_id = $1 AND dv.is_primary = true`,
+    [driverId.toString()],
+  )
+  if (rows.length === 0) return []
+  const docs = (scope: 'identity' | 'vehicle'): DocRow[] =>
+    rows.filter((r): r is typeof r & { doc_type: string } => r.scope === scope && r.doc_type !== null)
+      .map(({ doc_type, status, rejection_note, verified_valid_until }) => ({ doc_type, status, rejection_note, verified_valid_until }))
+      .sort((a, b) => a.doc_type.localeCompare(b.doc_type))
+  const hasPrimaryVehicle = rows.some((r) => r.scope === 'vehicle')
+  return classifyDocIssues({ identity: docs('identity'), vehicle: hasPrimaryVehicle ? docs('vehicle') : null, today: rows[0]!.today })
 }

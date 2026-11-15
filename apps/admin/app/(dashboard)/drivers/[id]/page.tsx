@@ -52,7 +52,12 @@ function AlertStrip({ d }: { d: DriverDetail }) {
   else if (balance < 500 && (d.status === 'active' || d.status === 'suspended')) alerts.push({ text: `Wallet below ₹500 minimum (₹${balance.toLocaleString('en-IN')})`, tone: 'warning' })
   if (d.status === 'docs_rejected') alerts.push({ text: 'Documents were rejected — awaiting resubmission', tone: 'warning' })
   // The exact documents that stop this driver going online, and why: the same list the driver sees in the app.
-  for (const issue of d.doc_issues ?? []) alerts.push({ text: `Can't go online: ${issue.short}`, tone: 'danger' })
+  // Not for a driver still in the approval queue: pending documents are expected there (the header already shows the count).
+  const inQueue = d.status === 'pending_approval' || d.status === 'pending_docs'
+  for (const issue of d.doc_issues ?? []) {
+    if (issue.reason === 'pending_review' && inQueue) continue
+    alerts.push({ text: `Can't go online: ${issue.short}`, tone: issue.reason === 'pending_review' ? 'warning' : 'danger' })
+  }
   const requiredTotal = REQUIRED_DRIVER_DOCS.length + REQUIRED_VEHICLE_DOCS.length
   // pending_approval already shows this as the header button count and summary tile
   if (totalUnapproved > 0 && d.status !== 'pending_approval') alerts.push({ text: `${requiredTotal - totalUnapproved} of ${requiredTotal} required documents approved`, tone: 'warning' })

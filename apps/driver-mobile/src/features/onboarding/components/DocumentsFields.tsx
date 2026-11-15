@@ -11,7 +11,7 @@ import { formatDocDate } from '@/features/go-online/docIssues'
 /** The date a slot's document expired ("30 Oct 2026"), or null when it has not. */
 function expiredOn(expired: ExpiredDoc[], key: string): string | null {
   const hit = expired.find((d) => d.key === key)
-  return hit ? (formatDocDate(hit.validUntil) || 'recently') : null
+  return hit ? formatDocDate(hit.validUntil) : null
 }
 
 /** Identity numbers + every driver/vehicle document slot, the shared body of the onboarding wizard's
@@ -78,7 +78,7 @@ export function DocumentsFields({ form, showProfilePhoto }: { form: DocumentsFor
               thumbnailUrl={form.slotState[slot.key]?.url ?? null}
               docStatus={form.slotState[slot.key]?.docStatus}
               rejectionNote={form.slotState[slot.key]?.rejectionNote}
-            expiredOn={expiredOn(form.expiredDocs, slot.key)}
+              expiredOn={expiredOn(form.expiredDocs, slot.key)}
               error={form.slotState[slot.key]?.error}
               onPick={(file) => void form.handlePick(slot.key, group.groupKey, false, file)}
             />
@@ -104,7 +104,7 @@ export function DocumentsFields({ form, showProfilePhoto }: { form: DocumentsFor
               thumbnailUrl={form.slotState[slot.key]?.url ?? null}
               docStatus={form.slotState[slot.key]?.docStatus}
               rejectionNote={form.slotState[slot.key]?.rejectionNote}
-            expiredOn={expiredOn(form.expiredDocs, slot.key)}
+              expiredOn={expiredOn(form.expiredDocs, slot.key)}
               error={form.slotState[slot.key]?.error}
               onPick={(file) => void form.handlePick(slot.key, group.groupKey, form.vehicleDocKeys.has(slot.key), file)}
             />

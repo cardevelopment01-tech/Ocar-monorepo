@@ -4,8 +4,6 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   upsertDriverLocation: vi.fn(), getActiveRideForDriver: vi.fn(), getActiveSession: vi.fn(),
 }))
 vi.mock('@/modules/drivers/driver-verification.repository', () => ({ getTodayStatus: vi.fn() }))
-// goOnline names the blocking documents through findDocIssues; none block here.
-vi.mock('@/modules/drivers/doc-issues', () => ({ findDocIssues: vi.fn(() => Promise.resolve([])), summarizeDocIssues: vi.fn(() => '') }))
 vi.mock('@/modules/drivers/drivers.repository', () => ({ hasApprovedRequiredDocs: vi.fn(() => Promise.resolve(true)) }))
 vi.mock('@/modules/payments/payments.service', () => ({
   getDriverWallet: vi.fn(), getMinWalletBalance: vi.fn(), createPaymentRecord: vi.fn(), deductCommission: vi.fn(),

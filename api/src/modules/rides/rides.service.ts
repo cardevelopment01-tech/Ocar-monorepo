@@ -16,6 +16,7 @@ import { getTodayStatus } from '@/modules/drivers/driver-verification.repository
 import { getBlockingChallenge } from '@/modules/drivers/driver-verification.service'
 import { maybeOpenSpotCheck } from '@/modules/drivers/spot-check.engine'
 import { findDocIssues, summarizeDocIssues } from '@/modules/drivers/doc-issues'
+import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import { resolveForBooking, type AppliedOffer, type PreviewInput } from '@/modules/offers/offers.service'
 import { finaliseDiscount, onRideCancelled, payableForRide, payableOf, releaseForRide, settleOfferOnPayment } from '@/modules/offers/settlement'
@@ -173,12 +174,15 @@ export async function goOnline(driverId: bigint, data: {
     throw httpError(428, 'A quick safety check is needed before you go online', 'SPOT_CHECK_REQUIRED')
   }
 
-  // Name the exact documents and the reason (expired / rejected / waiting for review / missing) so the driver, and the admin who
-  // answers their call, can see what to fix. Same code as before, so older apps still handle it; `details.issues` is the new part.
-  const docIssues = await findDocIssues(driverId)
-  if (docIssues.length > 0) {
+  // The SQL gate decides, exactly as before (it is also what dispatch uses). Only when it says no do we ask which documents and why,
+  // to word the refusal: the driver, and the admin who answers their call, see what to fix. Same code as before, so older apps still
+  // handle it; `details.issues` is the new part. If the two ever disagreed (no issue found), the refusal falls back to the old message.
+  if (!(await hasApprovedRequiredDocs(driverId))) {
+    const docIssues = await findDocIssues(driverId)
     throw Object.assign(
-      httpError(AppErrors.DRIVER_DOCS_REJECTED.httpStatus, summarizeDocIssues(docIssues), AppErrors.DRIVER_DOCS_REJECTED.code),
+      docIssues.length > 0
+        ? httpError(AppErrors.DRIVER_DOCS_REJECTED.httpStatus, summarizeDocIssues(docIssues), AppErrors.DRIVER_DOCS_REJECTED.code)
+        : createHttpError(AppErrors.DRIVER_DOCS_REJECTED),
       { details: { issues: docIssues } },
     )
   }
