@@ -1,3 +1,5 @@
+import type { DocIssue } from './docIssues'
+
 export type VehicleInfo = {
   id: number
   categoryId: number
@@ -13,8 +15,13 @@ export type WalletInfo = {
 }
 
 export type DocumentGateStatus = {
+  /** Something keeps the driver from going online: a rejected, expired, unreviewed or missing document. */
   hasRejected: boolean
   rejectionReason: string | null
+  /** The banner title that matches the reason(s), for example "Document expired"; null from an older server. */
+  title: string | null
+  /** Every blocking document and why, as the server reports it; empty from an older server. */
+  issues: DocIssue[]
   /** The flagged document was never uploaded (e.g. an RC back owed by a legacy driver), not rejected by review. */
   isMissingUpload: boolean
 }

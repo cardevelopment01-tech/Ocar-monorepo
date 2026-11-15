@@ -1,3 +1,4 @@
+import type { DocIssue } from '../drivers/doc-issues'
 export type DriverStatus = 'pending_docs' | 'pending_approval' | 'active' | 'suspended' | 'banned' | 'docs_rejected' | 'deleted'
 
 export interface AdminDriverListRow {
@@ -88,6 +89,8 @@ export interface AdminDriverDetail {
     verified_valid_until: string | null
     updated_at: string
   }[]
+  /** Documents that keep the driver from going online, and why (see drivers/doc-issues.ts). Empty when nothing blocks. */
+  doc_issues: DocIssue[]
   vehicle_documents: {
     id: string
     doc_type: string

@@ -1,3 +1,4 @@
+import type { DocIssue } from '@/features/go-online/docIssues'
 import { api } from '@/services/api'
 import { sharedGet } from '@/services/api/sharedGet'
 import { prepareImageForUpload } from '@/services/uploadImage'
@@ -44,6 +45,8 @@ export type DocumentStatus = {
   vehicle_docs: Record<string, { uploaded: boolean; url: string | null; status: string | null; rejection_note: string | null; rejection_count: number }>
   all_required_complete: boolean
   rejection_reason: string | null
+  /** What blocks going online and why (expired / rejected / waiting for review / missing). Missing from an older server. */
+  doc_issues?: DocIssue[]
 }
 
 // ── Upload helper ────────────────────────────────────────────────────────────

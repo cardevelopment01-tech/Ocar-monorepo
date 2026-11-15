@@ -18,6 +18,8 @@ export type DocSlotProps = {
   thumbnailUrl: string | null
   docStatus?: string | null
   rejectionNote?: string | null
+  /** Set when this approved document has expired (YYYY-MM-DD, or true-ish text when the date is unknown): shown instead of "Verified". */
+  expiredOn?: string | null
   error?: string | null
   onPick: (file: PickedFile) => void
   /** Live front-camera selfie only (profile photo): opens SelfieCapture instead of the camera/gallery alert. */
@@ -66,7 +68,7 @@ async function pickFrom(source: 'camera' | 'library'): Promise<PickedFile | null
   }
 }
 
-export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, error, onPick, selfie }: DocSlotProps) {
+export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, expiredOn, error, onPick, selfie }: DocSlotProps) {
   const [busy, setBusy] = useState(false)
   const [selfieOpen, setSelfieOpen] = useState(false)
 
@@ -101,6 +103,9 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
   }
 
   const rejected = docStatus === 'rejected'
+  // An approved document past its validity still has docStatus 'approved'; it keeps the driver offline, so it must not read "Verified".
+  const expired = !rejected && docStatus === 'approved' && !!expiredOn
+  const needsAction = rejected || expired
   const uploading = state === 'uploading' || busy
 
   return (
@@ -115,7 +120,7 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
     <Pressable
       onPress={handlePress}
       disabled={uploading}
-      style={({ pressed }) => [styles.slot, rejected ? styles.slotRejected : null, pressed && !uploading ? styles.pressedScale : null]}
+      style={({ pressed }) => [styles.slot, needsAction ? styles.slotRejected : null, pressed && !uploading ? styles.pressedScale : null]}
     >
       {thumbnailUrl && isPdfUrl(thumbnailUrl) ? (
         <View style={[styles.thumb, styles.thumbEmpty]}>
@@ -137,9 +142,9 @@ export function DocSlot({ label, state, thumbnailUrl, docStatus, rejectionNote, 
           </View>
         ) : state === 'done' ? (
           <View style={styles.statusRow}>
-            <Feather name={rejected ? 'alert-circle' : 'check-circle'} size={12} color={rejected ? colors.error : colors.success} />
-            <Text style={[styles.statusText, rejected ? styles.statusRejected : styles.statusDone]}>
-              {rejected ? 'Rejected. Tap to reupload' : docStatus === 'pending' ? 'Pending review' : docStatus === 'approved' ? 'Verified' : 'Uploaded'}
+            <Feather name={needsAction ? 'alert-circle' : 'check-circle'} size={12} color={needsAction ? colors.error : colors.success} />
+            <Text style={[styles.statusText, needsAction ? styles.statusRejected : styles.statusDone]}>
+              {rejected ? 'Rejected. Tap to reupload' : expired ? `Expired ${expiredOn}. Tap to upload a new one` : docStatus === 'pending' ? 'Pending review' : docStatus === 'approved' ? 'Verified' : 'Uploaded'}
             </Text>
           </View>
         ) : error ? (

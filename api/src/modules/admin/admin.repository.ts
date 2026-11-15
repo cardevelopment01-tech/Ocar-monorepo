@@ -45,6 +45,7 @@ import type {
   DriverPackageWallet,
   DriverPackageLedgerEntry,
 } from "@/modules/packages/packages.types";
+import { findDocIssues } from "../drivers/doc-issues";
 
 // Hardcoded whitelist, never built from request keys — this is the only thing
 // standing between an admin body and a dynamic UPDATE (see CLAUDE.md SQL rules)
@@ -405,6 +406,10 @@ export async function getDriverById(
     ),
   ]);
 
+  // Which documents keep this driver off the road and why (expired, rejected, waiting for review, missing): the same list the
+  // driver sees when going online, so an admin can tell them what to fix without asking a developer.
+  const docIssues = await findDocIssues(id);
+
   return {
     id: String(r.id),
     code: r.code as string,
@@ -452,6 +457,7 @@ export async function getDriverById(
           brand: r.vehicle_brand as string,
         }
       : null,
+    doc_issues: docIssues,
     documents: docsRes.rows as AdminDriverDetail["documents"],
     vehicle_documents:
       vehicleDocsRes.rows as AdminDriverDetail["vehicle_documents"],

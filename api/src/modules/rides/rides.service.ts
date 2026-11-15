@@ -15,7 +15,7 @@ import { storeShadowLeg, recordShadowPing } from './eta-shadow'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { getBlockingChallenge } from '@/modules/drivers/driver-verification.service'
 import { maybeOpenSpotCheck } from '@/modules/drivers/spot-check.engine'
-import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
+import { findDocIssues, summarizeDocIssues } from '@/modules/drivers/doc-issues'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import { resolveForBooking, type AppliedOffer, type PreviewInput } from '@/modules/offers/offers.service'
 import { finaliseDiscount, onRideCancelled, payableForRide, payableOf, releaseForRide, settleOfferOnPayment } from '@/modules/offers/settlement'
@@ -173,8 +173,14 @@ export async function goOnline(driverId: bigint, data: {
     throw httpError(428, 'A quick safety check is needed before you go online', 'SPOT_CHECK_REQUIRED')
   }
 
-  if (!(await hasApprovedRequiredDocs(driverId))) {
-    throw createHttpError(AppErrors.DRIVER_DOCS_REJECTED)
+  // Name the exact documents and the reason (expired / rejected / waiting for review / missing) so the driver, and the admin who
+  // answers their call, can see what to fix. Same code as before, so older apps still handle it; `details.issues` is the new part.
+  const docIssues = await findDocIssues(driverId)
+  if (docIssues.length > 0) {
+    throw Object.assign(
+      httpError(AppErrors.DRIVER_DOCS_REJECTED.httpStatus, summarizeDocIssues(docIssues), AppErrors.DRIVER_DOCS_REJECTED.code),
+      { details: { issues: docIssues } },
+    )
   }
 
   // Billing mode is fixed to the driver's assigned operating city
