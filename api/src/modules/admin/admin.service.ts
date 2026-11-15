@@ -1,4 +1,5 @@
 import { createHttpError, httpError } from '@/lib/errors'
+import { requirePersonName } from '@/lib/person-name'
 import { AppErrors } from '@/constants/errors'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
@@ -228,6 +229,8 @@ export async function updateDriverProfile(
   if (fields.aadhaar_number !== undefined && /^X{4}-X{4}-\d{4}$/.test(fields.aadhaar_number)) {
     throw httpError(422, 'Enter the full Aadhaar number, not the masked value', AppErrors.VALIDATION_ERROR.code)
   }
+
+  if (fields.full_name !== undefined) fields.full_name = requirePersonName(fields.full_name, { min: 2, max: 120 })
 
   await repo.updateDriverProfile(driverId, adminId, fields, reason, ipAddress)
 
