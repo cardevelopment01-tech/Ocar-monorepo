@@ -1,7 +1,7 @@
 import { rateLimit } from 'express-rate-limit'
 import { RedisStore, type RedisReply } from 'rate-limit-redis'
 import type { Request } from 'express'
-import { verifyAccessToken } from '@/lib/jwt'
+import { verifyAccessToken, verifyPendingTotpToken } from '@/lib/jwt'
 import { client as redis, withTimeout } from '@/db/redis'
 import { logger } from '@/lib/logger'
 import { sha256 } from '@/lib/hash'
@@ -106,19 +106,66 @@ const generalStore = redisStore('rl:general:')
 if (generalStore !== undefined) generalLimiterOptions.store = generalStore
 export const generalLimiter = rateLimit(generalLimiterOptions)
 
-// Auth/OTP: 10 requests per minute per IP to limit brute-force
-const authLimiterOptions: Parameters<typeof rateLimit>[0] = {
-  windowMs: 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: skipInTest,
-  passOnStoreError: true,
-  message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
+// ── Auth limits ───────────────────────────────────────────────────────────────
+// Guess-resistance belongs on the endpoints where someone can GUESS a secret, not on the whole /auth router. Before this
+// every /auth route (including the token-protected /me, /refresh and /logout) shared one 10-per-minute-per-IP bucket, so
+// a few page loads from one office, or a deploy that made many phones behind one carrier NAT refresh at once, locked
+// people out of login. /me and /logout need a valid token and are covered by the general per-principal limiter above.
+//
+// Failures-only counting (skipSuccessfulRequests) is the usual practice for credential endpoints: it throttles guessing
+// without punishing the many legitimate sign-ins that share an IP. Per-account limits sit beside the per-IP ones so
+// rotating IPs does not get an attacker past them.
+function authLimiterFor(skip: () => boolean, prefix: string, opts: { windowMs: number; max: number; failuresOnly?: boolean; key?: (req: Request) => string }) {
+  const options: Parameters<typeof rateLimit>[0] = {
+    windowMs: opts.windowMs,
+    max: opts.max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip,
+    passOnStoreError: true,
+    skipSuccessfulRequests: opts.failuresOnly === true,
+    message: { error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' },
+  }
+  if (opts.key) { const key = opts.key; options.keyGenerator = (req) => `${prefix}:${key(req)}` }
+  const store = skip === skipInTest ? redisStore(`rl:${prefix}:`) : undefined
+  if (store !== undefined) options.store = store
+  return rateLimit(options)
 }
-const authStore = redisStore('rl:auth:')
-if (authStore !== undefined) authLimiterOptions.store = authStore
-export const authLimiter = rateLimit(authLimiterOptions)
+const bodyString = (req: Request, field: string): string | undefined => {
+  const v = (req.body as Record<string, unknown> | undefined)?.[field]
+  return typeof v === 'string' && v.length > 0 && v.length < 512 ? v : undefined
+}
+
+export function makeAuthLimiters(skip: () => boolean = skipInTest) {
+  // OTP request / verify: 30 per minute per IP. The real guard is per phone (request cap in lib/otp.ts, verify lockout after
+  // OTP_MAX_ATTEMPTS); the IP cap only stops one address sweeping many numbers, and is wide enough for a carrier-NAT'd stand.
+  const otpLimiter = authLimiterFor(skip, 'otp', { windowMs: 60_000, max: 30 })
+
+  // Admin password login: 10 FAILED attempts per minute per IP, and 10 FAILED per 15 minutes per email.
+  const adminLoginIpLimiter = authLimiterFor(skip, 'adminlogin-ip', { windowMs: 60_000, max: 10, failuresOnly: true })
+  const adminLoginAccountLimiter = authLimiterFor(skip, 'adminlogin-acct', {
+    windowMs: 15 * 60_000, max: 10, failuresOnly: true,
+    key: (req) => (bodyString(req, 'email')?.toLowerCase() ?? req.ip ?? 'unknown'),
+  })
+
+  // Admin TOTP step: a 6-digit code is only 1e6 guesses, so cap FAILED tries per admin (not per pending token, or a fresh
+  // password login would reset the count): 5 per 15 minutes, plus the same per-IP cap as the password step.
+  const adminTotpIpLimiter = authLimiterFor(skip, 'admintotp-ip', { windowMs: 60_000, max: 10, failuresOnly: true })
+  const adminTotpAccountLimiter = authLimiterFor(skip, 'admintotp-acct', {
+    windowMs: 15 * 60_000, max: 5, failuresOnly: true,
+    key: (req) => {
+      const t = bodyString(req, 'pendingToken')
+      if (t) { try { return `admin:${verifyPendingTotpToken(t).adminId}` } catch { /* invalid token: fall back to IP */ } }
+      return req.ip ?? 'unknown'
+    },
+  })
+
+  // Token refresh: 60 per minute per IP. The refresh token is a 256-bit secret, so this is not guess-resistance; it only
+  // bounds a runaway client. Wide enough that every phone behind one NAT can refresh together after a deploy.
+  const refreshLimiter = authLimiterFor(skip, 'refresh', { windowMs: 60_000, max: 60 })
+  return { otpLimiter, adminLoginIpLimiter, adminLoginAccountLimiter, adminTotpIpLimiter, adminTotpAccountLimiter, refreshLimiter }
+}
+export const { otpLimiter, adminLoginIpLimiter, adminLoginAccountLimiter, adminTotpIpLimiter, adminTotpAccountLimiter, refreshLimiter } = makeAuthLimiters()
 
 // Google-backed geo endpoints (autocomplete, place, reverse, route): each call can cost real money, so they are
 // throttled per principal well below the general 600/min. Autocomplete fires per keystroke, hence not tiny.
