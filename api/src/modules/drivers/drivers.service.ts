@@ -129,7 +129,8 @@ export async function updateProfile(
   driverId: bigint,
   data: { full_name: string; email?: string | null }
 ): Promise<Driver> {
-  return repo.updateProfile(driverId, { ...data, full_name: requirePersonName(data.full_name, { min: 2, max: 120 }) })
+  const current = await repo.findDriverById(driverId)
+  return repo.updateProfile(driverId, { ...data, full_name: requirePersonName(data.full_name, { min: 2, max: 120 }, current?.full_name) })
 }
 
 export async function getPersonalInfo(driverId: bigint): Promise<Partial<Driver>> {
@@ -165,7 +166,7 @@ export async function savePersonalInfo(
     throw httpError(422, 'Emergency contact cannot be your own number', 'VALIDATION_ERROR')
   }
 
-  const updated = await repo.updatePersonalInfo(driverId, { ...data, full_name: requirePersonName(data.full_name, { min: 2, max: 120 }) })
+  const updated = await repo.updatePersonalInfo(driverId, { ...data, full_name: requirePersonName(data.full_name, { min: 2, max: 120 }, driver.full_name) })
 
   await repo.createStatusHistory({
     driverId,

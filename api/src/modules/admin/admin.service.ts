@@ -230,7 +230,10 @@ export async function updateDriverProfile(
     throw httpError(422, 'Enter the full Aadhaar number, not the masked value', AppErrors.VALIDATION_ERROR.code)
   }
 
-  if (fields.full_name !== undefined) fields.full_name = requirePersonName(fields.full_name, { min: 2, max: 120 })
+  if (fields.full_name !== undefined) {
+    const current = await findDriverById(driverId)
+    fields.full_name = requirePersonName(fields.full_name, { min: 2, max: 120 }, current?.full_name)
+  }
 
   await repo.updateDriverProfile(driverId, adminId, fields, reason, ipAddress)
 

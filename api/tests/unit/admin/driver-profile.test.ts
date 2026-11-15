@@ -7,6 +7,11 @@ vi.mock('@/modules/admin/admin.repository', () => ({
 vi.mock('@/modules/notifications/notifications.service', () => ({
   notifyOwner: vi.fn(),
 }))
+// A name edit looks up the name on file, so an unchanged name echoed back is not blocked by newer rules.
+vi.mock('@/modules/drivers/drivers.repository', () => ({
+  findDriverById: vi.fn().mockResolvedValue({ id: '42', full_name: 'Old Name' }),
+  hasAllRequiredDocsApproved: vi.fn(),
+}))
 
 import * as repo from '@/modules/admin/admin.repository'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
