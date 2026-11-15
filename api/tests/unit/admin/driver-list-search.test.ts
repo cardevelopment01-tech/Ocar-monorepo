@@ -6,7 +6,8 @@ vi.mock('@/db/client', () => ({ pool: { query: (...a: unknown[]) => query(...a),
 vi.mock('@/lib/storage', () => ({ deleteFile: vi.fn() }))
 vi.mock('@/lib/audit-log', () => ({ recordAuditLog: vi.fn() }))
 vi.mock('@/lib/cache/reference-cache', () => ({ invalidate: vi.fn(), cachedRead: vi.fn() }))
-vi.mock('@/modules/drivers/drivers.repository', () => ({ hasApprovedRequiredDocs: vi.fn() }))
+vi.mock('@/modules/drivers/drivers.repository', () => ({ hasApprovedRequiredDocs: vi.fn(), docIssueExistsSql: vi.fn(() => 'FALSE') }))
+vi.mock('@/modules/drivers/doc-issues', () => ({ findDocIssues: vi.fn(() => Promise.resolve([])) }))
 vi.mock('@/modules/pricing/pricing.repository', () => ({ invalidateSurgeCache: vi.fn() }))
 
 import { listDrivers } from '@/modules/admin/admin.repository'

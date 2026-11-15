@@ -22,6 +22,8 @@ export interface AdminDriverListRow {
   docs_approved: number
   /** Required documents waiting for review on an active/suspended driver (0 otherwise). */
   docs_pending: number
+  /** Why this driver cannot go online (expired / rejected / waiting for review / missing), for the rows the rule flags; empty otherwise. */
+  doc_issues: DocIssue[]
 }
 
 export interface AdminDriverListSummary {
@@ -31,6 +33,8 @@ export interface AdminDriverListSummary {
   suspended: number
   /** Active/suspended drivers with a required document waiting for review. */
   docs_to_review: number
+  /** Active drivers who cannot go online because of a document (expired, rejected, waiting for review, missing). */
+  doc_issues: number
 }
 
 // city keys are city ids, plus "none" for drivers with no city; category keys are category ids

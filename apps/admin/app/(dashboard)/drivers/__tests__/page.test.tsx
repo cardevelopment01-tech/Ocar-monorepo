@@ -234,4 +234,29 @@ describe('Drivers page filters', () => {
     await user.click(tab)
     expect(nav.replace).toHaveBeenLastCalledWith('/drivers?status=docs_review')
   })
+  it('shows an active driver a document keeps offline: a Blocked by docs tab with a count, and the reason right in the row', async () => {
+    const issues = [
+      { scope: 'vehicle', doc_type: 'insurance', label: 'Insurance', reason: 'expired', valid_until: '2026-10-30', note: null, short: 'Insurance expired on 30 Oct 2026', message: 'Insurance expired on 30 Oct 2026. Upload a renewed copy.' },
+      { scope: 'vehicle', doc_type: 'pollution_cert', label: 'Pollution certificate (PUC)', reason: 'expired', valid_until: '2026-11-07', note: null, short: 'Pollution certificate (PUC) expired on 7 Nov 2026', message: 'Pollution certificate (PUC) expired on 7 Nov 2026. Upload a renewed copy.' },
+    ] as const
+    api.list.mockImplementation(async () => resp([driver('1', 'Ashish Nayak', { doc_issues: [...issues] })], {
+      summary: { total: 9, active: 9, pending_approval: 0, suspended: 0, docs_to_review: 0, doc_issues: 3 },
+    }))
+    const user = userEvent.setup()
+    render(<DriversPage />)
+    // the status pill still says active; the reason is next to it
+    const reason = await screen.findByText('Insurance expired +1')
+    expect(reason).toHaveAttribute('title', 'Insurance expired on 30 Oct 2026; Pollution certificate (PUC) expired on 7 Nov 2026')
+    const tab = screen.getByRole('tab', { name: /Blocked by docs/ })
+    expect(within(tab).getByText('3')).toBeInTheDocument()
+    await user.click(tab)
+    expect(nav.replace).toHaveBeenLastCalledWith('/drivers?status=doc_issues')
+  })
+
+  it('an empty Blocked by docs tab says nobody is blocked', async () => {
+    nav.params = new URLSearchParams('status=doc_issues')
+    api.list.mockImplementation(async () => resp([]))
+    render(<DriversPage />)
+    expect(await screen.findByText(/blocked by a document/)).toBeInTheDocument()
+  })
 })

@@ -145,3 +145,43 @@ describe('the go-online error reaches the driver with the list', () => {
   })
 })
 
+describe('the Drivers list "doc issues" tab', () => {
+  const list = async (status: string) => {
+    const { accessToken } = await loginAdmin(app, ADMIN_EMAIL)
+    const res = await request(app).get(`/api/v1/admin/drivers?status=${status}&limit=100`).set('Authorization', `Bearer ${accessToken}`)
+    expect(res.status).toBe(200)
+    const body = res.body.data ?? res.body
+    return body as { drivers: Array<{ id: string; status: string; doc_issues: Array<{ doc_type: string; reason: string }> }>; summary: { doc_issues: number } }
+  }
+
+  it('an active driver whose insurance and pollution certificate expired is listed, with the reasons, and counted', async () => {
+    await seedAdmin(pool, ADMIN_EMAIL)
+    const g = good(); g.vehicle[2] = ['insurance', 'approved', 'yesterday']; g.vehicle.push(['pollution_cert', 'approved', 'yesterday'])
+    await setDocs(g.identity, g.vehicle)
+
+    const out = await list('doc_issues')
+    const row = out.drivers.find((d) => d.id === driverId)
+    expect(row, 'the blocked driver is on the tab').toBeDefined()
+    expect(row!.status).toBe('active') // the status alone says nothing is wrong: this is what the tab is for
+    expect(row!.doc_issues.map((i) => `${i.doc_type}:${i.reason}`)).toEqual(['insurance:expired', 'pollution_cert:expired'])
+    expect(out.summary.doc_issues).toBeGreaterThanOrEqual(1)
+  })
+
+  it('every driver on the tab has a reason; the same driver with valid documents is not on it', async () => {
+    const g = good()
+    await setDocs(g.identity, g.vehicle)
+    const out = await list('doc_issues')
+    expect(out.drivers.find((d) => d.id === driverId)).toBeUndefined()
+    for (const d of out.drivers) expect(d.doc_issues.length, `driver ${d.id} is on the tab but no reason was found`).toBeGreaterThan(0)
+  })
+
+  it('the ordinary list marks the same driver with the reasons, so an "active" driver is not shown as fine', async () => {
+    const g = good(); g.vehicle[2] = ['insurance', 'approved', 'yesterday']
+    await setDocs(g.identity, g.vehicle)
+    const { accessToken } = await loginAdmin(app, ADMIN_EMAIL)
+    const res = await request(app).get(`/api/v1/admin/drivers?limit=100`).set('Authorization', `Bearer ${accessToken}`)
+    const body = (res.body.data ?? res.body) as { drivers: Array<{ id: string; doc_issues: Array<{ doc_type: string }> }> }
+    expect(body.drivers.find((d) => d.id === driverId)!.doc_issues.map((i) => i.doc_type)).toEqual(['insurance'])
+  })
+})
+

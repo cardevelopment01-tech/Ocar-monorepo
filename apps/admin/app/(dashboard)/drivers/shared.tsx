@@ -24,6 +24,12 @@ export function formatDocDate(iso: string | null): string {
   return y && m && d && month ? `${Number(d)} ${month} ${y}` : iso
 }
 
+/** "Insurance expired", "Permit rejected": short enough for a table cell (the full text, with the date, goes in the tooltip). */
+export function docIssueBrief(i: DocIssue): string {
+  const verb = i.reason === 'expired' ? 'expired' : i.reason === 'rejected' ? 'rejected' : i.reason === 'pending_review' ? 'in review' : 'missing'
+  return `${i.label} ${verb}`
+}
+
 export function fmt(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }

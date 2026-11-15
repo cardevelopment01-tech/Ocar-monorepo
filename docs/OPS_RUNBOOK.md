@@ -635,7 +635,7 @@ ends offers past their end date. If an offer's budget looks too low, check for `
 
 ## A driver says "a document was rejected" and cannot go online
 
-Open the driver's profile in the admin panel (Drivers -> the driver). Red chips under the name list every document that blocks them and why, for example `Can't go online: Insurance expired on 30 Oct 2026`. The same list is what the driver sees in the app (Home banner, the Documents screen, and the error when they tap Go online). The four reasons:
+To find every driver in this state at once, open **Drivers -> Blocked by docs**: active drivers a document keeps offline, each with the reason next to the status (for example `Insurance expired +1`; hover for the full text). The count on the tab is the number of such drivers. Then open one driver's profile (Drivers -> the driver). Red chips under the name list every document that blocks them and why, for example `Can't go online: Insurance expired on 30 Oct 2026`. The same list is what the driver sees in the app (Home banner, the Documents screen, and the error when they tap Go online). The four reasons:
 
 - **Expired**: the document is approved but its valid-until date has passed. This is the one that looks fine on the card (it used to read "approved"); it now reads "Expired <date>" in red. The driver uploads a renewed copy; approve it with the new valid-until date. Any approved vehicle document counts, including the optional pollution (PUC) and fitness certificates.
 - **Rejected**: a reviewer rejected it. The note says why.

@@ -23,6 +23,8 @@ export interface DriverListItem {
   docs_approved: number
   /** Required documents waiting for review on an active/suspended driver (0 otherwise). */
   docs_pending?: number
+  /** Why this driver cannot go online (expired / rejected / waiting for review / missing); empty when nothing blocks. */
+  doc_issues?: DocIssue[]
 }
 
 export interface DriverListSummary {
@@ -32,6 +34,8 @@ export interface DriverListSummary {
   suspended: number
   /** Active/suspended drivers with a required document waiting for review. */
   docs_to_review?: number
+  /** Active drivers a document keeps offline (expired, rejected, waiting for review, missing). */
+  doc_issues?: number
 }
 
 // city keys: city id or "none" (no city assigned); categories keys: vehicle category id
