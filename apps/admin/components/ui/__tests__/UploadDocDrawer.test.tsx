@@ -8,7 +8,11 @@ vi.mock('framer-motion', async () => {
   const cache = new Map<string, unknown>()
   const motion = new Proxy({}, {
     get: (_t, tag: string) => {
-      if (!cache.has(tag)) cache.set(tag, React.forwardRef((props: Record<string, unknown>, ref) => React.createElement(tag, { ...strip(props), ref })))
+      if (!cache.has(tag)) {
+        const C = React.forwardRef((props: Record<string, unknown>, ref) => React.createElement(tag, { ...strip(props), ref }))
+        C.displayName = `motion.${tag}`
+        cache.set(tag, C)
+      }
       return cache.get(tag)
     },
   })
