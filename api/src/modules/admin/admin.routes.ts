@@ -2,6 +2,10 @@ import { Router, IRouter } from 'express'
 import { authenticate } from '@/middleware/auth.middleware'
 import { requireAdmin } from '@/middleware/role.middleware'
 import * as controller from './admin.controller'
+import multer from 'multer'
+import { MAX_ADMIN_UPLOAD_BYTES } from './admin-doc-upload.service'
+
+const docUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ADMIN_UPLOAD_BYTES, files: 1 } })
 
 const router: IRouter = Router()
 
@@ -52,6 +56,7 @@ router.patch('/vehicles/fleet/:vehicleId/blacklist',             requireAdmin('s
 router.patch('/vehicles/fleet/:vehicleId/unblacklist',           requireAdmin('super_admin', 'ops_admin'), controller.unblacklistVehicle)
 
 // ─── Driver documents ─────────────────────────────────────────────────────────
+router.post('/drivers/:id/documents/upload', requireAdmin('super_admin', 'ops_admin'), docUpload.single('file'), controller.uploadDriverDocument)
 router.patch('/drivers/documents/:docId/approve', requireAdmin('super_admin', 'ops_admin'), controller.approveDriverDoc)
 router.patch('/drivers/documents/:docId/reject',  requireAdmin('super_admin', 'ops_admin'), controller.rejectDriverDoc)
 router.patch('/drivers/documents/:docId/expiry',  requireAdmin('super_admin', 'ops_admin'), controller.editDriverDocExpiry)

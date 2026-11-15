@@ -87,6 +87,8 @@ export interface AdminDriverDetail {
     claimed_valid_until: string | null
     verified_valid_until: string | null
     updated_at: string
+    uploaded_by_admin_id: string | null
+    uploaded_by_admin_email: string | null
   }[]
   vehicle_documents: {
     id: string
@@ -97,6 +99,8 @@ export interface AdminDriverDetail {
     claimed_valid_until: string | null
     verified_valid_until: string | null
     updated_at: string
+    uploaded_by_admin_id: string | null
+    uploaded_by_admin_email: string | null
   }[]
   status_history: {
     from_status: string | null

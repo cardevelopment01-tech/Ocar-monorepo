@@ -45,6 +45,7 @@ export const NOTIFICATION_TYPES = {
   document_rejected: { channelId: 'account_alerts_v1', ttlSeconds: 7 * DAY, collapse: 'none' },
   document_expiring: { channelId: 'account_alerts_v1', ttlSeconds: 7 * DAY, collapse: 'none' },
   document_expired:  { channelId: 'account_alerts_v1', ttlSeconds: 7 * DAY, collapse: 'none' },
+  document_uploaded_by_admin: { channelId: 'account_alerts_v1', ttlSeconds: 7 * DAY, collapse: 'none' },
   profile_corrected: { channelId: 'account_alerts_v1', ttlSeconds: 7 * DAY, collapse: 'type' },
   vehicle_corrected: { channelId: 'account_alerts_v1', ttlSeconds: 7 * DAY, collapse: 'type' },
   account_suspended: { channelId: 'account_alerts_v1', ttlSeconds: 7 * DAY, collapse: 'type' },
