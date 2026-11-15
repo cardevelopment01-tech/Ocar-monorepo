@@ -187,7 +187,7 @@ export default function HomeScreen() {
   // the rule every driver-app rejection writeup agrees on: never leave a driver guessing what to do next.
   const walletBlock = walletBlockMessage(walletGate)
   const blockedBanner = documentGate.hasRejected
-    ? { title: documentGate.isMissingUpload ? 'Action needed' : 'Document rejected', message: documentGate.rejectionReason ?? 'Reupload it to go online again.', actionLabel: 'Fix now', route: '/documents' as const }
+    ? { title: documentGate.title ?? (documentGate.isMissingUpload ? 'Action needed' : 'Document rejected'), message: documentGate.rejectionReason ?? 'Reupload it to go online again.', actionLabel: documentGate.issues.length > 0 && documentGate.issues.every((i) => i.reason === 'pending_review') ? 'View status' : 'Fix now', route: '/documents' as const }
     : walletGate.isFrozen
       ? { title: 'Wallet frozen', message: 'Contact support to go online again.', actionLabel: 'View wallet', route: '/wallet' as const }
       : walletBlock
@@ -310,7 +310,7 @@ export default function HomeScreen() {
             )}
             <View style={styles.alertBody}>
               <Text style={styles.alertTitle}>{blockedBanner.title}</Text>
-              <Text style={styles.alertText} numberOfLines={2}>{blockedBanner.message}</Text>
+              <Text style={styles.alertText} numberOfLines={3}>{blockedBanner.message}</Text>
             </View>
             <View style={styles.alertAction}>
               <Text style={styles.alertActionText}>{blockedBanner.actionLabel}</Text>

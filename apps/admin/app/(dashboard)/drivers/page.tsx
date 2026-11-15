@@ -14,7 +14,7 @@ import { adminDriverApi, type DriverListItem, type DriverListSummary, type Drive
 import { cityApi, type AdminCity } from '@/lib/city-api'
 import { vehicleCategoryApi, type VehicleCategory } from '@/lib/vehicle-api'
 import { cn } from '@/lib/utils'
-import { InitialsAvatar, fmt } from './shared'
+import { InitialsAvatar, fmt, docIssueBrief } from './shared'
 import { extractErrorMessage } from '@/lib/http-errors'
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
@@ -245,13 +245,13 @@ function DriversPageInner() {
     () => categories.map(c => ({ value: c.id, label: c.display_name, count: facets.categories[c.id] ?? 0 })),
     [categories, facets])
   const inQueue = statusFilter === 'pending_approval'
-  const tabOwnsStatus = inQueue || statusFilter === 'suspended' || statusFilter === 'docs_review' // those are tabs, not dropdown options
+  const tabOwnsStatus = inQueue || statusFilter === 'suspended' || statusFilter === 'docs_review' || statusFilter === 'doc_issues' // those are tabs, not dropdown options
   const hasFilters = cityIds.length > 0 || vehicleIds.length > 0 || !!statusFilter || !!urlSearch
   const clearFilters = () => { setSearch(''); setParams({ city: null, vehicle: null, status: null, q: null }) }
   const emptyMessage = inQueue && !urlSearch && !cityIds.length && !vehicleIds.length ? 'All caught up. No drivers are waiting for approval.' : !hasFilters ? 'No drivers yet' : 'No drivers' +
     (cityIds.length ? ` in ${cityIds.map(cityName).join(', ')}` : '') +
     (vehicleIds.length ? ` with ${vehicleIds.map(categoryName).join(', ')} vehicles` : '') +
-    (statusFilter === 'docs_review' ? ' with documents waiting for review' : statusFilter ? ` with status ${statusFilter.replace(/_/g, ' ')}` : '') +
+    (statusFilter === 'docs_review' ? ' with documents waiting for review' : statusFilter === 'doc_issues' ? ' blocked by a document' : statusFilter ? ` with status ${statusFilter.replace(/_/g, ' ')}` : '') +
     (urlSearch ? ` matching "${urlSearch}"` : '')
   const cardsLoading = listLoading && !hasLoaded
 
@@ -293,6 +293,12 @@ function DriversPageInner() {
           <StatusPill status={d.status} />
           {(d.docs_pending ?? 0) > 0 && (
             <span className="text-[11px] font-semibold text-warning">{d.docs_pending} to review</span>
+          )}
+          {/* "active" alone hides this: an approved document whose validity ran out still reads approved, but the driver cannot go online */}
+          {(d.doc_issues ?? []).length > 0 && (
+            <span className="text-[11px] font-semibold text-danger" title={(d.doc_issues ?? []).map(i => i.short).join('; ')}>
+              {docIssueBrief(d.doc_issues![0]!)}{d.doc_issues!.length > 1 ? ` +${d.doc_issues!.length - 1}` : ''}
+            </span>
           )}
         </span>
       ),
@@ -417,14 +423,15 @@ function DriversPageInner() {
       {/* Main table */}
       <div className="admin-card">
         <StatusTabs
-          value={statusFilter === 'pending_approval' || statusFilter === 'docs_review' || statusFilter === 'suspended' ? statusFilter : statusFilter ? '_other' : ''}
+          value={statusFilter === 'pending_approval' || statusFilter === 'docs_review' || statusFilter === 'doc_issues' || statusFilter === 'suspended' ? statusFilter : statusFilter ? '_other' : ''}
           onChange={v => { if (v !== '_other') setParams({ status: v || null }) }}
           tabs={[
             { value: '', label: 'All drivers' },
             { value: 'pending_approval', label: 'Pending approval', count: summary.pending_approval, alert: true },
             { value: 'docs_review', label: 'Docs to review', count: summary.docs_to_review ?? 0, alert: true },
+            { value: 'doc_issues', label: 'Blocked by docs', count: summary.doc_issues ?? 0, alert: true },
             { value: 'suspended', label: 'Suspended', count: summary.suspended },
-            ...(statusFilter && statusFilter !== 'pending_approval' && statusFilter !== 'suspended' && statusFilter !== 'docs_review'
+            ...(statusFilter && statusFilter !== 'pending_approval' && statusFilter !== 'suspended' && statusFilter !== 'docs_review' && statusFilter !== 'doc_issues'
               ? [{ value: '_other', label: statusFilter.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase()) }] : []),
           ]}
         />

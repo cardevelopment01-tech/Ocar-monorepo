@@ -4,6 +4,7 @@ import { AppErrors } from '@/constants/errors'
 import { getUploadUrl, promotePendingUpload, getPresignedUrl } from '@/lib/storage'
 import { notificationsQueue } from '@/jobs/queues'
 import * as repo from './drivers.repository'
+import { findDocIssues, type DocIssue } from './doc-issues'
 import * as safetyRepo from '@/modules/safety/safety.repository'
 import type { Driver, DriverVehicle, OnboardingStatus } from './drivers.types'
 
@@ -302,6 +303,8 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
   vehicle_docs: Record<string, DocumentStatusEntry>
   all_required_complete: boolean
   rejection_reason: string | null
+  /** Documents that keep the driver from going online and why (expired / rejected / waiting for review / missing). */
+  doc_issues: DocIssue[]
 }> {
   const driver = await repo.findDriverById(driverId)
   if (!driver) throw createHttpError(AppErrors.NOT_FOUND)
@@ -361,6 +364,7 @@ export async function getDocumentStatus(driverId: bigint): Promise<{
     vehicle_docs: vehicleDocs,
     all_required_complete: complete,
     rejection_reason: rejectionReason,
+    doc_issues: await findDocIssues(driverId),
   }
 }
 

@@ -23,6 +23,8 @@ export interface DriverListItem {
   docs_approved: number
   /** Required documents waiting for review on an active/suspended driver (0 otherwise). */
   docs_pending?: number
+  /** Why this driver cannot go online (expired / rejected / waiting for review / missing); empty when nothing blocks. */
+  doc_issues?: DocIssue[]
 }
 
 export interface DriverListSummary {
@@ -32,12 +34,28 @@ export interface DriverListSummary {
   suspended: number
   /** Active/suspended drivers with a required document waiting for review. */
   docs_to_review?: number
+  /** Active drivers a document keeps offline (expired, rejected, waiting for review, missing). */
+  doc_issues?: number
 }
 
 // city keys: city id or "none" (no city assigned); categories keys: vehicle category id
 export interface DriverListFacets {
   cities: Record<string, number>
   categories: Record<string, number>
+}
+
+/** One document that keeps a driver from going online, and why. The server decides (api: drivers/doc-issues.ts); the driver sees the same list. */
+export interface DocIssue {
+  scope: 'identity' | 'vehicle'
+  doc_type: string
+  label: string
+  reason: 'rejected' | 'expired' | 'pending_review' | 'missing_back'
+  /** YYYY-MM-DD, set when the document has expired. */
+  valid_until: string | null
+  note: string | null
+  /** "Insurance expired on 30 Oct 2026" */
+  short: string
+  message: string
 }
 
 export interface DriverDetail {
@@ -80,6 +98,8 @@ export interface DriverDetail {
     brand_id: string | null
     model_id: string | null
   } | null
+  /** Documents blocking this driver from going online, and why. Empty when nothing blocks. */
+  doc_issues: DocIssue[]
   documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null; claimed_valid_until: string | null; verified_valid_until: string | null; updated_at: string; uploaded_by_admin_id: string | null; uploaded_by_admin_email: string | null }[]
   vehicle_documents: { id: string; doc_type: string; file_url: string; status: string; rejection_note: string | null; claimed_valid_until: string | null; verified_valid_until: string | null; updated_at: string; uploaded_by_admin_id: string | null; uploaded_by_admin_email: string | null }[]
   status_history: { from_status: string | null; to_status: string; reason: string | null; created_at: string }[]

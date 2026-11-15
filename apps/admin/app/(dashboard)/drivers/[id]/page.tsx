@@ -54,6 +54,13 @@ function AlertStrip({ d }: { d: DriverDetail }) {
   if (d.wallet?.is_frozen) alerts.push({ text: 'Wallet is frozen', tone: 'danger' })
   else if (balance < 500 && (d.status === 'active' || d.status === 'suspended')) alerts.push({ text: `Wallet below ₹500 minimum (₹${balance.toLocaleString('en-IN')})`, tone: 'warning' })
   if (d.status === 'docs_rejected') alerts.push({ text: 'Documents were rejected — awaiting resubmission', tone: 'warning' })
+  // The exact documents that stop this driver going online, and why: the same list the driver sees in the app.
+  // Not for a driver still in the approval queue: pending documents are expected there (the header already shows the count).
+  const inQueue = d.status === 'pending_approval' || d.status === 'pending_docs'
+  for (const issue of d.doc_issues ?? []) {
+    if (issue.reason === 'pending_review' && inQueue) continue
+    alerts.push({ text: `Can't go online: ${issue.short}`, tone: issue.reason === 'pending_review' ? 'warning' : 'danger' })
+  }
   const requiredTotal = REQUIRED_DRIVER_DOCS.length + REQUIRED_VEHICLE_DOCS.length
   // pending_approval already shows this as the header button count and summary tile
   if (totalUnapproved > 0 && d.status !== 'pending_approval') alerts.push({ text: `${requiredTotal - totalUnapproved} of ${requiredTotal} required documents approved`, tone: 'warning' })
@@ -487,6 +494,7 @@ export default function DriverDetailPage() {
   const d = detail
   const missingDriver  = REQUIRED_DRIVER_DOCS.filter(k => !d.documents.find(x => x.doc_type === k))
   const missingVehicle = REQUIRED_VEHICLE_DOCS.filter(k => !d.vehicle_documents.find(x => x.doc_type === k))
+  const issueFor = (docType: string) => (d.doc_issues ?? []).find(i => i.doc_type === docType) ?? null
   const totalMissing   = missingDriver.length + missingVehicle.length
   const requiredUnapprovedCount =
     REQUIRED_DRIVER_DOCS.filter(k => d.documents.find(x => x.doc_type === k)?.status !== 'approved').length +
@@ -507,7 +515,7 @@ export default function DriverDetailPage() {
       <div key={`${kind}:${type}`} className="flex items-stretch gap-1.5">
         <div className="flex-1 min-w-0">
           {doc
-            ? <DocCheckItem docType={type} fileUrl={doc.file_url} status={doc.status} rejectionNote={doc.rejection_note} uploadedByAdmin={doc.uploaded_by_admin_email} onClick={() => openReview(docIdx(type))} />
+            ? <DocCheckItem docType={type} fileUrl={doc.file_url} status={doc.status} rejectionNote={doc.rejection_note} issue={issueFor(type)} uploadedByAdmin={doc.uploaded_by_admin_email} onClick={() => openReview(docIdx(type))} />
             : <DocCheckItem docType={type} fileUrl={null} status="missing" onClick={() => {}} />}
         </div>
         {canUploadDocs && (
