@@ -92,6 +92,8 @@ export async function listDrivers(query: {
   const repoQuery: Parameters<typeof repo.listDrivers>[0] = { limit, offset }
   // 'docs_review' is a tab, not a driver status: active/suspended drivers with a required doc waiting for review.
   if (query.status === 'docs_review') repoQuery.docsToReview = true
+  // 'doc_issues' is a tab too: active drivers a document keeps offline (expired / rejected / waiting for review / missing).
+  else if (query.status === 'doc_issues') repoQuery.docIssues = true
   else if (query.status !== undefined) repoQuery.status = query.status
   if (query.search !== undefined) repoQuery.search = query.search
   if (city.ids.length) repoQuery.cityIds = city.ids

@@ -18,6 +18,8 @@ const ALL_LABELS: Record<string, string> = {
 }
 
 export type RejectedDoc = { key: string; label: string; note: string | null; count: number }
+/** An approved document whose validity has run out: it still reads "Verified" on its own, but it keeps the driver offline. */
+export type ExpiredDoc = { key: string; label: string; validUntil: string | null; message: string }
 
 /**
  * Identity-number and document-upload state shared by the onboarding Documents step and the
@@ -31,6 +33,7 @@ export function useDocumentsForm() {
 
   const [slotState, setSlotState] = useState<Record<string, SlotState>>(initSlotState)
   const [validUntil, setValidUntil] = useState<Record<string, string>>({})
+  const [expiredDocs, setExpiredDocs] = useState<ExpiredDoc[]>([])
   const [isFetching, setIsFetching] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -49,6 +52,7 @@ export function useDocumentsForm() {
           }
         }
         setSlotState(merged)
+        setExpiredDocs((status.doc_issues ?? []).filter((i) => i.reason === 'expired').map((i) => ({ key: i.doc_type, label: i.label, validUntil: i.valid_until, message: i.message })))
       } catch {
         // first visit, start fresh
       } finally {
@@ -124,7 +128,7 @@ export function useDocumentsForm() {
     identitySaved, identityError, trySaveIdentity, saveIdentityIfNeeded,
     slotState, validUntil, setValidUntil, handlePick,
     allDocsUploaded, allExpiriesFilled, identityFilled, canContinue,
-    rejectedDocs, pendingCount,
+    rejectedDocs, expiredDocs, pendingCount,
     vehicleDocKeys: VEHICLE_DOC_KEYS,
   }
 }

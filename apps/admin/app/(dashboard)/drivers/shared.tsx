@@ -1,5 +1,6 @@
 import { FileText, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { DocIssue } from '@/lib/admin-api'
 
 export function InitialsAvatar({ name, size = 'sm' }: { name: string; size?: 'sm' | 'lg' }) {
   const initials = name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
@@ -11,6 +12,22 @@ export function InitialsAvatar({ name, size = 'sm' }: { name: string; size?: 'sm
       <span className={cn('font-bold text-primary', size === 'lg' ? 'text-xl' : 'text-xs')}>{initials}</span>
     </div>
   )
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** '2026-10-30' -> '30 Oct 2026', built from the parts so no timezone can move the day. */
+export function formatDocDate(iso: string | null): string {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-')
+  const month = MONTHS[Number(m) - 1]
+  return y && m && d && month ? `${Number(d)} ${month} ${y}` : iso
+}
+
+/** "Insurance expired", "Permit rejected": short enough for a table cell (the full text, with the date, goes in the tooltip). */
+export function docIssueBrief(i: DocIssue): string {
+  const verb = i.reason === 'expired' ? 'expired' : i.reason === 'rejected' ? 'rejected' : i.reason === 'pending_review' ? 'in review' : 'missing'
+  return `${i.label} ${verb}`
 }
 
 export function fmt(iso: string) {
@@ -32,9 +49,11 @@ export const REQUIRED_DRIVER_DOCS  = ['profile_photo', 'driving_license_front', 
 export const REQUIRED_VEHICLE_DOCS = ['vehicle_rc_front', 'vehicle_rc_back', 'insurance', 'permit']
 
 export function DocCheckItem({
-  docType, fileUrl, status, rejectionNote, onClick,
-}: { docType: string; fileUrl: string | null; status: string; rejectionNote?: string | null; onClick: () => void }) {
+  docType, fileUrl, status, rejectionNote, issue, onClick,
+}: { docType: string; fileUrl: string | null; status: string; rejectionNote?: string | null; issue?: DocIssue | null; onClick: () => void }) {
   const isMissing = !fileUrl || status === 'missing'
+  // An approved document past its validity date still has status 'approved'; it blocks the driver, so it must not look fine.
+  const isExpired = issue?.reason === 'expired' && status === 'approved'
   const isPdf = fileUrl && /\.pdf(\?|$)/i.test(fileUrl)
 
   return (
@@ -62,7 +81,9 @@ export function DocCheckItem({
       {/* Info */}
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-text-primary truncate">{docLabel(docType)}</p>
-        {rejectionNote && status === 'rejected'
+        {isExpired
+          ? <p className="text-[10px] font-semibold text-danger mt-0.5 truncate">Expired {formatDocDate(issue!.valid_until)}</p>
+          : rejectionNote && status === 'rejected'
           ? <p className="text-[10px] text-danger mt-0.5 truncate">{rejectionNote}</p>
           : <p className={cn('text-[10px] mt-0.5 capitalize',
               status === 'approved' ? 'text-success' : status === 'rejected' ? 'text-danger' : status === 'pending' ? 'text-warning' : 'text-text-muted'
@@ -73,7 +94,8 @@ export function DocCheckItem({
       </div>
 
       {/* Status icon */}
-      {status === 'approved' && <CheckCircle size={15} className="text-success flex-shrink-0" />}
+      {status === 'approved' && !isExpired && <CheckCircle size={15} className="text-success flex-shrink-0" />}
+      {isExpired && <AlertCircle size={15} className="text-danger flex-shrink-0" />}
       {status === 'rejected' && <XCircle     size={15} className="text-danger  flex-shrink-0" />}
       {status === 'pending' && fileUrl && <AlertCircle size={15} className="text-warning flex-shrink-0" />}
       {isMissing && <AlertCircle size={15} className="text-text-muted flex-shrink-0" />}

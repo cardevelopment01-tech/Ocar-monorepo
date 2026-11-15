@@ -2,6 +2,7 @@ import { camelizeKeys, track } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { sharedGet } from '@/services/api/sharedGet'
 import type { City, DocumentGateStatus, DriverSession, VehicleInfo, WalletInfo } from './types'
+import { describeDocIssues, type DocIssue } from './docIssues'
 
 export async function fetchMyVehicle(): Promise<VehicleInfo | null> {
   const data = await sharedGet<{ vehicle: unknown }>('/api/v1/drivers/onboarding/vehicle-info')
@@ -19,6 +20,8 @@ type RawDocumentStatus = {
   photos: Record<string, RawDocumentEntry>
   vehicle_docs: Record<string, RawDocumentEntry>
   rejection_reason: string | null
+  /** What blocks going online and why. Missing from an older server, which only ever reported rejected documents. */
+  doc_issues?: DocIssue[]
 }
 
 // Same pattern as apps/driver/src/lib/useDocumentGate.ts -- prefer the specific
@@ -34,11 +37,18 @@ export function fetchDocumentGateStatus(): Promise<DocumentGateStatus> {
 
 async function loadDocumentGateStatus(): Promise<DocumentGateStatus> {
   const data = await sharedGet<RawDocumentStatus>('/api/v1/drivers/onboarding/documents/status')
+  const issues = data.doc_issues ?? []
+  if (issues.length > 0) {
+    const { title, message } = describeDocIssues(issues)
+    return { hasRejected: true, rejectionReason: message, title, issues, isMissingUpload: issues.every((i) => i.reason === 'missing_back') }
+  }
   const docs = [...Object.values(data.photos), ...Object.values(data.vehicle_docs)]
   const rejectedDoc = docs.find((doc) => doc.status === 'rejected')
   return {
     hasRejected: !!rejectedDoc,
     rejectionReason: rejectedDoc?.rejection_note ?? data.rejection_reason,
+    title: null,
+    issues: [],
     isMissingUpload: rejectedDoc?.uploaded === false,
   }
 }

@@ -15,6 +15,7 @@ import { storeShadowLeg, recordShadowPing } from './eta-shadow'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
 import { getBlockingChallenge } from '@/modules/drivers/driver-verification.service'
 import { maybeOpenSpotCheck } from '@/modules/drivers/spot-check.engine'
+import { findDocIssues, summarizeDocIssues } from '@/modules/drivers/doc-issues'
 import { hasApprovedRequiredDocs } from '@/modules/drivers/drivers.repository'
 import { getFareEstimate, clampTripHours } from '@/modules/pricing/pricing.service'
 import { resolveForBooking, type AppliedOffer, type PreviewInput } from '@/modules/offers/offers.service'
@@ -173,8 +174,17 @@ export async function goOnline(driverId: bigint, data: {
     throw httpError(428, 'A quick safety check is needed before you go online', 'SPOT_CHECK_REQUIRED')
   }
 
+  // The SQL gate decides, exactly as before (it is also what dispatch uses). Only when it says no do we ask which documents and why,
+  // to word the refusal: the driver, and the admin who answers their call, see what to fix. Same code as before, so older apps still
+  // handle it; `details.issues` is the new part. If the two ever disagreed (no issue found), the refusal falls back to the old message.
   if (!(await hasApprovedRequiredDocs(driverId))) {
-    throw createHttpError(AppErrors.DRIVER_DOCS_REJECTED)
+    const docIssues = await findDocIssues(driverId)
+    throw Object.assign(
+      docIssues.length > 0
+        ? httpError(AppErrors.DRIVER_DOCS_REJECTED.httpStatus, summarizeDocIssues(docIssues), AppErrors.DRIVER_DOCS_REJECTED.code)
+        : createHttpError(AppErrors.DRIVER_DOCS_REJECTED),
+      { details: { issues: docIssues } },
+    )
   }
 
   // Billing mode is fixed to the driver's assigned operating city

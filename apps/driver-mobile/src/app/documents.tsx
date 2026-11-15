@@ -33,12 +33,12 @@ export default function DocumentsScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <ComplianceBanner rejectedCount={form.rejectedDocs.length} pendingCount={form.pendingCount} incomplete={!form.allDocsUploaded || !(form.identitySaved || form.identityFilled)} />
 
-          {form.rejectedDocs.length > 0 ? (
+          {form.rejectedDocs.length + form.expiredDocs.length > 0 ? (
             <View style={styles.alertCard}>
               <View style={styles.alertHeaderRow}>
                 <PulseDot color={colors.error} size={8} />
                 <Text style={styles.alertTitle}>
-                  {form.rejectedDocs.length === 1 ? '1 document needs your attention' : `${form.rejectedDocs.length} documents need your attention`}
+                  {form.rejectedDocs.length + form.expiredDocs.length === 1 ? '1 document needs your attention' : `${form.rejectedDocs.length + form.expiredDocs.length} documents need your attention`}
                 </Text>
               </View>
               {form.rejectedDocs.map((d) => (
@@ -50,6 +50,12 @@ export default function DocumentsScreen() {
                   ) : d.count === 2 ? (
                     <Text style={styles.alertEscalation}>This is the 2nd time. Check the requirements carefully before resubmitting.</Text>
                   ) : null}
+                </View>
+              ))}
+              {form.expiredDocs.map((d) => (
+                <View key={d.key} style={styles.alertRow}>
+                  <Text style={styles.alertDocName}>{d.label}</Text>
+                  <Text style={styles.alertNote}>{d.message}</Text>
                 </View>
               ))}
               <Text style={styles.alertHint}>Scroll down, tap the highlighted document, and upload a replacement. It goes straight back to review.</Text>

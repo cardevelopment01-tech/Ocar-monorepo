@@ -11,7 +11,7 @@ import {
 import { invalidate, cachedRead } from "@/lib/cache/reference-cache";
 import { RATE_CARD_CACHE_TTL_SECONDS } from "@/constants/limits";
 import { logger } from "@/lib/logger";
-import { hasApprovedRequiredDocs } from "@/modules/drivers/drivers.repository";
+import { hasApprovedRequiredDocs, docIssueExistsSql } from "@/modules/drivers/drivers.repository";
 import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, sqlList } from "@/modules/drivers/required-docs";
 import { invalidateSurgeCache } from "@/modules/pricing/pricing.repository";
 import { deleteFile } from "@/lib/storage";
@@ -45,6 +45,7 @@ import type {
   DriverPackageWallet,
   DriverPackageLedgerEntry,
 } from "@/modules/packages/packages.types";
+import { findDocIssues } from "@/modules/drivers/doc-issues";
 
 // Hardcoded whitelist, never built from request keys — this is the only thing
 // standing between an admin body and a dynamic UPDATE (see CLAUDE.md SQL rules)
@@ -138,6 +139,8 @@ export interface DriverListFilters {
   categoryIds?: number[];
   /** Active/suspended/docs_rejected drivers with a required document waiting for review (a newly required RC back, or a rejected document re-uploaded). */
   docsToReview?: boolean;
+  /** Active drivers with a document that keeps them from going online (expired, rejected, waiting for review, RC back missing). */
+  docIssues?: boolean;
 }
 
 // A required document (identity, or any vehicle of the driver) waiting for an admin. Drivers who were approved
@@ -154,6 +157,10 @@ const PENDING_REQUIRED_DOCS_SQL = `(
 // The one list of statuses the review queue covers: used by the filter, the card count and the per-row badge.
 const DOCS_REVIEW_STATUSES_SQL = `('active', 'suspended', 'docs_rejected')`;
 const DOCS_TO_REVIEW_SQL = `(d.status IN ${DOCS_REVIEW_STATUSES_SQL} AND ${PENDING_REQUIRED_DOCS_SQL})`;
+// An ACTIVE driver who cannot go online because of a document: the case the status alone hides (an approved document whose validity ran
+// out still reads "approved", and the driver stays "active"). The same SQL rule goOnline and dispatch use, so the list never disagrees.
+// A function, not a constant: it is built when a list is requested, not when this module loads.
+const docIssuesSql = () => `(d.status = 'active' AND ${docIssueExistsSql("d.id")})`;
 
 // A driver's current vehicle = the primary, non-blacklisted one (same predicate as
 // driver_vehicles_one_primary_idx), so a driver never appears twice.
@@ -176,6 +183,7 @@ function buildDriverWhere(
     params.push(f.status);
   }
   if (omit !== "status" && f.docsToReview) conditions.push(DOCS_TO_REVIEW_SQL);
+  if (omit !== "status" && f.docIssues) conditions.push(docIssuesSql());
   if (f.search) {
     // Plates are stored as typed ("OD 02 AB 1234", "od02ab1234"), so match with spaces/dashes
     // stripped on both sides, across all of the driver's vehicles (not just the primary one).
@@ -238,6 +246,7 @@ export async function listDrivers(
          vc.display_name AS vehicle_category,
          (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id) AS docs_submitted,
          (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'approved') AS docs_approved,
+         ${docIssuesSql()} AS has_doc_issue,
          CASE WHEN d.status IN ${DOCS_REVIEW_STATUSES_SQL} THEN
            (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'pending'
               AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)}))
@@ -256,7 +265,8 @@ export async function listDrivers(
               COUNT(*) FILTER (WHERE d.status = 'active') AS active,
               COUNT(*) FILTER (WHERE d.status = 'pending_approval') AS pending_approval,
               COUNT(*) FILTER (WHERE d.status = 'suspended') AS suspended,
-              COUNT(*) FILTER (WHERE ${DOCS_TO_REVIEW_SQL}) AS docs_to_review
+              COUNT(*) FILTER (WHERE ${DOCS_TO_REVIEW_SQL}) AS docs_to_review,
+              COUNT(*) FILTER (WHERE ${docIssuesSql()}) AS doc_issues
        ${DRIVER_LIST_FROM} ${cards.where}`,
       cards.params,
     ),
@@ -277,6 +287,7 @@ export async function listDrivers(
     pending_approval: parseInt(s.pending_approval as string, 10),
     suspended: parseInt(s.suspended as string, 10),
     docs_to_review: parseInt(s.docs_to_review as string, 10),
+    doc_issues: parseInt(s.doc_issues as string, 10),
   };
 
   const facets: AdminDriverListFacets = { cities: {}, categories: {} };
@@ -309,7 +320,15 @@ export async function listDrivers(
     docs_submitted: parseInt(r.docs_submitted as string, 10),
     docs_approved: parseInt(r.docs_approved as string, 10),
     docs_pending: parseInt(r.docs_pending as string, 10),
+    doc_issues: [],
   }));
+
+  // The reasons, only for the rows on this page that the rule flags (a handful), so the list can say why without a click.
+  await Promise.all(
+    dataRes.rows.map(async (r, i) => {
+      if (r.has_doc_issue) rows[i]!.doc_issues = await findDocIssues(BigInt(r.id as string));
+    }),
+  );
 
   return { rows, total: parseInt(totalRes.rows[0].total as string, 10), summary, facets };
 }
@@ -405,6 +424,10 @@ export async function getDriverById(
     ),
   ]);
 
+  // Which documents keep this driver off the road and why (expired, rejected, waiting for review, missing): the same list the
+  // driver sees when going online, so an admin can tell them what to fix without asking a developer.
+  const docIssues = await findDocIssues(id);
+
   return {
     id: String(r.id),
     code: r.code as string,
@@ -452,6 +475,7 @@ export async function getDriverById(
           brand: r.vehicle_brand as string,
         }
       : null,
+    doc_issues: docIssues,
     documents: docsRes.rows as AdminDriverDetail["documents"],
     vehicle_documents:
       vehicleDocsRes.rows as AdminDriverDetail["vehicle_documents"],
