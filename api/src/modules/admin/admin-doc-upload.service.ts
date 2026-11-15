@@ -123,7 +123,7 @@ export async function uploadDriverDocumentForDriver(
 
   let submitted = false
   try {
-    submitted = await submitIfCompleteByAdmin(driverId)
+    submitted = await submitIfCompleteByAdmin(driverId, adminId)
   } catch {
     // The document is saved; the driver can still submit the application themselves.
   }
