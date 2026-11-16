@@ -446,8 +446,6 @@ function BrandsTab() {
     } catch { }
   }
 
-  const categoryOptions = categories.map(c => `${c.id}:${c.display_name}`)
-
   return (
     <div className="flex gap-4">
       {/* Brand list */}

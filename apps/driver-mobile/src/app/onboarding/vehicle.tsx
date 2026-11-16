@@ -104,7 +104,9 @@ export default function VehicleRegistrationScreen() {
   const selectedModel = unlisted ? undefined : models.find((m) => Number(m.id) === modelId)
   const locked = !!selectedModel?.typical_category_id
   const modelOk = unlisted ? customModel.trim().length >= 2 : !!(modelId && selectedModel)
-  const isValid = !!(categoryId && brandId && modelOk && modelYear && isValidYear(modelYear) && plate && isValidPlate(plate) && color && fuelType)
+  // a saved fuel the model is not sold with does not count as chosen (the chips hide it)
+  const fuelOk = !!fuelType && fuelOptionsFor(selectedModel).some((f) => f.value === fuelType)
+  const isValid = !!(categoryId && brandId && modelOk && modelYear && isValidYear(modelYear) && plate && isValidPlate(plate) && color && fuelOk)
 
   async function handleContinue() {
     if (!isValid) return
@@ -166,7 +168,7 @@ export default function VehicleRegistrationScreen() {
           {!brandId ? 'Select your vehicle brand'
             : !modelOk ? (unlisted ? 'Enter your vehicle model name' : 'Select your vehicle model')
             : !color ? 'Select vehicle colour'
-            : !fuelType ? 'Select fuel type'
+            : !fuelOk ? 'Select fuel type'
             : !plate ? 'Enter registration number'
             : plate && !isValidPlate(plate) ? 'Enter a valid registration number'
             : !modelYear ? 'Enter year of manufacture'
@@ -193,7 +195,7 @@ export default function VehicleRegistrationScreen() {
         ) : (
           <PickerField label="Model" value={modelId} options={models.map((m) => ({ value: Number(m.id), label: m.name }))} onSelect={(v) => handleModelChange(Number(v))} placeholder={!brandId ? 'Select brand first' : 'Select model'} disabled={!brandId} searchable={models.length > 6} />
         )}
-        {brandId && !isEdit ? (
+        {brandId && (!isEdit || unlisted) ? (
           <Pressable onPress={() => { setUnlisted((u) => !u); setModelId(null) }} accessibilityRole="button">
             <Text style={styles.unlistedLink}>{unlisted ? 'Choose from the list instead' : "My model isn't listed"}</Text>
           </Pressable>

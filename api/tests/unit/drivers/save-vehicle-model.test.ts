@@ -64,4 +64,13 @@ describe('saveVehicleInfo and the catalogue', () => {
     await saveVehicleInfo(1n, data() as never)
     expect(repo.upsertVehicle).toHaveBeenCalledWith(1n, expect.objectContaining({ category_id: 1 }), false)
   })
+
+  it('a driver awaiting approval or with rejected documents can still fix an unlisted vehicle, for the admin to review', async () => {
+    for (const status of ['pending_approval', 'docs_rejected']) {
+      vi.mocked(repo.findDriverById).mockResolvedValue({ ...COMPLETE_DRIVER, status } as never)
+      const { model_id: _m, ...unlisted } = data()
+      await saveVehicleInfo(1n, unlisted as never)
+    }
+    expect(repo.upsertVehicle).toHaveBeenCalledTimes(2)
+  })
 })

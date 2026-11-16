@@ -209,8 +209,9 @@ export async function saveVehicleInfo(
   }
 
   // The model decides the category and the seats, and limits the fuel. Registering without a model (it is not in the list)
-  // is only for a driver still onboarding; an onboarded driver changing their vehicle must pick a listed model.
-  if (data.model_id === undefined && driver.status !== 'pending_docs') {
+  // is only for a driver not yet live (pending_docs, pending_approval, docs_rejected: an admin reviews the vehicle before
+  // approval); a live driver changing their vehicle must pick a listed model.
+  if (data.model_id === undefined && (driver.status === 'active' || driver.status === 'suspended' || driver.status === 'banned')) {
     throw httpError(422, 'Choose your model from the list, or contact support to add it.', 'MODEL_REQUIRED')
   }
   const model = data.model_id === undefined ? null : await findModelForRules(data.model_id)

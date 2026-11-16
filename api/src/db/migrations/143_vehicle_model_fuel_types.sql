@@ -8,7 +8,7 @@ ALTER TABLE vehicle_models ADD COLUMN IF NOT EXISTS fuel_types text[];
 UPDATE vehicle_models
    SET fuel_types = ARRAY['electric']
  WHERE fuel_types IS NULL
-   AND (name ~* '(^|\s)ev[0-9]*(\s|$)' OR name ILIKE '%electric%');
+   AND (name ~* '(^|\s)ev[0-9]*(\s|$)' OR name ILIKE '%electric%') AND name !~* '(hybrid|phev|petrol|diesel|cng|/)';
 
 -- A driver who could not find their model in the list registers without one: an admin confirms the model and category.
 ALTER TABLE driver_vehicles ADD COLUMN IF NOT EXISTS needs_model_review boolean NOT NULL DEFAULT false;

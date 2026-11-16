@@ -1092,7 +1092,7 @@ export async function updateDriverVehicle(
     if (setClauses.length > 0) {
       values.push(vehicleId);
       await client.query(
-        `UPDATE driver_vehicles SET ${setClauses.join(", ")}, needs_model_review = false, updated_at = now() WHERE id = $${values.length}`,
+        `UPDATE driver_vehicles SET ${setClauses.join(", ")}${fields.model_id != null ? ", needs_model_review = false" : ""}, updated_at = now() WHERE id = $${values.length}`,
         values,
       );
     }
