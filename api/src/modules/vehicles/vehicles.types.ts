@@ -3,6 +3,7 @@ export interface VehicleCategory {
   slug: string
   display_name: string
   max_passengers: number
+  luggage_capacity: number
   is_active: boolean
 }
 

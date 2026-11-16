@@ -202,6 +202,7 @@ export interface AdminVehicleCategory {
   slug: string
   display_name: string
   max_passengers: number
+  luggage_capacity: number
   is_active: boolean
   created_at: string
   driver_count: number

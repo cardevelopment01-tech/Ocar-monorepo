@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type VehicleBrand, type VehicleCategory, type VehicleInfoPayload, type VehicleModel } from '@/features/onboarding/api'
 import { VEHICLE_COLORS, fuelOptionsFor } from '@/features/onboarding/constants'
 import { OnboardingShell } from '@/features/onboarding/components/OnboardingShell'
-import { ChipGroup, Field, PickerField, Stepper, TextField } from '@/features/onboarding/components/FormPrimitives'
+import { ChipGroup, Field, PickerField, TextField } from '@/features/onboarding/components/FormPrimitives'
 import { DateField } from '@/features/onboarding/components/DateField'
 
 const TODAY_ISO = new Date().toISOString().slice(0, 10)
@@ -43,7 +43,7 @@ export default function VehicleRegistrationScreen() {
   const [unlisted, setUnlisted] = useState(false)
   const [customModel, setCustomModel] = useState('')
   const seating = categories.find((c) => c.id === categoryId)?.max_passengers ?? 4
-  const [luggage, setLuggage] = useState(2)
+  const luggage = categories.find((c) => c.id === categoryId)?.luggage_capacity ?? 2
   const [ac, setAc] = useState(true)
 
   const [isLoading, setIsLoading] = useState(false)
@@ -72,7 +72,6 @@ export default function VehicleRegistrationScreen() {
         if (v.color) setColor(v.color)
         if (v.fuel_type) setFuelType(v.fuel_type)
         if (!v.model_id && v.vehicle_name) { setUnlisted(true); setCustomModel(v.vehicle_name) }
-        if (v.luggage_capacity != null) setLuggage(v.luggage_capacity)
         if (v.ac_availability != null) setAc(v.ac_availability)
       }
     } catch {
@@ -249,7 +248,7 @@ export default function VehicleRegistrationScreen() {
             <Field label="Seats"><Text style={styles.seatsFixed}>{seating} seats · set by category</Text></Field>
           </View>
           <View style={{ flex: 1 }}>
-            <Field label="Luggage Bags"><Stepper value={luggage} min={0} max={5} unit="bag" onChange={setLuggage} /></Field>
+            <Field label="Luggage"><Text style={styles.seatsFixed}>{luggage} bags · set by category</Text></Field>
           </View>
         </View>
         <Field label="Air Conditioning">

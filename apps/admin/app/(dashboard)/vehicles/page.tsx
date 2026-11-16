@@ -173,11 +173,11 @@ function CategoriesTab() {
   useEffect(() => { load() }, [load])
 
   function openAdd() {
-    setFormVals({ slug: '', display_name: '', max_passengers: 4, is_active: true })
+    setFormVals({ slug: '', display_name: '', max_passengers: 4, luggage_capacity: 2, is_active: true })
     setAddOpen(true)
   }
   function openEdit(cat: VehicleCategory) {
-    setFormVals({ slug: cat.slug, display_name: cat.display_name, max_passengers: cat.max_passengers, is_active: cat.is_active })
+    setFormVals({ slug: cat.slug, display_name: cat.display_name, max_passengers: cat.max_passengers, luggage_capacity: cat.luggage_capacity, is_active: cat.is_active })
     setEditTarget(cat)
   }
 
@@ -186,7 +186,7 @@ function CategoriesTab() {
     try {
       const created = await vehicleCategoryApi.create({
         slug: String(formVals.slug), display_name: String(formVals.display_name),
-        max_passengers: Number(formVals.max_passengers), is_active: !!formVals.is_active,
+        max_passengers: Number(formVals.max_passengers), luggage_capacity: Number(formVals.luggage_capacity), is_active: !!formVals.is_active,
       })
       setData(prev => [...prev, created])
       setAddOpen(false)
@@ -200,6 +200,7 @@ function CategoriesTab() {
       const updated = await vehicleCategoryApi.update(editTarget.id, {
         display_name: String(formVals.display_name),
         max_passengers: Number(formVals.max_passengers),
+        luggage_capacity: Number(formVals.luggage_capacity),
         is_active: !!formVals.is_active,
       })
       setData(prev => prev.map(c => c.id === updated.id ? { ...updated, driver_count: c.driver_count } : c))
@@ -233,11 +234,11 @@ function CategoriesTab() {
         <div className="overflow-x-auto">
           <table className="data-table">
             <thead><tr>
-              <th>Display Name</th><th>Slug</th><th>Max Passengers</th>
+              <th>Display Name</th><th>Slug</th><th>Seats</th><th>Luggage</th>
               <th>Drivers Using</th><th>Status</th><th>Active</th><th></th>
             </tr></thead>
             <tbody>
-              {loading ? <SkeletonRows cols={7} /> :
+              {loading ? <SkeletonRows cols={8} /> :
                error   ? <ErrorState onRetry={() => setRetry(n => n + 1)} /> :
                data.length === 0 ? <EmptyState message="No categories yet" /> :
                data.map(cat => (
@@ -245,6 +246,7 @@ function CategoriesTab() {
                   <td className="font-semibold text-text-primary">{cat.display_name}</td>
                   <td><span className="font-mono text-xs text-text-muted">{cat.slug}</span></td>
                   <td className="text-text-secondary">{cat.max_passengers}</td>
+                  <td className="text-text-secondary">{cat.luggage_capacity}</td>
                   <td><span className="text-sm font-semibold text-text-primary">{cat.driver_count}</span></td>
                   <td><StatusPill status={cat.is_active ? 'active' : 'inactive'} /></td>
                   <td><Toggle checked={cat.is_active} onChange={() => toggleActive(cat)} /></td>
@@ -264,7 +266,8 @@ function CategoriesTab() {
         fields={[
           { key: 'slug', label: 'Slug (lowercase, no spaces)', type: 'text' },
           { key: 'display_name', label: 'Display Name', type: 'text' },
-          { key: 'max_passengers', label: 'Max Passengers', type: 'number', min: 1, max: 20 },
+          { key: 'max_passengers', label: 'Seats (drivers cannot change)', type: 'number', min: 1, max: 20 },
+          { key: 'luggage_capacity', label: 'Luggage bags (drivers cannot change)', type: 'number', min: 0, max: 10 },
           { key: 'is_active', label: 'Active', type: 'toggle' },
         ]}
         values={formVals} onChange={(k, v) => setFormVals(p => ({ ...p, [k]: k === 'slug' ? String(v).toLowerCase().replace(/\s+/g, '-') : v }))}
@@ -275,7 +278,8 @@ function CategoriesTab() {
         fields={[
           { key: 'slug', label: 'Slug (cannot change)', type: 'text', readOnly: true },
           { key: 'display_name', label: 'Display Name', type: 'text' },
-          { key: 'max_passengers', label: 'Max Passengers', type: 'number', min: 1, max: 20 },
+          { key: 'max_passengers', label: 'Seats (drivers cannot change)', type: 'number', min: 1, max: 20 },
+          { key: 'luggage_capacity', label: 'Luggage bags (drivers cannot change)', type: 'number', min: 0, max: 10 },
           { key: 'is_active', label: 'Active', type: 'toggle' },
         ]}
         values={formVals} onChange={(k, v) => setFormVals(p => ({ ...p, [k]: v }))}

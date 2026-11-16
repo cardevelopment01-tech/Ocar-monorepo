@@ -4,7 +4,7 @@ export type VehicleState = 'pending' | 'active' | 'blacklisted' | 'inactive'
 
 export interface VehicleCategory {
   id: string; slug: string; display_name: string
-  max_passengers: number; is_active: boolean
+  max_passengers: number; luggage_capacity: number; is_active: boolean
   created_at: string; driver_count: number
 }
 
@@ -47,9 +47,9 @@ export interface ExpiringVehicleDoc {
 
 export const vehicleCategoryApi = {
   list: () => api.get('/api/v1/admin/vehicles/categories').then(r => r.data as VehicleCategory[]),
-  create: (body: { slug: string; display_name: string; max_passengers: number; is_active: boolean }) =>
+  create: (body: { slug: string; display_name: string; max_passengers: number; luggage_capacity: number; is_active: boolean }) =>
     api.post('/api/v1/admin/vehicles/categories', body).then(r => r.data as VehicleCategory),
-  update: (id: string, body: { display_name?: string; max_passengers?: number; is_active?: boolean }) =>
+  update: (id: string, body: { display_name?: string; max_passengers?: number; luggage_capacity?: number; is_active?: boolean }) =>
     api.patch(`/api/v1/admin/vehicles/categories/${id}`, body).then(r => r.data as VehicleCategory),
 }
 

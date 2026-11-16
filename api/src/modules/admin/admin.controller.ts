@@ -335,6 +335,7 @@ export async function postCategory(
         .replace(/\s+/g, "-"),
       display_name: String(req.body.display_name ?? ""),
       max_passengers: Number(req.body.max_passengers ?? 4),
+      luggage_capacity: Number(req.body.luggage_capacity ?? 2),
       is_active: req.body.is_active !== false,
     });
     res.status(201).json(cat);
@@ -352,12 +353,15 @@ export async function patchCategory(
     const catData: {
       display_name?: string;
       max_passengers?: number;
+      luggage_capacity?: number;
       is_active?: boolean;
     } = {};
     if (req.body.display_name !== undefined)
       catData.display_name = String(req.body.display_name);
     if (req.body.max_passengers != null)
       catData.max_passengers = Number(req.body.max_passengers);
+    if (req.body.luggage_capacity != null)
+      catData.luggage_capacity = Number(req.body.luggage_capacity);
     if (req.body.is_active !== undefined)
       catData.is_active = Boolean(req.body.is_active);
     const cat = await service.updateCategory(

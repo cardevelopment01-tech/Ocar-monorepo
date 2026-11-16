@@ -315,14 +315,14 @@ export async function setAdminStatus(params: {
 export async function listCategories() { return repo.listAdminCategories() }
 
 export async function createCategory(data: {
-  slug: string; display_name: string; max_passengers: number; is_active: boolean
+  slug: string; display_name: string; max_passengers: number; luggage_capacity: number; is_active: boolean
 }) {
   if (!data.slug || !data.display_name) throw createHttpError(AppErrors.VALIDATION_ERROR)
   return repo.createCategory(data)
 }
 
 export async function updateCategory(id: bigint, data: {
-  display_name?: string; max_passengers?: number; is_active?: boolean
+  display_name?: string; max_passengers?: number; luggage_capacity?: number; is_active?: boolean
 }) {
   const updated = await repo.updateCategory(id, data)
   if (!updated) throw createHttpError(AppErrors.NOT_FOUND)

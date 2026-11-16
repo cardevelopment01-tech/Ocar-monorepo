@@ -8,7 +8,7 @@ import * as repo from './drivers.repository'
 import { findDocIssues, type DocIssue } from './doc-issues'
 import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, requiredVehicleDocs } from './required-docs'
 import { applyModelRules } from '@/modules/vehicles/vehicle-rules'
-import { findModelForRules } from '@/modules/vehicles/vehicles.repository'
+import { findModelForRules, findCategorySpecs } from '@/modules/vehicles/vehicles.repository'
 import * as safetyRepo from '@/modules/safety/safety.repository'
 import type { Driver, DriverVehicle, OnboardingStatus } from './drivers.types'
 
@@ -216,7 +216,11 @@ export async function saveVehicleInfo(
   }
   const model = data.model_id === undefined ? null : await findModelForRules(data.model_id)
   const { needs_model_review, ...ruled } = applyModelRules(data, model)
-  const vehicle = await repo.upsertVehicle(driverId, { ...data, ...ruled }, needs_model_review)
+  // Seats and luggage belong to the category, whatever the app sent (this also covers an unlisted model's own category).
+  const specs = await findCategorySpecs(ruled.category_id)
+  const stored = { ...data, ...ruled }
+  if (specs) { stored.seating_capacity = specs.seats; stored.luggage_capacity = specs.luggage }
+  const vehicle = await repo.upsertVehicle(driverId, stored, needs_model_review)
 
   if (driver.onboarding_step === 'vehicle_info') {
     await repo.setOnboardingStep(driverId, 'documents')

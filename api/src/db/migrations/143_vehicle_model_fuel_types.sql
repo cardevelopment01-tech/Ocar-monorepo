@@ -12,3 +12,8 @@ UPDATE vehicle_models
 
 -- A driver who could not find their model in the list registers without one: an admin confirms the model and category.
 ALTER TABLE driver_vehicles ADD COLUMN IF NOT EXISTS needs_model_review boolean NOT NULL DEFAULT false;
+
+-- Luggage space belongs to the category, like the seats: hatchback/sedan 2, SUV/luxury 4, auto 2. A driver cannot choose it.
+-- (Default 2 covers hatchback, sedan, auto and van; the SUV/luxury figures are set here once and are admin-editable after.)
+ALTER TABLE vehicle_categories ADD COLUMN IF NOT EXISTS luggage_capacity smallint NOT NULL DEFAULT 2;
+UPDATE vehicle_categories SET luggage_capacity = 4 WHERE slug IN ('suv', 'luxury');

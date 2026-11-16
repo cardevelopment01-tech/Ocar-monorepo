@@ -11,10 +11,10 @@ vi.mock('@/jobs/queues', () => ({ notificationsQueue: { add: vi.fn() }, queues: 
 vi.mock('@/lib/storage', () => ({ getUploadUrl: vi.fn(), promotePendingUpload: vi.fn(), getPresignedUrl: vi.fn() }))
 vi.mock('@/modules/safety/safety.repository')
 vi.mock('@/modules/drivers/drivers.repository')
-vi.mock('@/modules/vehicles/vehicles.repository', () => ({ findModelForRules: vi.fn() }))
+vi.mock('@/modules/vehicles/vehicles.repository', () => ({ findModelForRules: vi.fn(), findCategorySpecs: vi.fn() }))
 
 import * as repo from '@/modules/drivers/drivers.repository'
-import { findModelForRules } from '@/modules/vehicles/vehicles.repository'
+import { findModelForRules, findCategorySpecs } from '@/modules/vehicles/vehicles.repository'
 import { saveVehicleInfo } from '@/modules/drivers/drivers.service'
 
 const COMPLETE_DRIVER = {
@@ -31,6 +31,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(repo.findDriverById).mockResolvedValue(COMPLETE_DRIVER as never)
   vi.mocked(repo.upsertVehicle).mockResolvedValue({ id: '5' } as never)
+  vi.mocked(findCategorySpecs).mockResolvedValue({ seats: 4, luggage: 2 })
   vi.mocked(findModelForRules).mockResolvedValue({ id: 10, brand_id: 1, is_active: true, typical_category_id: 1, fuel_types: ['petrol', 'cng'], category_seats: 4 })
 })
 
@@ -72,5 +73,13 @@ describe('saveVehicleInfo and the catalogue', () => {
       await saveVehicleInfo(1n, unlisted as never)
     }
     expect(repo.upsertVehicle).toHaveBeenCalledTimes(2)
+  })
+
+  it('seats and luggage come from the category, not from what the app sent (also for an unlisted model with its own category)', async () => {
+    vi.mocked(findCategorySpecs).mockResolvedValue({ seats: 6, luggage: 4 })
+    const { model_id: _m, ...unlisted } = data({ category_id: 3, seating_capacity: 2, luggage_capacity: 9 })
+    await saveVehicleInfo(1n, unlisted as never)
+    expect(findCategorySpecs).toHaveBeenCalledWith(3)
+    expect(repo.upsertVehicle).toHaveBeenCalledWith(1n, expect.objectContaining({ category_id: 3, seating_capacity: 6, luggage_capacity: 4 }), true)
   })
 })
