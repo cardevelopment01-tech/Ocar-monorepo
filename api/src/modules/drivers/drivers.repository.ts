@@ -201,7 +201,8 @@ export async function upsertVehicle(
     luggage_capacity: number
     ac_availability: boolean
     registration_date?: string
-  }
+  },
+  needsModelReview = false
 ): Promise<DriverVehicle> {
   const existing = await findVehicleByDriverId(driverId)
 
@@ -220,6 +221,7 @@ export async function upsertVehicle(
          luggage_capacity  = $11,
          ac_availability   = $12,
          registration_date = $13,
+         needs_model_review = $14,
          updated_at        = now()
        WHERE id = $1
        RETURNING *`,
@@ -237,6 +239,7 @@ export async function upsertVehicle(
         data.luggage_capacity,
         data.ac_availability,
         data.registration_date ?? null,
+        needsModelReview,
       ]
     )
     return rows[0]!
@@ -245,8 +248,8 @@ export async function upsertVehicle(
   const rows = await query<DriverVehicle>(
     `INSERT INTO driver_vehicles
        (driver_id, category_id, brand_id, model_id, vehicle_name, model_year, number_plate,
-        color, fuel_type, seating_capacity, luggage_capacity, ac_availability, registration_date)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        color, fuel_type, seating_capacity, luggage_capacity, ac_availability, registration_date, needs_model_review)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING *`,
     [
       driverId.toString(),
@@ -262,6 +265,7 @@ export async function upsertVehicle(
       data.luggage_capacity,
       data.ac_availability,
       data.registration_date ?? null,
+      needsModelReview,
     ]
   )
   return rows[0]!

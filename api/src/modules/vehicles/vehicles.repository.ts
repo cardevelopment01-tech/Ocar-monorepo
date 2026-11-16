@@ -3,6 +3,7 @@ import { cachedRead } from '@/lib/cache/reference-cache'
 import { VEHICLE_CATEGORIES_ALL_KEY } from '@/constants/redis-keys'
 import { STRUCTURAL_CACHE_TTL_SECONDS } from '@/constants/limits'
 import type { VehicleCategory, VehicleBrand, VehicleModel } from './vehicles.types'
+import type { ModelRuleRow } from './vehicle-rules'
 
 export async function getCategories(): Promise<VehicleCategory[]> {
   return cachedRead(
@@ -38,7 +39,20 @@ export async function getBrands(): Promise<VehicleBrand[]> {
 
 export async function getModelsByBrand(brandId: number): Promise<VehicleModel[]> {
   return query<VehicleModel>(
-    'SELECT id::int, brand_id::int, name, typical_category_id::int, is_active FROM vehicle_models WHERE brand_id = $1 AND is_active = true ORDER BY name',
+    'SELECT id::int, brand_id::int, name, typical_category_id::int, fuel_types, is_active FROM vehicle_models WHERE brand_id = $1 AND is_active = true ORDER BY name',
     [brandId]
   )
+}
+
+// The catalogue row the registration rules check a driver's choice against (see vehicle-rules.ts).
+export async function findModelForRules(modelId: number): Promise<ModelRuleRow | null> {
+  const rows = await query<ModelRuleRow>(
+    `SELECT vm.id::int, vm.brand_id::int, vm.is_active, vm.typical_category_id::int, vm.fuel_types,
+            vc.max_passengers::int AS category_seats
+       FROM vehicle_models vm
+       LEFT JOIN vehicle_categories vc ON vc.id = vm.typical_category_id
+      WHERE vm.id = $1`,
+    [modelId]
+  )
+  return rows[0] ?? null
 }

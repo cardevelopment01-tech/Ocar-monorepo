@@ -7,6 +7,8 @@ import { notificationsQueue } from '@/jobs/queues'
 import * as repo from './drivers.repository'
 import { findDocIssues, type DocIssue } from './doc-issues'
 import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, requiredVehicleDocs } from './required-docs'
+import { applyModelRules } from '@/modules/vehicles/vehicle-rules'
+import { findModelForRules } from '@/modules/vehicles/vehicles.repository'
 import * as safetyRepo from '@/modules/safety/safety.repository'
 import type { Driver, DriverVehicle, OnboardingStatus } from './drivers.types'
 
@@ -206,7 +208,14 @@ export async function saveVehicleInfo(
     throw httpError(422, 'Complete personal info first', 'STEP_NOT_COMPLETE')
   }
 
-  const vehicle = await repo.upsertVehicle(driverId, data)
+  // The model decides the category and the seats, and limits the fuel. Registering without a model (it is not in the list)
+  // is only for a driver still onboarding; an onboarded driver changing their vehicle must pick a listed model.
+  if (data.model_id === undefined && driver.status !== 'pending_docs') {
+    throw httpError(422, 'Choose your model from the list, or contact support to add it.', 'MODEL_REQUIRED')
+  }
+  const model = data.model_id === undefined ? null : await findModelForRules(data.model_id)
+  const { needs_model_review, ...ruled } = applyModelRules(data, model)
+  const vehicle = await repo.upsertVehicle(driverId, { ...data, ...ruled }, needs_model_review)
 
   if (driver.onboarding_step === 'vehicle_info') {
     await repo.setOnboardingStep(driverId, 'documents')

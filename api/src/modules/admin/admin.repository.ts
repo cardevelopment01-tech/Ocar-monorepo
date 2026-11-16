@@ -341,7 +341,7 @@ export async function getDriverById(
        d.*,
        v.id AS vehicle_id, v.number_plate, v.vehicle_name, v.model_year,
        v.color, v.fuel_type, v.seating_capacity, v.luggage_capacity, v.ac_availability,
-       v.category_id, v.brand_id, v.model_id,
+       v.category_id, v.brand_id, v.model_id, v.needs_model_review,
        vc.display_name AS vehicle_category,
        vb.name AS vehicle_brand,
        dw.balance AS wallet_balance, dw.is_frozen AS wallet_is_frozen,
@@ -473,6 +473,7 @@ export async function getDriverById(
           seating_capacity: r.seating_capacity as number,
           luggage_capacity: r.luggage_capacity as number,
           ac_availability: r.ac_availability as boolean,
+          needs_model_review: r.needs_model_review as boolean,
           category_id: r.category_id ? String(r.category_id) : null,
           brand_id: r.brand_id ? String(r.brand_id) : null,
           model_id: r.model_id ? String(r.model_id) : null,
@@ -1091,7 +1092,7 @@ export async function updateDriverVehicle(
     if (setClauses.length > 0) {
       values.push(vehicleId);
       await client.query(
-        `UPDATE driver_vehicles SET ${setClauses.join(", ")}, updated_at = now() WHERE id = $${values.length}`,
+        `UPDATE driver_vehicles SET ${setClauses.join(", ")}, needs_model_review = false, updated_at = now() WHERE id = $${values.length}`,
         values,
       );
     }
@@ -1292,7 +1293,7 @@ export async function listAdminModels(
   const params: unknown[] = [];
   const where = brandId ? (params.push(brandId), "WHERE vm.brand_id = $1") : "";
   const res = await pool.query(
-    `SELECT vm.id, vm.brand_id, vm.name, vm.typical_category_id, vm.is_active, vm.created_at,
+    `SELECT vm.id, vm.brand_id, vm.name, vm.typical_category_id, vm.fuel_types, vm.is_active, vm.created_at,
             vb.name AS brand_name,
             vc.display_name AS typical_category_name
      FROM vehicle_models vm
@@ -1309,6 +1310,7 @@ export async function listAdminModels(
     typical_category_id: r.typical_category_id
       ? String(r.typical_category_id)
       : null,
+    fuel_types: (r.fuel_types as string[] | null) ?? null,
     is_active: r.is_active as boolean,
     created_at: r.created_at as string,
     brand_name: r.brand_name as string,
@@ -1320,16 +1322,18 @@ export async function createModel(data: {
   brand_id: bigint;
   name: string;
   typical_category_id?: bigint | null;
+  fuel_types?: string[] | null;
   is_active: boolean;
 }): Promise<AdminVehicleModel> {
   const res = await pool.query(
-    `INSERT INTO vehicle_models (brand_id, name, typical_category_id, is_active)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, brand_id, name, typical_category_id, is_active, created_at`,
+    `INSERT INTO vehicle_models (brand_id, name, typical_category_id, fuel_types, is_active)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, brand_id, name, typical_category_id, fuel_types, is_active, created_at`,
     [
       data.brand_id,
       data.name,
       data.typical_category_id ?? null,
+      data.fuel_types ?? null,
       data.is_active,
     ],
   );
@@ -1341,6 +1345,7 @@ export async function createModel(data: {
     typical_category_id: r.typical_category_id
       ? String(r.typical_category_id)
       : null,
+    fuel_types: r.fuel_types ?? null,
     is_active: r.is_active,
     created_at: r.created_at,
     brand_name: "",
@@ -1353,6 +1358,7 @@ export async function updateModel(
   data: {
     name?: string;
     typical_category_id?: bigint | null;
+    fuel_types?: string[] | null;
     is_active?: boolean;
   },
 ): Promise<AdminVehicleModel | null> {
@@ -1367,6 +1373,10 @@ export async function updateModel(
     sets.push(`typical_category_id = $${p++}`);
     params.push(data.typical_category_id ?? null);
   }
+  if ("fuel_types" in data) {
+    sets.push(`fuel_types = $${p++}`);
+    params.push(data.fuel_types ?? null);
+  }
   if (data.is_active !== undefined) {
     sets.push(`is_active = $${p++}`);
     params.push(data.is_active);
@@ -1375,7 +1385,7 @@ export async function updateModel(
   params.push(id);
   const res = await pool.query(
     `UPDATE vehicle_models SET ${sets.join(", ")} WHERE id = $${p}
-     RETURNING id, brand_id, name, typical_category_id, is_active, created_at`,
+     RETURNING id, brand_id, name, typical_category_id, fuel_types, is_active, created_at`,
     params,
   );
   if (!res.rows.length) return null;
@@ -1387,6 +1397,7 @@ export async function updateModel(
     typical_category_id: r.typical_category_id
       ? String(r.typical_category_id)
       : null,
+    fuel_types: r.fuel_types ?? null,
     is_active: r.is_active,
     created_at: r.created_at,
     brand_name: "",

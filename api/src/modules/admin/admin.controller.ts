@@ -444,6 +444,7 @@ export async function postModel(
       typical_category_id: req.body.typical_category_id
         ? String(req.body.typical_category_id)
         : null,
+      fuel_types: req.body.fuel_types ?? null,
       is_active: req.body.is_active !== false,
     });
     res.status(201).json(model);
@@ -461,9 +462,11 @@ export async function patchModel(
     const data: {
       name?: string;
       typical_category_id?: string | null;
+      fuel_types?: unknown;
       is_active?: boolean;
     } = {};
     if (req.body.name !== undefined) data.name = String(req.body.name);
+    if ("fuel_types" in req.body) data.fuel_types = req.body.fuel_types;
     if ("typical_category_id" in req.body)
       data.typical_category_id = req.body.typical_category_id
         ? String(req.body.typical_category_id)

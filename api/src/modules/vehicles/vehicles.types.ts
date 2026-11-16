@@ -18,5 +18,7 @@ export interface VehicleModel {
   brand_id: string
   name: string
   typical_category_id: string | null
+  /** Fuel types the model is sold with; null = any. */
+  fuel_types: string[] | null
   is_active: boolean
 }
