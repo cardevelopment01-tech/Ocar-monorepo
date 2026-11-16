@@ -92,6 +92,8 @@ export interface DriverDetail {
     seating_capacity: number
     luggage_capacity: number
     ac_availability: boolean
+    /** The driver could not find their model in the catalogue: an admin confirms the model and category. */
+    needs_model_review: boolean
     category: string
     brand: string
     category_id: string | null

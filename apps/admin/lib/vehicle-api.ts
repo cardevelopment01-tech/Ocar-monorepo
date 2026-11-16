@@ -15,7 +15,10 @@ export interface VehicleBrand {
 
 export interface VehicleModel {
   id: string; brand_id: string; name: string
-  typical_category_id: string | null; is_active: boolean
+  typical_category_id: string | null
+  /** Fuel types the model is sold with; null = any. */
+  fuel_types: string[] | null
+  is_active: boolean
   created_at: string; brand_name: string; typical_category_name: string | null
 }
 
@@ -61,9 +64,9 @@ export const vehicleBrandApi = {
 export const vehicleModelApi = {
   list: (brandId?: string) =>
     api.get('/api/v1/admin/vehicles/models', { params: brandId ? { brand_id: brandId } : {} }).then(r => r.data as VehicleModel[]),
-  create: (body: { brand_id: string; name: string; typical_category_id?: string | null; is_active: boolean }) =>
+  create: (body: { brand_id: string; name: string; typical_category_id?: string | null; fuel_types?: string[] | null; is_active: boolean }) =>
     api.post('/api/v1/admin/vehicles/models', body).then(r => r.data as VehicleModel),
-  update: (id: string, body: { name?: string; typical_category_id?: string | null; is_active?: boolean }) =>
+  update: (id: string, body: { name?: string; typical_category_id?: string | null; fuel_types?: string[] | null; is_active?: boolean }) =>
     api.patch(`/api/v1/admin/vehicles/models/${id}`, body).then(r => r.data as VehicleModel),
 }
 

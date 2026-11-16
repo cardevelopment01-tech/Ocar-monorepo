@@ -7,6 +7,7 @@ import StatCard from '@/components/ui/StatCard'
 import Toggle from '@/components/ui/Toggle'
 import ReasonDialog from '@/components/ui/ReasonDialog'
 import { cn } from '@/lib/utils'
+import { extractErrorMessage } from '@/lib/http-errors'
 import {
   vehicleCategoryApi, vehicleBrandApi, vehicleModelApi, fleetApi, vehicleDocApi,
   type VehicleCategory, type VehicleBrand, type VehicleModel,
@@ -288,6 +289,58 @@ function CategoriesTab() {
 // BRANDS & MODELS TAB
 // ══════════════════════════════════════════════════════════════════════════════
 
+const MODEL_FUELS = [
+  { value: 'petrol', label: 'Petrol' }, { value: 'diesel', label: 'Diesel' }, { value: 'cng', label: 'CNG' }, { value: 'electric', label: 'EV' },
+]
+
+// One form for adding and editing a model. The category is required: it is what a driver of this model is registered under
+// (the seats come from the category). Fuel types limit what a driver can pick for the model; none ticked = any fuel.
+function ModelFormFields({ values, onChange, categories }: {
+  values: Record<string, unknown>
+  onChange: (patch: Record<string, unknown>) => void
+  categories: { id: string; display_name: string }[]
+}) {
+  const fuels = (values.fuel_types as string[] | undefined) ?? []
+  const input = 'w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30'
+  return (
+    <div className="space-y-4">
+      <div>
+        <label htmlFor="model-name" className="block text-xs font-semibold text-text-secondary mb-1.5">Model Name</label>
+        <input id="model-name" value={String(values.name ?? '')} onChange={e => onChange({ name: e.target.value })} className={input} />
+      </div>
+      <div>
+        <label htmlFor="model-category" className="block text-xs font-semibold text-text-secondary mb-1.5">Category <span className="text-danger">*</span></label>
+        <select id="model-category" value={String(values.typical_category_id ?? '')} onChange={e => onChange({ typical_category_id: e.target.value })} className={input}>
+          <option value="">Choose a category</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+        </select>
+        <p className="text-[11px] text-text-muted mt-1">Drivers of this model are registered under this category, with its seat count. They cannot change it.</p>
+      </div>
+      <fieldset>
+        <legend className="block text-xs font-semibold text-text-secondary mb-1.5">Fuel types</legend>
+        <div className="flex flex-wrap gap-2">
+          {MODEL_FUELS.map(f => {
+            const on = fuels.includes(f.value)
+            return (
+              <label key={f.value} className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors',
+                on ? 'border-primary bg-primary/10 text-primary' : 'border-border text-text-secondary hover:bg-surface-2')}>
+                <input type="checkbox" className="sr-only" checked={on}
+                  onChange={() => onChange({ fuel_types: on ? fuels.filter(x => x !== f.value) : [...fuels, f.value] })} />
+                {f.label}
+              </label>
+            )
+          })}
+        </div>
+        <p className="text-[11px] text-text-muted mt-1">{fuels.length === 0 ? 'None ticked: a driver can choose any fuel.' : 'A driver can only choose the ticked fuels.'}</p>
+      </fieldset>
+      <div className="flex items-center gap-3">
+        <label className="text-xs font-semibold text-text-secondary">Active</label>
+        <Toggle checked={!!values.is_active} onChange={v => onChange({ is_active: v })} />
+      </div>
+    </div>
+  )
+}
+
 function BrandsTab() {
   const [brands, setBrands] = useState<VehicleBrand[]>([])
   const [models, setModels] = useState<VehicleModel[]>([])
@@ -304,6 +357,7 @@ function BrandsTab() {
   const [editModel, setEditModel] = useState<VehicleModel | null>(null)
   const [formVals, setFormVals] = useState<Record<string, unknown>>({})
   const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
 
   useEffect(() => {
     setBrandsLoading(true); setBrandsError(false)
@@ -350,36 +404,39 @@ function BrandsTab() {
 
   async function handleAddModel() {
     if (!selectedBrand) return
-    setSaving(true)
+    setSaving(true); setFormError('')
     try {
       const created = await vehicleModelApi.create({
         brand_id: selectedBrand.id,
         name: String(formVals.name),
-        typical_category_id: formVals.typical_category_id ? String(formVals.typical_category_id) : null,
+        typical_category_id: String(formVals.typical_category_id),
+        fuel_types: (formVals.fuel_types as string[]) ?? [],
         is_active: !!formVals.is_active,
       })
       const catName = categories.find(c => c.id === formVals.typical_category_id)?.display_name ?? null
       setModels(prev => [...prev, { ...created, brand_name: selectedBrand.name, typical_category_name: catName }])
       setBrands(prev => prev.map(b => b.id === selectedBrand.id ? { ...b, model_count: b.model_count + 1 } : b))
       setAddModelOpen(false)
-    } catch { } finally { setSaving(false) }
+    } catch (err) { setFormError(extractErrorMessage(err, 'Could not add the model.')) } finally { setSaving(false) }
   }
 
   async function handleEditModel() {
     if (!editModel) return
-    setSaving(true)
+    setSaving(true); setFormError('')
     try {
       await vehicleModelApi.update(editModel.id, {
         name: String(formVals.name),
-        typical_category_id: formVals.typical_category_id ? String(formVals.typical_category_id) : null,
+        typical_category_id: String(formVals.typical_category_id),
+        fuel_types: (formVals.fuel_types as string[]) ?? [],
         is_active: !!formVals.is_active,
       })
       const catName = categories.find(c => c.id === String(formVals.typical_category_id))?.display_name ?? null
+      const fuels = (formVals.fuel_types as string[] | undefined) ?? []
       setModels(prev => prev.map(m => m.id === editModel.id
-        ? { ...m, name: String(formVals.name), is_active: !!formVals.is_active, typical_category_name: catName }
+        ? { ...m, name: String(formVals.name), is_active: !!formVals.is_active, typical_category_id: String(formVals.typical_category_id), typical_category_name: catName, fuel_types: fuels.length ? fuels : null }
         : m))
       setEditModel(null)
-    } catch { } finally { setSaving(false) }
+    } catch (err) { setFormError(extractErrorMessage(err, 'Could not save the model.')) } finally { setSaving(false) }
   }
 
   async function toggleModelActive(m: VehicleModel) {
@@ -444,24 +501,27 @@ function BrandsTab() {
           <>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-bold text-text-primary">{selectedBrand.name} models</h2>
-              <button onClick={() => { setFormVals({ name: '', typical_category_id: '', is_active: true }); setAddModelOpen(true) }}
+              <button onClick={() => { setFormVals({ name: '', typical_category_id: '', fuel_types: [], is_active: true }); setFormError(''); setAddModelOpen(true) }}
                 className="px-3 py-1 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary-dark">
                 + Add Model
               </button>
             </div>
             <div className="overflow-x-auto">
               <table className="data-table">
-                <thead><tr><th>Model Name</th><th>Typical Category</th><th>Active</th><th></th></tr></thead>
+                <thead><tr><th>Model Name</th><th>Category</th><th>Fuel types</th><th>Active</th><th></th></tr></thead>
                 <tbody>
-                  {modelsLoading ? <SkeletonRows cols={4} /> :
+                  {modelsLoading ? <SkeletonRows cols={5} /> :
                    models.length === 0 ? <EmptyState message="No models for this brand" /> :
                    models.map(m => (
                     <tr key={m.id}>
                       <td className="font-medium text-text-primary">{m.name}</td>
-                      <td><span className="text-text-secondary text-sm">{m.typical_category_name ?? '—'}</span></td>
+                      <td>{m.typical_category_name
+                        ? <span className="text-text-secondary text-sm">{m.typical_category_name}</span>
+                        : <span className="text-xs font-semibold text-warning">Needs a category</span>}</td>
+                      <td><span className="text-text-secondary text-sm">{m.fuel_types ? m.fuel_types.map(f => MODEL_FUELS.find(x => x.value === f)?.label ?? f).join(', ') : 'Any'}</span></td>
                       <td><Toggle checked={m.is_active} onChange={() => toggleModelActive(m)} /></td>
                       <td>
-                        <button onClick={() => { setFormVals({ name: m.name, typical_category_id: m.typical_category_id ?? '', is_active: m.is_active }); setEditModel(m) }}
+                        <button onClick={() => { setFormVals({ name: m.name, typical_category_id: m.typical_category_id ?? '', fuel_types: m.fuel_types ?? [], is_active: m.is_active }); setFormError(''); setEditModel(m) }}
                           className="px-3 py-1 text-xs font-semibold border border-border rounded-lg hover:bg-surface-2">Edit</button>
                       </td>
                     </tr>
@@ -491,28 +551,11 @@ function BrandsTab() {
           <Dialog.Overlay className="fixed inset-0 z-50 bg-text-primary/40 backdrop-blur-sm" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 bg-surface rounded-2xl shadow-hover p-6 w-full max-w-[420px]">
             <Dialog.Title className="text-lg font-bold text-text-primary mb-5">Add Model</Dialog.Title>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Model Name</label>
-                <input value={String(formVals.name ?? '')} onChange={e => setFormVals(p => ({ ...p, name: e.target.value }))}
-                  className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Typical Category</label>
-                <select value={String(formVals.typical_category_id ?? '')} onChange={e => setFormVals(p => ({ ...p, typical_category_id: e.target.value }))}
-                  className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30">
-                  <option value="">None</option>
-                  {categoryOptions.map(o => { const [id, name] = o.split(':'); return <option key={id} value={id}>{name}</option> })}
-                </select>
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="text-xs font-semibold text-text-secondary">Active</label>
-                <Toggle checked={!!formVals.is_active} onChange={v => setFormVals(p => ({ ...p, is_active: v }))} />
-              </div>
-            </div>
+            {formError ? <p className="text-xs text-danger mb-3" role="alert">{formError}</p> : null}
+            <ModelFormFields values={formVals} onChange={patch => setFormVals(p => ({ ...p, ...patch }))} categories={categories} />
             <div className="flex gap-3 justify-end mt-6">
               <button onClick={() => setAddModelOpen(false)} className="px-4 py-2 text-sm border border-border rounded-xl hover:bg-surface-2">Cancel</button>
-              <button onClick={handleAddModel} disabled={saving}
+              <button onClick={handleAddModel} disabled={saving || !String(formVals.name ?? '').trim() || !formVals.typical_category_id}
                 className="px-4 py-2 text-sm font-semibold bg-primary text-white rounded-xl hover:bg-primary-dark disabled:opacity-50">
                 {saving ? 'Saving…' : 'Add Model'}
               </button>
@@ -526,28 +569,11 @@ function BrandsTab() {
           <Dialog.Overlay className="fixed inset-0 z-50 bg-text-primary/40 backdrop-blur-sm" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 bg-surface rounded-2xl shadow-hover p-6 w-full max-w-[420px]">
             <Dialog.Title className="text-lg font-bold text-text-primary mb-5">Edit Model</Dialog.Title>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Model Name</label>
-                <input value={String(formVals.name ?? '')} onChange={e => setFormVals(p => ({ ...p, name: e.target.value }))}
-                  className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Typical Category</label>
-                <select value={String(formVals.typical_category_id ?? '')} onChange={e => setFormVals(p => ({ ...p, typical_category_id: e.target.value }))}
-                  className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none focus:ring-2 focus:ring-primary/30">
-                  <option value="">None</option>
-                  {categoryOptions.map(o => { const [id, name] = o.split(':'); return <option key={id} value={id}>{name}</option> })}
-                </select>
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="text-xs font-semibold text-text-secondary">Active</label>
-                <Toggle checked={!!formVals.is_active} onChange={v => setFormVals(p => ({ ...p, is_active: v }))} />
-              </div>
-            </div>
+            {formError ? <p className="text-xs text-danger mb-3" role="alert">{formError}</p> : null}
+            <ModelFormFields values={formVals} onChange={patch => setFormVals(p => ({ ...p, ...patch }))} categories={categories} />
             <div className="flex gap-3 justify-end mt-6">
               <button onClick={() => setEditModel(null)} className="px-4 py-2 text-sm border border-border rounded-xl hover:bg-surface-2">Cancel</button>
-              <button onClick={handleEditModel} disabled={saving}
+              <button onClick={handleEditModel} disabled={saving || !String(formVals.name ?? '').trim() || !formVals.typical_category_id}
                 className="px-4 py-2 text-sm font-semibold bg-primary text-white rounded-xl hover:bg-primary-dark disabled:opacity-50">
                 {saving ? 'Saving…' : 'Save'}
               </button>
