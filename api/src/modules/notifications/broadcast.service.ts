@@ -5,7 +5,7 @@ import { AppErrors } from '@/constants/errors'
 import { recordAuditLog } from '@/lib/audit-log'
 import { logger } from '@/lib/logger'
 import {
-  BROADCAST_CHUNK_PAUSE_MS, BROADCAST_CHUNK_SIZE, BROADCAST_DAILY_CAP_PER_PERSON, PUSH_TOKEN_FRESH_DAYS,
+  BROADCAST_JOB_ATTEMPTS, BROADCAST_CHUNK_PAUSE_MS, BROADCAST_CHUNK_SIZE, BROADCAST_DAILY_CAP_PER_PERSON, PUSH_TOKEN_FRESH_DAYS,
 } from '@/constants/limits'
 import { docIssueExistsSql } from '@/modules/drivers/drivers.repository'
 import { notifyOwner } from './notifications.service'
@@ -207,9 +207,15 @@ export async function createBroadcast(
   const { pushQueue } = await import('@/jobs/queues')
   // Repeating a run is safe (see runBroadcast), so a crash or a stalled worker is retried instead of leaving people un-notified.
   // jobId: one job per broadcast, so it can never be queued twice.
-  await pushQueue.add('broadcast_send', { broadcastId: id }, {
-    jobId: `broadcast-${id}`, attempts: 3, backoff: { type: 'exponential', delay: 5000 },
-  })
+  try {
+    await pushQueue.add('broadcast_send', { broadcastId: id }, {
+      jobId: `broadcast-${id}`, attempts: BROADCAST_JOB_ATTEMPTS, backoff: { type: 'exponential', delay: 5000 },
+    })
+  } catch (err) {
+    // Nothing will run it: say so in the history instead of leaving a row that stays "Queued" forever, and tell the admin.
+    await pool.query(`UPDATE notification_broadcasts SET status = 'failed' WHERE id = $1`, [id]).catch(() => undefined)
+    throw err
+  }
   return { id, recipientCount: preview.recipientCount, withDevice: preview.withDevice }
 }
 
@@ -218,11 +224,19 @@ const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 // Runs in the push worker. Safe to run again after a failure: everyone already notified (a row for this broadcast and person) is
 // skipped, and a unique index on (broadcast, person) means two overlapping runs can never notify the same person twice. Recipients are
 // re-resolved at run time, so an opt-out made between "send" and the run is honoured.
-export async function runBroadcast(broadcastId: string): Promise<number> {
+// `finalAttempt`: false while the queue will still retry this job. Recipients that could not be notified then make the run throw, so the
+// retry picks exactly those people up (everyone else is skipped); on the final attempt they are counted as failed and the run completes.
+export async function runBroadcast(broadcastId: string, finalAttempt = true): Promise<number> {
   const row = (await pool.query<{ title: string; body: string; category: BroadcastInput['category']; audience: Audience; status: string }>(
     'SELECT title, body, category, audience, status FROM notification_broadcasts WHERE id = $1', [broadcastId],
   )).rows[0]
   if (!row || row.status === 'done') return 0
+  // The 10:00-21:00 window was checked when it was created; a retry can run later, so check again.
+  if (row.category === 'offer' && !offersAllowedNow()) {
+    await pool.query(`UPDATE notification_broadcasts SET status = 'failed' WHERE id = $1`, [broadcastId])
+    log.warn({ broadcastId }, 'broadcast: an offer was not sent because the allowed hours (10:00-21:00 IST) have passed')
+    return 0
+  }
 
   await pool.query(
     `UPDATE notification_broadcasts SET status = 'sending', started_at = COALESCE(started_at, now()) WHERE id = $1 AND status <> 'done'`,
@@ -251,6 +265,11 @@ export async function runBroadcast(broadcastId: string): Promise<number> {
   } catch (err) {
     await pool.query(`UPDATE notification_broadcasts SET status = 'failed' WHERE id = $1`, [broadcastId]).catch(() => undefined)
     throw err
+  }
+
+  if (failed > 0 && !finalAttempt) {
+    await pool.query(`UPDATE notification_broadcasts SET failed_count = $2 WHERE id = $1`, [broadcastId, failed])
+    throw new Error(`broadcast ${broadcastId}: ${failed} recipients could not be notified, retrying`)
   }
 
   const done = await pool.query<{ sent: number }>(
@@ -302,7 +321,10 @@ export async function listBroadcasts(params: z.infer<typeof listQuerySchema>): P
   const res = await pool.query(
     `SELECT b.id::text AS id, b.title, b.body, b.category, b.audience, b.status, a.email AS sent_by, b.created_at, b.finished_at,
             b.sent_count, b.failed_count, b.skipped_opted_out, b.skipped_capped,
-            (b.status <> 'done' OR b.finished_at > now() - interval '2 minutes') AS settling,
+            -- still going (queued/sending, for at most 30 minutes) or just finished (results keep arriving for ~2 minutes); a failed or
+            -- long-stuck broadcast is not "settling", so the page does not poll for it forever
+            ((b.status IN ('queued', 'sending') AND b.created_at > now() - interval '30 minutes')
+             OR (b.status = 'done' AND b.finished_at > now() - interval '2 minutes')) AS settling,
             s.pushed, s.push_failed, s.opened
        FROM notification_broadcasts b
        LEFT JOIN admins a ON a.id = b.admin_id

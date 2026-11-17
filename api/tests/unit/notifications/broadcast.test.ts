@@ -196,6 +196,14 @@ describe('createBroadcast', () => {
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: 'notification_broadcast', ipAddress: '1.2.3.4' }))
   })
 
+  it('if the job cannot be queued the broadcast is marked failed (not left "Queued" forever) and the admin gets the error', async () => {
+    query.mockResolvedValueOnce(counts({ matched: 3, recipients: 3, with_device: 3 })).mockResolvedValueOnce({ rows: [{ id: '4' }] }).mockResolvedValueOnce({ rows: [] })
+    queueAdd.mockRejectedValueOnce(new Error('redis down'))
+    await expect(createBroadcast(input, 1n, null)).rejects.toThrow('redis down')
+    const failedUpdate = query.mock.calls.find(([sql]) => String(sql).includes("SET status = 'failed'")) as [string, unknown[]]
+    expect(failedUpdate[1]).toEqual(['4'])
+  })
+
   it('typed phone numbers never reach the audit log (the stored audience keeps them to resolve the send)', async () => {
     query.mockResolvedValueOnce(counts({ matched: 1, recipients: 1, with_device: 1 }))
       .mockResolvedValueOnce({ rows: [{ phone: '+919861003979' }] })
@@ -210,7 +218,7 @@ describe('createBroadcast', () => {
 describe('runBroadcast', () => {
   beforeEach(() => { vi.clearAllMocks(); notifyOwner.mockResolvedValue(undefined) })
   type Row = { title: string; body: string; category: string; audience: Audience; status: string }
-  const row = (over: Partial<Row> = {}): Row => ({ title: 'Hello', body: 'World', category: 'offer', audience: { role: 'rider' }, status: 'queued', ...over })
+  const row = (over: Partial<Row> = {}): Row => ({ title: 'Hello', body: 'World', category: 'announcement', audience: { role: 'rider' }, status: 'queued', ...over })
 
   // Answers each statement by what it does, so the tests do not depend on the order of the queries.
   function db(opts: { row?: Row | null; recipients?: string[]; already?: string[]; sentCount?: number; resolveError?: Error }) {
@@ -220,6 +228,7 @@ describe('runBroadcast', () => {
       if (sql.includes("SET status = 'sending'")) { calls.push('sending'); return { rows: [] } }
       if (sql.includes('FROM notification_logs WHERE broadcast_id')) return { rows: (opts.already ?? []).map((owner_id) => ({ owner_id })) }
       if (sql.includes("SET status = 'failed'")) { calls.push('failed'); return { rows: [] } }
+      if (sql.includes('SET failed_count')) { calls.push('retry'); return { rows: [] } }
       if (sql.includes("SET status = 'done'")) { calls.push('done'); return { rows: [{ sent: opts.sentCount ?? 0 }] } }
       if (sql.includes('NOT c.opted_out AND NOT c.capped')) { if (opts.resolveError) throw opts.resolveError; return { rows: (opts.recipients ?? []).map((id) => ({ id })) } }
       throw new Error(`unexpected query: ${sql.slice(0, 60)}`)
@@ -231,7 +240,7 @@ describe('runBroadcast', () => {
     const calls = db({ recipients: ['1', '2'], sentCount: 2 })
     expect(await runBroadcast('9')).toBe(2)
     expect(notifyOwner).toHaveBeenCalledTimes(2)
-    expect(notifyOwner).toHaveBeenCalledWith({ ownerType: 'user', ownerId: 1n, type: 'offer', title: 'Hello', body: 'World', broadcastId: 9n })
+    expect(notifyOwner).toHaveBeenCalledWith({ ownerType: 'user', ownerId: 1n, type: 'announcement', title: 'Hello', body: 'World', broadcastId: 9n })
     expect(calls).toEqual(['sending', 'done'])
   })
 
@@ -270,6 +279,39 @@ describe('runBroadcast', () => {
     expect(doneCall[1]).toEqual(['9', 1])
   })
 
+  it('recipients who could not be notified make a non-final attempt throw, so the queue retries exactly them', async () => {
+    const calls = db({ recipients: ['1', '2'] })
+    notifyOwner.mockRejectedValueOnce(new Error('boom'))
+    await expect(runBroadcast('9', false)).rejects.toThrow('could not be notified')
+    expect(calls).toEqual(['sending', 'retry']) // recorded, but not marked done
+    const upd = query.mock.calls.find(([sql]) => String(sql).includes('SET failed_count')) as [string, unknown[]]
+    expect(upd[1]).toEqual(['9', 1])
+  })
+
+  it('on the final attempt the same failure is counted and the broadcast completes', async () => {
+    const calls = db({ recipients: ['1', '2'], sentCount: 1 })
+    notifyOwner.mockRejectedValueOnce(new Error('boom'))
+    await expect(runBroadcast('9', true)).resolves.toBe(1)
+    expect(calls).toEqual(['sending', 'done'])
+  })
+
+  it('an offer inside the allowed hours is sent, with the offer type', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(at('06:30')) // 12:00 IST
+    db({ row: row({ category: 'offer' }), recipients: ['1'], sentCount: 1 })
+    await runBroadcast('9')
+    expect(notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ type: 'offer' }))
+    vi.useRealTimers()
+  })
+
+  it('an offer whose allowed hours passed before a retry ran is not sent', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(at('16:30')) // 22:00 IST
+    const calls = db({ row: row({ category: 'offer' }), recipients: ['1'] })
+    expect(await runBroadcast('9')).toBe(0)
+    expect(notifyOwner).not.toHaveBeenCalled()
+    expect(calls).toEqual(['failed'])
+    vi.useRealTimers()
+  })
+
   it('a recipient list that cannot be read marks the broadcast failed and lets the queue retry it', async () => {
     const calls = db({ recipients: [], resolveError: new Error('db down') })
     await expect(runBroadcast('9')).rejects.toThrow('db down')
@@ -297,6 +339,15 @@ describe('listBroadcasts', () => {
     const { broadcasts, nextBefore } = await listBroadcasts({ limit: 20 })
     expect(broadcasts[0]).toMatchObject({ id: '7', sent: 100, pushed: 60, pushFailed: 10, noPush: 30, opened: 5, failed: 1, skippedOptedOut: 4, skippedCapped: 2, sentBy: 'ops@ocar.app', status: 'done', settling: false })
     expect(nextBefore).toBeNull()
+  })
+
+  it('"settling" is only for a broadcast still going or just finished: a failed or long-stuck one must not keep the page polling', async () => {
+    query.mockResolvedValueOnce({ rows: [] })
+    await listBroadcasts({ limit: 20 })
+    const sql = String(query.mock.calls[0]![0])
+    expect(sql).toContain("b.status IN ('queued', 'sending') AND b.created_at > now() - interval '30 minutes'")
+    expect(sql).toContain("b.status = 'done' AND b.finished_at > now() - interval '2 minutes'")
+    expect(sql).not.toMatch(/b\.status <> 'done'/)
   })
 
   it('never lets a negative "no push" appear if the counts overlap', async () => {

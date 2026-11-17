@@ -222,6 +222,23 @@ describe('Sent broadcasts', () => {
     expect(screen.queryByRole('button', { name: 'Show older' })).toBeNull()
   })
 
+  it('a refresh never drops rows that were already loaded further down, and keeps newest first', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    api.list
+      .mockResolvedValueOnce({ broadcasts: [row({ id: '9', title: 'Nine', settling: true })], nextBefore: '9' })
+      .mockResolvedValueOnce({ broadcasts: [row({ id: '8', title: 'Eight' })], nextBefore: null }) // "Show older"
+      .mockResolvedValue({ broadcasts: [row({ id: '10', title: 'Ten' }), row({ id: '9', title: 'Nine', settling: false })], nextBefore: '9' }) // a poll
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(<BroadcastsPage />)
+    await screen.findByText('Nine')
+    await user.click(screen.getByRole('button', { name: 'Show older' }))
+    await screen.findByText('Eight')
+    await act(async () => { await vi.advanceTimersByTimeAsync(8500) })
+    await screen.findByText('Ten')
+    const order = screen.getAllByText(/^(Ten|Nine|Eight)$/).map((e) => e.textContent)
+    expect(order).toEqual(['Ten', 'Nine', 'Eight'])
+  })
+
   it('a failed load says so instead of showing an empty list', async () => {
     api.list.mockRejectedValue(new Error('boom'))
     render(<BroadcastsPage />)

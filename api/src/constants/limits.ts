@@ -203,4 +203,6 @@ export const PUSH_TOKEN_FRESH_DAYS = 30
 // Recipients are notified in groups of this size, with a short pause between groups, so one broadcast never floods the database or
 // the push queue (FCM's own guidance is to ramp up rather than spike).
 export const BROADCAST_CHUNK_SIZE = 20
+// A broadcast job is tried this many times (a retry only notifies people not yet notified).
+export const BROADCAST_JOB_ATTEMPTS = 3
 export const BROADCAST_CHUNK_PAUSE_MS = 25

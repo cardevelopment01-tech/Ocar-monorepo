@@ -47,9 +47,10 @@ export default function BroadcastHistory({ refreshKey }: { refreshKey: number })
     inFlight.current = true
     try {
       const page = await broadcastApi.list({ limit: 20 })
+      // Fresh rows replace their old copies and new ones are added; nothing already loaded is ever dropped (newest first).
       setRows((old) => {
         const ids = new Set(page.broadcasts.map((b) => b.id))
-        return [...page.broadcasts, ...old.filter((b) => !ids.has(b.id) && Number(b.id) < Number(page.broadcasts[page.broadcasts.length - 1]?.id ?? Infinity))]
+        return [...page.broadcasts, ...old.filter((b) => !ids.has(b.id))].sort((a, b) => Number(b.id) - Number(a.id))
       })
       setNextBefore((cur) => (cur === null || page.broadcasts.length === 0 ? page.nextBefore : cur))
       setError(null)
