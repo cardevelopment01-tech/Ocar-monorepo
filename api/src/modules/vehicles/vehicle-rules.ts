@@ -6,6 +6,8 @@ import { httpError } from '@/lib/errors'
 export type ModelRuleRow = {
   id: number
   brand_id: number
+  /** The catalogue name: it is what gets stored as the vehicle name, not whatever the app sent. */
+  name?: string
   is_active: boolean
   typical_category_id: number | null
   /** NULL = every fuel type is allowed. */

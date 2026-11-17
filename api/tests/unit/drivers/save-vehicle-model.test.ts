@@ -32,7 +32,7 @@ beforeEach(() => {
   vi.mocked(repo.findDriverById).mockResolvedValue(COMPLETE_DRIVER as never)
   vi.mocked(repo.upsertVehicle).mockResolvedValue({ id: '5' } as never)
   vi.mocked(findCategorySpecs).mockResolvedValue({ seats: 4, luggage: 2 })
-  vi.mocked(findModelForRules).mockResolvedValue({ id: 10, brand_id: 1, is_active: true, typical_category_id: 1, fuel_types: ['petrol', 'cng'], category_seats: 4 })
+  vi.mocked(findModelForRules).mockResolvedValue({ id: 10, brand_id: 1, name: 'Swift', is_active: true, typical_category_id: 1, fuel_types: ['petrol', 'cng'], category_seats: 4 })
 })
 
 describe('saveVehicleInfo and the catalogue', () => {
@@ -81,5 +81,10 @@ describe('saveVehicleInfo and the catalogue', () => {
     await saveVehicleInfo(1n, unlisted as never)
     expect(findCategorySpecs).toHaveBeenCalledWith(3)
     expect(repo.upsertVehicle).toHaveBeenCalledWith(1n, expect.objectContaining({ category_id: 3, seating_capacity: 6, luggage_capacity: 4 }), true)
+  })
+
+  it('a catalogue model keeps its own name, whatever vehicle_name the app sent', async () => {
+    await saveVehicleInfo(1n, data({ vehicle_name: 'Mercedes S-Class' }) as never)
+    expect(repo.upsertVehicle).toHaveBeenCalledWith(1n, expect.objectContaining({ vehicle_name: 'Swift' }), false)
   })
 })

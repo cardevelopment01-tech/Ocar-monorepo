@@ -102,7 +102,8 @@ export default function VehicleRegistrationScreen() {
   function handleModelChange(id: number) {
     setModelId(id)
     const model = models.find((m) => Number(m.id) === id)
-    if (model?.typical_category_id) setCategoryId(Number(model.typical_category_id))
+    // a model without a category leaves the choice to the driver, not to the previous model's category
+    setCategoryId(model?.typical_category_id ? Number(model.typical_category_id) : null)
     // fuel: only what the model is sold with; a single option is chosen for the driver
     const fuels = fuelOptionsFor(model)
     if (fuels.length === 1) setFuelType(fuels[0]!.value)
@@ -205,7 +206,7 @@ export default function VehicleRegistrationScreen() {
             <PickerField label="Model" value={modelId} options={models.map((m) => ({ value: Number(m.id), label: m.name }))} onSelect={(v) => handleModelChange(Number(v))} placeholder={!brandId ? 'Select brand first' : 'Select model'} disabled={!brandId} searchable={models.length > 6} />
           )}
           {brandId && (!isEdit || unlisted) ? (
-            <Pressable onPress={() => { setUnlisted((u) => !u); setModelId(null) }} accessibilityRole="button" hitSlop={8} style={styles.unlistedLink}>
+            <Pressable onPress={() => { setUnlisted((u) => !u); setModelId(null); setCategoryId(null) }} accessibilityRole="button" hitSlop={8} style={styles.unlistedLink}>
               <Text style={styles.unlistedText}>{unlisted ? 'Choose from the list instead' : "My model isn't listed"}</Text>
             </Pressable>
           ) : null}

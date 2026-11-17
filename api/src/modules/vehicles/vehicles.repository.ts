@@ -47,7 +47,7 @@ export async function getModelsByBrand(brandId: number): Promise<VehicleModel[]>
 // The catalogue row the registration rules check a driver's choice against (see vehicle-rules.ts).
 export async function findModelForRules(modelId: number): Promise<ModelRuleRow | null> {
   const rows = await query<ModelRuleRow>(
-    `SELECT vm.id::int, vm.brand_id::int, vm.is_active, vm.typical_category_id::int, vm.fuel_types,
+    `SELECT vm.id::int, vm.brand_id::int, vm.name, vm.is_active, vm.typical_category_id::int, vm.fuel_types,
             vc.max_passengers::int AS category_seats
        FROM vehicle_models vm
        LEFT JOIN vehicle_categories vc ON vc.id = vm.typical_category_id

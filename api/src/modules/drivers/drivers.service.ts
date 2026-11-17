@@ -220,6 +220,7 @@ export async function saveVehicleInfo(
   const specs = await findCategorySpecs(ruled.category_id)
   const stored = { ...data, ...ruled }
   if (specs) { stored.seating_capacity = specs.seats; stored.luggage_capacity = specs.luggage }
+  if (model?.name) stored.vehicle_name = model.name // a catalogue model keeps its own name, whatever the app sent
   const vehicle = await repo.upsertVehicle(driverId, stored, needs_model_review)
 
   if (driver.onboarding_step === 'vehicle_info') {
