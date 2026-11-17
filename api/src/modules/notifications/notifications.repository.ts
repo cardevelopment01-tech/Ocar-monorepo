@@ -162,6 +162,57 @@ export async function createBroadcastNotification(params: {
   return res.rows[0] ? toFeedItem(res.rows[0]) : null
 }
 
+// Broadcast delivery in groups: one statement per group instead of one per person.
+
+export type BroadcastRow = { id: string; ownerId: string }
+
+/** The in-app rows for a group of people. Anyone already notified for this broadcast (unique index) is skipped and not returned. */
+export async function createBroadcastNotifications(params: {
+  ownerType: NotifOwnerType
+  ownerIds: string[]
+  type: string
+  title: string
+  body: string
+  broadcastId: bigint
+}): Promise<BroadcastRow[]> {
+  const res = await pool.query<{ id: string; owner_id: string }>(
+    `INSERT INTO notification_logs (owner_type, owner_id, channel, status, type, title, body, payload, sent_at, broadcast_id)
+     SELECT $1, o, 'in_app', 'sent', $3, $4, $5, '{}', NOW(), $6 FROM unnest($2::bigint[]) AS o
+     ON CONFLICT (broadcast_id, owner_type, owner_id) WHERE broadcast_id IS NOT NULL DO NOTHING
+     RETURNING id::text, owner_id::text`,
+    [params.ownerType, params.ownerIds, params.type, params.title, params.body, params.broadcastId.toString()],
+  )
+  return res.rows.map((r) => ({ id: r.id, ownerId: r.owner_id }))
+}
+
+/** Registered phones for a group of people, one query. People with none are absent from the map. */
+export async function getTokensForOwners(ownerType: DeviceOwnerType, ownerIds: string[]): Promise<Map<string, string[]>> {
+  const res = await pool.query<{ owner_id: string; token: string }>(
+    `SELECT owner_id::text, token FROM device_tokens WHERE owner_type = $1 AND owner_id = ANY($2::bigint[]) ORDER BY id`,
+    [ownerType, ownerIds],
+  )
+  const byOwner = new Map<string, string[]>()
+  for (const r of res.rows) byOwner.set(r.owner_id, [...(byOwner.get(r.owner_id) ?? []), r.token])
+  return byOwner
+}
+
+/** What each person's push came to, written for a whole group at once. A row with no result yet means "not processed". */
+export async function recordBroadcastPushResults(results: Array<{
+  id: string; attempted: boolean; successCount: number; failureCount: number; invalidTokens: number; failureReason?: string
+}>): Promise<void> {
+  if (results.length === 0) return
+  await pool.query(
+    `UPDATE notification_logs l
+        SET provider = CASE WHEN x.att THEN 'fcm' ELSE l.provider END,
+            provider_response = jsonb_build_object('successCount', x.s, 'failureCount', x.f, 'invalidTokens', x.i),
+            failure_reason = x.reason,
+            failed_at = CASE WHEN x.reason IS NULL THEN NULL ELSE now() END
+       FROM jsonb_to_recordset($1::jsonb) AS x(id bigint, att boolean, s int, f int, i int, reason text)
+      WHERE l.id = x.id`,
+    [JSON.stringify(results.map((r) => ({ id: r.id, att: r.attempted, s: r.successCount, f: r.failureCount, i: r.invalidTokens, reason: r.failureReason ?? null })))],
+  )
+}
+
 export async function listNotifications(params: {
   ownerType: NotifOwnerType
   ownerId: bigint

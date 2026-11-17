@@ -22,6 +22,19 @@ vi.mock('@/lib/storage', () => ({
 // seam=none (real Postgres, real routes; the push queue exists but no worker runs, so nothing is sent to Firebase);
 // no_claim=Firebase delivery (the worker records its answer, which this test simulates).
 
+// The push provider is replaced so these tests never reach Firebase: a phone whose token contains "dead" is refused, every other is accepted.
+const fcm = vi.hoisted(() => ({ calls: [] as Array<{ tokens: string[]; data: Array<Record<string, string>> | undefined }> }))
+vi.mock('@/modules/notifications/providers/push.provider', () => ({
+  sendPush: async (tokens: string[], _msg: unknown, data?: Array<Record<string, string>>) => {
+    fcm.calls.push({ tokens, data })
+    const dead = tokens.filter((t) => t.includes('dead'))
+    return {
+      invalidTokens: dead, successCount: tokens.length - dead.length, failureCount: dead.length, transientFailure: false,
+      tokenResults: tokens.map((t) => (t.includes('dead') ? 'invalid' : 'ok')),
+    }
+  },
+}))
+
 const app = createApp()
 const P = {
   d1: '+919700007001', d2: '+919700007002', d3: '+919700007003', d4: '+919700007004', d5: '+919700007005',
@@ -316,4 +329,92 @@ describe('rollback, a stale daily-limit check, and knowing who a typed number is
     const everyone = body(await api(opsToken).post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'driver' } }))
     expect(everyone.people).toEqual([]) // only typed numbers are looked up
   })
+})
+
+describe('sending in groups (real database, push provider replaced)', () => {
+  const sendTo = async (phones: string[], title: string) => {
+    const res = await api(opsToken).post('/api/v1/admin/notifications/broadcast', { title, body: 'Body text', category: 'announcement', audience: { role: 'driver', phones } })
+    expect(res.status, JSON.stringify(res.body)).toBe(202)
+    broadcastIds.push(String(body(res).id))
+    return String(body(res).id)
+  }
+  const logRow = async (broadcastId: string, owner: string) =>
+    (await pool.query<{ id: string; provider: string | null; provider_response: Record<string, number> | null; failure_reason: string | null }>(
+      'SELECT id::text, provider, provider_response, failure_reason FROM notification_logs WHERE broadcast_id = $1 AND owner_id = $2', [broadcastId, owner])).rows
+
+  it('records each person\'s push result, removes a dead phone, and gives each phone its own notification id', async () => {
+    await pool.query(`INSERT INTO device_tokens (owner_type, owner_id, token, platform, last_seen_at) VALUES
+      ('driver', $1, 'tok-bc-d5-live', 'android', now()), ('driver', $1, 'tok-bc-d5-dead', 'android', now())`, [d.d5])
+    fcm.calls.length = 0
+    const id = await sendTo([P.d5], 'Groups one')
+    expect(await runBroadcast(id)).toBe(1)
+
+    const [row] = await logRow(id, d.d5)
+    expect(row).toMatchObject({ provider: 'fcm', provider_response: { successCount: 1, failureCount: 1, invalidTokens: 1 }, failure_reason: null })
+    const left = (await pool.query<{ token: string }>("SELECT token FROM device_tokens WHERE owner_id = $1 AND token LIKE 'tok-bc-d5%'", [d.d5])).rows.map((x) => x.token)
+    expect(left).toEqual(['tok-bc-d5-live']) // the dead phone is gone, the live one stays
+
+    expect(fcm.calls).toHaveLength(1) // one call for the group
+    expect(fcm.calls[0]!.tokens.sort()).toEqual(['tok-bc-d5-dead', 'tok-bc-d5-live'])
+    expect(fcm.calls[0]!.data!.every((x) => x['notificationId'] === row!.id && x['type'] === 'announcement')).toBe(true)
+  })
+
+  it('a person with no phone still gets the in-app row, recorded as nothing pushed, with no Firebase call for them', async () => {
+    fcm.calls.length = 0
+    const id = await sendTo([P.d2], 'Groups two')
+    await runBroadcast(id)
+    const [row] = await logRow(id, d.d2)
+    expect(row).toMatchObject({ provider: null, provider_response: { successCount: 0, failureCount: 0, invalidTokens: 0 } })
+    expect(fcm.calls).toHaveLength(0)
+    // and the history counts them as "in-app only", not as failed or pushed
+    const hist = (body(await api(opsToken).get('/api/v1/admin/notifications/broadcasts?limit=50')) as { broadcasts: Array<Record<string, unknown>> }).broadcasts
+    expect(hist.find((b) => b['id'] === id)).toMatchObject({ sent: 1, pushed: 0, pushFailed: 0, noPush: 1, tracked: true })
+  })
+
+  it('a run that stopped after writing a row but before pushing is finished by the next run: pushed once, no second row', async () => {
+    fcm.calls.length = 0
+    const id = await sendTo([P.d1], 'Groups three')
+    // The state a crash leaves: the in-app row exists, its push result does not.
+    await pool.query(
+      `INSERT INTO notification_logs (owner_type, owner_id, channel, status, type, title, body, broadcast_id)
+       VALUES ('driver', $1, 'in_app', 'sent', 'announcement', 'Groups three', 'Body text', $2)`, [d.d1, id])
+    expect(await runBroadcast(id)).toBe(1)
+
+    const rows = await logRow(id, d.d1)
+    expect(rows).toHaveLength(1) // not duplicated
+    expect(rows[0]!.provider_response).toMatchObject({ successCount: 1, failureCount: 0 })
+    expect(fcm.calls).toHaveLength(1)
+    expect(fcm.calls[0]!.tokens).toEqual(['tok-bc-d1'])
+    // and running it yet again does nothing
+    fcm.calls.length = 0
+    expect(await runBroadcast(id)).toBe(0)
+    expect(fcm.calls).toHaveLength(0)
+  })
+
+  it('a send with more people than one group is split into groups of at most 500 (one statement and one push call each)', async () => {
+    const owners = Array.from({ length: 1100 }, (_, i) => 9_000_000 + i)
+    await pool.query(`INSERT INTO users (id, phone, name, status) SELECT g, '+9195' || lpad(g::text, 8, '0'), 'bc-group-' || g, 'active' FROM unnest($1::bigint[]) g`, [owners])
+    await pool.query(`INSERT INTO device_tokens (owner_type, owner_id, token, platform, last_seen_at) SELECT 'user', g, 'tok-bc-g' || g, 'android', now() FROM unnest($1::bigint[]) g`, [owners])
+    try {
+      const admin = (await pool.query<{ id: string }>('SELECT id::text FROM admins WHERE email = $1', [OPS])).rows[0]!.id
+      const inserted = await pool.query<{ id: string }>(
+        `INSERT INTO notification_broadcasts (admin_id, title, body, category, audience, recipient_count, status)
+         VALUES ($1, 'Big group', 'Body text', 'announcement', '{"role":"rider"}'::jsonb, 1100, 'queued') RETURNING id::text`, [admin])
+      const id = inserted.rows[0]!.id
+      broadcastIds.push(id)
+      fcm.calls.length = 0
+      await runBroadcast(id)
+      const mine = fcm.calls.filter((c) => c.tokens.some((t) => t.startsWith('tok-bc-g')))
+      expect(mine.every((c) => c.tokens.length <= 500)).toBe(true)
+      const pushed = mine.reduce((n, c) => n + c.tokens.filter((t) => t.startsWith('tok-bc-g')).length, 0)
+      expect(pushed).toBe(1100)
+      const rows = await pool.query<{ n: number; recorded: number }>(
+        `SELECT count(*)::int AS n, count(*) FILTER (WHERE provider_response IS NOT NULL)::int AS recorded FROM notification_logs WHERE broadcast_id = $1 AND owner_id = ANY($2::bigint[])`, [id, owners])
+      expect(rows.rows[0]).toEqual({ n: 1100, recorded: 1100 })
+    } finally {
+      await pool.query("DELETE FROM notification_logs WHERE owner_type = 'user' AND owner_id = ANY($1::bigint[])", [owners])
+      await pool.query("DELETE FROM device_tokens WHERE token LIKE 'tok-bc-g%'")
+      await pool.query('DELETE FROM users WHERE id = ANY($1::bigint[])', [owners])
+    }
+  }, 120_000)
 })

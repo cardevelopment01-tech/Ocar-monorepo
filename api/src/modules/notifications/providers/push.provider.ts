@@ -43,6 +43,10 @@ export interface SendPushResult {
   // FCM/network trouble that a later attempt could fix (as opposed to a dead token, which a
   // retry never will). Only meaningful to a caller that can retry, i.e. the push worker.
   transientFailure: boolean
+  // What happened to each token, in the order given: 'ok', 'invalid' (dead registration, remove it) or 'retry' (FCM/network trouble a
+  // later attempt could fix). Absent when nothing was sent (push not configured). Lets a caller that sends one message to many people
+  // tell who got it; existing callers ignore it.
+  tokenResults?: Array<'ok' | 'invalid' | 'retry'>
 }
 
 const NOTHING_SENT: SendPushResult = { invalidTokens: [], successCount: 0, failureCount: 0, transientFailure: false }
@@ -69,7 +73,10 @@ function getFirebaseApp(): App | null {
   }
 }
 
-export async function sendPush(tokens: string[], msg: PushMessage): Promise<SendPushResult> {
+// `perTokenData`: extra data fields per token, in token order (a broadcast gives each person their own notification id). Without it
+// the whole batch is one multicast, exactly as before; with it the same message goes as one message per token (sendEach), still one call.
+// At most 500 tokens per call (FCM's limit); a caller with more must batch.
+export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?: Array<Record<string, string>>): Promise<SendPushResult> {
   if (tokens.length === 0) {
     return NOTHING_SENT
   }
@@ -134,25 +141,34 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
       }
     }
 
-    const response = await getMessaging(fbApp).sendEachForMulticast(message)
+    let response: Awaited<ReturnType<ReturnType<typeof getMessaging>['sendEachForMulticast']>>
+    if (perTokenData) {
+      const { tokens: _tokens, ...base } = message
+      void _tokens
+      response = await getMessaging(fbApp).sendEach(tokens.map((token, i) => ({ ...base, token, data: { ...(base.data ?? {}), ...(perTokenData[i] ?? {}) } })))
+    } else {
+      response = await getMessaging(fbApp).sendEachForMulticast(message)
+    }
 
     const invalidTokens: string[] = []
+    const tokenResults: Array<'ok' | 'invalid' | 'retry'> = []
     let transientFailure = false
     response.responses.forEach((r, i) => {
-      if (!r.success) {
-        const code = r.error?.code
-        if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-argument') {
-          const badToken = tokens[i]
-          if (badToken) invalidTokens.push(badToken)
-        } else {
-          transientFailure = true
-        }
+      if (r.success) { tokenResults.push('ok'); return }
+      const code = r.error?.code
+      if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-argument') {
+        const badToken = tokens[i]
+        if (badToken) invalidTokens.push(badToken)
+        tokenResults.push('invalid')
+      } else {
+        transientFailure = true
+        tokenResults.push('retry')
       }
     })
 
-    return { invalidTokens, successCount: response.successCount ?? 0, failureCount: response.failureCount ?? 0, transientFailure }
+    return { invalidTokens, successCount: response.successCount ?? 0, failureCount: response.failureCount ?? 0, transientFailure, tokenResults }
   } catch (err) {
     log.error({ err }, 'sendEachForMulticast failed')
-    return { invalidTokens: [], successCount: 0, failureCount: tokens.length, transientFailure: true }
+    return { invalidTokens: [], successCount: 0, failureCount: tokens.length, transientFailure: true, tokenResults: tokens.map(() => 'retry' as const) }
   }
 }

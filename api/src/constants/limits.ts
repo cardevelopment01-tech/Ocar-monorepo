@@ -202,7 +202,12 @@ export const BROADCAST_DAILY_CAP_PER_PERSON = 2
 export const PUSH_TOKEN_FRESH_DAYS = 30
 // Recipients are notified in groups of this size, with a short pause between groups, so one broadcast never floods the database or
 // the push queue (FCM's own guidance is to ramp up rather than spike).
-export const BROADCAST_CHUNK_SIZE = 20
+// One database round trip and one Firebase call per group; 500 is Firebase's limit for one call.
+export const BROADCAST_CHUNK_SIZE = 500
+// Pause between groups, so a big send ramps up smoothly instead of spiking (Firebase: ramp over minutes, never burst).
+export const BROADCAST_CHUNK_PAUSE_MS = 250
+// A group whose Firebase call hit trouble that a retry could fix is retried this many times in total, pausing longer each time.
+export const BROADCAST_PUSH_ATTEMPTS = 3
+export const BROADCAST_PUSH_RETRY_PAUSE_MS = 2000
 // A broadcast job is tried this many times (a retry only notifies people not yet notified).
 export const BROADCAST_JOB_ATTEMPTS = 3
-export const BROADCAST_CHUNK_PAUSE_MS = 25

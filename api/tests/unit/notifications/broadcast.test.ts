@@ -2,12 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const query = vi.fn()
 const queueAdd = vi.fn().mockResolvedValue(undefined)
-const notifyOwner = vi.fn().mockResolvedValue(undefined)
+const createRows = vi.fn()
+const getTokens = vi.fn()
+const record = vi.fn().mockResolvedValue(undefined)
+const deleteTokens = vi.fn().mockResolvedValue(undefined)
+const sendPush = vi.fn()
 const audit = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/db/client', () => ({ pool: { query: (...a: unknown[]) => query(...a) } }))
 vi.mock('@/jobs/queues', () => ({ pushQueue: { add: (...a: unknown[]) => queueAdd(...a) } }))
 vi.mock('@/lib/audit-log', () => ({ recordAuditLog: (...a: unknown[]) => audit(...a) }))
-vi.mock('@/modules/notifications/notifications.service', () => ({ notifyOwner: (...a: unknown[]) => notifyOwner(...a) }))
+vi.mock('@/modules/notifications/notifications.repository', () => ({
+  createBroadcastNotifications: (...a: unknown[]) => createRows(...a),
+  getTokensForOwners: (...a: unknown[]) => getTokens(...a),
+  recordBroadcastPushResults: (...a: unknown[]) => record(...a),
+  deleteDeviceTokens: (...a: unknown[]) => deleteTokens(...a),
+}))
+vi.mock('@/modules/notifications/providers/push.provider', () => ({ sendPush: (...a: unknown[]) => sendPush(...a) }))
 vi.mock('@/modules/drivers/drivers.repository', () => ({ docIssueExistsSql: (id: string) => `DOC_GATE(${id})` }))
 
 import {
@@ -227,17 +237,28 @@ describe('createBroadcast', () => {
 })
 
 describe('runBroadcast', () => {
-  beforeEach(() => { vi.clearAllMocks(); notifyOwner.mockResolvedValue(undefined) })
+  // Default world: every person has one phone called tok-<id>, their row is n<id>, and Firebase accepts everything.
+  beforeEach(() => {
+    vi.clearAllMocks()
+    createRows.mockImplementation(async (p: { ownerIds: string[] }) => p.ownerIds.map((id) => ({ id: `n${id}`, ownerId: id })))
+    getTokens.mockImplementation(async (_t: string, ids: string[]) => new Map(ids.map((id) => [id, [`tok-${id}`]])))
+    sendPush.mockImplementation(async (tokens: string[]) => ({ invalidTokens: [], successCount: tokens.length, failureCount: 0, transientFailure: false, tokenResults: tokens.map(() => 'ok') }))
+    record.mockResolvedValue(undefined)
+    deleteTokens.mockResolvedValue(undefined)
+  })
   type Row = { title: string; body: string; category: string; audience: Audience; status: string; recipient_count: number }
   const row = (over: Partial<Row> = {}): Row => ({ title: 'Hello', body: 'World', category: 'announcement', audience: { role: 'rider' }, status: 'queued', recipient_count: 0, ...over })
 
   // Answers each statement by what it does, so the tests do not depend on the order of the queries.
-  function db(opts: { row?: Row | null; recipients?: string[]; already?: string[]; sentCount?: number; resolveError?: Error }) {
+  function db(opts: { row?: Row | null; recipients?: string[]; already?: string[]; unsent?: string[]; sentCount?: number; resolveError?: Error }) {
     const calls: string[] = []
     query.mockImplementation(async (sql: string) => {
       if (sql.includes('SELECT title, body, category, audience, status')) return { rows: opts.row === null ? [] : [opts.row ?? row()] }
       if (sql.includes("SET status = 'sending'")) { calls.push('sending'); return { rows: [] } }
-      if (sql.includes('FROM notification_logs WHERE broadcast_id')) return { rows: (opts.already ?? []).map((owner_id) => ({ owner_id })) }
+      if (sql.includes('provider_response IS NULL AS unsent')) {
+        const unsent = new Set(opts.unsent ?? [])
+        return { rows: [...(opts.already ?? []), ...(opts.unsent ?? [])].map((owner_id) => ({ id: `n${owner_id}`, owner_id, unsent: unsent.has(owner_id) })) }
+      }
       if (sql.includes("SET status = 'failed'")) { calls.push('failed'); return { rows: [] } }
       if (sql.includes('SET failed_count')) { calls.push('retry'); return { rows: [] } }
       if (sql.includes("SET status = 'done'")) { calls.push('done'); return { rows: [{ sent: opts.sentCount ?? 0 }] } }
@@ -246,59 +267,185 @@ describe('runBroadcast', () => {
     })
     return calls
   }
+  const doneArgs = () => (query.mock.calls.find(([sql]) => String(sql).includes("SET status = 'done'")) as [string, unknown[]])[1]
+  const recorded = () => record.mock.calls.flatMap((c) => c[0] as Array<Record<string, unknown>>)
 
-  it('notifies every resolved recipient with the stored text, the category as the type, and the broadcast id', async () => {
+  it('creates the in-app rows for a group in one statement, pushes it in one call, and records every person\'s result', async () => {
     const calls = db({ recipients: ['1', '2'], sentCount: 2 })
     expect(await runBroadcast('9')).toBe(2)
-    expect(notifyOwner).toHaveBeenCalledTimes(2)
-    expect(notifyOwner).toHaveBeenCalledWith({ ownerType: 'user', ownerId: 1n, type: 'announcement', title: 'Hello', body: 'World', broadcastId: 9n })
+    expect(createRows).toHaveBeenCalledTimes(1)
+    expect(createRows).toHaveBeenCalledWith({ ownerType: 'user', ownerIds: ['1', '2'], type: 'announcement', title: 'Hello', body: 'World', broadcastId: 9n })
+    expect(getTokens).toHaveBeenCalledTimes(1) // one look-up of everyone's phones
+    expect(sendPush).toHaveBeenCalledTimes(1) // one Firebase call for the group
+    expect(sendPush.mock.calls[0]![0]).toEqual(['tok-1', 'tok-2'])
+    expect(recorded()).toEqual([
+      { id: 'n1', attempted: true, successCount: 1, failureCount: 0, invalidTokens: 0 },
+      { id: 'n2', attempted: true, successCount: 1, failureCount: 0, invalidTokens: 0 },
+    ])
     expect(calls).toEqual(['sending', 'done'])
+  })
+
+  it('each phone gets its own notification id (so a tap can be tied to a person later), and the message uses the type\'s channel and lifetime', async () => {
+    db({ recipients: ['1', '2'] })
+    await runBroadcast('9')
+    const [, msg, perToken] = sendPush.mock.calls[0]!
+    expect(perToken).toEqual([{ notificationId: 'n1', type: 'announcement' }, { notificationId: 'n2', type: 'announcement' }])
+    expect(msg).toMatchObject({ title: 'Hello', body: 'World', channelId: 'announcements_v1', ttlSeconds: 86400 })
+  })
+
+  it('an offer uses the offers channel', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(at('06:30'))
+    db({ row: row({ category: 'offer' }), recipients: ['1'] })
+    await runBroadcast('9')
+    expect(sendPush.mock.calls[0]![1]).toMatchObject({ channelId: 'offers_v1' })
+    expect(createRows).toHaveBeenCalledWith(expect.objectContaining({ type: 'offer' }))
+    vi.useRealTimers()
   })
 
   it('a broadcast that is already done does nothing at all', async () => {
     const calls = db({ row: row({ status: 'done' }), recipients: ['1'] })
     expect(await runBroadcast('9')).toBe(0)
-    expect(notifyOwner).not.toHaveBeenCalled()
+    expect(createRows).not.toHaveBeenCalled()
+    expect(sendPush).not.toHaveBeenCalled()
     expect(calls).toEqual([])
   })
 
   it('an unknown broadcast does nothing', async () => {
     db({ row: null })
     expect(await runBroadcast('9')).toBe(0)
-    expect(notifyOwner).not.toHaveBeenCalled()
+    expect(createRows).not.toHaveBeenCalled()
   })
 
-  it('a repeated run skips everyone already notified for this broadcast', async () => {
+  it('a repeated run only creates rows for people not yet notified', async () => {
     db({ recipients: ['1', '2', '3'], already: ['1', '3'], sentCount: 3 })
     await runBroadcast('9')
-    expect(notifyOwner).toHaveBeenCalledTimes(1)
-    expect(notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 2n }))
+    expect(createRows).toHaveBeenCalledTimes(1)
+    expect(createRows.mock.calls[0]![0].ownerIds).toEqual(['2'])
+  })
+
+  it('a person whose row exists but whose push result never arrived (the run stopped between) is pushed now, without a second row', async () => {
+    db({ recipients: ['1', '2'], already: ['2'], unsent: ['1'], sentCount: 2 })
+    await runBroadcast('9')
+    expect(createRows).not.toHaveBeenCalled()
+    expect(sendPush.mock.calls.map((c) => c[0])).toEqual([['tok-1']])
+    expect(recorded()).toEqual([{ id: 'n1', attempted: true, successCount: 1, failureCount: 0, invalidTokens: 0 }])
   })
 
   it('drivers are notified as drivers', async () => {
     db({ row: row({ audience: { role: 'driver' } }), recipients: ['5'] })
     await runBroadcast('9')
-    expect(notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ ownerType: 'driver', ownerId: 5n }))
+    expect(createRows).toHaveBeenCalledWith(expect.objectContaining({ ownerType: 'driver', ownerIds: ['5'] }))
+    expect(getTokens).toHaveBeenCalledWith('driver', ['5'])
   })
 
-  it('one failing recipient does not stop the rest, and is counted', async () => {
-    db({ recipients: ['1', '2'] })
-    notifyOwner.mockRejectedValueOnce(new Error('boom'))
+  it('works through groups of 500: 1,200 people are 3 statements and 3 Firebase calls, never one call per person', async () => {
+    const ids = Array.from({ length: 1200 }, (_, i) => String(i + 1))
+    db({ recipients: ids, sentCount: 1200 })
     await runBroadcast('9')
-    expect(notifyOwner).toHaveBeenCalledTimes(2)
-    const doneCall = query.mock.calls.find(([sql]) => String(sql).includes("SET status = 'done'")) as [string, unknown[]]
-    expect(doneCall[1]).toEqual(['9', 1, 0])
+    expect(createRows.mock.calls.map((c) => c[0].ownerIds.length)).toEqual([500, 500, 200])
+    expect(sendPush.mock.calls.map((c) => (c[0] as string[]).length)).toEqual([500, 500, 200])
+    expect(getTokens).toHaveBeenCalledTimes(3)
+    expect(record).toHaveBeenCalledTimes(3)
   })
 
-  const doneArgs = () => (query.mock.calls.find(([sql]) => String(sql).includes("SET status = 'done'")) as [string, unknown[]])[1]
+  it('a person with no registered phone still gets the in-app row, is recorded as not pushed, and costs no Firebase call', async () => {
+    getTokens.mockResolvedValue(new Map())
+    db({ recipients: ['1', '2'] })
+    await runBroadcast('9')
+    expect(sendPush).not.toHaveBeenCalled()
+    expect(recorded()).toEqual([
+      { id: 'n1', attempted: false, successCount: 0, failureCount: 0, invalidTokens: 0 },
+      { id: 'n2', attempted: false, successCount: 0, failureCount: 0, invalidTokens: 0 },
+    ])
+  })
 
-  it('records who was promised but dropped between the check and the send (switched off meanwhile, or over the daily limit by another broadcast)', async () => {
+  it('a person with two phones gets one push per phone, counted once for them', async () => {
+    getTokens.mockResolvedValue(new Map([['1', ['tok-a', 'tok-b']]]))
+    db({ recipients: ['1'] })
+    await runBroadcast('9')
+    expect(sendPush.mock.calls[0]![0]).toEqual(['tok-a', 'tok-b'])
+    expect(recorded()).toEqual([{ id: 'n1', attempted: true, successCount: 2, failureCount: 0, invalidTokens: 0 }])
+  })
+
+  it('a dead phone is counted for that person and removed from our list; the others are unaffected', async () => {
+    sendPush.mockResolvedValue({ invalidTokens: ['tok-2'], successCount: 1, failureCount: 1, transientFailure: false, tokenResults: ['ok', 'invalid'] })
+    db({ recipients: ['1', '2'] })
+    await runBroadcast('9')
+    expect(recorded()).toEqual([
+      { id: 'n1', attempted: true, successCount: 1, failureCount: 0, invalidTokens: 0 },
+      { id: 'n2', attempted: true, successCount: 0, failureCount: 1, invalidTokens: 1 },
+    ])
+    expect(deleteTokens).toHaveBeenCalledWith(['tok-2'])
+  })
+
+  it('trouble that a retry can fix is retried for just those phones, and the person then counts as pushed', async () => {
+    vi.useFakeTimers()
+    sendPush
+      .mockResolvedValueOnce({ invalidTokens: [], successCount: 1, failureCount: 1, transientFailure: true, tokenResults: ['ok', 'retry'] })
+      .mockResolvedValueOnce({ invalidTokens: [], successCount: 1, failureCount: 0, transientFailure: false, tokenResults: ['ok'] })
+    db({ recipients: ['1', '2'] })
+    const run = runBroadcast('9')
+    await vi.advanceTimersByTimeAsync(5000)
+    await run
+    expect(sendPush.mock.calls.map((c) => c[0])).toEqual([['tok-1', 'tok-2'], ['tok-2']])
+    expect(recorded()).toEqual([
+      { id: 'n1', attempted: true, successCount: 1, failureCount: 0, invalidTokens: 0 },
+      { id: 'n2', attempted: true, successCount: 1, failureCount: 0, invalidTokens: 0 },
+    ])
+    vi.useRealTimers()
+  })
+
+  it('Firebase down for every attempt: tried 3 times, then recorded as failed with a reason, and the broadcast still completes', async () => {
+    vi.useFakeTimers()
+    sendPush.mockImplementation(async (tokens: string[]) => ({ invalidTokens: [], successCount: 0, failureCount: tokens.length, transientFailure: true, tokenResults: tokens.map(() => 'retry') }))
+    const calls = db({ recipients: ['1'] })
+    const run = runBroadcast('9')
+    await vi.advanceTimersByTimeAsync(20_000)
+    await run
+    expect(sendPush).toHaveBeenCalledTimes(3)
+    expect(recorded()).toEqual([{ id: 'n1', attempted: true, successCount: 0, failureCount: 1, invalidTokens: 0, failureReason: 'fcm_unavailable' }])
+    expect(calls).toEqual(['sending', 'done'])
+    vi.useRealTimers()
+  })
+
+  it('push not configured here (no per-phone answer): nothing is retried and nothing is counted', async () => {
+    sendPush.mockResolvedValue({ invalidTokens: [], successCount: 0, failureCount: 0, transientFailure: false })
+    db({ recipients: ['1'] })
+    await runBroadcast('9')
+    expect(sendPush).toHaveBeenCalledTimes(1)
+    expect(recorded()).toEqual([{ id: 'n1', attempted: true, successCount: 0, failureCount: 0, invalidTokens: 0 }])
+  })
+
+  it('a group that cannot be written does not stop the next one, and its people are counted as failed', async () => {
+    const ids = Array.from({ length: 600 }, (_, i) => String(i + 1))
+    createRows.mockRejectedValueOnce(new Error('db blip'))
+    db({ recipients: ids, sentCount: 100 })
+    await runBroadcast('9') // final attempt by default: completes
+    expect(createRows).toHaveBeenCalledTimes(2)
+    expect(doneArgs()[1]).toBe(500)
+  })
+
+  it('failed groups make a non-final attempt throw, so the queue retries exactly them', async () => {
+    createRows.mockRejectedValueOnce(new Error('db blip'))
+    const calls = db({ recipients: ['1', '2'] })
+    await expect(runBroadcast('9', false)).rejects.toThrow('could not be notified')
+    expect(calls).toEqual(['sending', 'retry']) // recorded, but not marked done
+  })
+
+  it('a push that throws unexpectedly fails only its group', async () => {
+    sendPush.mockRejectedValueOnce(new Error('boom'))
+    db({ recipients: ['1', '2'] })
+    await runBroadcast('9')
+    expect(doneArgs()[1]).toBe(2)
+  })
+
+  it('records who was promised but dropped between the check and the send', async () => {
     db({ row: row({ recipient_count: 5 }), recipients: ['1', '2'], sentCount: 2 })
     await runBroadcast('9')
     expect(doneArgs()).toEqual(['9', 0, 3])
   })
 
-  it('people notified by an earlier pass are not counted as dropped (their own row now counts toward the limit)', async () => {
+  it('people notified by an earlier pass are not counted as dropped', async () => {
     db({ row: row({ recipient_count: 2 }), recipients: ['2'], already: ['1'], sentCount: 2 })
     await runBroadcast('9')
     expect(doneArgs()).toEqual(['9', 0, 0])
@@ -310,35 +457,11 @@ describe('runBroadcast', () => {
     expect(doneArgs()[2]).toBe(0)
   })
 
-  it('recipients who could not be notified make a non-final attempt throw, so the queue retries exactly them', async () => {
-    const calls = db({ recipients: ['1', '2'] })
-    notifyOwner.mockRejectedValueOnce(new Error('boom'))
-    await expect(runBroadcast('9', false)).rejects.toThrow('could not be notified')
-    expect(calls).toEqual(['sending', 'retry']) // recorded, but not marked done
-    const upd = query.mock.calls.find(([sql]) => String(sql).includes('SET failed_count')) as [string, unknown[]]
-    expect(upd[1]).toEqual(['9', 1])
-  })
-
-  it('on the final attempt the same failure is counted and the broadcast completes', async () => {
-    const calls = db({ recipients: ['1', '2'], sentCount: 1 })
-    notifyOwner.mockRejectedValueOnce(new Error('boom'))
-    await expect(runBroadcast('9', true)).resolves.toBe(1)
-    expect(calls).toEqual(['sending', 'done'])
-  })
-
-  it('an offer inside the allowed hours is sent, with the offer type', async () => {
-    vi.useFakeTimers(); vi.setSystemTime(at('06:30')) // 12:00 IST
-    db({ row: row({ category: 'offer' }), recipients: ['1'], sentCount: 1 })
-    await runBroadcast('9')
-    expect(notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ type: 'offer' }))
-    vi.useRealTimers()
-  })
-
   it('an offer whose allowed hours passed before a retry ran is not sent', async () => {
     vi.useFakeTimers(); vi.setSystemTime(at('16:30')) // 22:00 IST
     const calls = db({ row: row({ category: 'offer' }), recipients: ['1'] })
     expect(await runBroadcast('9')).toBe(0)
-    expect(notifyOwner).not.toHaveBeenCalled()
+    expect(createRows).not.toHaveBeenCalled()
     expect(calls).toEqual(['failed'])
     vi.useRealTimers()
   })
@@ -347,13 +470,6 @@ describe('runBroadcast', () => {
     const calls = db({ recipients: [], resolveError: new Error('db down') })
     await expect(runBroadcast('9')).rejects.toThrow('db down')
     expect(calls).toEqual(['sending', 'failed'])
-  })
-
-  it('works through more than one group of recipients', async () => {
-    const ids = Array.from({ length: 45 }, (_, i) => String(i + 1))
-    db({ recipients: ids, sentCount: 45 })
-    await runBroadcast('9')
-    expect(notifyOwner).toHaveBeenCalledTimes(45)
   })
 })
 

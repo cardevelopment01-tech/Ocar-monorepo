@@ -5,10 +5,13 @@ import { AppErrors } from '@/constants/errors'
 import { recordAuditLog } from '@/lib/audit-log'
 import { logger } from '@/lib/logger'
 import {
-  BROADCAST_JOB_ATTEMPTS, BROADCAST_CHUNK_PAUSE_MS, BROADCAST_CHUNK_SIZE, BROADCAST_DAILY_CAP_PER_PERSON, PUSH_TOKEN_FRESH_DAYS,
+  BROADCAST_JOB_ATTEMPTS, BROADCAST_CHUNK_PAUSE_MS, BROADCAST_CHUNK_SIZE, BROADCAST_DAILY_CAP_PER_PERSON, BROADCAST_PUSH_ATTEMPTS,
+  BROADCAST_PUSH_RETRY_PAUSE_MS, PUSH_TOKEN_FRESH_DAYS,
 } from '@/constants/limits'
 import { docIssueExistsSql } from '@/modules/drivers/drivers.repository'
-import { notifyOwner } from './notifications.service'
+import * as repo from './notifications.repository'
+import { pushDefaults } from './notifications.registry'
+import { sendPush, type PushMessage } from './providers/push.provider'
 
 const log = logger.child({ module: 'broadcast' })
 
@@ -238,6 +241,51 @@ export async function createBroadcast(
 
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
+type Outcome = { attempted: boolean; successCount: number; failureCount: number; invalidTokens: number; stillFailing: boolean }
+
+// Pushes one group (at most 500 people) with as few calls as possible: one lookup for everyone's phones, and Firebase takes up to 500
+// messages per call, so a group is normally one call. Trouble a retry could fix (Firebase or the network) is retried for just the phones
+// concerned; a dead phone is removed from our list; every person's row gets what happened to them in one statement.
+async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'user', msg: PushMessage, type: string): Promise<void> {
+  const tokensByOwner = await repo.getTokensForOwners(ownerType, rows.map((r) => r.ownerId))
+  const rowByOwner = new Map(rows.map((r) => [r.ownerId, r]))
+  const outcome = new Map<string, Outcome>(rows.map((r) => [r.ownerId, { attempted: false, successCount: 0, failureCount: 0, invalidTokens: 0, stillFailing: false }]))
+
+  let pending: Array<{ token: string; ownerId: string }> = []
+  for (const r of rows) for (const token of tokensByOwner.get(r.ownerId) ?? []) pending.push({ token, ownerId: r.ownerId })
+  for (const p of pending) outcome.get(p.ownerId)!.attempted = true
+
+  const dead: string[] = []
+  for (let attempt = 1; pending.length > 0 && attempt <= BROADCAST_PUSH_ATTEMPTS; attempt++) {
+    if (attempt > 1) await pause(BROADCAST_PUSH_RETRY_PAUSE_MS * (attempt - 1))
+    const res = await sendPush(
+      pending.map((p) => p.token), msg,
+      pending.map((p) => ({ notificationId: rowByOwner.get(p.ownerId)!.id, type })),
+    )
+    // No per-phone answer means nothing was sent (push is not configured here): nothing to count or retry.
+    if (!res.tokenResults) { pending = []; break }
+    const again: typeof pending = []
+    pending.forEach((p, i) => {
+      const o = outcome.get(p.ownerId)!
+      const r = res.tokenResults![i]
+      if (r === 'ok') o.successCount++
+      else if (r === 'invalid') { o.failureCount++; o.invalidTokens++; dead.push(p.token) }
+      else again.push(p)
+    })
+    pending = again
+  }
+  for (const p of pending) { const o = outcome.get(p.ownerId)!; o.failureCount++; o.stillFailing = true }
+
+  if (dead.length > 0) await repo.deleteDeviceTokens(dead)
+  await repo.recordBroadcastPushResults(rows.map((r) => {
+    const o = outcome.get(r.ownerId)!
+    return {
+      id: r.id, attempted: o.attempted, successCount: o.successCount, failureCount: o.failureCount, invalidTokens: o.invalidTokens,
+      ...(o.stillFailing && o.successCount === 0 ? { failureReason: 'fcm_unavailable' } : {}),
+    }
+  }))
+}
+
 // Runs in the push worker. Safe to run again after a failure: everyone already notified (a row for this broadcast and person) is
 // skipped, and a unique index on (broadcast, person) means two overlapping runs can never notify the same person twice. Recipients are
 // re-resolved at run time, so an opt-out made between "send" and the run is honoured.
@@ -260,28 +308,49 @@ export async function runBroadcast(broadcastId: string, finalAttempt = true): Pr
     [broadcastId],
   )
   const ownerType = row.audience.role === 'driver' ? 'driver' : 'user'
+  // The same message goes to everyone; only each person's own notification id differs (sent per phone, see deliverGroup).
+  const defaults = pushDefaults(row.category)
+  const msg: PushMessage = {
+    title: row.title, body: row.body, ttlSeconds: defaults.ttlSeconds,
+    ...(defaults.channelId !== undefined ? { channelId: defaults.channelId } : {}),
+    ...(defaults.tag !== undefined ? { tag: defaults.tag } : {}),
+  }
   let failed = 0
   let droppedAtSend = 0
   try {
     const all = await resolveAudience(row.audience, row.category)
-    const already = new Set((await pool.query<{ owner_id: string }>(
-      `SELECT owner_id::text AS owner_id FROM notification_logs WHERE broadcast_id = $1 AND owner_type = $2`, [broadcastId, ownerType],
-    )).rows.map((r) => r.owner_id))
+    const existing = (await pool.query<{ id: string; owner_id: string; unsent: boolean }>(
+      `SELECT id::text AS id, owner_id::text AS owner_id, provider_response IS NULL AS unsent FROM notification_logs WHERE broadcast_id = $1 AND owner_type = $2`, [broadcastId, ownerType],
+    )).rows
+    const already = new Set(existing.map((r) => r.owner_id))
     const todo = all.filter((id) => !already.has(id))
+    // A person whose row was written but whose push never got its result (the run stopped in between) is pushed now, not skipped.
+    const unsent = existing.filter((r) => r.unsent).map((r) => ({ id: r.id, ownerId: r.owner_id }))
     // The check shown to the admin is a snapshot: by the time this runs someone may have switched the type off, or another broadcast may
     // have used up their daily limit. Everyone promised but neither already notified nor still to notify was dropped; say so.
     droppedAtSend = Math.max(0, row.recipient_count - new Set([...all, ...already]).size)
 
+    let first = true
+    const group = async (size: number, work: () => Promise<void>): Promise<void> => {
+      if (!first && BROADCAST_CHUNK_PAUSE_MS > 0) await pause(BROADCAST_CHUNK_PAUSE_MS)
+      first = false
+      try { await work() } catch (err) {
+        failed += size
+        log.warn({ err, broadcastId, size }, 'broadcast: could not notify a group of recipients')
+      }
+    }
+    for (let i = 0; i < unsent.length; i += BROADCAST_CHUNK_SIZE) {
+      const rows = unsent.slice(i, i + BROADCAST_CHUNK_SIZE)
+      await group(rows.length, () => deliverGroup(rows, ownerType, msg, row.category))
+    }
     for (let i = 0; i < todo.length; i += BROADCAST_CHUNK_SIZE) {
-      if (i > 0 && BROADCAST_CHUNK_PAUSE_MS > 0) await pause(BROADCAST_CHUNK_PAUSE_MS)
-      await Promise.all(todo.slice(i, i + BROADCAST_CHUNK_SIZE).map(async (id) => {
-        try {
-          await notifyOwner({ ownerType, ownerId: BigInt(id), type: row.category, title: row.title, body: row.body, broadcastId: BigInt(broadcastId) })
-        } catch (err) {
-          failed++
-          log.warn({ err, broadcastId, ownerId: id }, 'broadcast: could not notify one recipient')
-        }
-      }))
+      const ids = todo.slice(i, i + BROADCAST_CHUNK_SIZE)
+      // In-app rows and pushes for a group: no live socket update per person (that was a Redis write each); the push is the alert and
+      // the app's list refreshes when it is opened.
+      await group(ids.length, async () => {
+        const rows = await repo.createBroadcastNotifications({ ownerType, ownerIds: ids, type: row.category, title: row.title, body: row.body, broadcastId: BigInt(broadcastId) })
+        await deliverGroup(rows, ownerType, msg, row.category)
+      })
     }
   } catch (err) {
     await pool.query(`UPDATE notification_broadcasts SET status = 'failed' WHERE id = $1`, [broadcastId]).catch(() => undefined)
