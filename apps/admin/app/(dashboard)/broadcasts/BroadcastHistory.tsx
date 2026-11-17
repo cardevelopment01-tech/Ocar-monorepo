@@ -22,7 +22,11 @@ const STATUS: Record<BroadcastSummary['status'], { label: string; cls: string }>
 const when = (iso: string) =>
   new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
 
-function Num({ value, tone }: { value: number; tone?: 'good' | 'bad' | 'muted' }) {
+const UNTRACKED = 'Sent before delivery tracking existed: only how many it was sent to is known'
+
+/** A count; or a dash when it was not recorded (a send made before tracking). */
+function Num({ value, tone, unknown }: { value: number; tone?: 'good' | 'bad' | 'muted'; unknown?: boolean }) {
+  if (unknown) return <span className="text-text-muted" title={UNTRACKED}>—</span>
   return <span className={cn('tabular-nums', tone === 'good' && value > 0 && 'text-success font-semibold', tone === 'bad' && value > 0 && 'text-danger font-semibold', tone === 'muted' && 'text-text-muted')}>{value}</span>
 }
 
@@ -120,7 +124,7 @@ export default function BroadcastHistory({ refreshKey }: { refreshKey: number })
                 <th className="py-2 pr-4 font-semibold text-right" title="No registered phone, or the push result has not come back yet">In-app only</th>
                 <th className="py-2 pr-4 font-semibold text-right" title="Firebase refused every phone (a phone that no longer exists is removed from our list)">Refused</th>
                 <th className="py-2 pr-4 font-semibold text-right" title="Opened the notification in the app's notification list. Tapping the push itself is not counted yet.">Opened</th>
-                <th className="py-2 font-semibold text-right" title="Matched the audience but left out: switched this type off, or already got the daily limit">Left out</th>
+                <th className="py-2 font-semibold text-right" title="Matched the audience but left out: switched this type off, or already got the daily limit (at the check, or by the time it was sent)">Left out</th>
               </tr>
             </thead>
             <tbody>
@@ -132,17 +136,17 @@ export default function BroadcastHistory({ refreshKey }: { refreshKey: number })
                       <p className="font-semibold text-text-primary truncate" title={b.title}>{b.title}</p>
                       <p className="text-xs text-text-muted truncate" title={b.body}>{b.body}</p>
                       <p className="text-[11px] text-text-muted mt-0.5">
-                        {when(b.createdAt)}{b.sentBy ? ` · ${b.sentBy}` : ''}{b.category === 'offer' ? ' · offer' : ''}
+                        {when(b.createdAt)}{b.sentBy ? ` · ${b.sentBy}` : ''}{b.category === 'offer' ? ' · offer' : ''}{b.tracked ? '' : ' · before tracking'}
                       </p>
                     </td>
                     <td className="py-3 pr-4 text-xs text-text-secondary max-w-[14rem]">{describeAudience(b.audience, names)}</td>
                     <td className="py-3 pr-4"><span className={status.cls}>{status.label}</span></td>
                     <td className="py-3 pr-4 text-right"><Num value={b.sent} /></td>
-                    <td className="py-3 pr-4 text-right"><Num value={b.pushed} tone="good" /></td>
-                    <td className="py-3 pr-4 text-right"><Num value={b.noPush} tone="muted" />{b.settling && b.noPush > 0 ? <span className="text-text-muted">*</span> : null}</td>
-                    <td className="py-3 pr-4 text-right"><Num value={b.pushFailed} tone="bad" /></td>
-                    <td className="py-3 pr-4 text-right"><Num value={b.opened} /></td>
-                    <td className="py-3 text-right"><Num value={b.skippedOptedOut + b.skippedCapped} tone="muted" />{b.failed > 0 ? <span className="block text-[11px] text-danger">{b.failed} not sent</span> : null}</td>
+                    <td className="py-3 pr-4 text-right"><Num value={b.pushed} tone="good" unknown={!b.tracked} /></td>
+                    <td className="py-3 pr-4 text-right"><Num value={b.noPush} tone="muted" unknown={!b.tracked} />{b.settling && b.noPush > 0 ? <span className="text-text-muted">*</span> : null}</td>
+                    <td className="py-3 pr-4 text-right"><Num value={b.pushFailed} tone="bad" unknown={!b.tracked} /></td>
+                    <td className="py-3 pr-4 text-right"><Num value={b.opened} unknown={!b.tracked} /></td>
+                    <td className="py-3 text-right"><Num value={b.skippedOptedOut + b.skippedCapped + b.skippedAtSend} tone="muted" />{b.failed > 0 ? <span className="block text-[11px] text-danger">{b.failed} not sent</span> : null}</td>
                   </tr>
                 )
               })}

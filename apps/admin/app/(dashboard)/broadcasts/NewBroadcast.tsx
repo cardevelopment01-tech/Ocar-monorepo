@@ -178,6 +178,16 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
             {preview.skippedCapped > 0 && <li>{preview.skippedCapped} left out: already got {preview.dailyCap} broadcasts in the last 24 hours</li>}
             {preview.phonesNotFound.length > 0 && <li className="text-error">No active {who} account for: {preview.phonesNotFound.join(', ')}</li>}
           </ul>
+          {preview.people.length > 0 && (
+            <div className="text-xs">
+              <p className="font-semibold text-text-primary">Going to</p>
+              <ul className="text-text-secondary space-y-0.5">
+                {preview.people.map((p) => (
+                  <li key={p.phone}>{p.name?.trim() || 'No name on file'}{p.code ? ` (${p.code})` : ''} · {p.phone}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {form.role === 'rider' && preview.inAppOnly > 0 && (
             <p className="text-[11px] text-warning">
               The rider app has no notification list yet, so riders without a recent phone registration will not see this message at all.

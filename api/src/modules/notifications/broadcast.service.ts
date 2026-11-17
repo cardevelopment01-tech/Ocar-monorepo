@@ -90,10 +90,14 @@ function candidateQuery(audience: Audience, category: BroadcastInput['category']
     filters.push(`AND EXISTS (SELECT 1 FROM rides r WHERE r.user_id = t.id AND r.requested_at > now() - make_interval(days => ${bind(audience.bookedInLastDays)}::int))`)
   }
 
-  const capped = audience.phones
-    ? 'false'
-    : `(SELECT count(*) FROM notification_logs l WHERE l.owner_type = $1 AND l.owner_id = t.id AND l.channel = 'in_app'
-                AND l.broadcast_id IS NOT NULL AND l.created_at > now() - interval '24 hours') >= ${bind(BROADCAST_DAILY_CAP_PER_PERSON)}::int`
+  // Broadcasts each person got in the last 24 hours, counted once for everyone (one pass over the recent broadcast rows) instead of one
+  // lookup per candidate: an "all riders" audience used to cost a lookup for every active rider, three times per send.
+  const recent = audience.phones
+    ? ''
+    : `LEFT JOIN (SELECT owner_id, count(*) AS n FROM notification_logs
+                 WHERE owner_type = $1 AND channel = 'in_app' AND broadcast_id IS NOT NULL AND created_at > now() - interval '24 hours'
+                 GROUP BY owner_id) recent ON recent.owner_id = t.id`
+  const capped = audience.phones ? 'false' : `COALESCE(recent.n, 0) >= ${bind(BROADCAST_DAILY_CAP_PER_PERSON)}::int`
 
   return {
     text: `SELECT t.id,
@@ -102,7 +106,7 @@ function candidateQuery(audience: Audience, category: BroadcastInput['category']
              ${capped} AS capped,
              EXISTS (SELECT 1 FROM device_tokens dt
                      WHERE dt.owner_type = $1 AND dt.owner_id = t.id AND dt.last_seen_at > now() - make_interval(days => $3::int)) AS has_device
-           FROM ${table} t
+           FROM ${table} t ${recent}
            WHERE t.status = 'active' ${filters.join(' ')}`,
     values,
   }
@@ -123,7 +127,11 @@ export type AudiencePreview = {
   sendableNow: boolean
   /** Phone numbers typed in that match no active account. */
   phonesNotFound: string[]
+  /** Who each typed number belongs to, so a wrong number is caught before sending. Only for a phone-number audience. */
+  people: Array<{ phone: string; name: string | null; code: string | null }>
 }
+
+type AudienceCounts = Omit<AudiencePreview, 'phonesNotFound' | 'people'>
 
 export async function resolveAudience(audience: Audience, category: BroadcastInput['category']): Promise<string[]> {
   const q = candidateQuery(audience, category)
@@ -133,7 +141,7 @@ export async function resolveAudience(audience: Audience, category: BroadcastInp
   return res.rows.map((r) => r.id)
 }
 
-export async function previewBroadcast(audience: Audience, category: BroadcastInput['category']): Promise<AudiencePreview> {
+async function countAudience(audience: Audience, category: BroadcastInput['category']): Promise<AudienceCounts> {
   const q = candidateQuery(audience, category)
   const res = await pool.query<{ matched: number; opted_out: number; capped: number; recipients: number; with_device: number }>(
     `SELECT count(*)::int AS matched,
@@ -144,14 +152,6 @@ export async function previewBroadcast(audience: Audience, category: BroadcastIn
        FROM (${q.text}) c`, q.values,
   )
   const r = res.rows[0]!
-  let phonesNotFound: string[] = []
-  if (audience.phones) {
-    const found = await pool.query<{ phone: string }>(
-      `SELECT phone FROM ${audience.role === 'driver' ? 'drivers' : 'users'} WHERE status = 'active' AND phone = ANY($1::text[])`, [audience.phones],
-    )
-    const have = new Set(found.rows.map((f) => f.phone))
-    phonesNotFound = audience.phones.filter((p) => !have.has(p))
-  }
   return {
     matched: r.matched,
     recipientCount: r.recipients,
@@ -161,8 +161,25 @@ export async function previewBroadcast(audience: Audience, category: BroadcastIn
     skippedCapped: r.capped,
     dailyCap: BROADCAST_DAILY_CAP_PER_PERSON,
     sendableNow: category === 'announcement' || offersAllowedNow(),
-    phonesNotFound,
   }
+}
+
+export async function previewBroadcast(audience: Audience, category: BroadcastInput['category']): Promise<AudiencePreview> {
+  const counts = await countAudience(audience, category)
+  let people: AudiencePreview['people'] = []
+  let phonesNotFound: string[] = []
+  if (audience.phones) {
+    const found = await pool.query<{ phone: string; name: string | null; code: string | null }>(
+      audience.role === 'driver'
+        ? `SELECT phone, full_name AS name, code FROM drivers WHERE status = 'active' AND phone = ANY($1::text[]) ORDER BY phone`
+        : `SELECT phone, name, NULL::text AS code FROM users WHERE status = 'active' AND phone = ANY($1::text[]) ORDER BY phone`,
+      [audience.phones],
+    )
+    people = found.rows
+    const have = new Set(people.map((p) => p.phone))
+    phonesNotFound = audience.phones.filter((p) => !have.has(p))
+  }
+  return { ...counts, phonesNotFound, people }
 }
 
 /** The audience as an admin may see it again: typed phone numbers are replaced by how many there were. */
@@ -179,7 +196,7 @@ export async function createBroadcast(
   if (input.category === 'offer' && !offersAllowedNow()) {
     throw httpError(422, 'Offers can only be sent between 10:00 and 21:00 IST', AppErrors.VALIDATION_ERROR.code)
   }
-  const preview = await previewBroadcast(input.audience, input.category)
+  const preview = await countAudience(input.audience, input.category)
   if (preview.recipientCount === 0) {
     const why = preview.matched === 0
       ? 'No recipients match this audience'
@@ -188,8 +205,8 @@ export async function createBroadcast(
   }
 
   const res = await pool.query<{ id: string }>(
-    `INSERT INTO notification_broadcasts (admin_id, title, body, category, audience, recipient_count, skipped_opted_out, skipped_capped)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    `INSERT INTO notification_broadcasts (admin_id, title, body, category, audience, recipient_count, skipped_opted_out, skipped_capped, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued') RETURNING id`,
     [adminId.toString(), input.title, input.body, input.category, JSON.stringify(input.audience), preview.recipientCount,
      preview.skippedOptedOut, preview.skippedCapped],
   )
@@ -227,8 +244,8 @@ const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 // `finalAttempt`: false while the queue will still retry this job. Recipients that could not be notified then make the run throw, so the
 // retry picks exactly those people up (everyone else is skipped); on the final attempt they are counted as failed and the run completes.
 export async function runBroadcast(broadcastId: string, finalAttempt = true): Promise<number> {
-  const row = (await pool.query<{ title: string; body: string; category: BroadcastInput['category']; audience: Audience; status: string }>(
-    'SELECT title, body, category, audience, status FROM notification_broadcasts WHERE id = $1', [broadcastId],
+  const row = (await pool.query<{ title: string; body: string; category: BroadcastInput['category']; audience: Audience; status: string; recipient_count: number }>(
+    'SELECT title, body, category, audience, status, recipient_count FROM notification_broadcasts WHERE id = $1', [broadcastId],
   )).rows[0]
   if (!row || row.status === 'done') return 0
   // The 10:00-21:00 window was checked when it was created; a retry can run later, so check again.
@@ -244,12 +261,16 @@ export async function runBroadcast(broadcastId: string, finalAttempt = true): Pr
   )
   const ownerType = row.audience.role === 'driver' ? 'driver' : 'user'
   let failed = 0
+  let droppedAtSend = 0
   try {
     const all = await resolveAudience(row.audience, row.category)
     const already = new Set((await pool.query<{ owner_id: string }>(
       `SELECT owner_id::text AS owner_id FROM notification_logs WHERE broadcast_id = $1 AND owner_type = $2`, [broadcastId, ownerType],
     )).rows.map((r) => r.owner_id))
     const todo = all.filter((id) => !already.has(id))
+    // The check shown to the admin is a snapshot: by the time this runs someone may have switched the type off, or another broadcast may
+    // have used up their daily limit. Everyone promised but neither already notified nor still to notify was dropped; say so.
+    droppedAtSend = Math.max(0, row.recipient_count - new Set([...all, ...already]).size)
 
     for (let i = 0; i < todo.length; i += BROADCAST_CHUNK_SIZE) {
       if (i > 0 && BROADCAST_CHUNK_PAUSE_MS > 0) await pause(BROADCAST_CHUNK_PAUSE_MS)
@@ -274,10 +295,10 @@ export async function runBroadcast(broadcastId: string, finalAttempt = true): Pr
 
   const done = await pool.query<{ sent: number }>(
     `UPDATE notification_broadcasts b
-        SET status = 'done', finished_at = now(), failed_count = $2,
+        SET status = 'done', finished_at = now(), failed_count = $2, skipped_at_send = $3,
             sent_count = (SELECT count(*)::int FROM notification_logs l WHERE l.broadcast_id = b.id)
       WHERE b.id = $1 RETURNING b.sent_count AS sent`,
-    [broadcastId, failed],
+    [broadcastId, failed, droppedAtSend],
   )
   return done.rows[0]?.sent ?? 0
 }
@@ -313,6 +334,10 @@ export type BroadcastSummary = {
   failed: number
   skippedOptedOut: number
   skippedCapped: number
+  /** Left out between the audience check and the send. */
+  skippedAtSend: number
+  /** False for a send made by a release that did not track it (no per-person records): only `sent` (the promised count) is known. */
+  tracked: boolean
   /** True while pushes are still being sent or results are still arriving (finished less than 2 minutes ago). */
   settling: boolean
 }
@@ -320,11 +345,11 @@ export type BroadcastSummary = {
 export async function listBroadcasts(params: z.infer<typeof listQuerySchema>): Promise<{ broadcasts: BroadcastSummary[]; nextBefore: string | null }> {
   const res = await pool.query(
     `SELECT b.id::text AS id, b.title, b.body, b.category, b.audience, b.status, a.email AS sent_by, b.created_at, b.finished_at,
-            b.sent_count, b.failed_count, b.skipped_opted_out, b.skipped_capped,
+            b.sent_count, b.failed_count, b.skipped_opted_out, b.skipped_capped, b.skipped_at_send, b.recipient_count,
             -- still going (queued/sending, for at most 30 minutes) or just finished (results keep arriving for ~2 minutes); a failed or
             -- long-stuck broadcast is not "settling", so the page does not poll for it forever
-            ((b.status IN ('queued', 'sending') AND b.created_at > now() - interval '30 minutes')
-             OR (b.status = 'done' AND b.finished_at > now() - interval '2 minutes')) AS settling,
+            COALESCE((b.status IN ('queued', 'sending') AND b.created_at > now() - interval '30 minutes')
+                     OR (b.status = 'done' AND b.finished_at > now() - interval '2 minutes'), false) AS settling,
             s.pushed, s.push_failed, s.opened
        FROM notification_broadcasts b
        LEFT JOIN admins a ON a.id = b.admin_id
@@ -340,7 +365,9 @@ export async function listBroadcasts(params: z.infer<typeof listQuerySchema>): P
   )
   const page = res.rows.slice(0, params.limit)
   const broadcasts: BroadcastSummary[] = page.map((r) => {
-    const sent = r.sent_count as number
+    // A tracked broadcast always has finished_at; a 'done' one without it was written by the previous release (see migration 144).
+    const tracked = !(r.status === 'done' && !r.finished_at)
+    const sent = tracked ? (r.sent_count as number) : (r.recipient_count as number)
     const pushed = r.pushed as number
     const pushFailed = r.push_failed as number
     return {
@@ -354,11 +381,13 @@ export async function listBroadcasts(params: z.infer<typeof listQuerySchema>): P
       createdAt: new Date(r.created_at as string).toISOString(),
       finishedAt: r.finished_at ? new Date(r.finished_at as string).toISOString() : null,
       sent, pushed, pushFailed,
-      noPush: Math.max(0, sent - pushed - pushFailed),
+      noPush: tracked ? Math.max(0, sent - pushed - pushFailed) : 0, // untracked: how it went is not known, so not "everyone in-app only"
       opened: r.opened as number,
       failed: r.failed_count as number,
       skippedOptedOut: r.skipped_opted_out as number,
       skippedCapped: r.skipped_capped as number,
+      skippedAtSend: r.skipped_at_send as number,
+      tracked,
       settling: r.settling as boolean,
     }
   })

@@ -90,7 +90,9 @@ describe('the audience query', () => {
     expect(sql).toContain('FROM drivers t')
     expect(sql).toContain('NOT p.push_enabled')
     expect(sql).toContain('NOT c.opted_out AND NOT c.capped')
-    expect(sql).toContain("l.broadcast_id IS NOT NULL AND l.created_at > now() - interval '24 hours'")
+    expect(sql).toContain("broadcast_id IS NOT NULL AND created_at > now() - interval '24 hours'")
+    expect(sql).toContain('GROUP BY owner_id') // counted once for everyone
+    expect(sql).not.toMatch(/SELECT count\(\*\) FROM notification_logs l WHERE l\.owner_id = t\.id/) // not once per candidate
     expect(values.slice(0, 2)).toEqual(['driver', 'announcements'])
     expect(values).toContain(2) // the daily limit is a bound value, not text in the SQL
   })
@@ -125,7 +127,7 @@ describe('the audience query', () => {
     const [sql, values] = lastQuery()
     expect(sql).toContain('t.phone = ANY(')
     expect(sql).toContain('false AS capped')
-    expect(sql).not.toContain('l.broadcast_id')
+    expect(sql).not.toContain('broadcast_id')
     expect(values).toContainEqual(['+919861003979'])
     expect(values).not.toContain(2)
   })
@@ -152,12 +154,20 @@ describe('previewBroadcast', () => {
     vi.useRealTimers()
   })
 
-  it('lists the typed phone numbers that match nobody', async () => {
+  it('lists the typed phone numbers that match nobody, and names the people the others belong to', async () => {
     query
       .mockResolvedValueOnce({ rows: [{ matched: 1, opted_out: 0, capped: 0, recipients: 1, with_device: 1 }] })
-      .mockResolvedValueOnce({ rows: [{ phone: '+919861003979' }] })
+      .mockResolvedValueOnce({ rows: [{ phone: '+919861003979', name: 'Ashish Nayak', code: 'DRV000329' }] })
     const p = await previewBroadcast({ role: 'driver', phones: ['+919861003979', '+918000000000'] }, 'announcement')
     expect(p.phonesNotFound).toEqual(['+918000000000'])
+    expect(p.people).toEqual([{ phone: '+919861003979', name: 'Ashish Nayak', code: 'DRV000329' }])
+  })
+
+  it('an audience without typed numbers looks nobody up', async () => {
+    query.mockResolvedValueOnce({ rows: [{ matched: 5, opted_out: 0, capped: 0, recipients: 5, with_device: 5 }] })
+    const p = await previewBroadcast(driverAll, 'announcement')
+    expect(query).toHaveBeenCalledTimes(1)
+    expect(p.people).toEqual([])
   })
 })
 
@@ -191,6 +201,7 @@ describe('createBroadcast', () => {
     expect(await createBroadcast(input, 1n, '1.2.3.4')).toEqual({ id: '9', recipientCount: 7, withDevice: 5 })
     const [insertSql, insertValues] = query.mock.calls[1] as [string, unknown[]]
     expect(insertSql).toContain('INSERT INTO notification_broadcasts')
+    expect(insertSql).toContain("'queued'") // the column default is 'done' (for the previous release), so this release says it explicitly
     expect(insertValues.slice(5)).toEqual([7, 1, 2])
     expect(queueAdd).toHaveBeenCalledWith('broadcast_send', { broadcastId: '9' }, expect.objectContaining({ jobId: 'broadcast-9', attempts: 3 }))
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: 'notification_broadcast', ipAddress: '1.2.3.4' }))
@@ -206,19 +217,19 @@ describe('createBroadcast', () => {
 
   it('typed phone numbers never reach the audit log (the stored audience keeps them to resolve the send)', async () => {
     query.mockResolvedValueOnce(counts({ matched: 1, recipients: 1, with_device: 1 }))
-      .mockResolvedValueOnce({ rows: [{ phone: '+919861003979' }] })
       .mockResolvedValueOnce({ rows: [{ id: '3' }] })
     await createBroadcast({ ...input, audience: { role: 'driver', phones: ['+919861003979'] } }, 1n, null)
+    expect(query).toHaveBeenCalledTimes(2) // one count and the insert: no second look-up of the same numbers
     expect(JSON.stringify(audit.mock.calls[0]![0].afterState)).not.toContain('9861003979')
     expect(audit.mock.calls[0]![0].afterState.audience).toEqual({ role: 'driver', phoneCount: 1 })
-    expect(JSON.parse((query.mock.calls[2] as [string, unknown[]])[1][4] as string).phones).toEqual(['+919861003979'])
+    expect(JSON.parse((query.mock.calls[1] as [string, unknown[]])[1][4] as string).phones).toEqual(['+919861003979'])
   })
 })
 
 describe('runBroadcast', () => {
   beforeEach(() => { vi.clearAllMocks(); notifyOwner.mockResolvedValue(undefined) })
-  type Row = { title: string; body: string; category: string; audience: Audience; status: string }
-  const row = (over: Partial<Row> = {}): Row => ({ title: 'Hello', body: 'World', category: 'announcement', audience: { role: 'rider' }, status: 'queued', ...over })
+  type Row = { title: string; body: string; category: string; audience: Audience; status: string; recipient_count: number }
+  const row = (over: Partial<Row> = {}): Row => ({ title: 'Hello', body: 'World', category: 'announcement', audience: { role: 'rider' }, status: 'queued', recipient_count: 0, ...over })
 
   // Answers each statement by what it does, so the tests do not depend on the order of the queries.
   function db(opts: { row?: Row | null; recipients?: string[]; already?: string[]; sentCount?: number; resolveError?: Error }) {
@@ -276,7 +287,27 @@ describe('runBroadcast', () => {
     await runBroadcast('9')
     expect(notifyOwner).toHaveBeenCalledTimes(2)
     const doneCall = query.mock.calls.find(([sql]) => String(sql).includes("SET status = 'done'")) as [string, unknown[]]
-    expect(doneCall[1]).toEqual(['9', 1])
+    expect(doneCall[1]).toEqual(['9', 1, 0])
+  })
+
+  const doneArgs = () => (query.mock.calls.find(([sql]) => String(sql).includes("SET status = 'done'")) as [string, unknown[]])[1]
+
+  it('records who was promised but dropped between the check and the send (switched off meanwhile, or over the daily limit by another broadcast)', async () => {
+    db({ row: row({ recipient_count: 5 }), recipients: ['1', '2'], sentCount: 2 })
+    await runBroadcast('9')
+    expect(doneArgs()).toEqual(['9', 0, 3])
+  })
+
+  it('people notified by an earlier pass are not counted as dropped (their own row now counts toward the limit)', async () => {
+    db({ row: row({ recipient_count: 2 }), recipients: ['2'], already: ['1'], sentCount: 2 })
+    await runBroadcast('9')
+    expect(doneArgs()).toEqual(['9', 0, 0])
+  })
+
+  it('nobody dropped means zero, never a negative number', async () => {
+    db({ row: row({ recipient_count: 1 }), recipients: ['1', '2'], sentCount: 2 })
+    await runBroadcast('9')
+    expect(doneArgs()[2]).toBe(0)
   })
 
   it('recipients who could not be notified make a non-final attempt throw, so the queue retries exactly them', async () => {
@@ -331,7 +362,7 @@ describe('listBroadcasts', () => {
   const dbRow = (over: Record<string, unknown> = {}) => ({
     id: '7', title: 'T', body: 'B', category: 'announcement', audience: { role: 'driver', docIssues: true }, status: 'done', sent_by: 'ops@ocar.app',
     created_at: '2026-11-17T06:41:04.000Z', finished_at: '2026-11-17T06:41:06.000Z', sent_count: 100, failed_count: 1,
-    skipped_opted_out: 4, skipped_capped: 2, settling: false, pushed: 60, push_failed: 10, opened: 5, ...over,
+    skipped_opted_out: 4, skipped_capped: 2, skipped_at_send: 0, recipient_count: 100, settling: false, pushed: 60, push_failed: 10, opened: 5, ...over,
   })
 
   it('maps the counts and works out how many got the in-app notification only', async () => {
@@ -353,6 +384,22 @@ describe('listBroadcasts', () => {
   it('never lets a negative "no push" appear if the counts overlap', async () => {
     query.mockResolvedValueOnce({ rows: [dbRow({ sent_count: 10, pushed: 8, push_failed: 5 })] })
     expect((await listBroadcasts({ limit: 20 })).broadcasts[0]!.noPush).toBe(0)
+  })
+
+  it('a tracked broadcast reports its own counts', async () => {
+    query.mockResolvedValueOnce({ rows: [dbRow({ skipped_at_send: 3, recipient_count: 120 })] })
+    expect((await listBroadcasts({ limit: 20 })).broadcasts[0]).toMatchObject({ tracked: true, sent: 100, skippedAtSend: 3 })
+  })
+
+  it('a send made by the previous release (done, never finished_at) is marked untracked and shows the promised count, not zeros', async () => {
+    query.mockResolvedValueOnce({ rows: [dbRow({ finished_at: null, sent_count: 0, recipient_count: 578, pushed: 0, push_failed: 0, settling: false })] })
+    const b = (await listBroadcasts({ limit: 20 })).broadcasts[0]!
+    expect(b).toMatchObject({ tracked: false, sent: 578, pushed: 0, pushFailed: 0, noPush: 0, status: 'done', settling: false, finishedAt: null })
+  })
+
+  it('a failed or queued broadcast without finished_at is still tracked (it has its own counts)', async () => {
+    query.mockResolvedValueOnce({ rows: [dbRow({ status: 'failed', finished_at: null, sent_count: 0, recipient_count: 50 })] })
+    expect((await listBroadcasts({ limit: 20 })).broadcasts[0]).toMatchObject({ tracked: true, sent: 0 })
   })
 
   it('hides typed phone numbers and shows how many there were', async () => {

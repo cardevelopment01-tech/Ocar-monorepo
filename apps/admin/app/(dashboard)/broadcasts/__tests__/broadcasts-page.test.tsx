@@ -18,12 +18,12 @@ import BroadcastsPage from '../page'
 // ("Sending..." and the message was gone, with no way to see delivery); seam=the API client is replaced; no_claim=real delivery.
 
 const preview = (over: Partial<AudiencePreview> = {}): AudiencePreview => ({
-  matched: 60, recipientCount: 50, withDevice: 30, inAppOnly: 20, skippedOptedOut: 6, skippedCapped: 4, dailyCap: 2, sendableNow: true, phonesNotFound: [], ...over,
+  matched: 60, recipientCount: 50, withDevice: 30, inAppOnly: 20, skippedOptedOut: 6, skippedCapped: 4, dailyCap: 2, sendableNow: true, phonesNotFound: [], people: [], ...over,
 })
 const row = (over: Partial<BroadcastSummary> = {}): BroadcastSummary => ({
   id: '7', title: 'Ocar is live', body: 'Stay online.', category: 'announcement', audience: { role: 'driver', cityIds: [2], docIssues: true },
   status: 'done', sentBy: 'ops@ocar.app', createdAt: '2026-11-17T06:41:04.000Z', finishedAt: '2026-11-17T06:41:06.000Z',
-  sent: 578, pushed: 333, pushFailed: 17, noPush: 228, opened: 27, failed: 0, skippedOptedOut: 3, skippedCapped: 2, settling: false, ...over,
+  sent: 578, pushed: 333, pushFailed: 17, noPush: 228, opened: 27, failed: 0, skippedOptedOut: 3, skippedCapped: 2, skippedAtSend: 0, tracked: true, settling: false, ...over,
 })
 
 async function fillMessage(user: ReturnType<typeof userEvent.setup>, title = 'Hello', body = 'World') {
@@ -150,6 +150,39 @@ describe('Broadcasts page', () => {
     expect(api.preview).toHaveBeenCalledWith('announcement', { role: 'driver', phones: ['+919861003979'] })
   })
 
+  it('names who each typed number belongs to, right above the Send button, so a wrong number is caught', async () => {
+    api.preview.mockResolvedValueOnce(preview({ recipientCount: 1, withDevice: 1, inAppOnly: 0, people: [{ phone: '+919861003979', name: 'Ashish Nayak', code: 'DRV000329' }] }))
+    const user = userEvent.setup()
+    render(<BroadcastsPage />)
+    await fillMessage(user)
+    await user.click(screen.getByLabelText(/Specific phone numbers only/))
+    await user.type(screen.getByLabelText(/Phone numbers/), '98610 03979')
+    await user.click(screen.getByRole('button', { name: 'Check audience' }))
+    const box = await screen.findByLabelText('Audience check')
+    expect(within(box).getByText('Going to')).toBeInTheDocument()
+    expect(within(box).getByText('Ashish Nayak (DRV000329) · +919861003979')).toBeInTheDocument()
+  })
+
+  it('a number whose owner has no name on file still says who it is, and a normal audience shows no list', async () => {
+    api.preview.mockResolvedValueOnce(preview({ recipientCount: 1, people: [{ phone: '+919861003979', name: null, code: null }] }))
+    const user = userEvent.setup()
+    render(<BroadcastsPage />)
+    await fillMessage(user)
+    await user.click(screen.getByLabelText(/Specific phone numbers only/))
+    await user.type(screen.getByLabelText(/Phone numbers/), '98610 03979')
+    await user.click(screen.getByRole('button', { name: 'Check audience' }))
+    expect(await screen.findByText('No name on file · +919861003979')).toBeInTheDocument()
+  })
+
+  it('a normal audience check has no "Going to" list', async () => {
+    const user = userEvent.setup()
+    render(<BroadcastsPage />)
+    await fillMessage(user)
+    await user.click(screen.getByRole('button', { name: 'Check audience' }))
+    await screen.findByLabelText('Audience check')
+    expect(screen.queryByText('Going to')).toBeNull()
+  })
+
   it('shows a phone number that matches nobody, and a server error in words', async () => {
     api.preview.mockResolvedValueOnce(preview({ recipientCount: 1, phonesNotFound: ['+918000000000'] }))
     const user = userEvent.setup()
@@ -181,6 +214,23 @@ describe('Sent broadcasts', () => {
     expect(within(tr).getByText('Sent')).toBeInTheDocument()
     for (const n of ['578', '333', '228', '17', '27']) expect(within(tr).getByText(n)).toBeInTheDocument()
     expect(within(tr).getByText('5')).toBeInTheDocument() // left out: 3 opted out + 2 over the daily limit
+  })
+
+  it('a send made before tracking shows dashes for what was never recorded, and says so, not zeros', async () => {
+    api.list.mockResolvedValue({ broadcasts: [row({ id: '3', title: 'Old send', tracked: false, sent: 578, pushed: 0, pushFailed: 0, noPush: 0, opened: 0, status: 'done', finishedAt: null })], nextBefore: null })
+    render(<BroadcastsPage />)
+    const tr = (await screen.findByText('Old send')).closest('tr')!
+    expect(within(tr).getByText(/before tracking/)).toBeInTheDocument()
+    expect(within(tr).getByText('578')).toBeInTheDocument()
+    expect(within(tr).getAllByText('—')).toHaveLength(4) // pushed, in-app only, refused, opened
+    expect(within(tr).getAllByTitle(/before delivery tracking existed/)).toHaveLength(4)
+  })
+
+  it('"Left out" adds up the people dropped at the check and the ones dropped by the time it was sent', async () => {
+    api.list.mockResolvedValue({ broadcasts: [row({ id: '4', title: 'Sum', skippedOptedOut: 1, skippedCapped: 2, skippedAtSend: 4 })], nextBefore: null })
+    render(<BroadcastsPage />)
+    const tr = (await screen.findByText('Sum')).closest('tr')!
+    expect(within(tr).getByText('7')).toBeInTheDocument()
   })
 
   it('shows a send to phone numbers as a count, and a failed or partial send plainly', async () => {

@@ -6,7 +6,9 @@ ALTER TABLE notification_logs
   ADD COLUMN IF NOT EXISTS broadcast_id BIGINT REFERENCES notification_broadcasts(id) ON DELETE SET NULL;
 
 ALTER TABLE notification_broadcasts
-  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'queued'
+  -- DEFAULT 'done' on purpose: if the previous release has to run against this schema (a deploy overlap or a flip-back) its inserts do
+  -- not set a status, and a row that nothing will ever update must not sit at 'queued' forever. This release always inserts 'queued'.
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'done'
     CHECK (status IN ('queued', 'sending', 'done', 'failed')),
   ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ,
@@ -14,10 +16,13 @@ ALTER TABLE notification_broadcasts
   ADD COLUMN IF NOT EXISTS failed_count INT NOT NULL DEFAULT 0,
   -- Matched the audience but left out: switched this type off in the app, or already got the daily limit of broadcasts.
   ADD COLUMN IF NOT EXISTS skipped_opted_out INT NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS skipped_capped INT NOT NULL DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS skipped_capped INT NOT NULL DEFAULT 0,
+  -- Left out between the audience check and the send (switched off meanwhile, or the daily limit reached by another broadcast).
+  ADD COLUMN IF NOT EXISTS skipped_at_send INT NOT NULL DEFAULT 0;
 
--- Broadcasts sent before this migration already ran to completion.
-UPDATE notification_broadcasts SET status = 'done', finished_at = created_at, sent_count = recipient_count WHERE status = 'queued';
+-- Broadcasts sent before this migration already ran to completion (status 'done' by the default above). A tracked broadcast always has
+-- finished_at set, so one with none is a send made by the previous release: the history shows it as "sent before tracking".
+UPDATE notification_broadcasts SET finished_at = created_at, sent_count = recipient_count WHERE finished_at IS NULL;
 
 -- Link the rows those earlier broadcasts created: same owner kind, type, title and body, written within 2 hours of the broadcast.
 -- One row per broadcast and person (the lowest id), so the unique index below can never fail on a duplicate.

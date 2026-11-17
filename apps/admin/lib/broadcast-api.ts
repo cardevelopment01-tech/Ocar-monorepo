@@ -25,6 +25,8 @@ export interface AudiencePreview {
   dailyCap: number
   sendableNow: boolean
   phonesNotFound: string[]
+  /** Who each typed number belongs to (typed-number audiences only). */
+  people: Array<{ phone: string; name: string | null; code: string | null }>
 }
 
 export interface BroadcastSummary {
@@ -45,6 +47,10 @@ export interface BroadcastSummary {
   failed: number
   skippedOptedOut: number
   skippedCapped: number
+  /** Left out between the audience check and the send. */
+  skippedAtSend: number
+  /** False for a send made before tracking existed: only `sent` (the promised count) is known. */
+  tracked: boolean
   settling: boolean
 }
 

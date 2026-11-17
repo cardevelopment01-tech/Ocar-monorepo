@@ -24,7 +24,7 @@ vi.mock('@/lib/storage', () => ({
 
 const app = createApp()
 const P = {
-  d1: '+919700007001', d2: '+919700007002', d3: '+919700007003', d4: '+919700007004',
+  d1: '+919700007001', d2: '+919700007002', d3: '+919700007003', d4: '+919700007004', d5: '+919700007005',
   r1: '+919700007011', r2: '+919700007012',
   unknown: '+919700007099',
 } as const
@@ -33,7 +33,7 @@ const SUPPORT = 'bc-support@test.ocar'
 
 let opsToken: string
 let supportToken: string
-let d: Record<'d1' | 'd2' | 'd3' | 'd4', string>
+let d: Record<'d1' | 'd2' | 'd3' | 'd4' | 'd5', string>
 let r: Record<'r1' | 'r2', string>
 let suvCategoryId: number
 let sedanCategoryId: number
@@ -51,8 +51,8 @@ beforeAll(async () => {
   sedanCategoryId = Number((await pool.query<{ id: string }>("SELECT id FROM vehicle_categories WHERE slug = 'sedan'")).rows[0]!.id)
   cuttackId = Number((await pool.query<{ id: string }>("SELECT id FROM cities WHERE slug = 'cuttack'")).rows[0]!.id)
 
-  d = { d1: '', d2: '', d3: '', d4: '' }
-  const cats: Record<keyof typeof d, string> = { d1: 'sedan', d2: 'suv', d3: 'sedan', d4: 'sedan' }
+  d = { d1: '', d2: '', d3: '', d4: '', d5: '' }
+  const cats: Record<keyof typeof d, string> = { d1: 'sedan', d2: 'suv', d3: 'sedan', d4: 'sedan', d5: 'sedan' }
   for (const k of Object.keys(d) as Array<keyof typeof d>) {
     const { driverId } = await loginDriver(app, redis, P[k])
     d[k] = driverId
@@ -60,6 +60,7 @@ beforeAll(async () => {
   }
   // d3 works in Cuttack; d4 is suspended (never a recipient)
   await pool.query('UPDATE drivers SET city_id = $2 WHERE id = $1', [d.d3, cuttackId])
+  await pool.query('UPDATE drivers SET city_id = $2 WHERE id = $1', [d.d5, cuttackId]) // d5: a clean slate for the daily-limit test
   await pool.query("UPDATE drivers SET status = 'suspended' WHERE id = $1", [d.d4])
   // d2's insurance expired a week ago: a document keeps them offline
   const vehicle = await pool.query<{ id: string }>('SELECT id FROM driver_vehicles WHERE driver_id = $1 AND is_primary', [d.d2])
@@ -257,5 +258,62 @@ describe('sending, repeating, limits and history', () => {
     expect(Number(page2.broadcasts[0]!.id)).toBeLessThan(Number(page1.broadcasts[0]!.id))
     expect((await api(opsToken).get('/api/v1/admin/notifications/broadcasts?limit=0')).status).toBe(422)
     expect((await api(opsToken).get('/api/v1/admin/notifications/broadcasts?before=abc')).status).toBe(422)
+  })
+})
+
+describe('rollback, a stale daily-limit check, and knowing who a typed number is', () => {
+  const sendTo = async (audience: object, title: string) => {
+    const res = await api(opsToken).post('/api/v1/admin/notifications/broadcast', { title, body: 'Body text', category: 'announcement', audience })
+    if (res.status === 202) broadcastIds.push(String(body(res).id))
+    return res
+  }
+  const history = async () => (body(await api(opsToken).get('/api/v1/admin/notifications/broadcasts?limit=50')) as { broadcasts: Array<Record<string, unknown>> }).broadcasts
+
+  it('a broadcast written by the previous release (no status, nothing tracked) is shown as sent before tracking, never stuck as queued', async () => {
+    // The previous release inserts exactly these columns and then notifies people without any broadcast_id.
+    const admin = await pool.query<{ id: string }>('SELECT id::text FROM admins WHERE email = $1', [OPS])
+    const inserted = await pool.query<{ id: string; status: string; finished_at: string | null }>(
+      `INSERT INTO notification_broadcasts (admin_id, title, body, category, audience, recipient_count)
+       VALUES ($1, 'Old release', 'Sent by the previous release', 'announcement', '{"role":"driver"}', 42) RETURNING id::text, status, finished_at`, [admin.rows[0]!.id])
+    broadcastIds.push(inserted.rows[0]!.id)
+    expect(inserted.rows[0]).toMatchObject({ status: 'done', finished_at: null }) // the default is 'done': nothing will ever update this row
+
+    const row = (await history()).find((b) => b['id'] === inserted.rows[0]!.id)!
+    expect(row).toMatchObject({ status: 'done', tracked: false, sent: 42, pushed: 0, pushFailed: 0, noPush: 0, opened: 0, settling: false, finishedAt: null })
+  })
+
+  it('three broadcasts created back to back: every check says the person will be notified, and the third reports who it had to drop', async () => {
+    const audience = { role: 'driver', cityIds: [cuttackId], categoryIds: [sedanCategoryId] }
+    const ids: string[] = []
+    for (const t of ['A', 'B', 'C']) {
+      const res = await sendTo(audience, `Back to back ${t}`)
+      expect(res.status, JSON.stringify(res.body)).toBe(202)
+      expect(body(res).recipientCount).toBeGreaterThanOrEqual(2) // d3 and d5 both count in all three checks: nothing has been sent yet
+      ids.push(String(body(res).id))
+    }
+    for (const id of ids) await runBroadcast(id)
+
+    const notified = async (id: string) => (await pool.query<{ owner_id: string }>('SELECT owner_id::text FROM notification_logs WHERE broadcast_id = $1', [id])).rows.map((r) => r.owner_id)
+    expect(await notified(ids[0]!)).toContain(d.d5)
+    expect(await notified(ids[1]!)).toContain(d.d5)
+    expect(await notified(ids[2]!)).not.toContain(d.d5) // d5 already got two broadcasts today: left out when C ran
+
+    const rows = await history()
+    const c = rows.find((b) => b['id'] === ids[2])!
+    expect(c['skippedAtSend'] as number).toBeGreaterThanOrEqual(1)
+    expect(c['sent'] as number).toBeLessThan(0 + (await pool.query<{ n: number }>('SELECT recipient_count AS n FROM notification_broadcasts WHERE id = $1', [ids[2]])).rows[0]!.n)
+    expect(c['tracked']).toBe(true)
+  })
+
+  it('the check for typed phone numbers names the person each number belongs to, so a wrong number is caught before sending', async () => {
+    await pool.query("UPDATE drivers SET full_name = 'Test Driver One' WHERE id = $1", [d.d1])
+    await pool.query("UPDATE users SET name = 'Test Rider One' WHERE id = $1", [r.r1])
+    const drivers = body(await api(opsToken).post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'driver', phones: [P.d1, P.unknown] } }))
+    expect(drivers.people).toEqual([{ phone: P.d1, name: 'Test Driver One', code: expect.stringMatching(/^DRV\d+$/) }])
+    expect(drivers.phonesNotFound).toEqual([P.unknown])
+    const riders = body(await api(opsToken).post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'rider', phones: [P.r1] } }))
+    expect(riders.people).toEqual([{ phone: P.r1, name: 'Test Rider One', code: null }])
+    const everyone = body(await api(opsToken).post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'driver' } }))
+    expect(everyone.people).toEqual([]) // only typed numbers are looked up
   })
 })
