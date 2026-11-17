@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { onboardingApi, type VehicleBrand, type VehicleCategory, type VehicleInfoPayload, type VehicleModel } from '@/features/onboarding/api'
 import { VEHICLE_COLORS, fuelOptionsFor } from '@/features/onboarding/constants'
 import { OnboardingShell } from '@/features/onboarding/components/OnboardingShell'
-import { ChipGroup, Field, PickerField, TextField } from '@/features/onboarding/components/FormPrimitives'
+import { ChipGroup, Field, PickerField, Stepper, TextField } from '@/features/onboarding/components/FormPrimitives'
 import { DateField } from '@/features/onboarding/components/DateField'
 
 const TODAY_ISO = new Date().toISOString().slice(0, 10)
@@ -17,6 +17,15 @@ const MAX_MODEL_YEAR = new Date().getFullYear() + 1
 
 function isValidPlate(p: string) { return /^[A-Z]{2}\d{2}[A-Z]{1,2}\d{4}$/.test(p.replace(/\s/g, '').toUpperCase()) }
 function isValidYear(y: string) { return y.length === 4 && Number(y) >= MIN_MODEL_YEAR && Number(y) <= MAX_MODEL_YEAR }
+
+function LockNote({ children }: { children: string }) {
+  return (
+    <View style={styles.lockNote}>
+      <Feather name="lock" size={12} color={colors.ink600} />
+      <Text style={styles.lockNoteText}>{children}</Text>
+    </View>
+  )
+}
 
 export default function VehicleRegistrationScreen() {
   const router = useRouter()
@@ -187,20 +196,21 @@ export default function VehicleRegistrationScreen() {
           <Text style={styles.cardTitle}>Vehicle</Text>
         </View>
         <PickerField label="Brand" value={brandId} options={brands.map((b) => ({ value: Number(b.id), label: b.name }))} onSelect={(v) => void handleBrandChange(Number(v))} placeholder="Select brand" searchable={brands.length > 6} />
-        {unlisted ? (
-          <Field label="Model name">
-            <TextField value={customModel} onChangeText={setCustomModel} placeholder="e.g. Swift Dzire" maxLength={100} />
-          </Field>
-        ) : (
-          <PickerField label="Model" value={modelId} options={models.map((m) => ({ value: Number(m.id), label: m.name }))} onSelect={(v) => handleModelChange(Number(v))} placeholder={!brandId ? 'Select brand first' : 'Select model'} disabled={!brandId} searchable={models.length > 6} />
-        )}
-        {brandId && (!isEdit || unlisted) ? (
-          <Pressable onPress={() => { setUnlisted((u) => !u); setModelId(null) }} accessibilityRole="button">
-            <Text style={styles.unlistedLink}>{unlisted ? 'Choose from the list instead' : "My model isn't listed"}</Text>
-          </Pressable>
-        ) : null}
+        <View style={styles.modelGroup}>
+          {unlisted ? (
+            <Field label="Model name">
+              <TextField value={customModel} onChangeText={setCustomModel} placeholder="e.g. Swift Dzire" maxLength={100} />
+            </Field>
+          ) : (
+            <PickerField label="Model" value={modelId} options={models.map((m) => ({ value: Number(m.id), label: m.name }))} onSelect={(v) => handleModelChange(Number(v))} placeholder={!brandId ? 'Select brand first' : 'Select model'} disabled={!brandId} searchable={models.length > 6} />
+          )}
+          {brandId && (!isEdit || unlisted) ? (
+            <Pressable onPress={() => { setUnlisted((u) => !u); setModelId(null) }} accessibilityRole="button" hitSlop={8} style={styles.unlistedLink}>
+              <Text style={styles.unlistedText}>{unlisted ? 'Choose from the list instead' : "My model isn't listed"}</Text>
+            </Pressable>
+          ) : null}
+        </View>
         <Field label="Vehicle Category">
-          {locked ? <Text style={styles.lockNote}>Set by your model</Text> : unlisted ? <Text style={styles.lockNote}>Choose the closest. Our team will confirm it.</Text> : null}
           <View style={styles.categoryGrid}>
             {categories.map((c) => (
               <Pressable
@@ -215,6 +225,7 @@ export default function VehicleRegistrationScreen() {
               </Pressable>
             ))}
           </View>
+          {locked ? <LockNote>Set by your model</LockNote> : unlisted ? <LockNote>Choose the closest. Our team will confirm it.</LockNote> : null}
         </Field>
       </View>
 
@@ -243,13 +254,16 @@ export default function VehicleRegistrationScreen() {
         <Field label="Color">
           <ChipGroup value={color} onChange={setColor} options={VEHICLE_COLORS.map((c) => ({ value: c, label: c }))} />
         </Field>
-        <View style={styles.stepperRow}>
-          <View style={{ flex: 1 }}>
-            <Field label="Seats"><Text style={styles.seatsFixed}>{seating} seats · set by category</Text></Field>
+        <View style={styles.specGroup}>
+          <View style={styles.stepperRow}>
+            <View style={styles.stepperCol}>
+              <Field label="Seats"><Stepper value={seating} min={1} max={8} unit="seat" onChange={() => undefined} locked /></Field>
+            </View>
+            <View style={styles.stepperCol}>
+              <Field label="Luggage Bags"><Stepper value={luggage} min={0} max={5} unit="bag" onChange={() => undefined} locked /></Field>
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Field label="Luggage"><Text style={styles.seatsFixed}>{luggage} bags · set by category</Text></Field>
-          </View>
+          <LockNote>Seats and luggage are fixed by the vehicle category.</LockNote>
         </View>
         <Field label="Air Conditioning">
           <View style={styles.acRow}>
@@ -279,17 +293,23 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.md, gap: spacing.md, borderWidth: 1, borderColor: colors.border },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   cardTitle: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
-  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs + 2 },
-  categoryBtn: { flexBasis: '47%', flexGrow: 1, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.xs, borderRadius: 16, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: colors.surface2, alignItems: 'center', gap: 2 },
+  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  categoryBtn: { flexBasis: '47%', flexGrow: 1, paddingVertical: 12, paddingHorizontal: spacing.xs, borderRadius: radii.lg, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: colors.surface2, alignItems: 'center', gap: spacing.xs },
   categoryBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },
   categoryText: { ...typography.label, color: colors.ink900, fontFamily: fonts.bold },
   categorySeats: { ...typography.caption, fontSize: 11, color: colors.ink400 },
   categoryTextActive: { color: colors.primaryDark },
-  categoryLocked: { opacity: 0.4 },
-  lockNote: { ...typography.caption, color: colors.ink400, marginBottom: spacing.xs },
-  unlistedLink: { ...typography.label, color: colors.primary, fontFamily: fonts.bold, marginBottom: spacing.sm },
-  seatsFixed: { ...typography.body, color: colors.ink900 },
-  stepperRow: { flexDirection: 'row', gap: spacing.sm },
+  categoryLocked: { opacity: 0.45 },
+  // A note that says "this is fixed": a small lock plus the reason, on the muted ink that still reads on the card surface.
+  lockNote: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  lockNoteText: { ...typography.caption, color: colors.ink600, flexShrink: 1 },
+  // The "not listed" link belongs to the model field above it, so they sit as one group with a tight gap.
+  modelGroup: { gap: spacing.xs },
+  unlistedLink: { alignSelf: 'flex-start', paddingVertical: spacing.xs },
+  unlistedText: { ...typography.label, color: colors.primary, fontFamily: fonts.bold },
+  specGroup: { gap: spacing.sm },
+  stepperRow: { flexDirection: 'row', gap: spacing.md },
+  stepperCol: { flex: 1 },
   acRow: { flexDirection: 'row', gap: spacing.sm },
   acBtn: { flex: 1, paddingVertical: spacing.sm + 4, borderRadius: radii.lg, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface2, alignItems: 'center' },
   acBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },
