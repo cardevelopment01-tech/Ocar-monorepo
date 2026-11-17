@@ -3,18 +3,66 @@ import api from './api'
 export interface BroadcastAudience {
   role: 'driver' | 'rider'
   missingRcBack?: boolean
+  docIssues?: boolean
+  cityIds?: number[]
+  categoryIds?: number[]
+  bookedInLastDays?: number
+  phones?: string[]
 }
+
+/** The audience as the history returns it: typed phone numbers are replaced by how many there were. */
+export type BroadcastAudienceShown = Omit<BroadcastAudience, 'phones'> & { phoneCount?: number }
 
 export type BroadcastCategory = 'announcement' | 'offer'
 
+export interface AudiencePreview {
+  matched: number
+  recipientCount: number
+  withDevice: number
+  inAppOnly: number
+  skippedOptedOut: number
+  skippedCapped: number
+  dailyCap: number
+  sendableNow: boolean
+  phonesNotFound: string[]
+}
+
+export interface BroadcastSummary {
+  id: string
+  title: string
+  body: string
+  category: BroadcastCategory
+  audience: BroadcastAudienceShown
+  status: 'queued' | 'sending' | 'done' | 'failed'
+  sentBy: string | null
+  createdAt: string
+  finishedAt: string | null
+  sent: number
+  pushed: number
+  pushFailed: number
+  noPush: number
+  opened: number
+  failed: number
+  skippedOptedOut: number
+  skippedCapped: number
+  settling: boolean
+}
+
+const BASE = '/api/v1/admin/notifications'
+
 export const broadcastApi = {
   preview: async (category: BroadcastCategory, audience: BroadcastAudience) => {
-    const { data } = await api.post<{ recipientCount: number; sendableNow: boolean }>('/api/v1/admin/notifications/preview', { category, audience })
+    const { data } = await api.post<AudiencePreview>(`${BASE}/preview`, { category, audience })
     return data
   },
 
   send: async (params: { title: string; body: string; category: BroadcastCategory; audience: BroadcastAudience }) => {
-    const { data } = await api.post<{ id: string; recipientCount: number }>('/api/v1/admin/notifications/broadcast', params)
+    const { data } = await api.post<{ id: string; recipientCount: number; withDevice: number }>(`${BASE}/broadcast`, params)
+    return data
+  },
+
+  list: async (params: { limit?: number; before?: string } = {}) => {
+    const { data } = await api.get<{ broadcasts: BroadcastSummary[]; nextBefore: string | null }>(`${BASE}/broadcasts`, { params })
     return data
   },
 }

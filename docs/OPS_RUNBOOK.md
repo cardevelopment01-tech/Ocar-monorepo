@@ -644,6 +644,17 @@ To find every driver in this state at once, open **Drivers -> Blocked by docs**:
 
 The list comes from one server rule (`api/src/modules/drivers/doc-issues.ts`, same rule as the dispatch gate `docIssueExistsSql`; `tests/integration/doc-issues-vs-gate.test.ts` checks the two agree). No developer is needed to find the reason. Raw check, read-only: `docIssueExistsSql` in `drivers.repository.ts`.
 
+## Broadcasts: send a notice, and see what happened to it
+
+Admin -> **Broadcasts** (super admin and ops admin). Pick drivers or riders, narrow them down if you want (city, vehicle type, "blocked by a document", "missing the RC back", riders who booked recently), write the title and message, and **Check audience** first: it shows how many people will be notified, how many of them also get the push on their phone (a phone seen in the last 30 days), how many get the in-app notification only, and who was left out and why. Sending to more than 10 people asks for a confirmation. A send cannot be recalled.
+
+- **Test first.** Tick "Specific phone numbers only" and type your own number (up to 10). Those sends are not counted against the daily limit.
+- **Daily limit.** A person gets at most 2 broadcasts in any 24 hours (`BROADCAST_DAILY_CAP_PER_PERSON` in `api/src/constants/limits.ts`). Anyone over it is left out and counted under "Left out". Offers are only allowed 10:00-21:00 IST.
+- **Sent broadcasts** (below the form) updates itself for a couple of minutes after a send. Columns: *Notified* = an in-app notification was created; *Pushed* = Firebase accepted the push for at least one of their phones (not proof they saw it); *In-app only* = no registered phone, or the result is still arriving (marked *); *Refused* = Firebase rejected every phone (invalid phones are removed from our list); *Opened* = opened the notification in the app's notification list (tapping the push itself is not counted yet); *Left out* = switched this type off, or over the daily limit.
+- **Riders:** the rider app has no notification list yet, so a rider with no registered phone does not see a broadcast at all. The preview warns about this.
+- **If a send stops part way** (a deploy or a crash), it is retried automatically and only notifies people who have not been notified yet; nobody gets it twice. Status *Failed* means every retry failed: check the API logs for `broadcast:`.
+- Data: `notification_broadcasts` (one row per send, with counts) and `notification_logs.broadcast_id` (one row per person per send, unique).
+
 ## Driver identity verification (selfie + number plate)
 
 Design: `docs/superpowers/specs/2026-11-02-driver-identity-verification-design.md`. Goal: stop one account being driven by
