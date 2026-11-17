@@ -367,6 +367,14 @@ describe('runBroadcast', () => {
     expect(recorded()).toEqual([{ id: 'n1', attempted: true, successCount: 2, failureCount: 0, invalidTokens: 0 }])
   })
 
+  it('a group holding more than 500 phones (people with several phones) is sent in calls of at most 500', async () => {
+    getTokens.mockResolvedValue(new Map([['1', Array.from({ length: 700 }, (_, i) => `tok-${i}`)]]))
+    db({ recipients: ['1'] })
+    await runBroadcast('9')
+    expect(sendPush.mock.calls.map((c) => (c[0] as string[]).length)).toEqual([500, 200])
+    expect(recorded()).toEqual([{ id: 'n1', attempted: true, successCount: 700, failureCount: 0, invalidTokens: 0 }])
+  })
+
   it('a dead phone is counted for that person and removed from our list; the others are unaffected', async () => {
     sendPush.mockResolvedValue({ invalidTokens: ['tok-2'], successCount: 1, failureCount: 1, transientFailure: false, tokenResults: ['ok', 'invalid'] })
     db({ recipients: ['1', '2'] })

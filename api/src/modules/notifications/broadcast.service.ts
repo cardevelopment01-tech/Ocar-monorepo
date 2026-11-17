@@ -241,6 +241,8 @@ export async function createBroadcast(
 
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
+const FCM_MAX_PER_CALL = 500
+
 type Outcome = { attempted: boolean; successCount: number; failureCount: number; invalidTokens: number; stillFailing: boolean }
 
 // Pushes one group (at most 500 people) with as few calls as possible: one lookup for everyone's phones, and Firebase takes up to 500
@@ -258,16 +260,24 @@ async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'us
   const dead: string[] = []
   for (let attempt = 1; pending.length > 0 && attempt <= BROADCAST_PUSH_ATTEMPTS; attempt++) {
     if (attempt > 1) await pause(BROADCAST_PUSH_RETRY_PAUSE_MS * (attempt - 1))
-    const res = await sendPush(
-      pending.map((p) => p.token), msg,
-      pending.map((p) => ({ notificationId: rowByOwner.get(p.ownerId)!.id, type })),
-    )
+    // Firebase takes at most 500 messages per call and one person can have several phones, so a group can hold more than 500 phones.
+    const results: Array<'ok' | 'invalid' | 'retry'> = []
+    let configured = true
+    for (let i = 0; i < pending.length && configured; i += FCM_MAX_PER_CALL) {
+      const slice = pending.slice(i, i + FCM_MAX_PER_CALL)
+      const res = await sendPush(
+        slice.map((p) => p.token), msg,
+        slice.map((p) => ({ notificationId: rowByOwner.get(p.ownerId)!.id, type })),
+      )
+      if (res.tokenResults) results.push(...res.tokenResults)
+      else configured = false
+    }
     // No per-phone answer means nothing was sent (push is not configured here): nothing to count or retry.
-    if (!res.tokenResults) { pending = []; break }
+    if (!configured) { pending = []; break }
     const again: typeof pending = []
     pending.forEach((p, i) => {
       const o = outcome.get(p.ownerId)!
-      const r = res.tokenResults![i]
+      const r = results[i]
       if (r === 'ok') o.successCount++
       else if (r === 'invalid') { o.failureCount++; o.invalidTokens++; dead.push(p.token) }
       else again.push(p)
