@@ -10,7 +10,7 @@ import { rideApi, type RideDetail, type RideStop } from '@/lib/ride-api'
 import RouteTimeline from '@/components/route/RouteTimeline'
 import { safetyApi } from '@/lib/safety-api'
 import { formatReturnAt } from '@/lib/utils'
-import { formatEta, statusShowsEta, getApiErrorMessage } from '@ocar/shared'
+import { driverAtPickup, formatEta, statusShowsEta, getApiErrorMessage } from '@ocar/shared'
 import { DriverCard as DriverCardView, MeetAtRow, PinBand, driverViewFromRide } from '@/components/ride/DriverIdentity'
 import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
@@ -759,8 +759,10 @@ export default function RidePage() {
       ? { label: 'Rental in progress', sub: 'Your rental is under way' }
       : {}),
   }
+  // A stale route ETA can't say the driver is here; the live distance can (see driverAtPickup).
+  const atPickup = driverAtPickup(status, driverPos ? haversineMetres(driverPos, pickupPos) : null)
   // No driver fix yet -> no ETA; say so instead of leaving the banner silently blank.
-  const bannerSub = (cfg as { sub?: string }).sub ?? (status === 'accepted' && !driverPos ? 'Locating your driver…' : undefined)
+  const bannerSub = atPickup ? 'Head to your pickup point' : (cfg as { sub?: string }).sub ?? (status === 'accepted' && !driverPos ? 'Locating your driver…' : undefined)
   const hasDriver = rideStatus !== 'requested' && rideStatus !== 'scheduled'
 
   const fare = ride?.total_final != null
@@ -905,7 +907,7 @@ export default function RidePage() {
             </div>
 
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-gray-900 leading-tight">{cfg.label}</p>
+              <p className="text-sm font-bold text-gray-900 leading-tight">{atPickup ? 'Your driver is at the pickup' : cfg.label}</p>
               {bannerSub && <p className="text-xs text-gray-500 mt-0.5">{bannerSub}</p>}
             </div>
             {!autoNavCancelled && (status === 'completed' || status === 'cancelled' || status === 'no_drivers') && (
@@ -918,7 +920,7 @@ export default function RidePage() {
             )}
 
             {status === 'requested' && <SearchingDots />}
-            {displayEta && statusShowsEta(status) && (
+            {displayEta && statusShowsEta(status) && !atPickup && (
               <div className="flex-shrink-0 text-right">
                 <p className="text-sm font-bold text-gray-900 leading-tight tabular-nums">{formatEta(displayEta.etaMin, displayEta.distanceKm).time}</p>
                 <p className="text-[11px] text-gray-500 tabular-nums">{formatEta(displayEta.etaMin, displayEta.distanceKm).distance}</p>

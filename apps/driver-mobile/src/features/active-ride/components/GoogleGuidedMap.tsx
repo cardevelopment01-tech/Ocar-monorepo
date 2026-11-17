@@ -17,6 +17,7 @@ import { colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-sh
 import { markStopArrived, markStopStatus } from '../api'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 import { guidanceAudioFlags } from '../guidanceAudio'
+import { curbWaypoint } from '../guidanceWaypoint'
 
 export type GuidedStop = { sequence: number; lat: number; lng: number }
 
@@ -117,8 +118,8 @@ function GuidedMapInner({ rideId, destination, stops = [], meterWait = false, on
         return
       }
       const waypoints = [
-        ...stopsRef.current.map((s) => ({ position: { lat: s.lat, lng: s.lng } })),
-        { position: { lat: destination[0], lng: destination[1] } },
+        ...stopsRef.current.map((s) => curbWaypoint(s.lat, s.lng)),
+        curbWaypoint(destination[0], destination[1]),
       ]
       try {
         await navigationController.setDestinations(waypoints, {
@@ -159,8 +160,8 @@ function GuidedMapInner({ rideId, destination, stops = [], meterWait = false, on
     stops.forEach((s) => knownSeqs.current.add(s.sequence))
     if (!added || !navReady.current || !destination) return
     const waypoints = [
-      ...stops.map((s) => ({ position: { lat: s.lat, lng: s.lng } })),
-      { position: { lat: destination[0], lng: destination[1] } },
+      ...stops.map((s) => curbWaypoint(s.lat, s.lng)),
+      curbWaypoint(destination[0], destination[1]),
     ]
     void navigationController
       .setDestinations(waypoints, {

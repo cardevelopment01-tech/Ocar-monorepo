@@ -23,6 +23,8 @@ export type StatusBannerProps = {
   totalKm?: number | null
   /** The ride PIN the rider reads out at the car, shown beside the headline (null = none yet). */
   pin?: string | null
+  /** The driver is within a few metres of the pickup but hasn't tapped Arrived yet: say so instead of a stale ETA. */
+  atPickup?: boolean
 }
 
 // Reduced-motion users still see the plain dot (state is legible without the
@@ -59,12 +61,12 @@ function PulsingDot({ color, pulse }: { color: string; pulse: boolean }) {
 
 // Design (Driver.dc.html / Ride.dc.html): a small status kicker with the live dot, then the ETA as the hero line
 // ("Arriving in 4 min" / "12 min left"). Without an ETA the status label is the hero and the sub-line sits under it.
-export function StatusBanner({ status, overrideSub, eta, totalKm = null, pin = null }: StatusBannerProps) {
+export function StatusBanner({ status, overrideSub, eta, totalKm = null, pin = null, atPickup = false }: StatusBannerProps) {
   const cfg = STATUS_CONFIG[status]
-  const sub = overrideSub ?? cfg.sub
+  const sub = atPickup ? 'Head to your pickup point' : (overrideSub ?? cfg.sub)
   const etaTime = eta ? formatEta(eta.etaMin, eta.distanceKm) : null
   const onTrip = status === 'in_progress' || status === 'returning'
-  const hero = etaTime ? (onTrip ? `${etaTime.time} left` : `Arriving in ${etaTime.time}`) : cfg.label
+  const hero = atPickup ? 'Your driver is at the pickup' : etaTime ? (onTrip ? `${etaTime.time} left` : `Arriving in ${etaTime.time}`) : cfg.label
   // "Arrive by" is the ETA on the server clock (the device clock can be off), shown only on a live trip.
   const arriveBy = eta && onTrip
     ? new Date(serverNow() + eta.etaMin * 60_000).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
