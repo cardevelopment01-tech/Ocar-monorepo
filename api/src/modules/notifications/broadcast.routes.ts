@@ -3,7 +3,7 @@ import { authenticate } from '@/middleware/auth.middleware'
 import { requireAdmin } from '@/middleware/role.middleware'
 import { httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
-import { audienceSchema, broadcastSchema, createBroadcast, previewBroadcast } from './broadcast.service'
+import { audienceSchema, broadcastSchema, createBroadcast, listBroadcasts, listQuerySchema, previewBroadcast } from './broadcast.service'
 import { z } from 'zod'
 
 const router: IRouter = Router()
@@ -17,6 +17,15 @@ router.post('/preview', async (req, res, next) => {
     const parsed = previewSchema.safeParse(req.body)
     if (!parsed.success) throw httpError(422, 'Invalid audience', AppErrors.VALIDATION_ERROR.code)
     res.json(await previewBroadcast(parsed.data.audience, parsed.data.category))
+  } catch (err) { next(err) }
+})
+
+// History: newest first, with what happened to each (notified, push accepted, in-app only, failed, opened). `before` = the last id of the previous page.
+router.get('/broadcasts', async (req, res, next) => {
+  try {
+    const parsed = listQuerySchema.safeParse(req.query)
+    if (!parsed.success) throw httpError(422, 'Invalid query', AppErrors.VALIDATION_ERROR.code)
+    res.json(await listBroadcasts(parsed.data))
   } catch (err) { next(err) }
 })
 

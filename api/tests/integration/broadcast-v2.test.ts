@@ -1,0 +1,261 @@
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import request from 'supertest'
+import { createApp } from '@/app'
+import { pool } from '@/db/client'
+import { client as redis } from '@/db/redis'
+import { resolveAudience, runBroadcast } from '@/modules/notifications/broadcast.service'
+import { loginUser, loginDriver, seedActiveDriverWithVehicle, cleanupRideAndDriverData, DEFAULT_BOOKING } from '../helpers/fixtures/rides.fixture'
+import { seedAdmin, loginAdmin, cleanupAdmins } from '../helpers/fixtures/safety.fixture'
+
+vi.mock('@/lib/storage', () => ({
+  getUploadUrl: vi.fn().mockResolvedValue('https://storage.test/put-url'),
+  promotePendingUpload: vi.fn().mockResolvedValue('https://storage.test/x.jpg'),
+  deleteFile: vi.fn().mockResolvedValue(undefined),
+  getPresignedUrl: vi.fn().mockImplementation((url: string) => Promise.resolve(url)),
+}))
+
+// Value: protects=on a real database the audience filters pick exactly the right people (city, vehicle type, document problems, booked
+// recently, phone numbers), people who switched the type off or got the daily limit are left out, a broadcast links every notification it
+// creates and can be run again without notifying anyone twice, the history counts what happened without exposing typed phone numbers, and only
+// ops admins can use any of it; fails_when=a filter or the daily limit is dropped, a repeated run duplicates a notification, a typed phone
+// number appears in the history, or a support admin can read or send; why_new=broadcasts were a single unfiltered send with no history;
+// seam=none (real Postgres, real routes; the push queue exists but no worker runs, so nothing is sent to Firebase);
+// no_claim=Firebase delivery (the worker records its answer, which this test simulates).
+
+const app = createApp()
+const P = {
+  d1: '+919700007001', d2: '+919700007002', d3: '+919700007003', d4: '+919700007004',
+  r1: '+919700007011', r2: '+919700007012',
+  unknown: '+919700007099',
+} as const
+const OPS = 'bc-ops@test.ocar'
+const SUPPORT = 'bc-support@test.ocar'
+
+let opsToken: string
+let supportToken: string
+let d: Record<'d1' | 'd2' | 'd3' | 'd4', string>
+let r: Record<'r1' | 'r2', string>
+let suvCategoryId: number
+let sedanCategoryId: number
+let cuttackId: number
+const broadcastIds: string[] = []
+
+const api = (token: string) => ({
+  get: (url: string) => request(app).get(url).set('Authorization', `Bearer ${token}`),
+  post: (url: string, body: unknown) => request(app).post(url).set('Authorization', `Bearer ${token}`).send(body as object),
+})
+const body = (res: request.Response) => (res.body.data ?? res.body)
+
+beforeAll(async () => {
+  suvCategoryId = Number((await pool.query<{ id: string }>("SELECT id FROM vehicle_categories WHERE slug = 'suv'")).rows[0]!.id)
+  sedanCategoryId = Number((await pool.query<{ id: string }>("SELECT id FROM vehicle_categories WHERE slug = 'sedan'")).rows[0]!.id)
+  cuttackId = Number((await pool.query<{ id: string }>("SELECT id FROM cities WHERE slug = 'cuttack'")).rows[0]!.id)
+
+  d = { d1: '', d2: '', d3: '', d4: '' }
+  const cats: Record<keyof typeof d, string> = { d1: 'sedan', d2: 'suv', d3: 'sedan', d4: 'sedan' }
+  for (const k of Object.keys(d) as Array<keyof typeof d>) {
+    const { driverId } = await loginDriver(app, redis, P[k])
+    d[k] = driverId
+    await seedActiveDriverWithVehicle(pool, driverId, { categorySlug: cats[k] })
+  }
+  // d3 works in Cuttack; d4 is suspended (never a recipient)
+  await pool.query('UPDATE drivers SET city_id = $2 WHERE id = $1', [d.d3, cuttackId])
+  await pool.query("UPDATE drivers SET status = 'suspended' WHERE id = $1", [d.d4])
+  // d2's insurance expired a week ago: a document keeps them offline
+  const vehicle = await pool.query<{ id: string }>('SELECT id FROM driver_vehicles WHERE driver_id = $1 AND is_primary', [d.d2])
+  await pool.query(
+    `INSERT INTO driver_vehicle_documents (vehicle_id, doc_type, file_url, status, verified_valid_until)
+     VALUES ($1, 'insurance', 'https://storage.test/x.jpg', 'approved', CURRENT_DATE - 7)`, [vehicle.rows[0]!.id])
+  // d1 has a phone seen today, d3 one last seen 60 days ago (stale), d2 none
+  await pool.query(`INSERT INTO device_tokens (owner_type, owner_id, token, platform, last_seen_at) VALUES ('driver', $1, 'tok-bc-d1', 'android', now())`, [d.d1])
+  await pool.query(`INSERT INTO device_tokens (owner_type, owner_id, token, platform, last_seen_at) VALUES ('driver', $1, 'tok-bc-d3', 'android', now() - interval '60 days')`, [d.d3])
+
+  const rider1 = await loginUser(app, redis, P.r1)
+  const rider2 = await loginUser(app, redis, P.r2)
+  r = { r1: rider1.userId, r2: rider2.userId }
+  // r1 booked a ride just now; r2 never has
+  const booked = await request(app).post('/api/v1/rides').set('Authorization', `Bearer ${rider1.accessToken}`).send({ categoryId: sedanCategoryId, ...DEFAULT_BOOKING })
+  expect(booked.status, JSON.stringify(booked.body)).toBe(201)
+
+  await seedAdmin(pool, OPS, 'ops_admin')
+  await seedAdmin(pool, SUPPORT, 'support_admin')
+  opsToken = (await loginAdmin(app, OPS)).accessToken
+  supportToken = (await loginAdmin(app, SUPPORT)).accessToken
+}, 120_000)
+
+afterAll(async () => {
+  const owners = [...Object.values(d), ...Object.values(r)]
+  await pool.query('DELETE FROM notification_logs WHERE broadcast_id = ANY($1::bigint[]) OR (owner_id = ANY($2::bigint[]) AND owner_type IN (\'driver\', \'user\'))', [broadcastIds, owners])
+  await pool.query('DELETE FROM notification_broadcasts WHERE id = ANY($1::bigint[])', [broadcastIds])
+  await pool.query("DELETE FROM notification_preferences WHERE owner_id = ANY($1::bigint[])", [owners])
+  await pool.query("DELETE FROM device_tokens WHERE token LIKE 'tok-bc-%'")
+  await pool.query('DELETE FROM driver_vehicle_documents WHERE vehicle_id IN (SELECT id FROM driver_vehicles WHERE driver_id = ANY($1::bigint[]))', [Object.values(d)])
+  await cleanupRideAndDriverData(pool, Object.values(P))
+  await cleanupAdmins(pool, [OPS, SUPPORT])
+  await pool.end()
+})
+
+describe('who each audience picks (real SQL)', () => {
+  const ids = async (a: Parameters<typeof resolveAudience>[0]) => new Set(await resolveAudience(a, 'announcement'))
+
+  it('all drivers: the active ones, never the suspended one', async () => {
+    const got = await ids({ role: 'driver' })
+    expect([d.d1, d.d2, d.d3].every((x) => got.has(x))).toBe(true)
+    expect(got.has(d.d4)).toBe(false)
+  })
+
+  it('city', async () => {
+    const got = await ids({ role: 'driver', cityIds: [cuttackId] })
+    expect(got.has(d.d3)).toBe(true)
+    expect(got.has(d.d1)).toBe(false)
+    expect(got.has(d.d2)).toBe(false)
+  })
+
+  it('vehicle type', async () => {
+    const suv = await ids({ role: 'driver', categoryIds: [suvCategoryId] })
+    expect(suv.has(d.d2)).toBe(true)
+    expect(suv.has(d.d1)).toBe(false)
+    const sedan = await ids({ role: 'driver', categoryIds: [sedanCategoryId] })
+    expect(sedan.has(d.d1)).toBe(true)
+    expect(sedan.has(d.d2)).toBe(false)
+  })
+
+  it('blocked by documents: the driver with the expired insurance, not the others', async () => {
+    const got = await ids({ role: 'driver', docIssues: true })
+    expect(got.has(d.d2)).toBe(true)
+    expect(got.has(d.d1)).toBe(false)
+    expect(got.has(d.d3)).toBe(false)
+  })
+
+  it('filters combine (city AND vehicle type)', async () => {
+    expect((await ids({ role: 'driver', cityIds: [cuttackId], categoryIds: [suvCategoryId] })).has(d.d3)).toBe(false)
+    expect((await ids({ role: 'driver', cityIds: [cuttackId], categoryIds: [sedanCategoryId] })).has(d.d3)).toBe(true)
+  })
+
+  it('riders who booked in the last 30 days: the one who booked, not the one who never did', async () => {
+    const got = await ids({ role: 'rider', bookedInLastDays: 30 })
+    expect(got.has(r.r1)).toBe(true)
+    expect(got.has(r.r2)).toBe(false)
+    const everyone = await ids({ role: 'rider' })
+    expect(everyone.has(r.r1) && everyone.has(r.r2)).toBe(true)
+  })
+
+  it('phone numbers pick exactly those people', async () => {
+    const got = await ids({ role: 'driver', phones: [P.d1, P.d3] })
+    expect([...got].sort()).toEqual([d.d1, d.d3].sort())
+  })
+})
+
+describe('the admin routes', () => {
+  it('only super and ops admins: a support admin is refused everywhere', async () => {
+    const s = api(supportToken)
+    expect((await s.get('/api/v1/admin/notifications/broadcasts')).status).toBe(403)
+    expect((await s.post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'driver' } })).status).toBe(403)
+    expect((await s.post('/api/v1/admin/notifications/broadcast', { title: 'x', body: 'y', category: 'announcement', audience: { role: 'driver' } })).status).toBe(403)
+  })
+
+  it('rejects an audience that mixes filters that do not belong together', async () => {
+    const ops = api(opsToken)
+    expect((await ops.post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'rider', cityIds: [1] } })).status).toBe(422)
+    expect((await ops.post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'driver', phones: [P.d1], docIssues: true } })).status).toBe(422)
+    expect((await ops.post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'driver', phones: ['123'] } })).status).toBe(422)
+  })
+
+  it('the preview breaks a phone-number audience down: who gets the push, who only the in-app, and who was not found', async () => {
+    const res = await api(opsToken).post('/api/v1/admin/notifications/preview', {
+      category: 'announcement', audience: { role: 'driver', phones: [P.d1, P.d3, P.unknown] },
+    })
+    expect(res.status, JSON.stringify(res.body)).toBe(200)
+    expect(body(res)).toMatchObject({
+      matched: 2, recipientCount: 2, withDevice: 1, inAppOnly: 1, // d1 has a recent phone, d3's was last seen 60 days ago
+      skippedOptedOut: 0, skippedCapped: 0, dailyCap: 2, phonesNotFound: [P.unknown],
+    })
+  })
+})
+
+describe('sending, repeating, limits and history', () => {
+  const send = async (audience: object, title = 'Hello') => {
+    const res = await api(opsToken).post('/api/v1/admin/notifications/broadcast', { title, body: 'Body text', category: 'announcement', audience })
+    if (res.status === 202) broadcastIds.push(String(body(res).id))
+    return res
+  }
+  let first: string
+
+  it('a send to phone numbers is queued, and running it notifies exactly them, linked to the broadcast', async () => {
+    const res = await send({ role: 'driver', phones: [P.d1, P.d3] }, 'First')
+    expect(res.status, JSON.stringify(res.body)).toBe(202)
+    first = String(body(res).id)
+    expect(body(res)).toMatchObject({ recipientCount: 2, withDevice: 1 })
+
+    expect(await runBroadcast(first)).toBe(2)
+    const rows = await pool.query<{ owner_id: string; type: string }>('SELECT owner_id::text, type FROM notification_logs WHERE broadcast_id = $1 ORDER BY owner_id', [first])
+    expect(rows.rows.map((x) => x.owner_id).sort()).toEqual([d.d1, d.d3].sort())
+    expect(rows.rows.every((x) => x.type === 'announcement')).toBe(true)
+    const b = await pool.query('SELECT status, sent_count, failed_count, recipient_count, finished_at IS NOT NULL AS finished FROM notification_broadcasts WHERE id = $1', [first])
+    expect(b.rows[0]).toMatchObject({ status: 'done', sent_count: 2, failed_count: 0, recipient_count: 2, finished: true })
+  })
+
+  it('running it again changes nothing, and a run resumed after a crash only notifies whoever is missing', async () => {
+    expect(await runBroadcast(first)).toBe(0) // already done
+    // Pretend the worker died after notifying d1 only.
+    await pool.query("DELETE FROM notification_logs WHERE broadcast_id = $1 AND owner_id = $2", [first, d.d3])
+    await pool.query("UPDATE notification_broadcasts SET status = 'sending', finished_at = NULL WHERE id = $1", [first])
+    expect(await runBroadcast(first)).toBe(2)
+    const rows = await pool.query('SELECT owner_id FROM notification_logs WHERE broadcast_id = $1', [first])
+    expect(rows.rowCount).toBe(2) // d1 was not notified a second time
+  })
+
+  it('the database itself refuses a second notification for the same person and broadcast', async () => {
+    await expect(pool.query(
+      `INSERT INTO notification_logs (owner_type, owner_id, channel, status, type, title, body, broadcast_id)
+       VALUES ('driver', $1, 'in_app', 'sent', 'announcement', 'x', 'y', $2)`, [d.d1, first])).rejects.toMatchObject({ code: '23505' })
+  })
+
+  it('sends aimed at phone numbers ignore the daily limit; everyone-style audiences respect it', async () => {
+    // d1 already has 1 broadcast today; two more to the same phone are allowed (a test must always go through)...
+    expect((await send({ role: 'driver', phones: [P.d1] }, 'Second')).status).toBe(202)
+    expect((await send({ role: 'driver', phones: [P.d1] }, 'Third')).status).toBe(202)
+    for (const id of broadcastIds.slice(-2)) await runBroadcast(id)
+    // ...but now d1 has 3 broadcasts in 24 hours, so a normal audience skips them.
+    expect((await resolveAudience({ role: 'driver', categoryIds: [sedanCategoryId] }, 'announcement')).includes(d.d1)).toBe(false)
+    const preview = body(await api(opsToken).post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'driver' } }))
+    expect(preview.skippedCapped).toBeGreaterThanOrEqual(1)
+    // d3 got only one, so they are still in
+    expect((await resolveAudience({ role: 'driver', cityIds: [cuttackId] }, 'announcement')).includes(d.d3)).toBe(true)
+  })
+
+  it('someone who switched announcements off is left out, and a send to only them is refused with a clear reason', async () => {
+    await pool.query(`INSERT INTO notification_preferences (owner_type, owner_id, category, push_enabled) VALUES ('driver', $1, 'announcements', false)`, [d.d3])
+    expect((await resolveAudience({ role: 'driver', cityIds: [cuttackId] }, 'announcement')).includes(d.d3)).toBe(false)
+    const res = await send({ role: 'driver', phones: [P.d3] })
+    expect(res.status).toBe(422)
+    expect(res.body.error).toMatch(/switched this type off/)
+    await pool.query("DELETE FROM notification_preferences WHERE owner_id = $1", [d.d3])
+  })
+
+  it('the history lists newest first with what happened to each broadcast, and never shows typed phone numbers', async () => {
+    // Firebase's answers, as the push worker records them: d1 accepted, d3's phone was refused.
+    await pool.query(`UPDATE notification_logs SET provider_response = '{"successCount":1,"failureCount":0,"invalidTokens":0}', read_at = now() WHERE broadcast_id = $1 AND owner_id = $2`, [first, d.d1])
+    await pool.query(`UPDATE notification_logs SET provider_response = '{"successCount":0,"failureCount":1,"invalidTokens":1}' WHERE broadcast_id = $1 AND owner_id = $2`, [first, d.d3])
+
+    const res = await api(opsToken).get('/api/v1/admin/notifications/broadcasts?limit=10')
+    expect(res.status).toBe(200)
+    const out = body(res) as { broadcasts: Array<Record<string, unknown>>; nextBefore: string | null }
+    const ours = out.broadcasts.filter((b) => broadcastIds.includes(String(b['id'])))
+    expect(ours.map((b) => b['id'])).toEqual([...broadcastIds].sort((a, b) => Number(b) - Number(a))) // newest first
+    const f = ours.find((b) => b['id'] === first)!
+    expect(f).toMatchObject({ status: 'done', sent: 2, pushed: 1, pushFailed: 1, noPush: 0, opened: 1, failed: 0, sentBy: OPS, settling: true })
+    expect(f['audience']).toEqual({ role: 'driver', phoneCount: 2 })
+    expect(JSON.stringify(res.body)).not.toContain('97000070')
+  })
+
+  it('pages with before/limit', async () => {
+    const page1 = body(await api(opsToken).get('/api/v1/admin/notifications/broadcasts?limit=1')) as { broadcasts: Array<{ id: string }>; nextBefore: string | null }
+    expect(page1.broadcasts).toHaveLength(1)
+    expect(page1.nextBefore).toBe(page1.broadcasts[0]!.id)
+    const page2 = body(await api(opsToken).get(`/api/v1/admin/notifications/broadcasts?limit=1&before=${page1.nextBefore}`)) as { broadcasts: Array<{ id: string }> }
+    expect(Number(page2.broadcasts[0]!.id)).toBeLessThan(Number(page1.broadcasts[0]!.id))
+    expect((await api(opsToken).get('/api/v1/admin/notifications/broadcasts?limit=0')).status).toBe(422)
+    expect((await api(opsToken).get('/api/v1/admin/notifications/broadcasts?before=abc')).status).toBe(422)
+  })
+})

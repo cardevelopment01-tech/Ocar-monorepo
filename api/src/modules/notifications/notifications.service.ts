@@ -180,8 +180,14 @@ export async function notifyOwner(params: {
   tag?: string
   ttlSeconds?: number
   channelId?: string
+  // Set only by an admin broadcast: links the notification to it, and a person already notified for it is skipped (nothing is sent).
+  broadcastId?: bigint
 }): Promise<void> {
-  const item = await repo.createInAppNotification(params)
+  const { broadcastId, ...rest } = params
+  const item = broadcastId !== undefined
+    ? await repo.createBroadcastNotification({ ownerType: params.ownerType, ownerId: params.ownerId, type: params.type, title: params.title, body: params.body, broadcastId })
+    : await repo.createInAppNotification(rest)
+  if (!item) return
   const defaults = pushDefaults(params.type, params.rideId)
   const tag = params.tag ?? defaults.tag
   const channelId = params.channelId ?? defaults.channelId

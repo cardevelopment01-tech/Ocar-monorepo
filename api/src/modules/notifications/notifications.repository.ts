@@ -141,6 +141,27 @@ export async function createInAppNotification(params: {
   return toFeedItem(res.rows[0])
 }
 
+// The in-app row of a broadcast notification. One per person per broadcast (unique index): a second attempt for the same person
+// returns null instead of creating a duplicate, which is what makes a broadcast run safe to repeat.
+export async function createBroadcastNotification(params: {
+  ownerType: NotifOwnerType
+  ownerId: bigint
+  type: string
+  title: string
+  body: string
+  broadcastId: bigint
+}): Promise<NotificationFeedItem | null> {
+  const res = await pool.query(
+    `INSERT INTO notification_logs
+       (owner_type, owner_id, channel, status, type, title, body, payload, sent_at, broadcast_id)
+     VALUES ($1, $2, 'in_app', 'sent', $3, $4, $5, '{}', NOW(), $6)
+     ON CONFLICT (broadcast_id, owner_type, owner_id) WHERE broadcast_id IS NOT NULL DO NOTHING
+     RETURNING id, type, title, body, payload, ride_id, read_at, created_at`,
+    [params.ownerType, params.ownerId, params.type, params.title, params.body, params.broadcastId],
+  )
+  return res.rows[0] ? toFeedItem(res.rows[0]) : null
+}
+
 export async function listNotifications(params: {
   ownerType: NotifOwnerType
   ownerId: bigint
