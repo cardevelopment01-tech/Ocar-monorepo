@@ -48,6 +48,8 @@ export default function MapPickerScreen() {
   const centerLat = initial?.lat ?? 20.2961
   const centerLng = initial?.lng ?? 85.8245
 
+  // Start close for a pickup, but not when the fix is so rough (over ~200 m) that the real spot could be off the tight view.
+  const tightZoom = isPickup && !(locAccuracy !== null && locAccuracy > 200)
   const [address, setAddress] = useState(initial?.address ?? '')
   const [resolving, setResolving] = useState(false)
   const [coords, setCoords] = useState({ lat: centerLat, lng: centerLng })
@@ -98,7 +100,7 @@ export default function MapPickerScreen() {
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         // A pickup is placed to the side of the road, so start close (~450 m across); a destination starts wider.
-        initialRegion={{ latitude: centerLat, longitude: centerLng, latitudeDelta: isPickup ? 0.004 : 0.02, longitudeDelta: isPickup ? 0.004 : 0.02 }}
+        initialRegion={{ latitude: centerLat, longitude: centerLng, latitudeDelta: tightZoom ? 0.004 : 0.02, longitudeDelta: tightZoom ? 0.004 : 0.02 }}
         loadingEnabled
         {...OCAR_MAP_PROPS}
         onRegionChangeComplete={handleRegionChangeComplete}

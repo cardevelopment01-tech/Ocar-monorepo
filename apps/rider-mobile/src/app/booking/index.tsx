@@ -307,7 +307,7 @@ export default function BookingPickersScreen() {
   }, [pickup, drop])
 
   // Same wording as the home pill (pillTextFor), so both screens flip together at the 8 s fix cap.
-  const pickupLabel = pickup ? pickup.address || 'Set pickup location' : approximate || needsConfirm ? 'Set pickup location' : pillTextFor(freshness, '').text
+  const pickupLabel = pickup ? pickup.address || 'Set pickup location' : approximate || (needsConfirm && freshness === 'live') ? 'Set pickup location' : pillTextFor(freshness, '').text
   const canContinue = !!pickup && !!drop
 
   return (

@@ -270,15 +270,16 @@ export function useRideTracking(rideId: string) {
 
   // The route ETA is a snapshot fetched at most once a minute and never reads below 1 min, so it can't say
   // "your driver is here". Count it down locally between fetches, and read the live distance to the pickup.
-  const etaAt = useRef(0)
+  // The fetch time is taken during the render that first sees the new ETA (not in an effect, which runs after it), so the
+  // first paint of every ETA ages by zero rather than by the time since the previous one.
+  const etaAt = useMemo(() => Date.now(), [eta]) // eslint-disable-line react-hooks/exhaustive-deps -- re-stamp only when a new ETA arrives
   const [etaTick, setEtaTick] = useState(0)
   useEffect(() => {
-    etaAt.current = Date.now()
     if (!eta) return
     const id = setInterval(() => setEtaTick((n) => n + 1), 15_000)
     return () => clearInterval(id)
   }, [eta])
-  const agedEta = useMemo(() => (eta ? ageEta(eta, Date.now() - etaAt.current) : null), [eta, etaTick])
+  const agedEta = useMemo(() => (eta ? ageEta(eta, Date.now() - etaAt) : null), [eta, etaAt, etaTick]) // eslint-disable-line react-hooks/exhaustive-deps -- etaTick only forces a re-age
   const atPickup = !!ride && driverLocated && driverPos != null && driverAtPickup(ride.status, haversineMetres(driverPos, pickup))
   const drop = useMemo<[number, number] | null>(() => (hasDest ? [ride!.destLat!, ride!.destLng!] : null), [ride, hasDest])
 
