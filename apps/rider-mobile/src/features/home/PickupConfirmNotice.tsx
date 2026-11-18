@@ -28,8 +28,8 @@ export function PickupConfirmNotice({ onPress }: { onPress: () => void }) {
         <Feather name="crosshair" size={16} color={colors.primary} />
       </View>
       <View style={styles.text}>
-        <Text style={styles.title}>Set your exact pickup spot</Text>
-        <Text style={styles.sub}>{accuracy !== null ? `Your location is only accurate to about ${Math.round(accuracy)} m. ` : ''}Drag the pin to where you'll stand.</Text>
+        <Text style={styles.title}>Confirm your pickup spot</Text>
+        <Text style={styles.sub} numberOfLines={1}>{accuracy !== null ? `Accurate to ±${Math.round(accuracy)} m · Tap to adjust` : "Tap to place the pin where you'll stand"}</Text>
       </View>
       <Feather name="chevron-right" size={16} color={colors.ink600} />
     </Pressable>
@@ -42,11 +42,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm + 4,
     minHeight: 56,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+    // Same 18 px gutters and 20 px corners as the booking screen's route card, so the two read as one column.
+    marginHorizontal: 18,
+    marginTop: 14,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 4,
-    borderRadius: radii.lg,
+    borderRadius: 20,
     backgroundColor: colors.primarySubtle,
   },
   pressed: { opacity: 0.85 },

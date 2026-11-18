@@ -127,7 +127,7 @@ export default function MapPickerScreen() {
 
       {isPickup ? (
         <View style={[styles.hint, { top: insets.top + spacing.md }]} pointerEvents="none">
-          <Text style={styles.hintText}>Drag the map so the pin is where you'll stand</Text>
+          <Text style={styles.hintText}>Drag the map to where you'll stand</Text>
         </View>
       ) : null}
 
@@ -143,7 +143,7 @@ export default function MapPickerScreen() {
 
       <View style={[styles.card, { paddingBottom: insets.bottom + spacing.md }]}>
         <Text style={styles.cardLabel}>{isPickup ? 'Pickup location' : 'Destination'}</Text>
-        {isPickup ? <Text style={styles.cardSub}>Your driver comes to this exact spot, so pick the side of the road you'll be on.</Text> : null}
+        {isPickup ? <Text style={styles.cardSub}>Pick the side of the road you'll be on.</Text> : null}
         <View style={styles.addressRow}>
           {resolving ? (
             <ActivityIndicator size="small" color={colors.primary} />

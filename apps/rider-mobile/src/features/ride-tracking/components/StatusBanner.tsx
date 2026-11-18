@@ -66,7 +66,7 @@ export function StatusBanner({ status, overrideSub, eta, totalKm = null, pin = n
   const sub = atPickup ? 'Head to your pickup point' : (overrideSub ?? cfg.sub)
   const etaTime = eta ? formatEta(eta.etaMin, eta.distanceKm) : null
   const onTrip = status === 'in_progress' || status === 'returning'
-  const hero = atPickup ? 'Your driver is at the pickup' : etaTime ? (onTrip ? `${etaTime.time} left` : `Arriving in ${etaTime.time}`) : cfg.label
+  const hero = atPickup ? 'Your driver is here' : etaTime ? (onTrip ? `${etaTime.time} left` : `Arriving in ${etaTime.time}`) : cfg.label
   // "Arrive by" is the ETA on the server clock (the device clock can be off), shown only on a live trip.
   const arriveBy = eta && onTrip
     ? new Date(serverNow() + eta.etaMin * 60_000).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
@@ -77,7 +77,13 @@ export function StatusBanner({ status, overrideSub, eta, totalKm = null, pin = n
     <View accessibilityRole="header">
       <View style={styles.headRow}>
         <View style={styles.headText}>
-          {etaTime ? (
+          {atPickup ? (
+            // Same kicker shape as the ETA state, in the arrival green, so "here" reads as the next beat of "on the way".
+            <View style={styles.kickerRow}>
+              <PulsingDot color={STATUS_CONFIG.driver_arrived.dot} pulse />
+              <Text style={styles.kicker}>Driver nearby</Text>
+            </View>
+          ) : etaTime ? (
             onTrip ? (
               <Text style={styles.kickerMuted}>{etaTime.distance} {status === 'returning' ? 'to pickup' : 'to destination'}</Text>
             ) : (
@@ -87,7 +93,7 @@ export function StatusBanner({ status, overrideSub, eta, totalKm = null, pin = n
               </View>
             )
           ) : null}
-          <Text style={etaTime ? styles.hero : styles.heroPlain} numberOfLines={2} maxFontSizeMultiplier={1.2}>{hero}</Text>
+          <Text style={etaTime || atPickup ? styles.hero : styles.heroPlain} numberOfLines={2} maxFontSizeMultiplier={1.2}>{hero}</Text>
           {etaTime && !onTrip ? <Text style={styles.sub}>{etaTime.distance}</Text> : !etaTime && sub ? <Text style={styles.sub}>{sub}</Text> : null}
         </View>
         {pin && !onTrip ? (
