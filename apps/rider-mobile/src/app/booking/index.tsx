@@ -64,6 +64,7 @@ export default function BookingPickersScreen() {
   const pickup = useBookingDraftStore((s) => s.pickup)
   const drop = useBookingDraftStore((s) => s.drop)
   const pickupAuto = useBookingDraftStore((s) => s.pickupAuto)
+  const pickupConfirmed = useBookingDraftStore((s) => s.pickupConfirmed)
   const focused = useIsFocused()
   const approximate = useApproximateLocation()
   const needsConfirm = usePickupNeedsConfirm()
@@ -230,6 +231,12 @@ export default function BookingPickersScreen() {
   // chooser.
   async function handleContinue() {
     if (!pickup || !drop || continuing) return
+    // Every pickup starts as a guess (live GPS can be tens of metres off, a searched address lands on the building's centre):
+    // the rider sets the exact spot on the zoomed pin screen once, before the trip is quoted.
+    if (!pickupConfirmed) {
+      router.push({ pathname: '/booking/map-picker', params: { field: 'pickup' } })
+      return
+    }
     setContinueError(null)
     // A one-way or round trip from a place to itself is a 0 km trip at the minimum fare, not a booking. (A city
     // rental can start and end at the same place, so it is allowed through.)
@@ -299,12 +306,12 @@ export default function BookingPickersScreen() {
   const autoTriggeredRef = useRef<string | null>(null)
   useEffect(() => {
     if (!pickup || !drop) return
-    const key = `${pickup.lat},${pickup.lng}|${drop.lat},${drop.lng}`
+    const key = `${pickup.lat},${pickup.lng}|${drop.lat},${drop.lng}|${pickupConfirmed}`
     if (autoTriggeredRef.current === key) return
     autoTriggeredRef.current = key
     void handleContinue()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleContinue closes over pickup/drop/rideType already in this render; including it would refire every render
-  }, [pickup, drop])
+  }, [pickup, drop, pickupConfirmed])
 
   // Same wording as the home pill (pillTextFor), so both screens flip together at the 8 s fix cap.
   const pickupLabel = pickup ? pickup.address || 'Set pickup location' : approximate || (needsConfirm && freshness === 'live') ? 'Set pickup location' : pillTextFor(freshness, '').text
