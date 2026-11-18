@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
-import MapView, { type Region } from 'react-native-maps'
+import MapView, { Circle, type Region } from 'react-native-maps'
 import { OCAR_MAP_PROPS } from '@/theme/mapStyle'
 import { PinGlyph } from '@/features/map/components/PinGlyph'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -36,6 +36,7 @@ export default function MapPickerScreen() {
   const locLat = useLocationStore((s) => s.lat)
   const locLng = useLocationStore((s) => s.lng)
   const locAddress = useLocationStore((s) => s.address)
+  const locAccuracy = useLocationStore((s) => s.accuracy)
 
   const existing = isPickup ? pickup : drop
   // The other end of the trip, already confirmed -- shown as a static marker
@@ -96,7 +97,8 @@ export default function MapPickerScreen() {
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
-        initialRegion={{ latitude: centerLat, longitude: centerLng, latitudeDelta: 0.02, longitudeDelta: 0.02 }}
+        // A pickup is placed to the side of the road, so start close (~450 m across); a destination starts wider.
+        initialRegion={{ latitude: centerLat, longitude: centerLng, latitudeDelta: isPickup ? 0.004 : 0.02, longitudeDelta: isPickup ? 0.004 : 0.02 }}
         loadingEnabled
         {...OCAR_MAP_PROPS}
         onRegionChangeComplete={handleRegionChangeComplete}
@@ -104,12 +106,28 @@ export default function MapPickerScreen() {
         {otherPlace ? (
           <LocationPin position={[otherPlace.lat, otherPlace.lng]} variant={isPickup ? 'drop' : 'pickup'} />
         ) : null}
+        {/* How far off the GPS fix could be: the rider can see the real spot may sit anywhere inside the ring. */}
+        {isPickup && locLat !== null && locLng !== null && locAccuracy !== null && locAccuracy > 15 ? (
+          <Circle
+            center={{ latitude: locLat, longitude: locLng }}
+            radius={Math.min(locAccuracy, 300)}
+            strokeColor="rgba(14,143,163,0.5)"
+            strokeWidth={1.5}
+            fillColor="rgba(14,143,163,0.12)"
+          />
+        ) : null}
       </MapView>
 
       {/* Screen-fixed pin -- the map moves underneath it, not the other way round. */}
       <View style={styles.centerPin} pointerEvents="none">
         <PinGlyph variant={isPickup ? 'pickup' : 'drop'} width={30} height={40} />
       </View>
+
+      {isPickup ? (
+        <View style={[styles.hint, { top: insets.top + spacing.md }]} pointerEvents="none">
+          <Text style={styles.hintText}>Drag the map so the pin is where you'll stand</Text>
+        </View>
+      ) : null}
 
       <Pressable
         onPress={() => goBack(router)}
@@ -123,6 +141,7 @@ export default function MapPickerScreen() {
 
       <View style={[styles.card, { paddingBottom: insets.bottom + spacing.md }]}>
         <Text style={styles.cardLabel}>{isPickup ? 'Pickup location' : 'Destination'}</Text>
+        {isPickup ? <Text style={styles.cardSub}>Your driver comes to this exact spot, so pick the side of the road you'll be on.</Text> : null}
         <View style={styles.addressRow}>
           {resolving ? (
             <ActivityIndicator size="small" color={colors.primary} />
@@ -170,6 +189,20 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   cardLabel: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
+  cardSub: { ...typography.caption, color: colors.ink600, marginTop: -spacing.sm },
+  // Sits level with the back button, to its right, so it never covers the map centre where the pin is.
+  hint: {
+    position: 'absolute',
+    left: spacing.lg + 40 + spacing.sm,
+    right: spacing.lg,
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    ...shadowFallback(),
+  },
+  hintText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.semibold },
   addressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   addressText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold, flex: 1 },
 })
