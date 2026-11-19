@@ -586,6 +586,9 @@ export async function createAdminRateCard(data: Parameters<typeof repo.createAdm
 export async function createAdminSurgeEvent(data: Parameters<typeof repo.createAdminSurgeEvent>[0]) {
   if (data.multiplier < 1 || data.multiplier > 5) throw createHttpError(AppErrors.VALIDATION_ERROR)
   if (!data.startsAt || !data.endsAt) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  // A time with no zone ("2026-11-19T07:26") is read as UTC by the database, which silently shifts an IST entry by 5h30.
+  const hasZone = (v: string) => /(Z|[+-]\d{2}:?\d{2})$/i.test(v) && !Number.isNaN(Date.parse(v))
+  if (!hasZone(data.startsAt) || !hasZone(data.endsAt)) throw createHttpError(AppErrors.VALIDATION_ERROR)
   return repo.createAdminSurgeEvent(data)
 }
 

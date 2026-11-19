@@ -314,8 +314,9 @@ function CreateSurgeDialog({
         category_id: form.category_id ? parseInt(form.category_id, 10) : null,
         multiplier:  mult,
         reason:      form.reason || undefined,
-        starts_at:   form.starts_at,
-        ends_at:     form.ends_at,
+        // datetime-local has no zone; the server stores UTC, so send the admin's local time as an absolute instant.
+        starts_at:   new Date(form.starts_at).toISOString(),
+        ends_at:     new Date(form.ends_at).toISOString(),
       })
       setOpen(false)
       setForm({ city_id: '', category_id: '', multiplier: '1.5', reason: '', starts_at: '', ends_at: '' })
