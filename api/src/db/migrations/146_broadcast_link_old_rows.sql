@@ -1,5 +1,5 @@
--- Links the notification rows that broadcasts sent before 144 created, so the history can count them. Row locks only (no table lock).
--- Repeatable: a row already linked is skipped. Separate from 144 so its slow join does not run inside the ALTER TABLE's transaction.
+-- Links the notification rows that broadcasts sent before 145 created, so the history can count them. Row locks only (no table lock).
+-- Repeatable: a row already linked is skipped. Separate from 145 so its slow join does not run inside the ALTER TABLE's transaction.
 
 -- Link the rows those earlier broadcasts created: same owner kind, type, title and body, written within 2 hours of the broadcast.
 -- One row per broadcast and person (the lowest id), so the unique index below can never fail on a duplicate.

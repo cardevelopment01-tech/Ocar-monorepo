@@ -531,7 +531,7 @@ export async function listBroadcasts(params: z.infer<typeof listQuerySchema>): P
   )
   const page = res.rows.slice(0, params.limit)
   const broadcasts: BroadcastSummary[] = page.map((r) => {
-    // A tracked broadcast always has finished_at; a 'done' one without it was written by the previous release (see migration 144).
+    // A tracked broadcast always has finished_at; a 'done' one without it was written by the previous release (see migration 145).
     const tracked = !(r.status === 'done' && !r.finished_at)
     // sent_count is written when a run ends; the rows themselves are written as it goes, so a failed or running broadcast is counted from them
     const sent = tracked ? Math.max(r.sent_count as number, (r.logged as number | undefined) ?? 0) : (r.recipient_count as number)

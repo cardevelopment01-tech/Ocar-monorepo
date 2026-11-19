@@ -1,7 +1,7 @@
 -- Broadcast tracking: every notification a broadcast creates points back at it, so the admin can see what happened to each
 -- broadcast (sent, phone push accepted, in-app only, failed, opened) without matching rows by title and time.
 -- Expand only (backward compatible): new nullable columns and defaulted columns. The previous release ignores them.
--- Kept small on purpose: the linking of earlier rows is 145 and the unique index is 146. The migration runner wraps each file in one
+-- Kept small on purpose: the linking of earlier rows is 146 and the unique index is 147. The migration runner wraps each file in one
 -- transaction, and ALTER TABLE on notification_logs holds a lock until its file commits, so the slow parts must not share this file.
 
 ALTER TABLE notification_logs
