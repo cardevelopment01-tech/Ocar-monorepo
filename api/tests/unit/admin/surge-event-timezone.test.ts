@@ -23,7 +23,7 @@ describe('createAdminSurgeEvent time zone', () => {
     ['end not after start', '2026-11-20T01:56:00Z', '2026-11-19T01:56:00Z'],
   ]
   it.each(cases)('rejects %s', async (_n, startsAt, endsAt) => {
-    await expect(createAdminSurgeEvent({ ...base, startsAt, endsAt })).rejects.toMatchObject({ httpStatus: 400, appCode: 'VALIDATION_ERROR' })
+    await expect(createAdminSurgeEvent({ ...base, startsAt, endsAt })).rejects.toMatchObject({ httpStatus: 422, appCode: 'VALIDATION_ERROR' })
     expect(repo.createAdminSurgeEvent).not.toHaveBeenCalled()
   })
 
