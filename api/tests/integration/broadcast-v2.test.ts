@@ -442,6 +442,10 @@ describe('sending in groups (real database, push provider replaced)', () => {
     const send = (extra: Record<string, unknown>) => api(opsToken).post('/api/v1/admin/notifications/broadcast', { title: 'Pic', body: 'Body text', category: 'announcement', audience: { role: 'driver', phones: [P.d1] }, ...extra })
     expect((await send({ link: 'offers' })).status).toBe(422) // drivers have no offers screen
     expect((await send({ imageUrl: 'http://insecure.example.com/a.jpg' })).status).toBe(422)
+    // and the admin is told it is the picture that is wrong, not just "invalid"
+    const badPic = await send({ imageUrl: 'https://localhost/a.jpg' })
+    expect(badPic.status).toBe(422)
+    expect(badPic.body.error).toMatch(/Picture: Image must be a public https link/)
     fcm.calls.length = 0
     const res = await send({ imageUrl: 'https://cdn.example.com/a.jpg', link: 'wallet' })
     expect(res.status, JSON.stringify(res.body)).toBe(202)

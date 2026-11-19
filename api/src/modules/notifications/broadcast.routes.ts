@@ -32,7 +32,13 @@ router.get('/broadcasts', async (req, res, next) => {
 router.post('/broadcast', async (req, res, next) => {
   try {
     const parsed = broadcastSchema.safeParse(req.body)
-    if (!parsed.success) throw httpError(422, 'Invalid broadcast', AppErrors.VALIDATION_ERROR.code)
+    if (!parsed.success) {
+      // Say which field, so the admin knows what to fix (these messages are written for admins; nothing from the request is echoed).
+      const issue = parsed.error.issues[0]
+      const field = issue?.path[0]
+      const why = field === 'imageUrl' ? `Picture: ${issue!.message === 'Invalid url' ? 'that is not a valid link' : issue!.message}` : field === 'link' ? 'That screen is not valid' : null
+      throw httpError(422, why ? `Invalid broadcast. ${why}` : 'Invalid broadcast', AppErrors.VALIDATION_ERROR.code)
+    }
     res.status(202).json(await createBroadcast(parsed.data, req.admin!.id, req.ip ?? null))
   } catch (err) { next(err) }
 })
