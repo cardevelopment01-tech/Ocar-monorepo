@@ -9,7 +9,10 @@ export function pngBytes(width: number, height: number, padTo = 0): Buffer {
   head.writeUInt32BE(height, 20)
   head[24] = 8 // bit depth
   head[25] = 2 // colour type
-  return padTo > head.length ? Buffer.concat([head, Buffer.alloc(padTo - head.length)]) : head
+  // The closing IEND chunk (length 0, type, CRC), so the file ends like a complete PNG; any padding goes before it.
+  const iend = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82])
+  const pad = Buffer.alloc(Math.max(0, padTo - head.length - iend.length))
+  return Buffer.concat([head, pad, iend])
 }
 
 export function jpegBytes(width: number, height: number, padTo = 0): Buffer {

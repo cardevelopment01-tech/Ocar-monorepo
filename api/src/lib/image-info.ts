@@ -8,6 +8,14 @@ export interface ImageInfo {
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
+/** True when the file ends the way a complete JPEG (end-of-image marker) or PNG (IEND chunk) does, so a cut-off upload is caught. */
+export function isCompleteImage(buf: Buffer, type: ImageInfo['type']): boolean {
+  if (type === 'png') return buf.length >= 12 && buf.subarray(buf.length - 8, buf.length - 4).toString('latin1') === 'IEND'
+  let end = buf.length
+  while (end > 0 && buf[end - 1] === 0x00) end-- // some encoders pad with zeros
+  return end >= 2 && buf[end - 2] === 0xff && buf[end - 1] === 0xd9
+}
+
 export function readImageInfo(buf: Buffer): ImageInfo | null {
   if (buf.length >= 24 && buf.subarray(0, 8).equals(PNG_SIGNATURE) && buf.subarray(12, 16).toString('latin1') === 'IHDR') {
     return { type: 'png', width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }

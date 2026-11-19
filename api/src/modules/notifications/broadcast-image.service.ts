@@ -1,5 +1,5 @@
 import { httpError } from '@/lib/errors'
-import { readImageInfo } from '@/lib/image-info'
+import { isCompleteImage, readImageInfo } from '@/lib/image-info'
 import { isPublicImageStorageConfigured, publicImageBaseUrl, uploadPublicImage } from '@/lib/storage'
 import { isPublicHttpsUrl } from './broadcast.service'
 import { logger } from '@/lib/logger'
@@ -37,6 +37,7 @@ export async function saveBroadcastImage(file: { buffer: Buffer; size: number } 
 
   const info = readImageInfo(file.buffer)
   if (!info) throw httpError(422, 'Only JPEG and PNG pictures are supported', 'UNSUPPORTED_FILE_TYPE')
+  if (!isCompleteImage(file.buffer, info.type)) throw httpError(422, 'The picture file is incomplete or damaged. Try another one.', 'VALIDATION_ERROR')
   if (info.width < BROADCAST_IMAGE_MIN_WIDTH || info.width > BROADCAST_IMAGE_MAX_WIDTH) {
     throw httpError(422, `The picture must be between ${BROADCAST_IMAGE_MIN_WIDTH} and ${BROADCAST_IMAGE_MAX_WIDTH} pixels wide`, 'VALIDATION_ERROR')
   }

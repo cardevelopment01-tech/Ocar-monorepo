@@ -165,6 +165,7 @@ export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?
     const invalidTokens: string[] = []
     const tokenResults: Array<'ok' | 'invalid' | 'retry' | 'rejected'> = []
     let transientFailure = false
+    let refusedWhy: string | undefined
     response.responses.forEach((r, i) => {
       if (r.success) { tokenResults.push('ok'); return }
       const code = r.error?.code
@@ -176,6 +177,7 @@ export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?
       // the phone is kept. (With no explanation at all and no picture it stays as before: removed.)
       if (code === 'messaging/invalid-argument' && !/registration token/i.test(why) && (msg.imageUrl || why !== '')) {
         tokenResults.push('rejected')
+        refusedWhy ??= why
         return
       }
       if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-argument') {
@@ -187,6 +189,8 @@ export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?
         tokenResults.push('retry')
       }
     })
+    // Not shown to anyone; kept so the real wording is visible in the logs if Firebase ever refuses a whole broadcast.
+    if (refusedWhy !== undefined) log.warn({ reason: refusedWhy.slice(0, 200), withPicture: Boolean(msg.imageUrl) }, 'push: Firebase refused the message itself; phones kept')
 
     return { invalidTokens, successCount: response.successCount ?? 0, failureCount: response.failureCount ?? 0, transientFailure, tokenResults }
   } catch (err) {

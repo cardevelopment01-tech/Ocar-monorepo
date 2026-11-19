@@ -8,7 +8,9 @@ const record = vi.fn().mockResolvedValue(undefined)
 const deleteTokens = vi.fn().mockResolvedValue(undefined)
 const sendPush = vi.fn()
 const audit = vi.fn().mockResolvedValue(undefined)
-vi.mock('@/db/client', () => ({ pool: { query: (...a: unknown[]) => query(...a) } }))
+const lockQuery = vi.fn().mockResolvedValue({ rows: [] })
+const lockRelease = vi.fn()
+vi.mock('@/db/client', () => ({ pool: { query: (...a: unknown[]) => query(...a), connect: async () => ({ query: (...a: unknown[]) => lockQuery(...a), release: (...a: unknown[]) => lockRelease(...a) }) } }))
 vi.mock('@/jobs/queues', () => ({ pushQueue: { add: (...a: unknown[]) => queueAdd(...a) } }))
 vi.mock('@/lib/audit-log', () => ({ recordAuditLog: (...a: unknown[]) => audit(...a) }))
 vi.mock('@/modules/notifications/notifications.repository', () => ({
@@ -68,7 +70,8 @@ describe('broadcastSchema', () => {
     for (const imageUrl of ['HTTPS://cdn.example.com/a.jpg', 'https://CDN.Example.com/a.jpg', 'https://8.8.8.8/a.jpg']) {
       expect(broadcastSchema.safeParse({ ...ok, imageUrl }).success, imageUrl).toBe(true)
     }
-    for (const imageUrl of ['https://localhost/a.jpg', 'https://app.localhost/a.jpg', 'https://printer.local/a.jpg', 'https://intranet/a.jpg',
+    for (const imageUrl of ['https://localhost./a.jpg', 'https://user@cdn.example.com/a.jpg', 'https://user:pass@cdn.example.com/a.jpg', 'https://100.64.0.9/a.jpg', 'https://198.18.0.1/a.jpg', 'https://192.0.0.8/a.jpg', 'https://224.0.0.1/a.jpg',
+      'https://localhost/a.jpg', 'https://app.localhost/a.jpg', 'https://printer.local/a.jpg', 'https://intranet/a.jpg',
       'https://10.0.0.5/a.jpg', 'https://127.0.0.1/a.jpg', 'https://192.168.1.9/a.jpg', 'https://172.20.1.1/a.jpg', 'https://169.254.169.254/latest',
       'https://[::1]/a.jpg', 'https://svc.internal/a.jpg']) {
       expect(broadcastSchema.safeParse({ ...ok, imageUrl }).success, imageUrl).toBe(false)
@@ -209,7 +212,7 @@ describe('previewBroadcast', () => {
 })
 
 describe('createBroadcast', () => {
-  beforeEach(() => { vi.clearAllMocks(); queueAdd.mockResolvedValue(undefined) })
+  beforeEach(() => { vi.clearAllMocks(); queueAdd.mockResolvedValue(undefined); lockQuery.mockResolvedValue({ rows: [] }) })
   const input = { title: 'T', body: 'B', category: 'announcement' as const, audience: { role: 'driver' as const, missingRcBack: true } }
   const counts = (c: Partial<{ matched: number; opted_out: number; capped: number; recipients: number; with_device: number }>) =>
     ({ rows: [{ matched: 0, opted_out: 0, capped: 0, recipients: 0, with_device: 0, ...c }] })
@@ -249,6 +252,31 @@ describe('createBroadcast', () => {
     await createBroadcast({ ...input, imageUrl: 'https://cdn.example.com/a.jpg', link: 'wallet' }, 1n, null)
     expect((query.mock.calls[2] as [string, unknown[]])[1].slice(8)).toEqual(['https://cdn.example.com/a.jpg', 'wallet'])
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ afterState: expect.objectContaining({ imageUrl: 'https://cdn.example.com/a.jpg', link: 'wallet' }) }))
+  })
+
+  it('the duplicate check runs under a lock for that exact broadcast and the lock is always let go, even when the check refuses', async () => {
+    query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+    await expect(createBroadcast(input, 1n, null)).rejects.toMatchObject({ httpStatus: 409 })
+    expect(lockQuery.mock.calls[0]![0]).toContain('pg_advisory_lock')
+    expect(lockQuery.mock.calls[1]![0]).toContain('pg_advisory_unlock')
+    expect(lockQuery.mock.calls[0]![1]).toEqual(lockQuery.mock.calls[1]![1]) // the same key
+    expect(lockRelease).toHaveBeenCalledWith() // the connection goes back to the pool normally
+  })
+
+  it('a different broadcast gets a different lock, so unrelated sends never wait for each other', async () => {
+    query.mockResolvedValue({ rows: [] })
+    query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ matched: 0, opted_out: 0, capped: 0, recipients: 0, with_device: 0 }] })
+    await createBroadcast(input, 1n, null).catch(() => undefined)
+    await createBroadcast({ ...input, title: 'Other' }, 1n, null).catch(() => undefined)
+    const keys = lockQuery.mock.calls.filter(([sql]) => String(sql).includes('pg_advisory_lock')).map((c) => (c[1] as string[])[0])
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).not.toBe(keys[1])
+  })
+
+  it('a typed-number test takes no lock at all', async () => {
+    query.mockResolvedValueOnce(counts({ matched: 1, recipients: 1, with_device: 1 })).mockResolvedValueOnce({ rows: [{ id: '8' }] })
+    await createBroadcast({ ...input, audience: { role: 'driver' as const, phones: ['+919861003979'] } }, 1n, null)
+    expect(lockQuery).not.toHaveBeenCalled()
   })
 
   it('the same broadcast sent again within two minutes (double click, retried request) is refused, and nothing is stored or queued', async () => {
@@ -330,6 +358,7 @@ describe('runBroadcast', () => {
     expect(createRows).toHaveBeenCalledTimes(1)
     expect(createRows).toHaveBeenCalledWith({ ownerType: 'user', ownerIds: ['1', '2'], type: 'announcement', title: 'Hello', body: 'World', broadcastId: 9n })
     expect(getTokens).toHaveBeenCalledTimes(1) // one look-up of everyone's phones
+    expect(getTokens.mock.calls[0]![2]).toBe(30) // only phones seen in the last 30 days: the same rule the audience check shows
     expect(sendPush).toHaveBeenCalledTimes(1) // one Firebase call for the group
     expect(sendPush.mock.calls[0]![0]).toEqual(['tok-1', 'tok-2'])
     expect(recorded()).toEqual([
@@ -405,7 +434,7 @@ describe('runBroadcast', () => {
     db({ row: row({ audience: { role: 'driver' } }), recipients: ['5'] })
     await runBroadcast('9')
     expect(createRows).toHaveBeenCalledWith(expect.objectContaining({ ownerType: 'driver', ownerIds: ['5'] }))
-    expect(getTokens).toHaveBeenCalledWith('driver', ['5'])
+    expect(getTokens).toHaveBeenCalledWith('driver', ['5'], 30)
   })
 
   it('works through groups of 500: 1,200 people are 3 statements and 3 Firebase calls, never one call per person', async () => {

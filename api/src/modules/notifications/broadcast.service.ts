@@ -56,11 +56,15 @@ export function isPublicHttpsUrl(value: string): boolean {
   let u: URL
   try { u = new URL(value) } catch { return false }
   if (u.protocol !== 'https:') return false
-  const h = u.hostname.toLowerCase()
+  if (u.username !== '' || u.password !== '') return false // https://user@host/... can hide where the link really goes
+  let h = u.hostname.toLowerCase()
+  if (h.endsWith('.')) h = h.slice(0, -1) // "localhost." is localhost
   if (!h.includes('.') || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return false
   if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
-    const [a, b] = h.split('.').map(Number) as [number, number]
-    if (a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false
+    const [a, b, c] = h.split('.').map(Number) as [number, number, number]
+    if (a === 10 || a === 127 || a === 0 || a >= 224) return false // private, loopback, "this network", multicast and reserved
+    if ((a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false // link-local, private
+    if ((a === 100 && b >= 64 && b <= 127) || (a === 192 && b === 0 && c === 0) || (a === 198 && (b === 18 || b === 19))) return false // carrier-grade NAT, protocol ranges, benchmarking
   }
   return !h.startsWith('[') // IPv6 literals: not worth supporting for a picture host
 }
@@ -223,18 +227,30 @@ export function maskAudience(audience: Audience): Omit<Audience, 'phones'> & { p
 
 // ─── Sending ─────────────────────────────────────────────────────────────────────────────────
 
-export async function createBroadcast(
-  input: BroadcastInput, adminId: bigint, ip: string | null,
-): Promise<{ id: string; recipientCount: number; withDevice: number }> {
-  if (input.category === 'offer' && !offersAllowedNow()) {
-    throw httpError(422, 'Offers can only be sent between 10:00 and 21:00 IST', AppErrors.VALIDATION_ERROR.code)
+/** Holds a database lock for `key` until released: a second caller with the same key waits here. Uses its own connection (a session lock). */
+async function acquireDedupeLock(key: string): Promise<{ release: () => Promise<void> }> {
+  const client = await pool.connect()
+  try {
+    await client.query('SELECT pg_advisory_lock(hashtextextended($1, 0))', [key])
+  } catch (err) {
+    client.release(true)
+    throw err
   }
-  if (input.link !== undefined && !(BROADCAST_LINKS[input.audience.role] as readonly string[]).includes(input.link)) {
-    throw httpError(422, `"${input.link}" is not a screen the ${input.audience.role} app can open`, AppErrors.VALIDATION_ERROR.code)
+  return {
+    release: async () => {
+      try {
+        await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [key])
+        client.release()
+      } catch {
+        client.release(true) // could not unlock cleanly: close the connection, which drops its locks
+      }
+    },
   }
+}
+
+/** The duplicate check, the audience check and the insert (called under the lock for everything but typed-number tests). */
+async function storeBroadcast(input: BroadcastInput, adminId: bigint): Promise<{ id: string; preview: AudienceCounts }> {
   if (!input.audience.phones) {
-    // A double click or a retried request would send the same notice to everyone twice. Typed-number tests are exempt: repeating a
-    // test is normal and harmless.
     const dup = await pool.query(
       `SELECT 1 FROM notification_broadcasts
         WHERE admin_id = $1 AND title = $2 AND body = $3 AND category = $4 AND audience = $5::jsonb
@@ -257,7 +273,29 @@ export async function createBroadcast(
     [adminId.toString(), input.title, input.body, input.category, JSON.stringify(input.audience), preview.recipientCount,
      preview.skippedOptedOut, preview.skippedCapped, input.imageUrl ?? null, input.link ?? null],
   )
-  const id = res.rows[0]!.id
+  return { id: res.rows[0]!.id, preview }
+}
+
+export async function createBroadcast(
+  input: BroadcastInput, adminId: bigint, ip: string | null,
+): Promise<{ id: string; recipientCount: number; withDevice: number }> {
+  if (input.category === 'offer' && !offersAllowedNow()) {
+    throw httpError(422, 'Offers can only be sent between 10:00 and 21:00 IST', AppErrors.VALIDATION_ERROR.code)
+  }
+  if (input.link !== undefined && !(BROADCAST_LINKS[input.audience.role] as readonly string[]).includes(input.link)) {
+    throw httpError(422, `"${input.link}" is not a screen the ${input.audience.role} app can open`, AppErrors.VALIDATION_ERROR.code)
+  }
+  // A double click or a retried request would send the same notice to everyone twice. Two identical requests at the same moment must not
+  // both pass the duplicate check, so identical ones queue up on a database lock until the first has stored its broadcast (the second then
+  // finds it and is refused). Typed-number tests are exempt: repeating a test is normal and harmless.
+  const lock = input.audience.phones ? null : await acquireDedupeLock(`broadcast:${adminId}:${input.title}:${input.body}:${input.category}:${JSON.stringify(input.audience)}`)
+  let stored: { id: string; preview: AudienceCounts }
+  try {
+    stored = await storeBroadcast(input, adminId)
+  } finally {
+    await lock?.release()
+  }
+  const { id, preview } = stored
 
   await recordAuditLog({
     adminId, action: 'notification_broadcast', targetTable: 'notification_broadcasts', targetId: BigInt(id),
@@ -300,7 +338,8 @@ type Outcome = { attempted: boolean; successCount: number; failureCount: number;
 // messages per call, so a group is normally one call. Trouble a retry could fix (Firebase or the network) is retried for just the phones
 // concerned; a dead phone is removed from our list; every person's row gets what happened to them in one statement.
 async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'user', msg: PushMessage, type: string, finalAttempt: boolean): Promise<number> {
-  const tokensByOwner = await repo.getTokensForOwners(ownerType, rows.map((r) => r.ownerId))
+  // Only phones seen recently, the same rule the audience check uses to say who gets the push: what the admin was told is what happens.
+  const tokensByOwner = await repo.getTokensForOwners(ownerType, rows.map((r) => r.ownerId), PUSH_TOKEN_FRESH_DAYS)
   const rowByOwner = new Map(rows.map((r) => [r.ownerId, r]))
   const outcome = new Map<string, Outcome>(rows.map((r) => [r.ownerId, { attempted: false, successCount: 0, failureCount: 0, invalidTokens: 0, stillFailing: false }]))
 

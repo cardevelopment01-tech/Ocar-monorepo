@@ -164,11 +164,12 @@ export async function createBroadcastNotifications(params: {
   return res.rows.map((r) => ({ id: r.id, ownerId: r.owner_id }))
 }
 
-/** Registered phones for a group of people, one query. People with none are absent from the map. */
-export async function getTokensForOwners(ownerType: DeviceOwnerType, ownerIds: string[]): Promise<Map<string, string[]>> {
+/** Phones seen within `freshDays` days for a group of people, one query. People with none are absent from the map. */
+export async function getTokensForOwners(ownerType: DeviceOwnerType, ownerIds: string[], freshDays: number): Promise<Map<string, string[]>> {
   const res = await pool.query<{ owner_id: string; token: string }>(
-    `SELECT owner_id::text, token FROM device_tokens WHERE owner_type = $1 AND owner_id = ANY($2::bigint[]) ORDER BY id`,
-    [ownerType, ownerIds],
+    `SELECT owner_id::text, token FROM device_tokens
+      WHERE owner_type = $1 AND owner_id = ANY($2::bigint[]) AND last_seen_at > now() - make_interval(days => $3::int) ORDER BY id`,
+    [ownerType, ownerIds, freshDays],
   )
   const byOwner = new Map<string, string[]>()
   for (const r of res.rows) byOwner.set(r.owner_id, [...(byOwner.get(r.owner_id) ?? []), r.token])

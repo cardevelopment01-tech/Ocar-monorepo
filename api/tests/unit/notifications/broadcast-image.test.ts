@@ -8,7 +8,7 @@ vi.mock('@/lib/storage', () => ({
   uploadPublicImage: (...a: unknown[]) => storage.upload(...a),
 }))
 
-import { readImageInfo } from '@/lib/image-info'
+import { isCompleteImage, readImageInfo } from '@/lib/image-info'
 import { saveBroadcastImage, BROADCAST_IMAGE_MAX_BYTES } from '@/modules/notifications/broadcast-image.service'
 
 // Value: protects=only a real, small, banner-shaped JPEG or PNG ever reaches the public pictures bucket, judged by its own bytes (not its
@@ -40,6 +40,21 @@ describe('readImageInfo', () => {
   it('a JPEG header that points past the end of the file does not loop or throw', () => {
     expect(readImageInfo(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))).toBeNull()
     expect(readImageInfo(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))).toBeNull() // a zero-length segment
+  })
+})
+
+describe('isCompleteImage (a cut-off upload is caught)', () => {
+  it('accepts files that end the way a whole JPEG and a whole PNG do (zero padding after a JPEG is fine)', () => {
+    expect(isCompleteImage(jpegBytes(1024, 512), 'jpeg')).toBe(true)
+    expect(isCompleteImage(jpegBytes(1024, 512, 5000), 'jpeg')).toBe(true)
+    expect(isCompleteImage(pngBytes(1024, 512, 5000), 'png')).toBe(true)
+  })
+  it('refuses a file cut short', () => {
+    const jpeg = jpegBytes(1024, 512)
+    const png = pngBytes(1024, 512, 5000)
+    expect(isCompleteImage(jpeg.subarray(0, jpeg.length - 2), 'jpeg')).toBe(false)
+    expect(isCompleteImage(png.subarray(0, png.length - 12), 'png')).toBe(false)
+    expect(isCompleteImage(Buffer.alloc(0), 'jpeg')).toBe(false)
   })
 })
 
@@ -81,6 +96,14 @@ describe('saveBroadcastImage', () => {
     await expect(saveBroadcastImage(undefined)).rejects.toMatchObject({ httpStatus: 422 })
     await expect(saveBroadcastImage(file(jpegBytes(1024, 512, BROADCAST_IMAGE_MAX_BYTES + 1)))).rejects.toMatchObject({ httpStatus: 422, appCode: 'FILE_TOO_LARGE' })
     await expect(saveBroadcastImage(file(Buffer.from('GIF89a' + 'x'.repeat(100), 'latin1')))).rejects.toMatchObject({ httpStatus: 422, appCode: 'UNSUPPORTED_FILE_TYPE' })
+    expect(storage.upload).not.toHaveBeenCalled()
+  })
+
+  it('refuses a picture whose header looks right but whose file is cut off, and stores nothing', async () => {
+    const whole = jpegBytes(1024, 512, 5000)
+    await expect(saveBroadcastImage(file(Buffer.concat([whole.subarray(0, 60), Buffer.from([1, 2, 3, 4])])))).rejects.toMatchObject({ httpStatus: 422, message: expect.stringContaining('incomplete') })
+    const png = pngBytes(1024, 512, 5000)
+    await expect(saveBroadcastImage(file(png.subarray(0, png.length - 12)))).rejects.toMatchObject({ httpStatus: 422 })
     expect(storage.upload).not.toHaveBeenCalled()
   })
 

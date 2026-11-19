@@ -536,3 +536,33 @@ describe('the picture upload route (real route and auth, storage replaced)', () 
     }
   })
 })
+
+describe('a double submit (real database, two requests at the same instant)', () => {
+  const post = (body: object, token = opsToken) => request(app).post('/api/v1/admin/notifications/broadcast').set('Authorization', `Bearer ${token}`).send(body)
+  const countRows = async (title: string) =>
+    Number((await pool.query<{ n: string }>('SELECT count(*) AS n FROM notification_broadcasts WHERE title = $1', [title])).rows[0]!.n)
+
+  it('two identical sends at once make one broadcast: one is accepted, the other refused', async () => {
+    const msg = { title: 'Race A', body: 'Body text', category: 'announcement', audience: { role: 'driver', categoryIds: [suvCategoryId] } }
+    const results = await Promise.all([post(msg), post(msg)])
+    for (const r of results) if (r.status === 202) broadcastIds.push(String(body(r).id))
+    expect(results.map((r) => r.status).sort(), JSON.stringify(results.map((r) => r.body))).toEqual([202, 409])
+    expect(await countRows('Race A')).toBe(1)
+  })
+
+  it('five at once: still exactly one', async () => {
+    const msg = { title: 'Race B', body: 'Body text', category: 'announcement', audience: { role: 'driver', categoryIds: [suvCategoryId] } }
+    const results = await Promise.all([1, 2, 3, 4, 5].map(() => post(msg)))
+    for (const r of results) if (r.status === 202) broadcastIds.push(String(body(r).id))
+    expect(results.filter((r) => r.status === 202)).toHaveLength(1)
+    expect(results.filter((r) => r.status === 409)).toHaveLength(4)
+    expect(await countRows('Race B')).toBe(1)
+  })
+
+  it('two different broadcasts at once both go through (the lock is per broadcast)', async () => {
+    const base = { body: 'Body text', category: 'announcement', audience: { role: 'driver', categoryIds: [suvCategoryId] } }
+    const results = await Promise.all([post({ ...base, title: 'Race C1' }), post({ ...base, title: 'Race C2' })])
+    for (const r of results) if (r.status === 202) broadcastIds.push(String(body(r).id))
+    expect(results.map((r) => r.status)).toEqual([202, 202])
+  })
+})
