@@ -14,7 +14,7 @@ export const pushWorker = new Worker(
   QUEUE_NAMES.PUSH,
   async (job) => {
     if (job.name === 'broadcast_send') {
-      await runBroadcast((job.data as { broadcastId: string }).broadcastId)
+      await runBroadcast((job.data as { broadcastId: string }).broadcastId, job.attemptsMade + 1 >= (job.opts.attempts ?? 1))
       return
     }
     const data = job.data as notifService.PushJobData

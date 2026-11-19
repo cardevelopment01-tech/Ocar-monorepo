@@ -194,3 +194,20 @@ export const ROUND_TRIP_HOURLY_MAX_HOURS = 24
 
 // Offers: how long the active-offer list and a looked-up code are cached (admin writes invalidate them).
 export const OFFERS_CACHE_TTL_SECONDS = 30
+
+// Admin broadcasts (push + in-app announcements). A person gets at most this many broadcasts in any rolling 24 hours, so a few
+// well-meant sends in a row never turn into spam. Sends aimed at specific phone numbers (tests, one-off reminders) are exempt.
+export const BROADCAST_DAILY_CAP_PER_PERSON = 2
+// A registered phone counts as reachable if it has been seen this recently (FCM treats a registration as stale after a month).
+export const PUSH_TOKEN_FRESH_DAYS = 30
+// Recipients are notified in groups of this size, with a short pause between groups, so one broadcast never floods the database or
+// the push queue (FCM's own guidance is to ramp up rather than spike).
+// One database round trip and one Firebase call per group; 500 is Firebase's limit for one call.
+export const BROADCAST_CHUNK_SIZE = 500
+// Pause between groups, so a big send ramps up smoothly instead of spiking (Firebase: ramp over minutes, never burst).
+export const BROADCAST_CHUNK_PAUSE_MS = 250
+// A group whose Firebase call hit trouble that a retry could fix is retried this many times in total, pausing longer each time.
+export const BROADCAST_PUSH_ATTEMPTS = 3
+export const BROADCAST_PUSH_RETRY_PAUSE_MS = 2000
+// A broadcast job is tried this many times (a retry only notifies people not yet notified).
+export const BROADCAST_JOB_ATTEMPTS = 3

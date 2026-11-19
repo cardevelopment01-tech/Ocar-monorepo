@@ -60,6 +60,17 @@ describe('resolvePushRoute (driver-mobile)', () => {
     expect(resolvePushRoute({ type: 'ride_cancelled', rideId: '9' })).toBe('/(tabs)/home')
   })
 
+  it('a broadcast opens the screen the admin chose; with none, or one this app does not know, the notification center', () => {
+    expect(resolveTapRoute({ type: 'announcement', link: 'documents' })).toBe('/documents')
+    expect(resolveTapRoute({ type: 'offer', link: 'wallet' })).toBe('/wallet')
+    expect(resolveTapRoute({ type: 'announcement', link: 'earnings' })).toBe('/(tabs)/earnings')
+    expect(resolveTapRoute({ type: 'announcement', link: 'home' })).toBe('/(tabs)/home')
+    expect(resolveTapRoute({ type: 'announcement' })).toBe('/notifications')
+    expect(resolveTapRoute({ type: 'announcement', link: 'offers' })).toBe('/notifications') // a rider screen
+    expect(resolveTapRoute({ type: 'announcement', link: '../../x' })).toBe('/notifications')
+    expect(resolveTapRoute({ type: 'ride_force_assigned', rideId: '9', link: 'wallet' })).toBe('/active-ride/9')
+  })
+
   it('a tap falls back to the notification center, except for live ride offers', () => {
     expect(resolveTapRoute({ type: 'account_suspended' })).toBe('/notifications')
     expect(resolveTapRoute({ type: 'something_new' })).toBe('/notifications')

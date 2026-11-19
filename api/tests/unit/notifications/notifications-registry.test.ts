@@ -37,4 +37,11 @@ describe('notification registry', () => {
   it('an unregistered type falls back to safe defaults instead of throwing', () => {
     expect(pushDefaults('not_a_real_type' as NotificationType, 5n)).toEqual({ ttlSeconds: 86_400 })
   })
+
+  it('the two admin broadcast types never collapse: one broadcast must not replace another on the phone', () => {
+    for (const type of ['announcement', 'offer'] as const) {
+      expect(NOTIFICATION_TYPES[type].collapse).toBe('none')
+      expect(pushDefaults(type).tag).toBeUndefined()
+    }
+  })
 })

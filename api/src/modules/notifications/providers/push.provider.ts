@@ -34,6 +34,12 @@ export interface PushMessage {
   // auto-open path planned in docs/superpowers/plans/2026-11-05-driver-app-closed-ride-alert-overlay.md), so it asks for
   // `proxy: 'deny'`.
   noProxy?: boolean
+  // Makes a repeat of this same message REPLACE the earlier one on the phone instead of showing a second notification (Android
+  // notification tag, APNs collapse-id). Unlike `tag` it sets no FCM collapse key: FCM keeps only 4 collapse keys per device, shared
+  // with the ride pushes. Used where a message can legitimately be sent twice (a retried broadcast).
+  dedupeTag?: string
+  // A picture shown big in the notification (https only: a malformed value makes Firebase refuse the whole message).
+  imageUrl?: string
 }
 
 export interface SendPushResult {
@@ -43,6 +49,11 @@ export interface SendPushResult {
   // FCM/network trouble that a later attempt could fix (as opposed to a dead token, which a
   // retry never will). Only meaningful to a caller that can retry, i.e. the push worker.
   transientFailure: boolean
+  // What happened to each token, in the order given: 'ok', 'invalid' (dead registration, remove it) or 'retry' (FCM/network trouble a
+  // later attempt could fix). Absent when nothing was sent (push not configured). Lets a caller that sends one message to many people
+  // tell who got it; existing callers ignore it.
+  // 'rejected': Firebase refused this message itself (e.g. its picture link), not the phone, so the phone is kept and a retry will not help.
+  tokenResults?: Array<'ok' | 'invalid' | 'retry' | 'rejected'>
 }
 
 const NOTHING_SENT: SendPushResult = { invalidTokens: [], successCount: 0, failureCount: 0, transientFailure: false }
@@ -69,7 +80,10 @@ function getFirebaseApp(): App | null {
   }
 }
 
-export async function sendPush(tokens: string[], msg: PushMessage): Promise<SendPushResult> {
+// `perTokenData`: extra data fields per token, in token order (a broadcast gives each person their own notification id). Without it
+// the whole batch is one multicast, exactly as before; with it the same message goes as one message per token (sendEach), still one call.
+// At most 500 tokens per call (FCM's limit); a caller with more must batch.
+export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?: Array<Record<string, string>>): Promise<SendPushResult> {
   if (tokens.length === 0) {
     return NOTHING_SENT
   }
@@ -96,6 +110,8 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
       defaultVibrateTimings: !msg.silent,
       ...(msg.silent ? {} : { sound: msg.sound?.android ?? 'default' }),
       ...(msg.noProxy ? { proxy: 'deny' as const } : {}),
+      ...(msg.imageUrl ? { imageUrl: msg.imageUrl } : {}),
+      ...(msg.dedupeTag ? { tag: msg.dedupeTag } : {}),
     }
     const android: NonNullable<MulticastMessage['android']> = { priority: 'high', notification: androidNotification }
     // ttl/collapseKey/tag were previously only written to the webpush block, so on Android a
@@ -108,7 +124,9 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
     }
     // iOS (planned): same intent via APNs headers; harmless for Android tokens in the same multicast.
     const apnsHeaders: Record<string, string> = { 'apns-priority': '10' }
+    // iOS shows the picture only when the app has a notification service extension; harmless otherwise.
     if (msg.ttlSeconds !== undefined) apnsHeaders['apns-expiration'] = String(Math.floor(Date.now() / 1000) + msg.ttlSeconds)
+    if (msg.dedupeTag) apnsHeaders['apns-collapse-id'] = msg.dedupeTag.slice(0, 64)
     if (msg.tag) apnsHeaders['apns-collapse-id'] = msg.tag.slice(0, 64)
     const message: MulticastMessage = {
       tokens,
@@ -116,6 +134,7 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
       android,
       apns: {
         headers: apnsHeaders,
+        ...(msg.imageUrl ? { fcmOptions: { imageUrl: msg.imageUrl } } : {}),
         payload: {
           aps: {
             ...(msg.silent ? {} : { sound: msg.sound?.ios ?? 'default' }),
@@ -134,25 +153,48 @@ export async function sendPush(tokens: string[], msg: PushMessage): Promise<Send
       }
     }
 
-    const response = await getMessaging(fbApp).sendEachForMulticast(message)
+    let response: Awaited<ReturnType<ReturnType<typeof getMessaging>['sendEachForMulticast']>>
+    if (perTokenData) {
+      const { tokens: _tokens, ...base } = message
+      void _tokens
+      response = await getMessaging(fbApp).sendEach(tokens.map((token, i) => ({ ...base, token, data: { ...(base.data ?? {}), ...(perTokenData[i] ?? {}) } })))
+    } else {
+      response = await getMessaging(fbApp).sendEachForMulticast(message)
+    }
 
     const invalidTokens: string[] = []
+    const tokenResults: Array<'ok' | 'invalid' | 'retry' | 'rejected'> = []
     let transientFailure = false
+    let refusedWhy: string | undefined
     response.responses.forEach((r, i) => {
-      if (!r.success) {
-        const code = r.error?.code
-        if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-argument') {
-          const badToken = tokens[i]
-          if (badToken) invalidTokens.push(badToken)
-        } else {
-          transientFailure = true
-        }
+      if (r.success) { tokenResults.push('ok'); return }
+      const code = r.error?.code
+      // With a picture on the message, 'invalid-argument' most likely means the message (the picture link) was refused, which says nothing
+      // about the phone: removing every phone because of one bad link would silence a whole audience, ride requests included.
+      const why = r.error?.message ?? ''
+      // 'invalid-argument' is also what Firebase says about the MESSAGE (a refused picture link, a bad data field), which says nothing
+      // about the phone. Only a message that names the registration token removes a phone; with a picture, or any other explanation,
+      // the phone is kept. (With no explanation at all and no picture it stays as before: removed.)
+      if (code === 'messaging/invalid-argument' && !/registration token/i.test(why) && (msg.imageUrl || why !== '')) {
+        tokenResults.push('rejected')
+        refusedWhy ??= why
+        return
+      }
+      if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-argument') {
+        const badToken = tokens[i]
+        if (badToken) invalidTokens.push(badToken)
+        tokenResults.push('invalid')
+      } else {
+        transientFailure = true
+        tokenResults.push('retry')
       }
     })
+    // Not shown to anyone; kept so the real wording is visible in the logs if Firebase ever refuses a whole broadcast.
+    if (refusedWhy !== undefined) log.warn({ reason: refusedWhy.slice(0, 200), withPicture: Boolean(msg.imageUrl) }, 'push: Firebase refused the message itself; phones kept')
 
-    return { invalidTokens, successCount: response.successCount ?? 0, failureCount: response.failureCount ?? 0, transientFailure }
+    return { invalidTokens, successCount: response.successCount ?? 0, failureCount: response.failureCount ?? 0, transientFailure, tokenResults }
   } catch (err) {
     log.error({ err }, 'sendEachForMulticast failed')
-    return { invalidTokens: [], successCount: 0, failureCount: tokens.length, transientFailure: true }
+    return { invalidTokens: [], successCount: 0, failureCount: tokens.length, transientFailure: true, tokenResults: tokens.map(() => 'retry' as const) }
   }
 }

@@ -12,6 +12,15 @@
 // pickup_updated, trip_window_ending, trip_window_ended, ride_chat_message, document_rejected, document_expiring,
 // document_expired, profile_corrected, vehicle_corrected, account_suspended,
 // driver_warning, session_ended_stale, wallet_low_balance.
+// The screens an admin broadcast can ask a tap to open (BROADCAST_LINKS.driver in the API). A key this app does not know falls
+// through to the notification center (see resolveTapRoute).
+const BROADCAST_ROUTES: Record<string, string> = {
+  home: '/(tabs)/home',
+  wallet: '/wallet',
+  earnings: '/(tabs)/earnings',
+  documents: '/documents',
+}
+
 export function resolvePushRoute(data: Record<string, string> | undefined): string | null {
   const type = data?.['type']
   if (!type) return null
@@ -74,6 +83,13 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
     case 'driver_warning':
     case 'session_ended_stale':
       return null
+
+    // Admin broadcasts: the screen the admin chose, else (via resolveTapRoute) the notification center.
+    case 'announcement':
+    case 'offer': {
+      const link = data?.['link']
+      return link ? (BROADCAST_ROUTES[link] ?? null) : null
+    }
 
     default:
       return null
