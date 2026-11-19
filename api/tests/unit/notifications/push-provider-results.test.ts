@@ -143,6 +143,15 @@ describe('sendPush: a picture', () => {
     expect(m.apns.headers['apns-collapse-id']).toBe('ride-1-status')
   })
 
+  it('without a picture, an "invalid argument" that talks about the message (not the token) keeps the phones; one that names the token, or says nothing, still removes it', async () => {
+    const aboutMessage = { success: false, error: { code: 'messaging/invalid-argument', message: 'Invalid JSON payload received. Unknown name "data"' } }
+    const aboutToken = { success: false, error: { code: 'messaging/invalid-argument', message: 'The registration token is not a valid FCM registration token' } }
+    sendEach.mockResolvedValue({ successCount: 0, failureCount: 3, responses: [aboutMessage, aboutToken, badArg] })
+    const res = await sendPush(['a', 'b', 'c'], { title: 'T', body: 'B' }, [{ notificationId: '1' }, { notificationId: '2' }, { notificationId: '3' }])
+    expect(res.tokenResults).toEqual(['rejected', 'invalid', 'invalid'])
+    expect(res.invalidTokens).toEqual(['b', 'c'])
+  })
+
   it('without a picture nothing about an image is sent', async () => {
     sendEachForMulticast.mockResolvedValue({ successCount: 1, failureCount: 0, responses: [ok] })
     await sendPush(['a'], { title: 'T', body: 'B' })

@@ -64,6 +64,17 @@ describe('broadcastSchema', () => {
       expect(broadcastSchema.safeParse({ ...ok, imageUrl }).success, imageUrl).toBe(false)
     }
   })
+  it('a picture must be on a public host: a scheme in capitals is fine, localhost, private networks and bare names are not', () => {
+    for (const imageUrl of ['HTTPS://cdn.example.com/a.jpg', 'https://CDN.Example.com/a.jpg', 'https://8.8.8.8/a.jpg']) {
+      expect(broadcastSchema.safeParse({ ...ok, imageUrl }).success, imageUrl).toBe(true)
+    }
+    for (const imageUrl of ['https://localhost/a.jpg', 'https://app.localhost/a.jpg', 'https://printer.local/a.jpg', 'https://intranet/a.jpg',
+      'https://10.0.0.5/a.jpg', 'https://127.0.0.1/a.jpg', 'https://192.168.1.9/a.jpg', 'https://172.20.1.1/a.jpg', 'https://169.254.169.254/latest',
+      'https://[::1]/a.jpg', 'https://svc.internal/a.jpg']) {
+      expect(broadcastSchema.safeParse({ ...ok, imageUrl }).success, imageUrl).toBe(false)
+    }
+  })
+
   it('rejects empty or oversized text and unknown fields', () => {
     expect(broadcastSchema.safeParse({ ...ok, title: ' ' }).success).toBe(false)
     expect(broadcastSchema.safeParse({ ...ok, body: 'x'.repeat(301) }).success).toBe(false)
@@ -194,13 +205,13 @@ describe('createBroadcast', () => {
     ({ rows: [{ matched: 0, opted_out: 0, capped: 0, recipients: 0, with_device: 0, ...c }] })
 
   it('refuses an empty audience instead of sending to nobody', async () => {
-    query.mockResolvedValueOnce(counts({}))
+    query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce(counts({}))
     await expect(createBroadcast(input, 1n, null)).rejects.toMatchObject({ httpStatus: 422, message: 'No recipients match this audience' })
     expect(queueAdd).not.toHaveBeenCalled()
   })
 
   it('says so when everyone it matches was left out by opt-outs or the daily limit', async () => {
-    query.mockResolvedValueOnce(counts({ matched: 4, opted_out: 1, capped: 3 }))
+    query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce(counts({ matched: 4, opted_out: 1, capped: 3 }))
     await expect(createBroadcast(input, 1n, null)).rejects.toMatchObject({ httpStatus: 422, message: expect.stringContaining("today's limit") })
     expect(queueAdd).not.toHaveBeenCalled()
   })
@@ -213,9 +224,9 @@ describe('createBroadcast', () => {
   })
 
   it('stores the broadcast with the counts it left out, audits it, and queues one job that is safe to retry', async () => {
-    query.mockResolvedValueOnce(counts({ matched: 10, opted_out: 1, capped: 2, recipients: 7, with_device: 5 })).mockResolvedValueOnce({ rows: [{ id: '9' }] })
+    query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce(counts({ matched: 10, opted_out: 1, capped: 2, recipients: 7, with_device: 5 })).mockResolvedValueOnce({ rows: [{ id: '9' }] })
     expect(await createBroadcast(input, 1n, '1.2.3.4')).toEqual({ id: '9', recipientCount: 7, withDevice: 5 })
-    const [insertSql, insertValues] = query.mock.calls[1] as [string, unknown[]]
+    const [insertSql, insertValues] = query.mock.calls[2] as [string, unknown[]]
     expect(insertSql).toContain('INSERT INTO notification_broadcasts')
     expect(insertSql).toContain("'queued'") // the column default is 'done' (for the previous release), so this release says it explicitly
     expect(insertValues.slice(5)).toEqual([7, 1, 2, null, null]) // no image, no screen
@@ -224,10 +235,23 @@ describe('createBroadcast', () => {
   })
 
   it('stores the picture and the screen with the broadcast, and records them in the audit log', async () => {
-    query.mockResolvedValueOnce(counts({ matched: 3, recipients: 3, with_device: 3 })).mockResolvedValueOnce({ rows: [{ id: '5' }] })
+    query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce(counts({ matched: 3, recipients: 3, with_device: 3 })).mockResolvedValueOnce({ rows: [{ id: '5' }] })
     await createBroadcast({ ...input, imageUrl: 'https://cdn.example.com/a.jpg', link: 'wallet' }, 1n, null)
-    expect((query.mock.calls[1] as [string, unknown[]])[1].slice(8)).toEqual(['https://cdn.example.com/a.jpg', 'wallet'])
+    expect((query.mock.calls[2] as [string, unknown[]])[1].slice(8)).toEqual(['https://cdn.example.com/a.jpg', 'wallet'])
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ afterState: expect.objectContaining({ imageUrl: 'https://cdn.example.com/a.jpg', link: 'wallet' }) }))
+  })
+
+  it('the same broadcast sent again within two minutes (double click, retried request) is refused, and nothing is stored or queued', async () => {
+    query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+    await expect(createBroadcast(input, 1n, null)).rejects.toMatchObject({ httpStatus: 409, message: expect.stringContaining('just sent') })
+    expect(query).toHaveBeenCalledTimes(1)
+    expect(queueAdd).not.toHaveBeenCalled()
+  })
+
+  it('repeating a send to typed phone numbers is allowed (a test is repeated on purpose)', async () => {
+    query.mockResolvedValueOnce(counts({ matched: 1, recipients: 1, with_device: 1 })).mockResolvedValueOnce({ rows: [{ id: '8' }] })
+    await createBroadcast({ ...input, audience: { role: 'driver' as const, phones: ['+919861003979'] } }, 1n, null)
+    expect(String((query.mock.calls[0] as [string])[0])).not.toContain("interval '2 minutes'")
   })
 
   it('refuses a screen the audience app cannot open (a rider app has no "wallet"), before anything is counted or stored', async () => {
@@ -238,7 +262,7 @@ describe('createBroadcast', () => {
   })
 
   it('if the job cannot be queued the broadcast is marked failed (not left "Queued" forever) and the admin gets the error', async () => {
-    query.mockResolvedValueOnce(counts({ matched: 3, recipients: 3, with_device: 3 })).mockResolvedValueOnce({ rows: [{ id: '4' }] }).mockResolvedValueOnce({ rows: [] })
+    query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce(counts({ matched: 3, recipients: 3, with_device: 3 })).mockResolvedValueOnce({ rows: [{ id: '4' }] }).mockResolvedValueOnce({ rows: [] })
     queueAdd.mockRejectedValueOnce(new Error('redis down'))
     await expect(createBroadcast(input, 1n, null)).rejects.toThrow('redis down')
     const failedUpdate = query.mock.calls.find(([sql]) => String(sql).includes("SET status = 'failed'")) as [string, unknown[]]
@@ -504,7 +528,8 @@ describe('runBroadcast', () => {
     db({ recipients: ['1'] })
     await runBroadcast('9')
     expect(sendPush).toHaveBeenCalledTimes(1)
-    expect(recorded()).toEqual([{ id: 'n1', attempted: true, successCount: 0, failureCount: 0, invalidTokens: 0 }])
+    // nothing was tried, so the row is not stamped as pushed through Firebase
+    expect(recorded()).toEqual([{ id: 'n1', attempted: false, successCount: 0, failureCount: 0, invalidTokens: 0 }])
   })
 
   it('a group that cannot be written does not stop the next one, and its people are counted as failed', async () => {

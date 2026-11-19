@@ -50,13 +50,28 @@ export const audienceSchema = z.object({
   if (a.phones && (driverOnly || a.bookedInLastDays)) ctx.addIssue({ code: 'custom', message: 'Phone numbers cannot be combined with other filters' })
 })
 
+// An https link to a public host. Phones fetch the picture themselves, so a localhost, private-network or single-word host can never
+// work; refusing it here beats every phone's push being refused by Firebase later.
+export function isPublicHttpsUrl(value: string): boolean {
+  let u: URL
+  try { u = new URL(value) } catch { return false }
+  if (u.protocol !== 'https:') return false
+  const h = u.hostname.toLowerCase()
+  if (!h.includes('.') || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return false
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
+    const [a, b] = h.split('.').map(Number) as [number, number]
+    if (a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return false
+  }
+  return !h.startsWith('[') // IPv6 literals: not worth supporting for a picture host
+}
+
 export const broadcastSchema = z.object({
   title: z.string().trim().min(1).max(80),
   body: z.string().trim().min(1).max(300),
   category: z.enum(['announcement', 'offer']),
   audience: audienceSchema,
   // Optional picture (https) and the screen a tap opens. The screen is a key, never a path: each app maps it to a route it owns.
-  imageUrl: z.string().trim().max(500).url().refine((u) => u.startsWith('https://'), 'Image must be an https link').optional(),
+  imageUrl: z.string().trim().max(500).url().refine(isPublicHttpsUrl, 'Image must be a public https link').optional(),
   link: z.string().trim().max(30).optional(),
 }).strict()
 
@@ -214,6 +229,17 @@ export async function createBroadcast(
   if (input.link !== undefined && !(BROADCAST_LINKS[input.audience.role] as readonly string[]).includes(input.link)) {
     throw httpError(422, `"${input.link}" is not a screen the ${input.audience.role} app can open`, AppErrors.VALIDATION_ERROR.code)
   }
+  if (!input.audience.phones) {
+    // A double click or a retried request would send the same notice to everyone twice. Typed-number tests are exempt: repeating a
+    // test is normal and harmless.
+    const dup = await pool.query(
+      `SELECT 1 FROM notification_broadcasts
+        WHERE admin_id = $1 AND title = $2 AND body = $3 AND category = $4 AND audience = $5::jsonb
+          AND created_at > now() - interval '2 minutes' AND status <> 'failed' LIMIT 1`,
+      [adminId.toString(), input.title, input.body, input.category, JSON.stringify(input.audience)],
+    )
+    if (dup.rows.length > 0) throw httpError(409, 'The same broadcast was just sent. Check Sent broadcasts before sending it again.', AppErrors.VALIDATION_ERROR.code)
+  }
   const preview = await countAudience(input.audience, input.category)
   if (preview.recipientCount === 0) {
     const why = preview.matched === 0
@@ -291,7 +317,12 @@ async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'us
       else configured = false
     }
     // No per-phone answer means nothing was sent (push is not configured here): nothing to count or retry.
-    if (!configured) { pending = []; break }
+    if (!configured) {
+      // Push is not set up here (no Firebase credentials): nothing was tried, so nobody counts as attempted.
+      for (const o of outcome.values()) o.attempted = false
+      pending = []
+      break
+    }
     const again: typeof pending = []
     pending.forEach((p, i) => {
       const o = outcome.get(p.ownerId)!

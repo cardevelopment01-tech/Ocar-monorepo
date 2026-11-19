@@ -170,7 +170,11 @@ export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?
       const code = r.error?.code
       // With a picture on the message, 'invalid-argument' most likely means the message (the picture link) was refused, which says nothing
       // about the phone: removing every phone because of one bad link would silence a whole audience, ride requests included.
-      if (code === 'messaging/invalid-argument' && msg.imageUrl && !/registration token/i.test(r.error?.message ?? '')) {
+      const why = r.error?.message ?? ''
+      // 'invalid-argument' is also what Firebase says about the MESSAGE (a refused picture link, a bad data field), which says nothing
+      // about the phone. Only a message that names the registration token removes a phone; with a picture, or any other explanation,
+      // the phone is kept. (With no explanation at all and no picture it stays as before: removed.)
+      if (code === 'messaging/invalid-argument' && !/registration token/i.test(why) && (msg.imageUrl || why !== '')) {
         tokenResults.push('rejected')
         return
       }

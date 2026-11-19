@@ -46,7 +46,7 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
   const targetReady = audienceReady(form)
   const image = imageUrl.trim()
   // Firebase refuses a message whose picture is not an https link, so the form holds the same line the server does.
-  const imageInvalid = image !== '' && !/^https:\/\/\S+$/.test(image)
+  const imageInvalid = image !== '' && !/^https:\/\/\S+$/i.test(image)
   const links = BROADCAST_LINKS[form.role]
   const linkLabel = links.find((l) => l.value === link)?.label ?? null
   const who = form.role === 'driver' ? 'driver' : 'rider'
