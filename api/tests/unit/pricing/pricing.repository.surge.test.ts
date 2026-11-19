@@ -118,6 +118,24 @@ describe('invalidateSurgeCache — write-path invalidation', () => {
     expect(client.del).toHaveBeenCalledWith(surgeKey(7, 1), surgeKey(7, 2), surgeKey(7, 3))
   })
 
+  it('invalidates every city x category key for an all-cities (city_id IS NULL) write', async () => {
+    vi.mocked(pool.query).mockImplementation(((sql: string) => Promise.resolve({
+      rows: sql.includes('vehicle_categories') ? [{ id: 1 }, { id: 2 }] : [{ id: 10 }, { id: 11 }],
+    })) as never)
+
+    await invalidateSurgeCache(null, null)
+
+    expect(client.del).toHaveBeenCalledWith(surgeKey(10, 1), surgeKey(10, 2), surgeKey(11, 1), surgeKey(11, 2))
+  })
+
+  it('invalidates one key per city for an all-cities write on a concrete category', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ id: 10 }, { id: 11 }] } as never)
+
+    await invalidateSurgeCache(null, 5)
+
+    expect(client.del).toHaveBeenCalledWith(surgeKey(10, 5), surgeKey(11, 5))
+  })
+
   it('logs and does not throw when the category-enumeration query fails', async () => {
     vi.mocked(pool.query).mockRejectedValue(new Error('db down'))
 

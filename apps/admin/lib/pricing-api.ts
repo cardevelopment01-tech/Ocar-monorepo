@@ -45,7 +45,8 @@ export interface RateCardHistoryRow {
 
 export interface SurgeEvent {
   id: number
-  city_id: number
+  /** null = every city (the default); a city's own surge overrides it there. */
+  city_id: number | null
   city_name: string
   category_id: number | null
   category_name: string | null
@@ -88,7 +89,7 @@ export const pricingApi = {
     api.get('/api/v1/admin/pricing/surge').then(r => r.data as SurgeEvent[]),
 
   createSurgeEvent: (data: {
-    city_id: number
+    city_id: number | null
     category_id?: number | null
     multiplier: number
     reason?: string

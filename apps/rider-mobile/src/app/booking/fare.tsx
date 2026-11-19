@@ -124,9 +124,11 @@ export default function BookingFareScreen() {
   // return-cab flag would price and book the wrong ride.
   const noCarIds = driversPolled && !scheduledFor && !isReturnCab ? visibleCategories.filter((c) => (driverEta[c.id]?.count ?? 0) === 0).map((c) => c.id) : []
   const effectiveSelected = resolveSelectedCategory(visibleCategories.map((c) => c.id), selectedCategoryId, noCarIds)
-  const selectedFare = effectiveSelected != null
-    ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])?.breakdown.total
+  const selectedEstimate = effectiveSelected != null
+    ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])
     : undefined
+  const selectedFare = selectedEstimate?.breakdown.total
+  const selectedSurge = Number(Number(selectedEstimate?.surgeMultiplier ?? 1).toFixed(2)) || 1
   // Offers: the server prices the selected ride again whenever it changes (category, route, schedule, a typed code or
   // the rider's choice). A failed check never blocks booking at the plain fare.
   const offerRequest = useMemo(
@@ -320,6 +322,12 @@ export default function BookingFareScreen() {
                 </Text>
               ) : null}
             </View>
+            {selectedSurge > 1 ? (
+              <View style={styles.surgeNote}>
+                <Feather name="zap" size={13} color={h.goldInk} />
+                <Text style={styles.surgeNoteText}>{`${selectedSurge}× surge applies · high demand`}</Text>
+              </View>
+            ) : null}
             {scheduledFor ? (
               <View style={styles.scheduledNote}>
                 <Feather name="clock" size={13} color={h.tealText} />
@@ -504,6 +512,8 @@ const styles = StyleSheet.create({
   sheetTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   metaRow: { marginTop: 2 },
   scheduledNote: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, minHeight: 36, backgroundColor: h.tealWash, borderRadius: 999, paddingHorizontal: 14 },
+  surgeNote: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, minHeight: 36, backgroundColor: h.goldWash, borderRadius: 999, paddingHorizontal: 14 },
+  surgeNoteText: { fontFamily: font.sb, fontSize: 12.5, color: h.goldInk },
   scheduledNoteText: { fontFamily: font.sb, fontSize: 12.5, color: h.tealText },
   noDriversBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 18, marginBottom: 6, backgroundColor: h.goldWash, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 14 },
   noDriversText: { fontFamily: font.sb, fontSize: 12.5, color: h.goldInk, flex: 1 },

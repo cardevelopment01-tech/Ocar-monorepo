@@ -212,12 +212,13 @@ export async function getActiveSurge(cityId: number, categoryId: number) {
 async function fetchActiveSurgeFromDb(cityId: number, categoryId: number) {
   const res = await pool.query(
     `SELECT * FROM surge_events
-     WHERE city_id = $1
+     WHERE (city_id = $1 OR city_id IS NULL)
        AND (category_id = $2 OR category_id IS NULL)
        AND status IN ('scheduled', 'active')
        AND starts_at <= now()
        AND ends_at > now()
      ORDER BY
+       CASE WHEN city_id IS NOT NULL THEN 0 ELSE 1 END,
        CASE WHEN category_id IS NOT NULL THEN 0 ELSE 1 END,
        multiplier DESC
      LIMIT 1`,
@@ -229,10 +230,10 @@ async function fetchActiveSurgeFromDb(cityId: number, categoryId: number) {
 export async function getAllSurgeEvents() {
   const res = await pool.query(
     `SELECT se.*,
-            c.name AS city_name,
+            COALESCE(c.name, 'All cities') AS city_name,
             vc.display_name AS category_name
      FROM surge_events se
-     JOIN cities c ON c.id = se.city_id
+     LEFT JOIN cities c ON c.id = se.city_id
      LEFT JOIN vehicle_categories vc ON vc.id = se.category_id
      ORDER BY se.created_at DESC`
   )
@@ -247,21 +248,23 @@ export async function getAllSurgeEvents() {
 // be expressed as a single key. Enumerate the small, mostly-static category
 // list and invalidate each one's key for this city rather than leaving the
 // other categories' entries to expire on their own TTL.
-export async function invalidateSurgeCache(cityId: number, categoryId: number | null): Promise<void> {
-  if (categoryId !== null) {
+// A null cityId is the all-cities default: it can change the winner in every city, so every city's keys go.
+export async function invalidateSurgeCache(cityId: number | null, categoryId: number | null): Promise<void> {
+  if (cityId !== null && categoryId !== null) {
     await invalidate(surgeKey(cityId, categoryId))
     return
   }
   try {
-    const res = await pool.query('SELECT id FROM vehicle_categories')
-    await invalidate(...res.rows.map((r) => surgeKey(cityId, Number(r.id))))
+    const cats = categoryId !== null ? [categoryId] : (await pool.query('SELECT id FROM vehicle_categories')).rows.map((r) => Number(r.id))
+    const cities = cityId !== null ? [cityId] : (await pool.query('SELECT id FROM cities')).rows.map((r) => Number(r.id))
+    await invalidate(...cities.flatMap((c) => cats.map((k) => surgeKey(c, k))))
   } catch (err) {
-    logger.warn({ err, cityId }, 'reference-cache: failed to enumerate categories for surge invalidation, will serve stale until TTL')
+    logger.warn({ err, cityId }, 'reference-cache: failed to enumerate cities/categories for surge invalidation, will serve stale until TTL')
   }
 }
 
 export async function createSurgeEvent(data: {
-  cityId: number
+  cityId: number | null
   categoryId: number | null
   multiplier: number
   reason: string | null
@@ -297,7 +300,7 @@ export async function cancelSurgeEvent(id: number, adminId: number) {
     [id, adminId]
   )
   const row = res.rows[0] ?? null
-  if (row) await invalidateSurgeCache(Number(row.city_id), row.category_id === null ? null : Number(row.category_id))
+  if (row) await invalidateSurgeCache(row.city_id === null ? null : Number(row.city_id), row.category_id === null ? null : Number(row.category_id))
   return row
 }
 

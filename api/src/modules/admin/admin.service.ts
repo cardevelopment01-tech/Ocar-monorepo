@@ -585,7 +585,19 @@ export async function createAdminRateCard(data: Parameters<typeof repo.createAdm
 
 export async function createAdminSurgeEvent(data: Parameters<typeof repo.createAdminSurgeEvent>[0]) {
   if (data.multiplier < 1 || data.multiplier > 5) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  const posInt = (n: number) => Number.isInteger(n) && n > 0
+  if (data.cityId !== null && !posInt(data.cityId)) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (data.categoryId !== null && !posInt(data.categoryId)) throw createHttpError(AppErrors.VALIDATION_ERROR)
   if (!data.startsAt || !data.endsAt) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  // A time with no zone ("2026-11-19T07:26") is read as UTC by the database, which silently shifts an IST entry by 5h30:
+  // require an explicit zone, then store the normalised instant.
+  const ISO_WITH_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/
+  const startMs = Date.parse(data.startsAt)
+  const endMs = Date.parse(data.endsAt)
+  if (!ISO_WITH_ZONE.test(data.startsAt) || !ISO_WITH_ZONE.test(data.endsAt) || Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs || endMs <= Date.now()) {
+    throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
+  data = { ...data, startsAt: new Date(startMs).toISOString(), endsAt: new Date(endMs).toISOString() }
   return repo.createAdminSurgeEvent(data)
 }
 
