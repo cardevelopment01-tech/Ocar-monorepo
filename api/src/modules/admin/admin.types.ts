@@ -274,7 +274,8 @@ export interface ExpiringVehicleDoc {
 
 export interface AdminSurgeEvent {
   id: number
-  city_id: number
+  /** null = applies to every city (the default). */
+  city_id: number | null
   city_name: string
   category_id: number | null
   category_name: string | null

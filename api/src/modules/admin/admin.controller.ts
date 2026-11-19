@@ -756,7 +756,8 @@ export async function postAdminSurgeEvent(
 ): Promise<void> {
   try {
     const surge = await service.createAdminSurgeEvent({
-      cityId: Number(req.body.city_id),
+      // null = every city (the default); a city-specific surge overrides it there
+      cityId: req.body.city_id == null ? null : Number(req.body.city_id),
       categoryId:
         req.body.category_id != null ? Number(req.body.category_id) : null,
       multiplier: Number(req.body.multiplier),

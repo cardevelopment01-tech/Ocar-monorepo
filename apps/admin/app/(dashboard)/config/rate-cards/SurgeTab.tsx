@@ -18,6 +18,7 @@ const DURATIONS: { label: string; hours: number }[] = [
 ]
 const REASONS = ['Heavy rain', 'Festival', 'Peak hours', 'Event']
 const SAMPLE_FARE = 500
+const ALL_CITIES = 'all'
 const tzName = new Intl.DateTimeFormat('en-IN', { timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value ?? 'local'
 
 function chip(active: boolean): string {
@@ -47,10 +48,11 @@ function ScheduleSurgeDialog({ cities, categories, onCreated }: { cities: AdminC
   const formStartMs = new Date(form.starts_at).getTime()
   const formEndMs = new Date(form.ends_at).getTime()
   const timesOk = !Number.isNaN(formStartMs) && !Number.isNaN(formEndMs) && formEndMs > formStartMs
-  const cityName = cities.find(c => String(c.id) === form.city_id)?.name
+  const allCities = form.city_id === ALL_CITIES
+  const cityName = allCities ? 'all cities' : cities.find(c => String(c.id) === form.city_id)?.name
   const catName = categories.find(c => String(c.id) === form.category_id)?.display_name
   const summary = cityName && timesOk
-    ? `${form.multiplier.toFixed(2)}× on ${catName ?? 'all categories'} in ${cityName}, ${windowLabel(new Date(formStartMs).toISOString(), new Date(formEndMs).toISOString(), new Date())} (${formatDuration(formEndMs - formStartMs)})`
+    ? `${form.multiplier.toFixed(2)}× on ${catName ?? 'all categories'} in ${cityName}${allCities ? ' (a city with its own surge keeps that one)' : ''}, ${windowLabel(new Date(formStartMs).toISOString(), new Date(formEndMs).toISOString(), new Date())} (${formatDuration(formEndMs - formStartMs)})`
     : null
 
   async function submit(e: React.FormEvent) {
@@ -64,7 +66,7 @@ function ScheduleSurgeDialog({ cities, categories, onCreated }: { cities: AdminC
     setLoading(true)
     try {
       await pricingApi.createSurgeEvent({
-        city_id:     parseInt(form.city_id, 10),
+        city_id:     allCities ? null : parseInt(form.city_id, 10),
         category_id: form.category_id ? parseInt(form.category_id, 10) : null,
         multiplier:  form.multiplier,
         reason:      form.reason.trim() || undefined,
@@ -99,7 +101,7 @@ function ScheduleSurgeDialog({ cities, categories, onCreated }: { cities: AdminC
                 <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-border">
                   <div>
                     <Dialog.Title className="text-base font-bold text-text-primary">Schedule a surge</Dialog.Title>
-                    <Dialog.Description className="text-xs text-text-muted mt-0.5">Raises fares in one city for a set window. Rides already booked keep their price.</Dialog.Description>
+                    <Dialog.Description className="text-xs text-text-muted mt-0.5">Raises fares in one city, or in every city, for a set window. Rides already booked keep their price.</Dialog.Description>
                   </div>
                   <Dialog.Close asChild>
                     <button type="button" aria-label="Close" className="p-1.5 -m-1.5 rounded-lg text-text-muted hover:bg-surface-2"><X size={16} /></button>
@@ -113,6 +115,7 @@ function ScheduleSurgeDialog({ cities, categories, onCreated }: { cities: AdminC
                       <label className={labelCls} htmlFor="surge-city">City</label>
                       <select id="surge-city" value={form.city_id} onChange={e => set('city_id', e.target.value)} required className={inputCls}>
                         <option value="">Select a city</option>
+                        <option value={ALL_CITIES}>All cities (default)</option>
                         {cities.filter(c => c.status === 'active').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
@@ -124,6 +127,7 @@ function ScheduleSurgeDialog({ cities, categories, onCreated }: { cities: AdminC
                       </select>
                     </div>
                   </section>
+                  <p className="text-[11px] text-text-muted -mt-4">A surge for one city overrides the all-cities surge there. Use 1.00× to exempt a city.</p>
 
                   {/* How much */}
                   <section>
@@ -227,6 +231,7 @@ function SurgeRow({ s, now, onCancel }: { s: SurgeEvent; now: number; onCancel: 
       <div className="min-w-0 flex-1 basis-40">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-text-primary inline-flex items-center gap-1"><MapPin size={13} className="text-text-muted" />{s.city_name}</span>
+          {s.city_id === null && <span className="pill-info">Default</span>}
           <span className="text-xs text-text-muted">{s.category_name ?? 'All categories'}</span>
           {s.reason && <span className="text-xs text-text-secondary truncate max-w-[14rem]">· {s.reason}</span>}
         </div>
@@ -280,7 +285,7 @@ export default function SurgeTab({ surges, cities, categories, onChanged }: {
     if (!toCancel) return
     setCancelError('')
     try { await pricingApi.cancelSurgeEvent(toCancel.id); onChanged('Surge cancelled') }
-    catch { setCancelError(`Could not cancel the ${toCancel.city_name} surge. It may have just ended. Refresh and check before trying again.`); onChanged() }
+    catch { setCancelError(`Could not cancel the ${toCancel.city_name.toLowerCase() === 'all cities' ? 'all-cities' : toCancel.city_name} surge. It may have just ended. Refresh and check before trying again.`); onChanged() }
     setToCancel(null)
   }
 
@@ -290,7 +295,7 @@ export default function SurgeTab({ surges, cities, categories, onChanged }: {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-base font-bold text-text-primary">Surge pricing</h2>
-          <p className="text-xs text-text-muted mt-0.5">Raise fares in a city when demand spikes. Riders see the multiplier before they book.</p>
+          <p className="text-xs text-text-muted mt-0.5">Raise fares in one city, or in every city, when demand spikes. Riders see the multiplier before they book.</p>
         </div>
         <ScheduleSurgeDialog cities={cities} categories={categories} onCreated={() => onChanged('Surge scheduled')} />
       </div>
@@ -323,7 +328,7 @@ export default function SurgeTab({ surges, cities, categories, onChanged }: {
 
       <ConfirmDialog open={toCancel !== null} onOpenChange={v => { if (!v) setToCancel(null) }}
         title="Cancel this surge?"
-        description={toCancel ? `Fares in ${toCancel.city_name} return to normal straight away. Rides already booked keep the surged price.` : ''}
+        description={toCancel ? `Fares in ${toCancel.city_id === null ? 'every city without its own surge' : toCancel.city_name} return to normal straight away. Rides already booked keep the surged price.` : ''}
         confirmLabel="Cancel surge" cancelLabel="Keep it" onConfirm={confirmCancel} />
     </div>
   )

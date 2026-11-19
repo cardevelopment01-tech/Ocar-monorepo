@@ -31,4 +31,11 @@ describe('createAdminSurgeEvent time zone', () => {
     await createAdminSurgeEvent({ ...base, startsAt: '2026-11-19T07:26:00+05:30', endsAt: '2026-11-20T07:26:00+05:30' })
     expect(repo.createAdminSurgeEvent.mock.calls[0]![0]).toMatchObject({ startsAt: '2026-11-19T01:56:00.000Z', endsAt: '2026-11-20T01:56:00.000Z' })
   })
+
+  it('accepts an all-cities surge (null city) and rejects a non-integer city', async () => {
+    await createAdminSurgeEvent({ ...base, cityId: null, startsAt: '2026-11-19T01:56:00Z', endsAt: '2026-11-20T01:56:00Z' })
+    expect(repo.createAdminSurgeEvent.mock.calls[0]![0]).toMatchObject({ cityId: null })
+    await expect(createAdminSurgeEvent({ ...base, cityId: Number.NaN, startsAt: '2026-11-19T01:56:00Z', endsAt: '2026-11-20T01:56:00Z' }))
+      .rejects.toMatchObject({ httpStatus: 422 })
+  })
 })
