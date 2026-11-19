@@ -26,6 +26,35 @@ const S3_URL_PREFIX = `https://${config.S3_BUCKET_NAME}.s3.${config.S3_REGION}.a
 // after a migration, not match a specific historical value.
 const S3_URL_PATTERN = /^https:\/\/[^./]+\.s3\.[^./]+\.amazonaws\.com\/(.+)$/
 
+// ── Public pictures (admin broadcasts) ──
+// A separate bucket on purpose: the documents bucket is private (identity documents), while a notification picture must be readable by any
+// phone. Only the broadcasts/ prefix of this bucket is public. Not configured => the feature is off, nothing is written anywhere.
+export function isPublicImageStorageConfigured(): boolean {
+  return config.BROADCAST_IMAGE_BUCKET !== ''
+}
+
+/** The public address pictures are served from, no trailing slash: BROADCAST_IMAGE_BASE_URL, else the bucket's own S3 address. */
+export function publicImageBaseUrl(): string {
+  return config.BROADCAST_IMAGE_BASE_URL !== '' ? config.BROADCAST_IMAGE_BASE_URL.replace(/\/+$/, '') : `https://${config.BROADCAST_IMAGE_BUCKET}.s3.${config.S3_REGION}.amazonaws.com`
+}
+
+export async function uploadPublicImage(body: Buffer, contentType: 'image/jpeg' | 'image/png', ext: 'jpg' | 'png', folder: string): Promise<string> {
+  if (!isPublicImageStorageConfigured()) throw new Error('public image bucket is not configured')
+  const key = `${folder}/${uuidv4()}.${ext}`
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: config.BROADCAST_IMAGE_BUCKET,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+      ContentLength: body.length,
+      // A new random key per upload, so the file never changes: phones and CDNs may keep it as long as they like.
+      CacheControl: 'public, max-age=31536000, immutable',
+    })
+  )
+  return `${publicImageBaseUrl()}/${key}`
+}
+
 export function extractS3Key(url: string): string | null {
   return url.match(S3_URL_PATTERN)?.[1] ?? null
 }

@@ -5,12 +5,26 @@ import { httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { audienceSchema, broadcastSchema, createBroadcast, listBroadcasts, listQuerySchema, previewBroadcast } from './broadcast.service'
 import { z } from 'zod'
+import multer from 'multer'
+import { BROADCAST_IMAGE_MAX_BYTES, saveBroadcastImage } from './broadcast-image.service'
 
 const router: IRouter = Router()
 
 router.use(authenticate(), requireAdmin('super_admin', 'ops_admin'))
 
 const previewSchema = z.object({ category: broadcastSchema.shape.category, audience: audienceSchema }).strict()
+
+// A picture for a broadcast: the admin page crops and compresses it to a 1024x512 JPEG first; this checks it again and stores it in the
+// public pictures bucket. One small file in memory, JPEG or PNG only (judged by its bytes, not its name).
+const pictureUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: BROADCAST_IMAGE_MAX_BYTES, files: 1 } })
+
+router.post('/broadcast-image', (req, res, next) => {
+  pictureUpload.single('image')(req, res, (err: unknown) => {
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') return next(httpError(422, 'The picture must be under 1 MB', 'FILE_TOO_LARGE'))
+    if (err) return next(err)
+    saveBroadcastImage(req.file).then((image) => res.status(201).json(image)).catch(next)
+  })
+})
 
 router.post('/preview', async (req, res, next) => {
   try {

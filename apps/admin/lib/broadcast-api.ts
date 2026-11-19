@@ -80,6 +80,17 @@ export const broadcastApi = {
     return data
   },
 
+  /** Stores a prepared picture (see broadcast-image.ts) in the public pictures bucket; the link it returns goes in the broadcast. */
+  uploadImage: async (blob: Blob) => {
+    const form = new FormData()
+    form.append('image', blob, 'banner.jpg')
+    // The shared client sends JSON by default, which would make the server ignore the file: say multipart explicitly (the browser adds the boundary).
+    const { data } = await api.post<{ url: string; width: number; height: number; bytes: number }>(`${BASE}/broadcast-image`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000,
+    })
+    return data
+  },
+
   list: async (params: { limit?: number; before?: string } = {}) => {
     const { data } = await api.get<{ broadcasts: BroadcastSummary[]; nextBefore: string | null }>(`${BASE}/broadcasts`, { params })
     return data

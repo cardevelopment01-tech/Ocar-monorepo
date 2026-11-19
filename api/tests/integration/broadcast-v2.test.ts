@@ -6,6 +6,7 @@ import { client as redis } from '@/db/redis'
 import { resolveAudience, runBroadcast } from '@/modules/notifications/broadcast.service'
 import { loginUser, loginDriver, seedActiveDriverWithVehicle, cleanupRideAndDriverData, DEFAULT_BOOKING } from '../helpers/fixtures/rides.fixture'
 import { seedAdmin, loginAdmin, cleanupAdmins } from '../helpers/fixtures/safety.fixture'
+import { jpegBytes, pngBytes } from '../helpers/images'
 
 vi.mock('@/lib/storage', () => ({
   getUploadUrl: vi.fn().mockResolvedValue('https://storage.test/put-url'),
@@ -33,6 +34,15 @@ vi.mock('@/modules/notifications/providers/push.provider', () => ({
       tokenResults: tokens.map((t) => (t.includes('dead') ? 'invalid' : 'ok')),
     }
   },
+}))
+
+// Storage is replaced so the picture route never writes to S3: it records what it was asked to store and can be switched "not configured".
+const pics = vi.hoisted(() => ({ configured: true, uploads: [] as unknown[][] }))
+vi.mock('@/lib/storage', async (orig) => ({
+  ...(await orig<typeof import('@/lib/storage')>()),
+  isPublicImageStorageConfigured: () => pics.configured,
+  publicImageBaseUrl: () => 'https://pics.example.com',
+  uploadPublicImage: async (...a: unknown[]) => { pics.uploads.push(a); return 'https://pics.example.com/broadcasts/test.jpg' },
 }))
 
 const app = createApp()
@@ -456,5 +466,73 @@ describe('sending in groups (real database, push provider replaced)', () => {
     expect(fcm.calls[0]!.msg).toMatchObject({ imageUrl: 'https://cdn.example.com/a.jpg', data: { link: 'wallet' } })
     const hist = (body(await api(opsToken).get('/api/v1/admin/notifications/broadcasts?limit=50')) as { broadcasts: Array<Record<string, unknown>> }).broadcasts
     expect(hist.find((b) => b['id'] === id)).toMatchObject({ imageUrl: 'https://cdn.example.com/a.jpg', link: 'wallet' })
+  })
+})
+
+describe('the picture upload route (real route and auth, storage replaced)', () => {
+  const URL = '/api/v1/admin/notifications/broadcast-image'
+  const upload = (token: string, buf: Buffer, name = 'banner.jpg', field = 'image') =>
+    request(app).post(URL).set('Authorization', `Bearer ${token}`).attach(field, buf, name)
+
+  it('an ops admin uploads a 2:1 picture and gets its public link back', async () => {
+    pics.configured = true
+    pics.uploads.length = 0
+    const buf = jpegBytes(1024, 512, 120_000)
+    const res = await upload(opsToken, buf)
+    expect(res.status, JSON.stringify(res.body)).toBe(201)
+    expect(res.body).toEqual({ url: 'https://pics.example.com/broadcasts/test.jpg', width: 1024, height: 512, bytes: 120_000 })
+    expect(pics.uploads).toHaveLength(1)
+    expect(pics.uploads[0]![1]).toBe('image/jpeg')
+    expect(pics.uploads[0]![3]).toBe('broadcasts')
+  })
+
+  it('a PNG is stored as a PNG whatever its file name says', async () => {
+    pics.uploads.length = 0
+    const res = await upload(opsToken, pngBytes(1024, 512, 5000), 'photo.jpg')
+    expect(res.status).toBe(201)
+    expect(pics.uploads[0]!.slice(1, 3)).toEqual(['image/png', 'png'])
+  })
+
+  it('only ops and super admins: a support admin and a signed-out caller are refused, and nothing is stored', async () => {
+    pics.uploads.length = 0
+    expect((await upload(supportToken, jpegBytes(1024, 512))).status).toBe(403)
+    expect((await request(app).post(URL).attach('image', jpegBytes(1024, 512), 'a.jpg')).status).toBe(401)
+    expect(pics.uploads).toHaveLength(0)
+  })
+
+  it('refuses what is not a JPEG or PNG even when it is named like one, and what is the wrong shape', async () => {
+    pics.uploads.length = 0
+    const text = await upload(opsToken, Buffer.from('<html><script>alert(1)</script></html>'), 'banner.jpg')
+    expect(text.status).toBe(422)
+    expect(text.body.code).toBe('UNSUPPORTED_FILE_TYPE')
+    expect((await upload(opsToken, jpegBytes(1024, 1024))).status).toBe(422) // square
+    expect((await upload(opsToken, jpegBytes(300, 150))).status).toBe(422) // too small
+    expect(pics.uploads).toHaveLength(0)
+  })
+
+  it('refuses a file over 1 MB with a clear message (and not the generic 5 MB one)', async () => {
+    const res = await upload(opsToken, jpegBytes(1024, 512, 1_200_000))
+    expect(res.status).toBe(422)
+    expect(res.body.code).toBe('FILE_TOO_LARGE')
+    expect(res.body.error).toMatch(/under 1 MB/)
+  })
+
+  it('a request with no file, or the file under another field name, is a 422 and stores nothing', async () => {
+    pics.uploads.length = 0
+    expect((await request(app).post(URL).set('Authorization', `Bearer ${opsToken}`)).status).toBe(422)
+    expect((await upload(opsToken, jpegBytes(1024, 512), 'a.jpg', 'file')).status).toBe(422)
+    expect(pics.uploads).toHaveLength(0)
+  })
+
+  it('on a server with no pictures bucket set up it says so (503) and the admin can still paste a link', async () => {
+    pics.configured = false
+    try {
+      const res = await upload(opsToken, jpegBytes(1024, 512))
+      expect(res.status).toBe(503)
+      expect(res.body.code).toBe('IMAGE_UPLOAD_NOT_CONFIGURED')
+      expect(res.body.error).toMatch(/Paste a link/)
+    } finally {
+      pics.configured = true
+    }
   })
 })

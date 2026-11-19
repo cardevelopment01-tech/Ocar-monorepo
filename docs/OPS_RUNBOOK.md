@@ -662,6 +662,23 @@ Admin -> **Broadcasts** (super admin and ops admin). Pick drivers or riders, nar
 - **Broadcasts sent before tracking** (migration 144-146) keep their real results: the old release recorded each person's push result on their notification row, and 145 links those rows to their broadcast by owner kind, type, title and text within 2 hours. Verified on a copy of the data: pushed, refused, in-app only and opened all matched. One limit: if the same text was sent twice and the second started before the first finished sending, a person who got both can have one row attributed to the wrong one (the data cannot tell them apart); it only moves a historic count by a row or two.
 - Data: `notification_broadcasts` (one row per send, with counts) and `notification_logs.broadcast_id` (one row per person per send, unique).
 
+### Broadcast pictures (upload)
+
+The Broadcasts page can upload a picture instead of pasting a link: the admin picks any JPEG, PNG or WebP at least 512 pixels wide; the browser crops the centre to 2:1, shrinks it to 1024x512 and compresses it to a JPEG (aiming at 400 KB; Firebase's limit is 1 MB), and `POST /api/v1/admin/notifications/broadcast-image` re-checks it (a real JPEG or PNG judged by its bytes, 512-2048 px wide, about 2:1, under 1 MB) and stores it. It is **off until a pictures bucket is configured**: the upload answers 503 "not set up", and pasting a link keeps working.
+
+**Why a separate bucket.** A phone fetches the picture itself, so it has to be readable by anyone with the link. The documents bucket is private (identity documents) and must stay so. Pictures go in their own bucket, and only the `broadcasts/` prefix is public. Nothing else may be put in it.
+
+Setup (by hand, once per environment; not in Terraform, because the app's S3 settings are not managed there either):
+1. Create a bucket, e.g. `ocar-prd-public`, in `ap-south-1`. Turn off "block public access" for **bucket policies** only (`BlockPublicPolicy` and `RestrictPublicBuckets` off; keep the two ACL blocks on). Do not use ACLs.
+2. Bucket policy, public read of the prefix only:
+   `{"Version":"2012-10-17","Statement":[{"Sid":"PublicReadBroadcastPictures","Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::ocar-prd-public/broadcasts/*"}]}`
+3. Let the API's role (or keys) write there: `s3:PutObject` on `arn:aws:s3:::ocar-prd-public/broadcasts/*`. It needs no read, list or delete.
+4. Optional: a lifecycle rule that expires `broadcasts/` after 120 days (a picture only matters while a push can still be delivered, at most a day).
+5. Set two environment values for the API and restart it: `BROADCAST_IMAGE_BUCKET=ocar-prd-public` and, optionally, `BROADCAST_IMAGE_BASE_URL=https://ocar-prd-public.s3.ap-south-1.amazonaws.com` (the public address with no trailing slash; leave empty to use the bucket's own S3 address). **The address must be a public `https` one**: a broadcast whose picture link is not is refused ("Picture: Image must be a public https link"), so an `http` or private base URL would let uploads work and then every send fail.
+6. Check: upload a picture on the Broadcasts page, open the link it was given in a private browser window (it must load without signing in), and send a broadcast to your own number.
+
+Each upload gets a new random name and is served with a one-year cache header, so a picture never changes after it is stored. Pictures are never deleted by the app.
+
 ## Driver identity verification (selfie + number plate)
 
 Design: `docs/superpowers/specs/2026-11-02-driver-identity-verification-design.md`. Goal: stop one account being driven by

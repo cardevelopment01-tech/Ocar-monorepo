@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Send } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ImagePlus, Loader2, Send, X } from 'lucide-react'
 import MultiSelectFilter from '@/components/ui/MultiSelectFilter'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { BROADCAST_LINKS, broadcastApi, type AudiencePreview, type BroadcastCategory } from '@/lib/broadcast-api'
+import { ImageProblem, prepareBroadcastImage } from '@/lib/broadcast-image'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 import { vehicleCategoryApi, type VehicleCategory } from '@/lib/vehicle-api'
-import { extractErrorMessage } from '@/lib/http-errors'
+import axios from 'axios'
+import { extractErrorCode, extractErrorMessage } from '@/lib/http-errors'
 import { cn } from '@/lib/utils'
 import { EMPTY_FORM, MAX_PHONES, audienceReady, buildAudience, parsePhones, type AudienceForm } from './audience'
 
@@ -25,6 +27,12 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
   const [imageUrl, setImageUrl] = useState('')
   const [link, setLink] = useState('')
   const [imageBroken, setImageBroken] = useState(false)
+  // An uploaded picture: what the admin sees right away (a local copy), and what was stored.
+  const [localPreview, setLocalPreview] = useState<string | null>(null)
+  const [uploaded, setUploaded] = useState<{ width: number; height: number; bytes: number } | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState<AudiencePreview | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,6 +45,14 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
     cityApi.list().then(setCities).catch(() => {})
     vehicleCategoryApi.list().then(setCategories).catch(() => {})
   }, [])
+
+  const localPreviewRef = useRef<string | null>(null)
+  useEffect(() => () => { if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current) }, [])
+  const setPreviewUrl = (url: string | null) => {
+    if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current)
+    localPreviewRef.current = url
+    setLocalPreview(url)
+  }
 
   const cityOptions = useMemo(() => cities.map((c) => ({ value: String(c.id), label: c.name })), [cities])
   const categoryOptions = useMemo(() => categories.map((c) => ({ value: c.id, label: c.display_name })), [categories])
@@ -55,6 +71,30 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
   const change = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPreview(null); setSent(null); setError(null) }
   const patch = (p: Partial<AudienceForm>) => { setForm((f) => ({ ...f, ...p })); setPreview(null); setSent(null); setError(null) }
   const changeImage = (v: string) => { setImageUrl(v); setImageBroken(false); setPreview(null); setSent(null); setError(null) }
+  // Typing or pasting a link replaces an uploaded picture; removing clears both.
+  const pasteLink = (v: string) => { setPreviewUrl(null); setUploaded(null); setUploadError(null); changeImage(v) }
+  const removePicture = () => { setPreviewUrl(null); setUploaded(null); setUploadError(null); changeImage(''); if (fileInput.current) fileInput.current.value = '' }
+  const onFile = async (file: File | undefined) => {
+    if (!file) return
+    setUploadError(null); setUploading(true)
+    try {
+      const prepared = await prepareBroadcastImage(file)
+      setPreviewUrl(prepared.previewUrl) // shown straight away, before the upload finishes
+      const stored = await broadcastApi.uploadImage(prepared.blob)
+      changeImage(stored.url)
+      setUploaded({ width: stored.width, height: stored.height, bytes: stored.bytes })
+    } catch (err) {
+      setPreviewUrl(null); setUploaded(null)
+      // A server answering 5xx is shown as a generic problem everywhere else; "picture storage is not set up" is a 503 on purpose, and its
+      // message tells the admin what to do (paste a link), so it is shown as written.
+      const notSetUp = axios.isAxiosError(err) && extractErrorCode(err) === 'IMAGE_UPLOAD_NOT_CONFIGURED' ? (err.response?.data?.error as string | undefined) : undefined
+      setUploadError(err instanceof ImageProblem ? err.message : notSetUp ?? extractErrorMessage(err, 'The picture could not be uploaded. Try again, or paste a link.'))
+    } finally {
+      setUploading(false)
+      if (fileInput.current) fileInput.current.value = '' // the same file can be chosen again
+    }
+  }
+
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true); setError(null)
@@ -69,7 +109,7 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
       ...(image ? { imageUrl: image } : {}), ...(link ? { link } : {}),
     })
     setSent(`Sending to ${res.recipientCount} ${res.recipientCount === 1 ? 'person' : 'people'}. Follow it in Sent broadcasts.`)
-    setPreview(null); setTitle(''); setBody(''); setImageUrl(''); setLink('')
+    setPreview(null); setTitle(''); setBody(''); setImageUrl(''); setLink(''); setPreviewUrl(null); setUploaded(null)
     onSent()
   })
 
@@ -168,18 +208,54 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
       </div>
 
       <div>
-        <label htmlFor="bc-image" className={LABEL}>Picture (optional, https link)</label>
+        <p className={LABEL}>Picture (optional)</p>
         <input
-          id="bc-image" value={imageUrl} inputMode="url" placeholder="https://…/offer.jpg"
-          onChange={(e) => changeImage(e.target.value)} className={cn(INPUT, imageInvalid && 'border-error')}
+          ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Upload a picture"
+          onChange={(e) => void onFile(e.target.files?.[0])} disabled={uploading}
         />
-        <p className={cn('text-[11px] mt-1', imageInvalid || imageBroken ? 'text-error' : 'text-text-muted')}>
-          {imageInvalid
-            ? 'The link must start with https://'
-            : imageBroken
-              ? 'This picture could not be loaded. Check the link opens in a browser.'
-              : 'Shown large in the notification on Android. A wide picture (2:1) under 1 MB works best.'}
-        </p>
+        {localPreview || (image && !imageInvalid) ? (
+          <div className="flex items-center gap-3 rounded-xl border border-border p-2 max-w-md">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={localPreview ?? image} alt="" className="h-14 w-28 rounded-lg object-cover border border-border" />
+            <div className="min-w-0 flex-1 text-xs">
+              {uploading ? (
+                <span className="flex items-center gap-1.5 text-text-secondary"><Loader2 size={12} className="animate-spin" /> Uploading…</span>
+              ) : uploaded ? (
+                <span className="text-text-secondary">Uploaded · {uploaded.width}×{uploaded.height} · {Math.max(1, Math.round(uploaded.bytes / 1024))} KB</span>
+              ) : (
+                <span className="text-text-secondary">Picture from a link</span>
+              )}
+            </div>
+            <button type="button" onClick={removePicture} disabled={uploading} aria-label="Remove picture" className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-2 disabled:opacity-50">
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button" onClick={() => fileInput.current?.click()} disabled={uploading}
+            className="flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-border rounded-xl text-text-secondary hover:border-primary hover:text-text-primary transition-colors disabled:opacity-60"
+          >
+            {uploading ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />}
+            {uploading ? 'Preparing…' : 'Choose a picture'}
+          </button>
+        )}
+        {uploadError && <p role="alert" className="text-[11px] mt-1 text-error">{uploadError}</p>}
+        {imageInvalid && <p role="alert" className="text-[11px] mt-1 text-error">The picture link must start with https:// (a link on a private or local address will not work for phones).</p>}
+        <p className="text-[11px] mt-1 text-text-muted">Cropped to a wide banner (2:1) and shrunk automatically: pick any JPEG or PNG at least 512 pixels wide. Shown large in the notification on Android.</p>
+        <details className="mt-2">
+          <summary className="text-[11px] text-text-muted cursor-pointer">Or paste a link to a picture instead</summary>
+          <input
+            id="bc-image" value={uploaded ? '' : imageUrl} inputMode="url" placeholder="https://…/offer.jpg" aria-label="Paste a picture link (https)"
+            onChange={(e) => pasteLink(e.target.value)} className={cn(INPUT, 'mt-1.5', imageInvalid && 'border-error')}
+          />
+          <p className={cn('text-[11px] mt-1', imageInvalid || imageBroken ? 'text-error' : 'text-text-muted')}>
+            {imageInvalid
+              ? 'Fix the link above.'
+              : imageBroken
+                ? 'This picture could not be loaded. Check the link opens in a browser.'
+                : 'A wide picture (2:1) under 1 MB works best.'}
+          </p>
+        </details>
       </div>
 
       <div>
@@ -197,10 +273,10 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
             <p className="text-sm font-semibold text-text-primary break-words">{title.trim() || 'Title'}</p>
             <p className="text-xs text-text-secondary mt-0.5 break-words whitespace-pre-line">{body.trim() || 'Message'}</p>
           </div>
-          {image && !imageInvalid && !imageBroken && (
+          {(localPreview || (image && !imageInvalid && !imageBroken)) && (
             // A plain <img>: the picture lives on whatever host the admin pasted, which next/image would need configured.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={image} alt="" onError={() => setImageBroken(true)} className="w-full aspect-[2/1] object-cover rounded-xl border border-border" />
+            <img src={localPreview ?? image} alt="" onError={() => { if (!localPreview) setImageBroken(true) }} className="w-full aspect-[2/1] object-cover rounded-xl border border-border" />
           )}
           {linkLabel && <p className="text-[11px] text-text-muted">Tap opens: <span className="font-semibold text-text-primary">{linkLabel}</span></p>}
         </div>
@@ -244,7 +320,7 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
         <div className="flex items-center gap-3">
           <button
             onClick={onSendClick}
-            disabled={busy || !textReady || imageInvalid || preview.recipientCount === 0 || !preview.sendableNow}
+            disabled={busy || uploading || !textReady || imageInvalid || preview.recipientCount === 0 || !preview.sendableNow}
             className="btn-primary flex items-center gap-2 disabled:opacity-50"
           >
             <Send size={14} /> Send to {preview.recipientCount} {preview.recipientCount === 1 ? 'person' : 'people'}
@@ -252,7 +328,7 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
           <span className="text-[11px] text-text-muted">This cannot be undone.</span>
         </div>
       ) : (
-        <button onClick={() => void checkAudience()} disabled={busy || !textReady || !targetReady || imageInvalid} className="btn-secondary disabled:opacity-50">
+        <button onClick={() => void checkAudience()} disabled={busy || uploading || !textReady || !targetReady || imageInvalid} className="btn-secondary disabled:opacity-50">
           Check audience
         </button>
       )}

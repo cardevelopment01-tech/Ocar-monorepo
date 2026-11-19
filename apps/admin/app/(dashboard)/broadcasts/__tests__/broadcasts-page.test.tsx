@@ -4,8 +4,10 @@ import { render, screen, waitFor, within, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AudiencePreview, BroadcastSummary } from '@/lib/broadcast-api'
 
-const api = vi.hoisted(() => ({ preview: vi.fn(), send: vi.fn(), list: vi.fn() }))
+const api = vi.hoisted(() => ({ preview: vi.fn(), send: vi.fn(), list: vi.fn(), uploadImage: vi.fn() }))
+const prepare = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/broadcast-api', async (orig) => ({ ...(await orig<typeof import('@/lib/broadcast-api')>()), broadcastApi: api }))
+vi.mock('@/lib/broadcast-image', async (orig) => ({ ...(await orig<typeof import('@/lib/broadcast-image')>()), prepareBroadcastImage: prepare }))
 vi.mock('@/lib/city-api', () => ({ cityApi: { list: () => Promise.resolve([{ id: 1, name: 'Bhubaneswar' }, { id: 2, name: 'Cuttack' }]) } }))
 vi.mock('@/lib/vehicle-api', () => ({ vehicleCategoryApi: { list: () => Promise.resolve([{ id: '3', display_name: 'SUV' }, { id: '4', display_name: 'Luxury SUV' }]) } }))
 
@@ -130,7 +132,7 @@ describe('Broadcasts page', () => {
     await fillMessage(user)
     // Drivers can open Wallet, riders cannot.
     expect(within(screen.getByLabelText(/When they tap it/)).getByRole('option', { name: 'Open Wallet' })).toBeInTheDocument()
-    await user.type(screen.getByLabelText(/^Picture/), 'https://cdn.example.com/offer.jpg')
+    await user.type(screen.getByLabelText(/paste a picture link/i), 'https://cdn.example.com/offer.jpg')
     await user.selectOptions(screen.getByLabelText(/When they tap it/), 'wallet')
     const phone = screen.getByLabelText('How it looks on a phone')
     expect(phone.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/offer.jpg')
@@ -141,7 +143,7 @@ describe('Broadcasts page', () => {
     await waitFor(() => expect(api.send).toHaveBeenCalledWith({
       title: 'Hello', body: 'World', category: 'announcement', audience: { role: 'driver' }, imageUrl: 'https://cdn.example.com/offer.jpg', link: 'wallet',
     }))
-    await waitFor(() => expect((screen.getByLabelText(/^Picture/) as HTMLInputElement).value).toBe(''))
+    await waitFor(() => expect((screen.getByLabelText(/paste a picture link/i) as HTMLInputElement).value).toBe(''))
   })
 
   it('switching to riders drops a screen riders do not have (no "wallet" for a rider)', async () => {
@@ -159,8 +161,8 @@ describe('Broadcasts page', () => {
     const user = userEvent.setup()
     render(<BroadcastsPage />)
     await fillMessage(user)
-    await user.type(screen.getByLabelText(/^Picture/), 'http://insecure.example.com/a.jpg')
-    expect(screen.getByText('The link must start with https://')).toBeInTheDocument()
+    await user.type(screen.getByLabelText(/paste a picture link/i), 'http://insecure.example.com/a.jpg')
+    expect(screen.getByText(/link must start with https/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Check audience' })).toBeDisabled()
     expect(screen.getByLabelText('How it looks on a phone').querySelector('img')).toBeNull()
   })
@@ -190,6 +192,87 @@ describe('Broadcasts page', () => {
     render(<BroadcastsPage />)
     expect(await screen.findByText(/Stopped: offers can only go out between 10:00 and 21:00 IST\./)).toBeInTheDocument()
     expect(screen.getByText(/Reached 12400 of 20000/)).toBeInTheDocument()
+  })
+
+  describe('uploading a picture', () => {
+    const file = () => new File(['x'], 'photo.png', { type: 'image/png' })
+    const prepared = (url = 'blob:local-1') => ({ blob: new Blob(['y']), width: 1024, height: 512, previewUrl: url })
+    beforeEach(() => {
+      URL.revokeObjectURL = vi.fn()
+      prepare.mockResolvedValue(prepared())
+      api.uploadImage.mockResolvedValue({ url: 'https://pics.example.com/broadcasts/abc.jpg', width: 1024, height: 512, bytes: 123_456 })
+    })
+    const choose = async (user: ReturnType<typeof userEvent.setup>, f = file()) => user.upload(screen.getByLabelText('Upload a picture'), f)
+
+    it('shows the picture at once in the phone preview, then confirms the upload with its size, and sends the stored link', async () => {
+      const user = userEvent.setup()
+      render(<BroadcastsPage />)
+      await fillMessage(user)
+      await choose(user)
+      expect(await screen.findByText('Uploaded · 1024×512 · 121 KB')).toBeInTheDocument()
+      expect(screen.getByLabelText('How it looks on a phone').querySelector('img')).toHaveAttribute('src', 'blob:local-1') // the local copy, no wait
+      expect(api.uploadImage).toHaveBeenCalledTimes(1)
+
+      await user.click(screen.getByRole('button', { name: 'Check audience' }))
+      await user.click(await screen.findByRole('button', { name: /^Send to/ }))
+      await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Send now' }))
+      await waitFor(() => expect(api.send).toHaveBeenCalledWith(expect.objectContaining({ imageUrl: 'https://pics.example.com/broadcasts/abc.jpg' })))
+      expect(screen.queryByText(/Uploaded ·/)).toBeNull() // cleared for the next broadcast
+    })
+
+    it('cannot check or send while the picture is still uploading', async () => {
+      const user = userEvent.setup()
+      let finish!: (v: unknown) => void
+      api.uploadImage.mockReturnValue(new Promise((r) => { finish = r }))
+      render(<BroadcastsPage />)
+      await fillMessage(user)
+      await choose(user)
+      expect(await screen.findByText('Uploading…')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Check audience' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Remove picture' })).toBeDisabled()
+      await act(async () => { finish({ url: 'https://pics.example.com/broadcasts/abc.jpg', width: 1024, height: 512, bytes: 1000 }) })
+      expect(await screen.findByText(/^Uploaded ·/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Check audience' })).toBeEnabled()
+    })
+
+    it('a picture the browser cannot use is explained in words and nothing is uploaded', async () => {
+      const user = userEvent.setup()
+      const { ImageProblem } = await import('@/lib/broadcast-image')
+      prepare.mockRejectedValue(new ImageProblem('The picture is only 300 pixels wide. Use one at least 512 wide so it stays sharp.'))
+      render(<BroadcastsPage />)
+      await choose(user)
+      expect(await screen.findByText(/only 300 pixels wide/)).toBeInTheDocument()
+      expect(api.uploadImage).not.toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Choose a picture' })).toBeInTheDocument() // can try again
+    })
+
+    it('a server without picture storage says so, drops the half-shown picture, and offers the link instead', async () => {
+      const user = userEvent.setup()
+      api.uploadImage.mockRejectedValue({ isAxiosError: true, response: { status: 503, data: { error: 'Picture upload is not set up on this server yet. Paste a link to a picture instead.', code: 'IMAGE_UPLOAD_NOT_CONFIGURED' } } })
+      render(<BroadcastsPage />)
+      await choose(user)
+      expect(await screen.findByText(/Paste a link to a picture instead/)).toBeInTheDocument()
+      expect(screen.queryByText(/Uploaded ·/)).toBeNull()
+      expect(screen.getByRole('button', { name: 'Choose a picture' })).toBeInTheDocument()
+    })
+
+    it('Remove clears the picture, and pasting a link replaces an uploaded one', async () => {
+      const user = userEvent.setup()
+      render(<BroadcastsPage />)
+      await fillMessage(user)
+      await choose(user)
+      await screen.findByText(/^Uploaded ·/)
+      await user.click(screen.getByRole('button', { name: 'Remove picture' }))
+      expect(screen.queryByText(/^Uploaded ·/)).toBeNull()
+      expect(screen.getByRole('button', { name: 'Choose a picture' })).toBeInTheDocument()
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:local-1')
+
+      await choose(user)
+      await screen.findByText(/^Uploaded ·/)
+      await user.type(screen.getByLabelText(/paste a picture link/i), 'https://cdn.example.com/other.jpg')
+      expect(screen.getByText('Picture from a link')).toBeInTheDocument()
+      expect(screen.getByLabelText('How it looks on a phone').querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/other.jpg')
+    })
   })
 
   it('an offer outside the allowed hours cannot be sent', async () => {
