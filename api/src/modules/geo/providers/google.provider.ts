@@ -107,6 +107,7 @@ export async function autocomplete(
   input: string,
   lat?: number,
   lng?: number,
+  within?: { lat: number; lng: number; radiusM: number },
 ): Promise<PlaceSuggestion[]> {
   if (!config.GOOGLE_MAPS_API_KEY) return []
 
@@ -120,6 +121,12 @@ export async function autocomplete(
     params['radius'] = '200000'
     // Triggers Google to compute straight-line distance_meters per prediction.
     params['origin'] = `${lat},${lng}`
+    // Only places inside this circle (the pickup city's), not just ranked near it.
+    if (within) {
+      params['location'] = `${within.lat},${within.lng}`
+      params['radius'] = String(within.radiusM)
+      params['strictbounds'] = 'true'
+    }
   } else {
     params['location'] = '20.9517,85.0985'
     params['radius'] = '300000'

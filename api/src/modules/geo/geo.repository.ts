@@ -101,6 +101,23 @@ export async function findContainingCity(
   return res.rows[0] ?? null
 }
 
+// The circle that encloses the active city containing a point (smallest boundary wins, like findContainingCity), for
+// limiting place search to that city. Null when the point is in no city.
+export async function findCitySearchCircle(lat: number, lng: number): Promise<{ lat: number; lng: number; radiusM: number } | null> {
+  const res = await pool.query(
+    `SELECT ST_Y(ST_Centroid(boundary)) AS lat, ST_X(ST_Centroid(boundary)) AS lng,
+            CEIL(ST_MaxDistance(ST_Centroid(boundary), boundary) * 111320)::int AS radius_m
+     FROM cities
+     WHERE status = 'active' AND boundary IS NOT NULL
+       AND ST_Contains(boundary, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326))
+     ORDER BY ST_Area(boundary::geography) ASC, id ASC
+     LIMIT 1`,
+    [lat, lng]
+  )
+  const r = res.rows[0]
+  return r ? { lat: Number(r.lat), lng: Number(r.lng), radiusM: Number(r.radius_m) } : null
+}
+
 // One round trip for the whole batch (was one INSERT per row inside a transaction). Column arrays are unnested
 // server-side; heading/speed/accuracy are clamped to what their NUMERIC columns can hold so a single odd value
 // can't fail the batch. `executor` lets the background flusher use the worker pool instead of the request pool.

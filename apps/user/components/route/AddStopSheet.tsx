@@ -30,9 +30,11 @@ type Props = {
   title?: string
   originLat?: number
   originLng?: number
+  /** Search only inside the city around the pickup (city ride or rental). */
+  cityOnly?: boolean
 }
 
-export default function AddStopSheet({ open, onClose, onSelect, title = 'Add a stop', originLat, originLng }: Props) {
+export default function AddStopSheet({ open, onClose, onSelect, title = 'Add a stop', originLat, originLng, cityOnly = false }: Props) {
   const reduce = useReducedMotion()
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([])
@@ -55,11 +57,11 @@ export default function AddStopSheet({ open, onClose, onSelect, title = 'Add a s
   const runSearch = useCallback((q: string) => {
     if (q.length < 2) { setSuggestions([]); setSearching(false); return }
     setSearching(true)
-    geoApi.autocomplete(q, originLat, originLng)
+    geoApi.autocomplete(q, originLat, originLng, cityOnly)
       .then(setSuggestions)
       .catch(() => setSuggestions([]))
       .finally(() => setSearching(false))
-  }, [originLat, originLng])
+  }, [originLat, originLng, cityOnly])
 
   function handleQueryChange(val: string) {
     setQuery(val)
