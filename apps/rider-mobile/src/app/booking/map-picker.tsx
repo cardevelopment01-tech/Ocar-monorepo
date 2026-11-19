@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
-import MapView, { Circle, Marker, type Region } from 'react-native-maps'
+import MapView, { Circle, Marker, Polyline, type Region } from 'react-native-maps'
 import Svg, { Circle as SvgCircle } from 'react-native-svg'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated'
 import { OCAR_MAP_PROPS } from '@/theme/mapStyle'
@@ -23,9 +23,15 @@ const YOU = '#DC3E93'
 const YOU_RING = 'rgba(220,62,147,0.45)'
 const YOU_FILL = 'rgba(220,62,147,0.10)'
 const YOU_HALO = 'rgba(220,62,147,0.18)'
-// A pickup is placed to the side of a road, so start close (~330 m across); a destination starts wider.
-const PICKUP_DELTA = 0.003
+// A pickup is placed to the side of a road, so start street-level (~155 m across) -- wider only as far as needed to keep
+// the GPS accuracy ring in view, so a rough fix is never hidden behind an over-tight zoom. A destination starts wider.
+const PICKUP_DELTA_MIN = 0.0014
+const PICKUP_DELTA_MAX = 0.0035
 const DROP_DELTA = 0.02
+const pickupDelta = (accuracyM: number | null) =>
+  Math.min(PICKUP_DELTA_MAX, Math.max(PICKUP_DELTA_MIN, accuracyM === null ? 0 : (accuracyM * 2.6) / 111_320))
+// Under this the pin is on top of the dot: a dotted line would be a stub.
+const MIN_LINE_M = 12
 // Beyond this the pin is probably on the wrong street: say so instead of letting it through silently.
 const FAR_FROM_YOU_M = 200
 const PIN_W = 30
@@ -64,11 +70,13 @@ export default function MapPickerScreen() {
   const centerLng = initial?.lng ?? 85.8245
   // Start close for a pickup, but not when the fix is so rough (over ~200 m) that the real spot could be off the tight view.
   const tightZoom = isPickup && !(locAccuracy !== null && locAccuracy > 200)
-  const delta = tightZoom ? PICKUP_DELTA : DROP_DELTA
+  const delta = tightZoom ? pickupDelta(locAccuracy) : DROP_DELTA
 
   const [address, setAddress] = useState(initial?.address ?? '')
   const [resolving, setResolving] = useState(false)
   const [coords, setCoords] = useState({ lat: centerLat, lng: centerLng })
+  // Follows the map while it is being dragged, so the dotted line stays attached to the pin.
+  const [liveCenter, setLiveCenter] = useState({ lat: centerLat, lng: centerLng })
   const [cardH, setCardH] = useState(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // A slow earlier lookup must not overwrite the address of a newer pin position.
@@ -114,6 +122,7 @@ export default function MapPickerScreen() {
     if (settleTimer.current) clearTimeout(settleTimer.current)
     putPinDown()
     setCoords({ lat: region.latitude, lng: region.longitude })
+    setLiveCenter({ lat: region.latitude, lng: region.longitude })
     setResolving(true)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     const seq = ++geocodeSeq.current
@@ -126,11 +135,11 @@ export default function MapPickerScreen() {
   }, [putPinDown])
 
   const youAt: [number, number] | null = locLat !== null && locLng !== null ? [locLat, locLng] : null
-  const metresFromYou = youAt ? haversineMetres([coords.lat, coords.lng], youAt) : null
+  const metresFromYou = youAt ? haversineMetres([liveCenter.lat, liveCenter.lng], youAt) : null
 
   function recenter() {
     if (!youAt) return
-    mapRef.current?.animateToRegion({ latitude: youAt[0], longitude: youAt[1], latitudeDelta: PICKUP_DELTA, longitudeDelta: PICKUP_DELTA }, 350)
+    mapRef.current?.animateToRegion({ latitude: youAt[0], longitude: youAt[1], latitudeDelta: pickupDelta(locAccuracy), longitudeDelta: pickupDelta(locAccuracy) }, 350)
   }
 
   function confirm() {
@@ -157,6 +166,7 @@ export default function MapPickerScreen() {
         loadingEnabled
         {...OCAR_MAP_PROPS}
         onPanDrag={handlePanDrag}
+        onRegionChange={(r) => setLiveCenter({ lat: r.latitude, lng: r.longitude })}
         onRegionChangeComplete={handleRegionChangeComplete}
       >
         {otherPlace ? (
@@ -165,6 +175,16 @@ export default function MapPickerScreen() {
         {/* How far off the GPS fix could be: the rider can see the real spot may sit anywhere inside the ring. */}
         {isPickup && youAt && locAccuracy !== null && locAccuracy > 15 ? (
           <Circle center={{ latitude: youAt[0], longitude: youAt[1] }} radius={Math.min(locAccuracy, 300)} strokeColor={YOU_RING} strokeWidth={1.5} fillColor={YOU_FILL} />
+        ) : null}
+        {/* The way from where you are to where the pin is: dotted, like a walk, and it follows the pin as it moves. */}
+        {isPickup && youAt && haversineMetres([liveCenter.lat, liveCenter.lng], youAt) > MIN_LINE_M ? (
+          <Polyline
+            coordinates={[{ latitude: youAt[0], longitude: youAt[1] }, { latitude: liveCenter.lat, longitude: liveCenter.lng }]}
+            strokeColor={YOU}
+            strokeWidth={3}
+            lineCap="round"
+            lineDashPattern={[1, 7]}
+          />
         ) : null}
         {/* "You are here": the same brand-pink dot as the home map, so the rider can tell where they stand against the pin. */}
         {youAt ? (
