@@ -219,6 +219,8 @@ export default function RidePage() {
   const [ride,           setRide]           = useState<RideDetail | null>(null)
   const [rideStatus,     setRideStatus]     = useState<string>('requested')
   const [driverPos,      setDriverPos]      = useState<[number, number] | undefined>(undefined)
+  // driverPos can come from the ride record (possibly stale); only a live socket fix may say "driver is here".
+  const [driverLive,     setDriverLive]     = useState(false)
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
   const [liveEta, setLiveEta] = useState<{ etaMin: number; distanceKm: number } | null>(null)
   // Timestamp of the last server ETA fetch — drives the 1s client-side countdown
@@ -494,6 +496,7 @@ export default function RidePage() {
     }
     const onDriverLocation = (data: { lat: number; lng: number; heading: number }) => {
       setDriverPos([data.lat, data.lng])
+      setDriverLive(true)
     }
     // Road-snapped trail segments (see api rides.service.ts updateLocation) —
     // replaces raw per-ping breadcrumb points so the line follows actual roads
@@ -760,7 +763,9 @@ export default function RidePage() {
       : {}),
   }
   // A stale route ETA can't say the driver is here; the live distance can (see driverAtPickup).
-  const atPickup = driverAtPickup(status, driverPos ? haversineMetres(driverPos, pickupPos) : null)
+  const [wasAtPickup, setWasAtPickup] = useState(false)
+  const atPickup = driverAtPickup(status, driverLive && driverPos ? haversineMetres(driverPos, pickupPos) : null, wasAtPickup)
+  useEffect(() => { setWasAtPickup(atPickup) }, [atPickup])
   // No driver fix yet -> no ETA; say so instead of leaving the banner silently blank.
   const bannerSub = atPickup ? 'Head to your pickup point' : (cfg as { sub?: string }).sub ?? (status === 'accepted' && !driverPos ? 'Locating your driver…' : undefined)
   const hasDriver = rideStatus !== 'requested' && rideStatus !== 'scheduled'

@@ -33,6 +33,8 @@ export type GoogleGuidedMapProps = {
   stops?: GuidedStop[]
   /** One-way: arrival at a stop starts the wait clock and returns to the stop card. */
   meterWait?: boolean
+  /** The destination is the rider's pickup: ask Google for the rider's side of the road and a legal stop. */
+  curbPickup?: boolean
   /** Fires once guidance reaches the final destination, or the driver taps "Close guidance".
       The caller reverts to the DIY map view -- this component never decides what's next. */
   onClose: () => void
@@ -43,7 +45,7 @@ export type GoogleGuidedMapProps = {
 
 // Inner component so useNavigation() has a NavigationProvider ancestor -- the provider
 // itself can't also be the thing calling the hook.
-function GuidedMapInner({ rideId, destination, stops = [], meterWait = false, onClose, onStopResolved }: GoogleGuidedMapProps) {
+function GuidedMapInner({ rideId, destination, stops = [], meterWait = false, curbPickup = false, onClose, onStopResolved }: GoogleGuidedMapProps) {
   useKeepAwake() // screen stays on for as long as guidance is mounted
   const { navigationController, setOnArrival, removeAllListeners } = useNavigation()
   const [status, setStatus] = useState<'initializing' | 'ready' | 'failed'>('initializing')
@@ -117,9 +119,10 @@ function GuidedMapInner({ rideId, destination, stops = [], meterWait = false, on
         setStatus('failed')
         return
       }
+      // Side-of-road hints only for the pickup leg: on the drop and stops they can add a detour the fare didn't price.
       const waypoints = [
-        ...stopsRef.current.map((s) => curbWaypoint(s.lat, s.lng)),
-        curbWaypoint(destination[0], destination[1]),
+        ...stopsRef.current.map((s) => ({ position: { lat: s.lat, lng: s.lng } })),
+        curbPickup ? curbWaypoint(destination[0], destination[1]) : { position: { lat: destination[0], lng: destination[1] } },
       ]
       try {
         await navigationController.setDestinations(waypoints, {

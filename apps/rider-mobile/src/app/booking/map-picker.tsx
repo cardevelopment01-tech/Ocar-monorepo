@@ -9,7 +9,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { Button, colors, radii, spacing, typography, fonts, haversineMetres } from '@ocar/mobile-shared'
+import { Button, colors, radii, spacing, typography, fonts, haversineMetres, track } from '@ocar/mobile-shared'
 import { fetchReverseGeocode } from '@/features/booking/api'
 import { useBookingDraftStore } from '@/features/booking/store'
 import { useLocationStore, useLocationTracking } from '@/store/useLocationStore'
@@ -93,15 +93,26 @@ export default function MapPickerScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only frame once on mount
   }, [])
 
+  // A touch that never moves the map fires onPanDrag but no onRegionChangeComplete, so the pin would stay lifted:
+  // put it down once the drags stop arriving.
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (settleTimer.current) clearTimeout(settleTimer.current) }, [])
+  const putPinDown = useCallback(() => {
+    lifted.current = false
+    lift.set(withSpring(0, { damping: 14, stiffness: 240 }))
+  }, [lift])
+
   const handlePanDrag = useCallback(() => {
+    if (settleTimer.current) clearTimeout(settleTimer.current)
+    settleTimer.current = setTimeout(putPinDown, 400)
     if (lifted.current) return
     lifted.current = true
     lift.set(withTiming(1, { duration: 120 }))
-  }, [lift])
+  }, [lift, putPinDown])
 
   const handleRegionChangeComplete = useCallback((region: Region) => {
-    lifted.current = false
-    lift.set(withSpring(0, { damping: 14, stiffness: 240 }))
+    if (settleTimer.current) clearTimeout(settleTimer.current)
+    putPinDown()
     setCoords({ lat: region.latitude, lng: region.longitude })
     setResolving(true)
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -112,7 +123,7 @@ export default function MapPickerScreen() {
         .catch(() => { if (seq === geocodeSeq.current) setAddress('Unknown location') })
         .finally(() => { if (seq === geocodeSeq.current) setResolving(false) })
     }, 500)
-  }, [lift])
+  }, [putPinDown])
 
   const youAt: [number, number] | null = locLat !== null && locLng !== null ? [locLat, locLng] : null
   const metresFromYou = youAt ? haversineMetres([coords.lat, coords.lng], youAt) : null
@@ -126,6 +137,7 @@ export default function MapPickerScreen() {
     const place = { address: address || 'Selected location', lat: coords.lat, lng: coords.lng }
     if (isPickup) {
       confirmPickup(place)
+      track('pickup_confirmed', { moved_from_you_m: metresFromYou === null ? null : Math.round(metresFromYou), accuracy_m: locAccuracy === null ? null : Math.round(locAccuracy) })
     } else {
       setDrop(place)
       addRecent(place)

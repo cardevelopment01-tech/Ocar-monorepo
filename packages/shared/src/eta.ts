@@ -27,9 +27,12 @@ export function statusShowsEta(status: string): boolean {
 // kept showing "Arriving in 2 min" until they tapped Arrived. 75 m covers GPS drift and a pickup pin set on
 // the far side of a road.
 export const AT_PICKUP_M = 75
+// Once "here" is showing it only clears past this distance, so a driver skirting the 75 m edge on a parallel road
+// doesn't flicker between "Your driver is here" and "Arriving in 6 min".
+export const LEFT_PICKUP_M = 120
 
-export function driverAtPickup(status: string, driverToPickupM: number | null | undefined): boolean {
-  return status === 'accepted' && driverToPickupM != null && driverToPickupM <= AT_PICKUP_M
+export function driverAtPickup(status: string, driverToPickupM: number | null | undefined, wasAtPickup = false): boolean {
+  return status === 'accepted' && driverToPickupM != null && driverToPickupM <= (wasAtPickup ? LEFT_PICKUP_M : AT_PICKUP_M)
 }
 
 // An ETA fetched `elapsedMs` ago, counted down so it ticks between fetches instead of freezing for a minute.

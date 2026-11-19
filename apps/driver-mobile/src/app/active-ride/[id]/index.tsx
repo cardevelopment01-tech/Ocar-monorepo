@@ -296,6 +296,7 @@ export default function ActiveRideScreen() {
           destination={navigateTarget}
           stops={guidedStops}
           meterWait={ride.rideType === 'one_way'}
+          curbPickup={!isReturning && !showsDestination}
           onClose={() => setNavView('diy')}
           onStopResolved={refresh}
         />

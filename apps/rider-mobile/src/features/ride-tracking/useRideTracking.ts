@@ -280,7 +280,9 @@ export function useRideTracking(rideId: string) {
     return () => clearInterval(id)
   }, [eta])
   const agedEta = useMemo(() => (eta ? ageEta(eta, Date.now() - etaAt) : null), [eta, etaAt, etaTick]) // eslint-disable-line react-hooks/exhaustive-deps -- etaTick only forces a re-age
-  const atPickup = !!ride && driverLocated && driverPos != null && driverAtPickup(ride.status, haversineMetres(driverPos, pickup))
+  const [wasAtPickup, setWasAtPickup] = useState(false)
+  const atPickup = !!ride && driverLocated && driverPos != null && driverAtPickup(ride.status, haversineMetres(driverPos, pickup), wasAtPickup)
+  useEffect(() => { setWasAtPickup(atPickup) }, [atPickup])
   const drop = useMemo<[number, number] | null>(() => (hasDest ? [ride!.destLat!, ride!.destLng!] : null), [ride, hasDest])
 
   return {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { AT_PICKUP_M, ageEta, driverAtPickup, formatEta, statusShowsEta } from './eta'
+import { readFileSync } from 'node:fs'
+import { AT_PICKUP_M, LEFT_PICKUP_M, ageEta, driverAtPickup, formatEta, statusShowsEta } from './eta'
 
 describe('formatEta', () => {
   it('never shows 0 min', () => {
@@ -27,6 +28,15 @@ describe('statusShowsEta', () => {
 })
 
 describe('driverAtPickup', () => {
+  it('holds "here" out to LEFT_PICKUP_M once it is showing, so it does not flicker at the edge', () => {
+    expect(driverAtPickup('accepted', AT_PICKUP_M + 20, false)).toBe(false)
+    expect(driverAtPickup('accepted', AT_PICKUP_M + 20, true)).toBe(true)
+    expect(driverAtPickup('accepted', LEFT_PICKUP_M + 1, true)).toBe(false)
+  })
+  it('matches the radius the driver app uses to prompt "mark arrived"', () => {
+    const src = readFileSync(new URL('../../../apps/driver-mobile/src/features/active-ride/geo.ts', import.meta.url), 'utf8')
+    expect(Number(/export const AT_PICKUP_M = (\d+)/.exec(src)?.[1])).toBe(AT_PICKUP_M)
+  })
   it('is true only on the way to the pickup and within the radius', () => {
     expect(driverAtPickup('accepted', AT_PICKUP_M)).toBe(true)
     expect(driverAtPickup('accepted', AT_PICKUP_M + 1)).toBe(false)
