@@ -2,6 +2,10 @@
 // (city-radius classification) -- previously two identical copies in the
 // same feature folder, one touched by the same diff that introduced the
 // other (code-review finding, 2026-09-22).
+// Mirrors @ocar/shared's AT_PICKUP_M (the rider apps' "driver is at the pickup" radius), so the driver is told
+// to tap Arrived at the same moment the rider is told the driver is there. This app doesn't depend on @ocar/shared.
+export const AT_PICKUP_M = 75
+
 export function haversineMetres(a: [number, number], b: [number, number]): number {
   const R = 6_371_000
   const toRad = (d: number) => (d * Math.PI) / 180
