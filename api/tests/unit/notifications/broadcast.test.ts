@@ -58,6 +58,12 @@ describe('normalizeIndianPhone', () => {
 describe('broadcastSchema', () => {
   const ok = { title: 'T', body: 'B', category: 'announcement', audience: { role: 'driver' } }
   it('accepts a valid broadcast', () => expect(broadcastSchema.safeParse(ok).success).toBe(true))
+  it('accepts an https picture and a screen key; refuses a picture that is not https or not a link (Firebase would refuse the whole message)', () => {
+    expect(broadcastSchema.safeParse({ ...ok, imageUrl: 'https://cdn.example.com/a.jpg', link: 'offers' }).success).toBe(true)
+    for (const imageUrl of ['http://cdn.example.com/a.jpg', 'javascript:alert(1)', 'not a url', 'ftp://x.com/a.png', ' ', 'https://' + 'a'.repeat(500) + '.com/x.png']) {
+      expect(broadcastSchema.safeParse({ ...ok, imageUrl }).success, imageUrl).toBe(false)
+    }
+  })
   it('rejects empty or oversized text and unknown fields', () => {
     expect(broadcastSchema.safeParse({ ...ok, title: ' ' }).success).toBe(false)
     expect(broadcastSchema.safeParse({ ...ok, body: 'x'.repeat(301) }).success).toBe(false)
@@ -212,9 +218,23 @@ describe('createBroadcast', () => {
     const [insertSql, insertValues] = query.mock.calls[1] as [string, unknown[]]
     expect(insertSql).toContain('INSERT INTO notification_broadcasts')
     expect(insertSql).toContain("'queued'") // the column default is 'done' (for the previous release), so this release says it explicitly
-    expect(insertValues.slice(5)).toEqual([7, 1, 2])
+    expect(insertValues.slice(5)).toEqual([7, 1, 2, null, null]) // no image, no screen
     expect(queueAdd).toHaveBeenCalledWith('broadcast_send', { broadcastId: '9' }, expect.objectContaining({ jobId: 'broadcast-9', attempts: 3 }))
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: 'notification_broadcast', ipAddress: '1.2.3.4' }))
+  })
+
+  it('stores the picture and the screen with the broadcast, and records them in the audit log', async () => {
+    query.mockResolvedValueOnce(counts({ matched: 3, recipients: 3, with_device: 3 })).mockResolvedValueOnce({ rows: [{ id: '5' }] })
+    await createBroadcast({ ...input, imageUrl: 'https://cdn.example.com/a.jpg', link: 'wallet' }, 1n, null)
+    expect((query.mock.calls[1] as [string, unknown[]])[1].slice(8)).toEqual(['https://cdn.example.com/a.jpg', 'wallet'])
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ afterState: expect.objectContaining({ imageUrl: 'https://cdn.example.com/a.jpg', link: 'wallet' }) }))
+  })
+
+  it('refuses a screen the audience's app cannot open (a rider app has no "wallet"), before anything is counted or stored', async () => {
+    await expect(createBroadcast({ ...input, audience: { role: 'rider' as const }, link: 'wallet' }, 1n, null)).rejects.toMatchObject({ httpStatus: 422 })
+    await expect(createBroadcast({ ...input, link: 'offers' }, 1n, null)).rejects.toMatchObject({ httpStatus: 422 }) // driver has no 'offers'
+    expect(query).not.toHaveBeenCalled()
+    expect(queueAdd).not.toHaveBeenCalled()
   })
 
   it('if the job cannot be queued the broadcast is marked failed (not left "Queued" forever) and the admin gets the error', async () => {
@@ -246,8 +266,8 @@ describe('runBroadcast', () => {
     record.mockResolvedValue(undefined)
     deleteTokens.mockResolvedValue(undefined)
   })
-  type Row = { title: string; body: string; category: string; audience: Audience; status: string; recipient_count: number }
-  const row = (over: Partial<Row> = {}): Row => ({ title: 'Hello', body: 'World', category: 'announcement', audience: { role: 'rider' }, status: 'queued', recipient_count: 0, ...over })
+  type Row = { title: string; body: string; category: string; audience: Audience; status: string; recipient_count: number; image_url: string | null; link: string | null }
+  const row = (over: Partial<Row> = {}): Row => ({ title: 'Hello', body: 'World', category: 'announcement', audience: { role: 'rider' }, status: 'queued', recipient_count: 0, image_url: null, link: null, ...over })
 
   // Answers each statement by what it does, so the tests do not depend on the order of the queries.
   function db(opts: { row?: Row | null; recipients?: string[]; already?: string[]; unsent?: string[]; sentCount?: number; resolveError?: Error }) {
@@ -291,6 +311,22 @@ describe('runBroadcast', () => {
     const [, msg, perToken] = sendPush.mock.calls[0]!
     expect(perToken).toEqual([{ notificationId: 'n1', type: 'announcement' }, { notificationId: 'n2', type: 'announcement' }])
     expect(msg).toMatchObject({ title: 'Hello', body: 'World', channelId: 'announcements_v1', ttlSeconds: 86400 })
+  })
+
+  it('the picture goes on the message and the screen key goes in the data every phone receives', async () => {
+    db({ row: row({ image_url: 'https://cdn.example.com/a.jpg', link: 'offers' }), recipients: ['1'] })
+    await runBroadcast('9')
+    const [, msg, perToken] = sendPush.mock.calls[0]!
+    expect(msg).toMatchObject({ imageUrl: 'https://cdn.example.com/a.jpg', data: { link: 'offers' } })
+    expect(perToken).toEqual([{ notificationId: 'n1', type: 'announcement' }]) // the person's own id still travels per phone
+  })
+
+  it('without a picture or screen the message has neither', async () => {
+    db({ recipients: ['1'] })
+    await runBroadcast('9')
+    const msg = sendPush.mock.calls[0]![1] as Record<string, unknown>
+    expect(msg).not.toHaveProperty('imageUrl')
+    expect(msg).not.toHaveProperty('data')
   })
 
   it('an offer uses the offers channel', async () => {

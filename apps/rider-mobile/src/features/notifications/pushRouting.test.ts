@@ -34,7 +34,17 @@ describe('resolvePushRoute (rider-mobile)', () => {
     expect(resolvePushRoute({ type: 'ride_no_drivers', rideId: '9' })).toBe('/(tabs)/home')
   })
 
-  it('a tap on a type with no screen (offers, announcements) just opens the app', () => {
+  it('a broadcast opens the screen the admin chose; one without a screen, or with a key this app does not know, just opens the app', () => {
+    expect(resolveTapRoute({ type: 'offer', link: 'offers' })).toBe('/offers')
+    expect(resolveTapRoute({ type: 'announcement', link: 'trips' })).toBe('/(tabs)/trips')
+    expect(resolveTapRoute({ type: 'offer', link: 'home' })).toBe('/(tabs)/home')
+    expect(resolveTapRoute({ type: 'offer' })).toBeNull()
+    expect(resolveTapRoute({ type: 'offer', link: 'wallet' })).toBeNull() // a driver screen, not a rider one
+    expect(resolveTapRoute({ type: 'offer', link: '../../admin' })).toBeNull() // a key, never a path
+    expect(resolveTapRoute({ type: 'ride_accepted', rideId: '7', link: 'offers' })).toBe('/ride/7') // link only matters for broadcasts
+  })
+
+  it('a tap on a type with no screen (an offer or announcement sent without one) just opens the app', () => {
     expect(resolveTapRoute({ type: 'something_new' })).toBeNull()
     expect(resolveTapRoute({ type: 'offer' })).toBeNull()
     expect(resolveTapRoute({ type: 'driver_arrived', rideId: '9' })).toBe('/ride/9')

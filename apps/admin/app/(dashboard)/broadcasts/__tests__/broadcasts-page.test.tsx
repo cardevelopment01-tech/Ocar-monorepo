@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import type { AudiencePreview, BroadcastSummary } from '@/lib/broadcast-api'
 
 const api = vi.hoisted(() => ({ preview: vi.fn(), send: vi.fn(), list: vi.fn() }))
-vi.mock('@/lib/broadcast-api', () => ({ broadcastApi: api }))
+vi.mock('@/lib/broadcast-api', async (orig) => ({ ...(await orig<typeof import('@/lib/broadcast-api')>()), broadcastApi: api }))
 vi.mock('@/lib/city-api', () => ({ cityApi: { list: () => Promise.resolve([{ id: 1, name: 'Bhubaneswar' }, { id: 2, name: 'Cuttack' }]) } }))
 vi.mock('@/lib/vehicle-api', () => ({ vehicleCategoryApi: { list: () => Promise.resolve([{ id: '3', display_name: 'SUV' }, { id: '4', display_name: 'Luxury SUV' }]) } }))
 
@@ -23,7 +23,7 @@ const preview = (over: Partial<AudiencePreview> = {}): AudiencePreview => ({
 const row = (over: Partial<BroadcastSummary> = {}): BroadcastSummary => ({
   id: '7', title: 'Ocar is live', body: 'Stay online.', category: 'announcement', audience: { role: 'driver', cityIds: [2], docIssues: true },
   status: 'done', sentBy: 'ops@ocar.app', createdAt: '2026-11-17T06:41:04.000Z', finishedAt: '2026-11-17T06:41:06.000Z',
-  sent: 578, pushed: 333, pushFailed: 17, noPush: 228, opened: 27, failed: 0, skippedOptedOut: 3, skippedCapped: 2, skippedAtSend: 0, tracked: true, settling: false, ...over,
+  imageUrl: null, link: null, sent: 578, pushed: 333, pushFailed: 17, noPush: 228, opened: 27, failed: 0, skippedOptedOut: 3, skippedCapped: 2, skippedAtSend: 0, tracked: true, settling: false, ...over,
 })
 
 async function fillMessage(user: ReturnType<typeof userEvent.setup>, title = 'Hello', body = 'World') {
@@ -114,14 +114,55 @@ describe('Broadcasts page', () => {
     await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1))
   })
 
-  it('riders: warns that riders with no phone registration will not see it (the rider app has no notification list yet)', async () => {
+  it('riders: warns that riders with no phone registration will not see it (a rider only gets the push)', async () => {
     const user = userEvent.setup()
     render(<BroadcastsPage />)
     await user.click(screen.getByRole('button', { name: 'Riders' }))
     await fillMessage(user)
     await user.click(screen.getByRole('button', { name: 'Check audience' }))
-    expect(await screen.findByText(/rider app has no notification list yet/)).toBeInTheDocument()
+    expect(await screen.findByText(/Riders only receive this as a push/)).toBeInTheDocument()
     expect(api.preview).toHaveBeenCalledWith('announcement', { role: 'rider' })
+  })
+
+  it('a picture and a screen: shown in the phone preview, offered per app, sent with the broadcast, and cleared after sending', async () => {
+    const user = userEvent.setup()
+    render(<BroadcastsPage />)
+    await fillMessage(user)
+    // Drivers can open Wallet, riders cannot.
+    expect(within(screen.getByLabelText(/When they tap it/)).getByRole('option', { name: 'Open Wallet' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText(/^Picture/), 'https://cdn.example.com/offer.jpg')
+    await user.selectOptions(screen.getByLabelText(/When they tap it/), 'wallet')
+    const phone = screen.getByLabelText('How it looks on a phone')
+    expect(phone.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/offer.jpg')
+    expect(within(phone).getByText('Wallet')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Check audience' }))
+    await user.click(await screen.findByRole('button', { name: /^Send to/ }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Send now' })) // 50 people: asks first
+    await waitFor(() => expect(api.send).toHaveBeenCalledWith({
+      title: 'Hello', body: 'World', category: 'announcement', audience: { role: 'driver' }, imageUrl: 'https://cdn.example.com/offer.jpg', link: 'wallet',
+    }))
+    await waitFor(() => expect((screen.getByLabelText(/^Picture/) as HTMLInputElement).value).toBe(''))
+  })
+
+  it('switching to riders drops a screen riders do not have (no "wallet" for a rider)', async () => {
+    const user = userEvent.setup()
+    render(<BroadcastsPage />)
+    await user.selectOptions(screen.getByLabelText(/When they tap it/), 'wallet')
+    await user.click(screen.getByRole('button', { name: 'Riders' }))
+    const select = screen.getByLabelText(/When they tap it/) as HTMLSelectElement
+    expect(select.value).toBe('')
+    expect(within(select).queryByRole('option', { name: 'Open Wallet' })).toBeNull()
+    expect(within(select).getByRole('option', { name: 'Open My offers' })).toBeInTheDocument()
+  })
+
+  it('a picture link that is not https is flagged and blocks checking and sending', async () => {
+    const user = userEvent.setup()
+    render(<BroadcastsPage />)
+    await fillMessage(user)
+    await user.type(screen.getByLabelText(/^Picture/), 'http://insecure.example.com/a.jpg')
+    expect(screen.getByText('The link must start with https://')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check audience' })).toBeDisabled()
+    expect(screen.getByLabelText('How it looks on a phone').querySelector('img')).toBeNull()
   })
 
   it('an offer outside the allowed hours cannot be sent', async () => {

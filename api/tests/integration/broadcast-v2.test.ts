@@ -23,10 +23,10 @@ vi.mock('@/lib/storage', () => ({
 // no_claim=Firebase delivery (the worker records its answer, which this test simulates).
 
 // The push provider is replaced so these tests never reach Firebase: a phone whose token contains "dead" is refused, every other is accepted.
-const fcm = vi.hoisted(() => ({ calls: [] as Array<{ tokens: string[]; data: Array<Record<string, string>> | undefined }> }))
+const fcm = vi.hoisted(() => ({ calls: [] as Array<{ tokens: string[]; data: Array<Record<string, string>> | undefined; msg: Record<string, unknown> }> }))
 vi.mock('@/modules/notifications/providers/push.provider', () => ({
-  sendPush: async (tokens: string[], _msg: unknown, data?: Array<Record<string, string>>) => {
-    fcm.calls.push({ tokens, data })
+  sendPush: async (tokens: string[], msg: Record<string, unknown>, data?: Array<Record<string, string>>) => {
+    fcm.calls.push({ tokens, data, msg })
     const dead = tokens.filter((t) => t.includes('dead'))
     return {
       invalidTokens: dead, successCount: tokens.length - dead.length, failureCount: dead.length, transientFailure: false,
@@ -417,4 +417,20 @@ describe('sending in groups (real database, push provider replaced)', () => {
       await pool.query('DELETE FROM users WHERE id = ANY($1::bigint[])', [owners])
     }
   }, 120_000)
+
+  it('a picture and a screen: refused for the wrong app, kept with the broadcast, sent with every push, and shown in the history', async () => {
+    const send = (extra: Record<string, unknown>) => api(opsToken).post('/api/v1/admin/notifications/broadcast', { title: 'Pic', body: 'Body text', category: 'announcement', audience: { role: 'driver', phones: [P.d1] }, ...extra })
+    expect((await send({ link: 'offers' })).status).toBe(422) // drivers have no offers screen
+    expect((await send({ imageUrl: 'http://insecure.example.com/a.jpg' })).status).toBe(422)
+    fcm.calls.length = 0
+    const res = await send({ imageUrl: 'https://cdn.example.com/a.jpg', link: 'wallet' })
+    expect(res.status, JSON.stringify(res.body)).toBe(202)
+    const id = String(body(res).id)
+    broadcastIds.push(id)
+    await runBroadcast(id)
+    expect(fcm.calls).toHaveLength(1)
+    expect(fcm.calls[0]!.msg).toMatchObject({ imageUrl: 'https://cdn.example.com/a.jpg', data: { link: 'wallet' } })
+    const hist = (body(await api(opsToken).get('/api/v1/admin/notifications/broadcasts?limit=50')) as { broadcasts: Array<Record<string, unknown>> }).broadcasts
+    expect(hist.find((b) => b['id'] === id)).toMatchObject({ imageUrl: 'https://cdn.example.com/a.jpg', link: 'wallet' })
+  })
 })

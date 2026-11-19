@@ -34,6 +34,8 @@ export interface PushMessage {
   // auto-open path planned in docs/superpowers/plans/2026-11-05-driver-app-closed-ride-alert-overlay.md), so it asks for
   // `proxy: 'deny'`.
   noProxy?: boolean
+  // A picture shown big in the notification (https only: a malformed value makes Firebase refuse the whole message).
+  imageUrl?: string
 }
 
 export interface SendPushResult {
@@ -103,6 +105,7 @@ export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?
       defaultVibrateTimings: !msg.silent,
       ...(msg.silent ? {} : { sound: msg.sound?.android ?? 'default' }),
       ...(msg.noProxy ? { proxy: 'deny' as const } : {}),
+      ...(msg.imageUrl ? { imageUrl: msg.imageUrl } : {}),
     }
     const android: NonNullable<MulticastMessage['android']> = { priority: 'high', notification: androidNotification }
     // ttl/collapseKey/tag were previously only written to the webpush block, so on Android a
@@ -115,6 +118,7 @@ export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?
     }
     // iOS (planned): same intent via APNs headers; harmless for Android tokens in the same multicast.
     const apnsHeaders: Record<string, string> = { 'apns-priority': '10' }
+    // iOS shows the picture only when the app has a notification service extension; harmless otherwise.
     if (msg.ttlSeconds !== undefined) apnsHeaders['apns-expiration'] = String(Math.floor(Date.now() / 1000) + msg.ttlSeconds)
     if (msg.tag) apnsHeaders['apns-collapse-id'] = msg.tag.slice(0, 64)
     const message: MulticastMessage = {
@@ -123,6 +127,7 @@ export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?
       android,
       apns: {
         headers: apnsHeaders,
+        ...(msg.imageUrl ? { fcmOptions: { imageUrl: msg.imageUrl } } : {}),
         payload: {
           aps: {
             ...(msg.silent ? {} : { sound: msg.sound?.ios ?? 'default' }),

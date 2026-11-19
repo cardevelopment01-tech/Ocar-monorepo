@@ -90,3 +90,28 @@ describe('sendPush: a different data field per phone, still one call', () => {
     expect((sendEach.mock.calls[0]![0] as Array<{ data: unknown }>)[0]!.data).toEqual({ notificationId: '7' })
   })
 })
+
+describe('sendPush: a picture', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('puts the picture on the Android notification and the iOS options, for both the multicast and the per-phone call', async () => {
+    sendEachForMulticast.mockResolvedValue({ successCount: 1, failureCount: 0, responses: [ok] })
+    await sendPush(['a'], { title: 'T', body: 'B', imageUrl: 'https://cdn.example.com/a.jpg' })
+    const m = sendEachForMulticast.mock.calls[0]![0] as { android: { notification: { imageUrl?: string } }; apns: { fcmOptions?: { imageUrl: string } } }
+    expect(m.android.notification.imageUrl).toBe('https://cdn.example.com/a.jpg')
+    expect(m.apns.fcmOptions).toEqual({ imageUrl: 'https://cdn.example.com/a.jpg' })
+
+    sendEach.mockResolvedValue({ successCount: 1, failureCount: 0, responses: [ok] })
+    await sendPush(['a'], { title: 'T', body: 'B', imageUrl: 'https://cdn.example.com/a.jpg' }, [{ notificationId: '1' }])
+    const one = (sendEach.mock.calls[0]![0] as Array<{ android: { notification: { imageUrl?: string } } }>)[0]!
+    expect(one.android.notification.imageUrl).toBe('https://cdn.example.com/a.jpg')
+  })
+
+  it('without a picture nothing about an image is sent', async () => {
+    sendEachForMulticast.mockResolvedValue({ successCount: 1, failureCount: 0, responses: [ok] })
+    await sendPush(['a'], { title: 'T', body: 'B' })
+    const m = sendEachForMulticast.mock.calls[0]![0] as { android: { notification: Record<string, unknown> }; apns: Record<string, unknown> }
+    expect(m.android.notification).not.toHaveProperty('imageUrl')
+    expect(m.apns).not.toHaveProperty('fcmOptions')
+  })
+})

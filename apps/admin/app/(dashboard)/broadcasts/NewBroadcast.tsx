@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Send } from 'lucide-react'
 import MultiSelectFilter from '@/components/ui/MultiSelectFilter'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
-import { broadcastApi, type AudiencePreview, type BroadcastCategory } from '@/lib/broadcast-api'
+import { BROADCAST_LINKS, broadcastApi, type AudiencePreview, type BroadcastCategory } from '@/lib/broadcast-api'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 import { vehicleCategoryApi, type VehicleCategory } from '@/lib/vehicle-api'
 import { extractErrorMessage } from '@/lib/http-errors'
@@ -22,6 +22,9 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
   const [category, setCategory] = useState<BroadcastCategory>('announcement')
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
+  const [imageUrl, setImageUrl] = useState('')
+  const [link, setLink] = useState('')
+  const [imageBroken, setImageBroken] = useState(false)
   const [preview, setPreview] = useState<AudiencePreview | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,11 +44,17 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
   const phones = useMemo(() => parsePhones(form.phonesText), [form.phonesText])
   const textReady = title.trim().length > 0 && body.trim().length > 0
   const targetReady = audienceReady(form)
+  const image = imageUrl.trim()
+  // Firebase refuses a message whose picture is not an https link, so the form holds the same line the server does.
+  const imageInvalid = image !== '' && !/^https:\/\/\S+$/.test(image)
+  const links = BROADCAST_LINKS[form.role]
+  const linkLabel = links.find((l) => l.value === link)?.label ?? null
   const who = form.role === 'driver' ? 'driver' : 'rider'
 
   // Anything that changes who gets it, or what it says, invalidates the numbers the admin checked against.
   const change = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPreview(null); setSent(null); setError(null) }
   const patch = (p: Partial<AudienceForm>) => { setForm((f) => ({ ...f, ...p })); setPreview(null); setSent(null); setError(null) }
+  const changeImage = (v: string) => { setImageUrl(v); setImageBroken(false); setPreview(null); setSent(null); setError(null) }
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true); setError(null)
@@ -55,9 +64,12 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
   const checkAudience = () => run(async () => setPreview(await broadcastApi.preview(category, buildAudience(form))))
 
   const send = () => run(async () => {
-    const res = await broadcastApi.send({ title: title.trim(), body: body.trim(), category, audience: buildAudience(form) })
+    const res = await broadcastApi.send({
+      title: title.trim(), body: body.trim(), category, audience: buildAudience(form),
+      ...(image ? { imageUrl: image } : {}), ...(link ? { link } : {}),
+    })
     setSent(`Sending to ${res.recipientCount} ${res.recipientCount === 1 ? 'person' : 'people'}. Follow it in Sent broadcasts.`)
-    setPreview(null); setTitle(''); setBody('')
+    setPreview(null); setTitle(''); setBody(''); setImageUrl(''); setLink('')
     onSent()
   })
 
@@ -67,7 +79,7 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
     <div className="admin-card space-y-4 p-5 w-full max-w-2xl">
       <div>
         <p className="text-sm font-semibold text-text-primary">New broadcast</p>
-        <p className="text-xs text-text-muted mt-0.5">A push notification, and a copy in the person&apos;s notification list.</p>
+        <p className="text-xs text-text-muted mt-0.5">A push notification. Drivers also get a copy in their notification list.</p>
       </div>
 
       <div>
@@ -76,7 +88,7 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
           {(['driver', 'rider'] as const).map((r) => (
             <button
               key={r} type="button" aria-pressed={form.role === r}
-              onClick={() => patch({ ...EMPTY_FORM, role: r })}
+              onClick={() => { patch({ ...EMPTY_FORM, role: r }); setLink('') }}
               className={cn('px-4 py-1.5 text-sm rounded-lg transition-colors', form.role === r ? 'bg-surface text-text-primary font-semibold shadow-sm' : 'text-text-muted hover:text-text-primary')}
             >
               {r === 'driver' ? 'Drivers' : 'Riders'}
@@ -155,11 +167,42 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
         <textarea id="bc-body" value={body} rows={3} maxLength={300} onChange={(e) => change(setBody)(e.target.value)} className={INPUT} />
       </div>
 
+      <div>
+        <label htmlFor="bc-image" className={LABEL}>Picture (optional, https link)</label>
+        <input
+          id="bc-image" value={imageUrl} inputMode="url" placeholder="https://…/offer.jpg"
+          onChange={(e) => changeImage(e.target.value)} className={cn(INPUT, imageInvalid && 'border-error')}
+        />
+        <p className={cn('text-[11px] mt-1', imageInvalid || imageBroken ? 'text-error' : 'text-text-muted')}>
+          {imageInvalid
+            ? 'The link must start with https://'
+            : imageBroken
+              ? 'This picture could not be loaded. Check the link opens in a browser.'
+              : 'Shown large in the notification on Android. A wide picture (2:1) under 1 MB works best.'}
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="bc-link" className={LABEL}>When they tap it (optional)</label>
+        <select id="bc-link" value={link} onChange={(e) => change(setLink)(e.target.value)} className={INPUT}>
+          <option value="">Just open the app</option>
+          {links.map((l) => <option key={l.value} value={l.value}>Open {l.label}</option>)}
+        </select>
+      </div>
+
       {(title.trim() || body.trim()) && (
-        <div aria-label="How it looks on a phone" className="rounded-2xl border border-border bg-surface-2 p-3 max-w-sm">
-          <p className="text-[10px] uppercase tracking-wide text-text-muted mb-1">Ocar · now</p>
-          <p className="text-sm font-semibold text-text-primary break-words">{title.trim() || 'Title'}</p>
-          <p className="text-xs text-text-secondary mt-0.5 break-words whitespace-pre-line">{body.trim() || 'Message'}</p>
+        <div aria-label="How it looks on a phone" className="rounded-2xl border border-border bg-surface-2 p-3 max-w-sm space-y-2">
+          <p className="text-[10px] uppercase tracking-wide text-text-muted">Ocar · now</p>
+          <div>
+            <p className="text-sm font-semibold text-text-primary break-words">{title.trim() || 'Title'}</p>
+            <p className="text-xs text-text-secondary mt-0.5 break-words whitespace-pre-line">{body.trim() || 'Message'}</p>
+          </div>
+          {image && !imageInvalid && !imageBroken && (
+            // A plain <img>: the picture lives on whatever host the admin pasted, which next/image would need configured.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={image} alt="" onError={() => setImageBroken(true)} className="w-full aspect-[2/1] object-cover rounded-xl border border-border" />
+          )}
+          {linkLabel && <p className="text-[11px] text-text-muted">Tap opens: <span className="font-semibold text-text-primary">{linkLabel}</span></p>}
         </div>
       )}
 
@@ -190,7 +233,7 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
           )}
           {form.role === 'rider' && preview.inAppOnly > 0 && (
             <p className="text-[11px] text-warning">
-              The rider app has no notification list yet, so riders without a recent phone registration will not see this message at all.
+              Riders only receive this as a push. Those without a recent phone registration will not see it.
             </p>
           )}
           {!preview.sendableNow && <p className="text-xs text-error">Offers can only be sent between 10:00 and 21:00 IST.</p>}
@@ -201,7 +244,7 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
         <div className="flex items-center gap-3">
           <button
             onClick={onSendClick}
-            disabled={busy || !textReady || preview.recipientCount === 0 || !preview.sendableNow}
+            disabled={busy || !textReady || imageInvalid || preview.recipientCount === 0 || !preview.sendableNow}
             className="btn-primary flex items-center gap-2 disabled:opacity-50"
           >
             <Send size={14} /> Send to {preview.recipientCount} {preview.recipientCount === 1 ? 'person' : 'people'}
@@ -209,7 +252,7 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
           <span className="text-[11px] text-text-muted">This cannot be undone.</span>
         </div>
       ) : (
-        <button onClick={() => void checkAudience()} disabled={busy || !textReady || !targetReady} className="btn-secondary disabled:opacity-50">
+        <button onClick={() => void checkAudience()} disabled={busy || !textReady || !targetReady || imageInvalid} className="btn-secondary disabled:opacity-50">
           Check audience
         </button>
       )}

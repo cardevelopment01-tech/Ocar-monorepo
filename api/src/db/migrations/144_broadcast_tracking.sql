@@ -18,7 +18,10 @@ ALTER TABLE notification_broadcasts
   ADD COLUMN IF NOT EXISTS skipped_opted_out INT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS skipped_capped INT NOT NULL DEFAULT 0,
   -- Left out between the audience check and the send (switched off meanwhile, or the daily limit reached by another broadcast).
-  ADD COLUMN IF NOT EXISTS skipped_at_send INT NOT NULL DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS skipped_at_send INT NOT NULL DEFAULT 0,
+  -- Optional picture shown in the notification (https URL), and the screen a tap opens (a key from BROADCAST_LINKS in broadcast.service.ts).
+  ADD COLUMN IF NOT EXISTS image_url TEXT,
+  ADD COLUMN IF NOT EXISTS link TEXT;
 
 -- Broadcasts sent before this migration already ran to completion (status 'done' by the default above). A tracked broadcast always has
 -- finished_at set, so one with none is a send made by the previous release: the history shows it as "sent before tracking".

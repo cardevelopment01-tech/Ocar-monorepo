@@ -3,6 +3,8 @@ import { router } from 'expo-router'
 import { getApp } from '@react-native-firebase/app'
 import * as Notifications from 'expo-notifications'
 import { getMessaging, getInitialNotification, onMessage, onNotificationOpenedApp } from '@react-native-firebase/messaging'
+import { markPushOpened } from '@ocar/mobile-shared'
+import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { resolveTapRoute } from './pushRouting'
 
@@ -73,6 +75,8 @@ export function usePushNotificationRouting(): void {
       // A rider who logged out between the push arriving and the tap
       // shouldn't be force-navigated into a ride screen mid-auth.
       if (!useAuthStore.getState().isAuthenticated) return
+      // Opening it counts as reading it: the rider app has no list, so a tap is the only way "Opened" can be recorded.
+      void markPushOpened(api, data)
       const target = resolveTapRoute(data)
       if (!target) return
       try {

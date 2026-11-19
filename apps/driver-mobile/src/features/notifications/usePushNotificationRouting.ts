@@ -3,7 +3,7 @@ import { router } from 'expo-router'
 import { getApp } from '@react-native-firebase/app'
 import * as Notifications from 'expo-notifications'
 import { getMessaging, getInitialNotification, onMessage, onNotificationOpenedApp } from '@react-native-firebase/messaging'
-import { refreshUnreadCount } from '@ocar/mobile-shared'
+import { markPushOpened, refreshUnreadCount } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { resolveTapRoute } from './pushRouting'
@@ -76,6 +76,8 @@ export function usePushNotificationRouting(): void {
       // shouldn't be force-navigated into a ride screen mid-auth -- let
       // the normal auth flow land them on login, same as a cold app open.
       if (!useAuthStore.getState().isAuthenticated) return
+      // Opening it counts as reading it (the admin's "Opened" number); then the bell catches up.
+      void markPushOpened(api, data).then((asked) => { if (asked) return refreshUnreadCount(api) })
       const target = resolveTapRoute(data)
       if (!target) return
       try {

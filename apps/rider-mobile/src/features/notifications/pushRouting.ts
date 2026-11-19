@@ -6,6 +6,13 @@
 // call site in api/src: ride_accepted, driver_arrived, ride_started, ride_completed,
 // ride_cancelled, ride_no_drivers, payment_failed, stop_unreachable, trip_window_*,
 // ride_chat_message.
+// The screens an admin broadcast can ask a tap to open (BROADCAST_LINKS.rider in the API). A key this app does not know opens the app.
+const BROADCAST_ROUTES: Record<string, string> = {
+  home: '/(tabs)/home',
+  offers: '/offers',
+  trips: '/(tabs)/trips',
+}
+
 export function resolvePushRoute(data: Record<string, string> | undefined): string | null {
   const type = data?.['type']
   if (!type) return null
@@ -36,6 +43,13 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
     case 'payment_failed':
       return rideId ? `/ride/${rideId}` : null
 
+    // Admin broadcasts: open the screen the admin chose, if any.
+    case 'announcement':
+    case 'offer': {
+      const link = data?.['link']
+      return link ? (BROADCAST_ROUTES[link] ?? null) : null
+    }
+
     default:
       return null
   }
@@ -43,7 +57,7 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
 
 // What a push/notification TAP should do: the type's own screen. There is no in-app notification
 // list in the rider app (ride updates live on the ride and Trips screens), so a type with no screen
-// (offers, announcements) just opens the app.
+// (an offer or announcement sent without a screen) just opens the app.
 export function resolveTapRoute(data: Record<string, string> | undefined): string | null {
   return resolvePushRoute(data)
 }

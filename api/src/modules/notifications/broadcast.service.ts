@@ -55,7 +55,17 @@ export const broadcastSchema = z.object({
   body: z.string().trim().min(1).max(300),
   category: z.enum(['announcement', 'offer']),
   audience: audienceSchema,
+  // Optional picture (https) and the screen a tap opens. The screen is a key, never a path: each app maps it to a route it owns.
+  imageUrl: z.string().trim().max(500).url().refine((u) => u.startsWith('https://'), 'Image must be an https link').optional(),
+  link: z.string().trim().max(30).optional(),
 }).strict()
+
+// Screens a broadcast tap can open, per audience. The apps map each key to a route (see resolvePushRoute in both apps); a key an
+// older app does not know just opens the app.
+export const BROADCAST_LINKS = {
+  rider: ['home', 'offers', 'trips'],
+  driver: ['home', 'wallet', 'earnings', 'documents'],
+} as const
 
 export type Audience = z.infer<typeof audienceSchema>
 export type BroadcastInput = z.infer<typeof broadcastSchema>
@@ -199,6 +209,9 @@ export async function createBroadcast(
   if (input.category === 'offer' && !offersAllowedNow()) {
     throw httpError(422, 'Offers can only be sent between 10:00 and 21:00 IST', AppErrors.VALIDATION_ERROR.code)
   }
+  if (input.link !== undefined && !(BROADCAST_LINKS[input.audience.role] as readonly string[]).includes(input.link)) {
+    throw httpError(422, `"${input.link}" is not a screen the ${input.audience.role} app can open`, AppErrors.VALIDATION_ERROR.code)
+  }
   const preview = await countAudience(input.audience, input.category)
   if (preview.recipientCount === 0) {
     const why = preview.matched === 0
@@ -208,10 +221,10 @@ export async function createBroadcast(
   }
 
   const res = await pool.query<{ id: string }>(
-    `INSERT INTO notification_broadcasts (admin_id, title, body, category, audience, recipient_count, skipped_opted_out, skipped_capped, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued') RETURNING id`,
+    `INSERT INTO notification_broadcasts (admin_id, title, body, category, audience, recipient_count, skipped_opted_out, skipped_capped, status, image_url, link)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9, $10) RETURNING id`,
     [adminId.toString(), input.title, input.body, input.category, JSON.stringify(input.audience), preview.recipientCount,
-     preview.skippedOptedOut, preview.skippedCapped],
+     preview.skippedOptedOut, preview.skippedCapped, input.imageUrl ?? null, input.link ?? null],
   )
   const id = res.rows[0]!.id
 
@@ -219,6 +232,7 @@ export async function createBroadcast(
     adminId, action: 'notification_broadcast', targetTable: 'notification_broadcasts', targetId: BigInt(id),
     afterState: {
       title: input.title, category: input.category, audience: maskAudience(input.audience),
+      ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}), ...(input.link ? { link: input.link } : {}),
       recipientCount: preview.recipientCount, withDevice: preview.withDevice,
       skippedOptedOut: preview.skippedOptedOut, skippedCapped: preview.skippedCapped,
     },
@@ -302,8 +316,8 @@ async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'us
 // `finalAttempt`: false while the queue will still retry this job. Recipients that could not be notified then make the run throw, so the
 // retry picks exactly those people up (everyone else is skipped); on the final attempt they are counted as failed and the run completes.
 export async function runBroadcast(broadcastId: string, finalAttempt = true): Promise<number> {
-  const row = (await pool.query<{ title: string; body: string; category: BroadcastInput['category']; audience: Audience; status: string; recipient_count: number }>(
-    'SELECT title, body, category, audience, status, recipient_count FROM notification_broadcasts WHERE id = $1', [broadcastId],
+  const row = (await pool.query<{ title: string; body: string; category: BroadcastInput['category']; audience: Audience; status: string; recipient_count: number; image_url: string | null; link: string | null }>(
+    'SELECT title, body, category, audience, status, recipient_count, image_url, link FROM notification_broadcasts WHERE id = $1', [broadcastId],
   )).rows[0]
   if (!row || row.status === 'done') return 0
   // The 10:00-21:00 window was checked when it was created; a retry can run later, so check again.
@@ -324,6 +338,9 @@ export async function runBroadcast(broadcastId: string, finalAttempt = true): Pr
     title: row.title, body: row.body, ttlSeconds: defaults.ttlSeconds,
     ...(defaults.channelId !== undefined ? { channelId: defaults.channelId } : {}),
     ...(defaults.tag !== undefined ? { tag: defaults.tag } : {}),
+    ...(row.image_url ? { imageUrl: row.image_url } : {}),
+    // `link` rides in the data payload: the app reads it on tap (sent for every phone, with each person's own notification id).
+    ...(row.link ? { data: { link: row.link } } : {}),
   }
   let failed = 0
   let droppedAtSend = 0
@@ -395,6 +412,8 @@ export type BroadcastSummary = {
   body: string
   category: BroadcastInput['category']
   audience: ReturnType<typeof maskAudience>
+  imageUrl: string | null
+  link: string | null
   status: 'queued' | 'sending' | 'done' | 'failed'
   sentBy: string | null
   createdAt: string
@@ -424,7 +443,7 @@ export type BroadcastSummary = {
 export async function listBroadcasts(params: z.infer<typeof listQuerySchema>): Promise<{ broadcasts: BroadcastSummary[]; nextBefore: string | null }> {
   const res = await pool.query(
     `SELECT b.id::text AS id, b.title, b.body, b.category, b.audience, b.status, a.email AS sent_by, b.created_at, b.finished_at,
-            b.sent_count, b.failed_count, b.skipped_opted_out, b.skipped_capped, b.skipped_at_send, b.recipient_count,
+            b.image_url, b.link, b.sent_count, b.failed_count, b.skipped_opted_out, b.skipped_capped, b.skipped_at_send, b.recipient_count,
             -- still going (queued/sending, for at most 30 minutes) or just finished (results keep arriving for ~2 minutes); a failed or
             -- long-stuck broadcast is not "settling", so the page does not poll for it forever
             COALESCE((b.status IN ('queued', 'sending') AND b.created_at > now() - interval '30 minutes')
@@ -455,6 +474,8 @@ export async function listBroadcasts(params: z.infer<typeof listQuerySchema>): P
       body: r.body as string,
       category: r.category as BroadcastSummary['category'],
       audience: maskAudience(r.audience as Audience),
+      imageUrl: (r.image_url as string | null) ?? null,
+      link: (r.link as string | null) ?? null,
       status: r.status as BroadcastSummary['status'],
       sentBy: (r.sent_by as string | null) ?? null,
       createdAt: new Date(r.created_at as string).toISOString(),

@@ -35,6 +35,9 @@ export interface BroadcastSummary {
   body: string
   category: BroadcastCategory
   audience: BroadcastAudienceShown
+  imageUrl: string | null
+  /** The screen a tap opens (a key), or null for just opening the app. */
+  link: string | null
   status: 'queued' | 'sending' | 'done' | 'failed'
   sentBy: string | null
   createdAt: string
@@ -56,13 +59,19 @@ export interface BroadcastSummary {
 
 const BASE = '/api/v1/admin/notifications'
 
+/** Screens a tap can open, per app. Mirrors BROADCAST_LINKS in the API; the label is what the admin sees. */
+export const BROADCAST_LINKS: Record<BroadcastAudience['role'], Array<{ value: string; label: string }>> = {
+  rider: [{ value: 'home', label: 'Home' }, { value: 'offers', label: 'My offers' }, { value: 'trips', label: 'My trips' }],
+  driver: [{ value: 'home', label: 'Home' }, { value: 'wallet', label: 'Wallet' }, { value: 'earnings', label: 'Earnings' }, { value: 'documents', label: 'Documents' }],
+}
+
 export const broadcastApi = {
   preview: async (category: BroadcastCategory, audience: BroadcastAudience) => {
     const { data } = await api.post<AudiencePreview>(`${BASE}/preview`, { category, audience })
     return data
   },
 
-  send: async (params: { title: string; body: string; category: BroadcastCategory; audience: BroadcastAudience }) => {
+  send: async (params: { title: string; body: string; category: BroadcastCategory; audience: BroadcastAudience; imageUrl?: string; link?: string }) => {
     const { data } = await api.post<{ id: string; recipientCount: number; withDevice: number }>(`${BASE}/broadcast`, params)
     return data
   },
