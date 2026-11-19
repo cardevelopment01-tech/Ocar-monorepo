@@ -225,16 +225,28 @@ describe('sending, repeating, limits and history', () => {
        VALUES ('driver', $1, 'in_app', 'sent', 'announcement', 'x', 'y', $2)`, [d.d1, first])).rejects.toMatchObject({ code: '23505' })
   })
 
-  it('sends aimed at phone numbers ignore the daily limit; everyone-style audiences respect it', async () => {
-    // d1 already has 1 broadcast today; two more to the same phone are allowed (a test must always go through)...
+  it('sends aimed at phone numbers never count toward the daily limit; sends to everyone-style audiences do', async () => {
+    // d1 already has 1 test send today; two more to the same phone are allowed (a test must always go through)...
     expect((await send({ role: 'driver', phones: [P.d1] }, 'Second')).status).toBe(202)
     expect((await send({ role: 'driver', phones: [P.d1] }, 'Third')).status).toBe(202)
     for (const id of broadcastIds.slice(-2)) await runBroadcast(id)
-    // ...but now d1 has 3 broadcasts in 24 hours, so a normal audience skips them.
+    // ...and they do not use up d1's limit for a real broadcast: three tests later, d1 is still in a normal audience.
+    expect((await resolveAudience({ role: 'driver', categoryIds: [sedanCategoryId] }, 'announcement')).includes(d.d1)).toBe(true)
+    // Two real broadcasts (no typed numbers) reach d1 in the last 24 hours, so a normal audience now skips them.
+    const admin = (await pool.query<{ id: string }>('SELECT id::text FROM admins WHERE email = $1', [OPS])).rows[0]!.id
+    for (const n of [1, 2]) {
+      const id = (await pool.query<{ id: string }>(
+        `INSERT INTO notification_broadcasts (admin_id, title, body, category, audience, recipient_count, status)
+         VALUES ($1, $2, 'Body text', 'announcement', '{"role":"driver"}'::jsonb, 1, 'done') RETURNING id::text`, [admin, `Real ${n}`])).rows[0]!.id
+      broadcastIds.push(id)
+      await pool.query(
+        `INSERT INTO notification_logs (owner_type, owner_id, channel, status, type, title, body, broadcast_id)
+         VALUES ('driver', $1, 'in_app', 'sent', 'announcement', $2, 'Body text', $3)`, [d.d1, `Real ${n}`, id])
+    }
     expect((await resolveAudience({ role: 'driver', categoryIds: [sedanCategoryId] }, 'announcement')).includes(d.d1)).toBe(false)
     const preview = body(await api(opsToken).post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'driver' } }))
     expect(preview.skippedCapped).toBeGreaterThanOrEqual(1)
-    // d3 got only one, so they are still in
+    // d3 only ever got test sends, so they are still in
     expect((await resolveAudience({ role: 'driver', cityIds: [cuttackId] }, 'announcement')).includes(d.d3)).toBe(true)
   })
 

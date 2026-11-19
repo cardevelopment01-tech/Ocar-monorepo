@@ -106,8 +106,8 @@ describe('the audience query', () => {
     expect(sql).toContain('FROM drivers t')
     expect(sql).toContain('NOT p.push_enabled')
     expect(sql).toContain('NOT c.opted_out AND NOT c.capped')
-    expect(sql).toContain("broadcast_id IS NOT NULL AND created_at > now() - interval '24 hours'")
-    expect(sql).toContain('GROUP BY owner_id') // counted once for everyone
+    expect(sql).toContain("l.created_at > now() - interval '24 hours' AND NOT (nb.audience ? 'phones')")
+    expect(sql).toContain('GROUP BY l.owner_id') // counted once for everyone
     expect(sql).not.toMatch(/SELECT count\(\*\) FROM notification_logs l WHERE l\.owner_id = t\.id/) // not once per candidate
     expect(values.slice(0, 2)).toEqual(['driver', 'announcements'])
     expect(values).toContain(2) // the daily limit is a bound value, not text in the SQL
@@ -465,6 +465,19 @@ describe('runBroadcast', () => {
     vi.useRealTimers()
   })
 
+  it('Firebase down while the queue will still retry: the person is left unrecorded so the retry pushes to them, and the run asks for that retry', async () => {
+    vi.useFakeTimers()
+    sendPush.mockImplementation(async (tokens: string[]) => ({ invalidTokens: [], successCount: 0, failureCount: tokens.length, transientFailure: true, tokenResults: tokens.map(() => 'retry') }))
+    const calls = db({ recipients: ['1'] })
+    const run = runBroadcast('9', false)
+    const settled = run.catch((e: Error) => e)
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(String(await settled)).toMatch(/retrying/)
+    expect(recorded()).toEqual([]) // no result written, so the row still counts as "not pushed yet"
+    expect(calls).not.toContain('done')
+    vi.useRealTimers()
+  })
+
   it('Firebase down for every attempt: tried 3 times, then recorded as failed with a reason, and the broadcast still completes', async () => {
     vi.useFakeTimers()
     sendPush.mockImplementation(async (tokens: string[]) => ({ invalidTokens: [], successCount: 0, failureCount: tokens.length, transientFailure: true, tokenResults: tokens.map(() => 'retry') }))
@@ -536,15 +549,26 @@ describe('runBroadcast', () => {
     vi.useRealTimers()
   })
 
-  it('a recipient list that cannot be read marks the broadcast failed and lets the queue retry it', async () => {
+  it('a recipient list that cannot be read on the last attempt marks the broadcast failed', async () => {
     const calls = db({ recipients: [], resolveError: new Error('db down') })
     await expect(runBroadcast('9')).rejects.toThrow('db down')
     expect(calls).toEqual(['sending', 'failed'])
+  })
+
+  it('the same trouble on an attempt the queue will retry does NOT show as failed (the history keeps saying it is sending)', async () => {
+    const calls = db({ recipients: [], resolveError: new Error('db down') })
+    await expect(runBroadcast('9', false)).rejects.toThrow('db down')
+    expect(calls).toEqual(['sending'])
   })
 })
 
 describe('listBroadcasts', () => {
   beforeEach(() => vi.clearAllMocks())
+  it('a failed or still-running broadcast shows how many were already notified (counted from their rows, not the end-of-run total)', async () => {
+    query.mockResolvedValueOnce({ rows: [{ id: '3', title: 'T', body: 'B', category: 'announcement', audience: { role: 'driver' }, status: 'failed', sent_by: null, created_at: '2026-11-17T06:41:04.000Z', finished_at: null, sent_count: 0, failed_count: 0, skipped_opted_out: 0, skipped_capped: 0, skipped_at_send: 0, recipient_count: 500, settling: false, logged: 320, pushed: 300, push_failed: 0, opened: 0 }] })
+    expect((await listBroadcasts({ limit: 20 })).broadcasts[0]).toMatchObject({ status: 'failed', sent: 320, tracked: true })
+  })
+
   const dbRow = (over: Record<string, unknown> = {}) => ({
     id: '7', title: 'T', body: 'B', category: 'announcement', audience: { role: 'driver', docIssues: true }, status: 'done', sent_by: 'ops@ocar.app',
     created_at: '2026-11-17T06:41:04.000Z', finished_at: '2026-11-17T06:41:06.000Z', sent_count: 100, failed_count: 1,

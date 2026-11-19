@@ -127,6 +127,14 @@ describe('sendPush: a picture', () => {
     expect(m.apns.headers['apns-collapse-id']).toBe('broadcast-9')
   })
 
+  it('with a picture, a genuinely malformed phone registration is still told apart from a refused picture and removed', async () => {
+    const badToken = { success: false, error: { code: 'messaging/invalid-argument', message: 'The registration token is not a valid FCM registration token' } }
+    sendEach.mockResolvedValue({ successCount: 0, failureCount: 1, responses: [badToken] })
+    const res = await sendPush(['x'], { title: 'T', body: 'B', imageUrl: 'https://cdn.example.com/a.jpg' }, [{ notificationId: '1' }])
+    expect(res.tokenResults).toEqual(['invalid'])
+    expect(res.invalidTokens).toEqual(['x'])
+  })
+
   it('without a picture nothing about an image is sent', async () => {
     sendEachForMulticast.mockResolvedValue({ successCount: 1, failureCount: 0, responses: [ok] })
     await sendPush(['a'], { title: 'T', body: 'B' })

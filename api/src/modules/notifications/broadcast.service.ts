@@ -107,9 +107,11 @@ function candidateQuery(audience: Audience, category: BroadcastInput['category']
   // lookup per candidate: an "all riders" audience used to cost a lookup for every active rider, three times per send.
   const recent = audience.phones
     ? ''
-    : `LEFT JOIN (SELECT owner_id, count(*) AS n FROM notification_logs
-                 WHERE owner_type = $1 AND channel = 'in_app' AND broadcast_id IS NOT NULL AND created_at > now() - interval '24 hours'
-                 GROUP BY owner_id) recent ON recent.owner_id = t.id`
+    : `LEFT JOIN (SELECT l.owner_id, count(*) AS n FROM notification_logs l
+                 JOIN notification_broadcasts nb ON nb.id = l.broadcast_id
+                 -- a send to typed phone numbers is a test or a one-person reminder: it never counts toward the limit
+                 WHERE l.owner_type = $1 AND l.channel = 'in_app' AND l.created_at > now() - interval '24 hours' AND NOT (nb.audience ? 'phones')
+                 GROUP BY l.owner_id) recent ON recent.owner_id = t.id`
   const capped = audience.phones ? 'false' : `COALESCE(recent.n, 0) >= ${bind(BROADCAST_DAILY_CAP_PER_PERSON)}::int`
 
   return {
@@ -264,7 +266,7 @@ type Outcome = { attempted: boolean; successCount: number; failureCount: number;
 // Pushes one group (at most 500 people) with as few calls as possible: one lookup for everyone's phones, and Firebase takes up to 500
 // messages per call, so a group is normally one call. Trouble a retry could fix (Firebase or the network) is retried for just the phones
 // concerned; a dead phone is removed from our list; every person's row gets what happened to them in one statement.
-async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'user', msg: PushMessage, type: string): Promise<void> {
+async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'user', msg: PushMessage, type: string, finalAttempt: boolean): Promise<number> {
   const tokensByOwner = await repo.getTokensForOwners(ownerType, rows.map((r) => r.ownerId))
   const rowByOwner = new Map(rows.map((r) => [r.ownerId, r]))
   const outcome = new Map<string, Outcome>(rows.map((r) => [r.ownerId, { attempted: false, successCount: 0, failureCount: 0, invalidTokens: 0, stillFailing: false }]))
@@ -305,7 +307,12 @@ async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'us
 
   if (dead.length > 0) await repo.deleteDeviceTokens(dead)
   // Firebase has already accepted these pushes, so a failed save here would make the retry push the same group again. Try a few times first.
-  const results = rows.map((r) => {
+  // While the queue will still retry this job, a person whose phones could not be reached at all (Firebase down) is left unrecorded:
+  // their row stays "unsent", so the retry pushes to them again (the replace-tag keeps a repeat to one notification). On the final
+  // attempt they are recorded as refused.
+  const held = (o: Outcome): boolean => !finalAttempt && o.stillFailing && o.successCount === 0
+  const toRecord = rows.filter((r) => !held(outcome.get(r.ownerId)!))
+  const results = toRecord.map((r) => {
     const o = outcome.get(r.ownerId)!
     return {
       id: r.id, attempted: o.attempted, successCount: o.successCount, failureCount: o.failureCount, invalidTokens: o.invalidTokens,
@@ -318,6 +325,7 @@ async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'us
       await pause(RECORD_RETRY_PAUSE_MS * attempt)
     }
   }
+  return rows.length - toRecord.length
 }
 
 // Runs in the push worker. Safe to run again after a failure: everyone already notified (a row for this broadcast and person) is
@@ -371,17 +379,20 @@ export async function runBroadcast(broadcastId: string, finalAttempt = true): Pr
     droppedAtSend = Math.max(0, row.recipient_count - new Set([...all, ...already]).size)
 
     let first = true
-    const group = async (size: number, work: () => Promise<void>): Promise<void> => {
+    const group = async (size: number, work: () => Promise<number | void>): Promise<void> => {
       if (!first && BROADCAST_CHUNK_PAUSE_MS > 0) await pause(BROADCAST_CHUNK_PAUSE_MS)
       first = false
-      try { await work() } catch (err) {
+      try {
+        const held = await work()
+        if (held) failed += held // people whose push could not be tried yet: the retry takes them
+      } catch (err) {
         failed += size
         log.warn({ err, broadcastId, size }, 'broadcast: could not notify a group of recipients')
       }
     }
     for (let i = 0; i < unsent.length; i += BROADCAST_CHUNK_SIZE) {
       const rows = unsent.slice(i, i + BROADCAST_CHUNK_SIZE)
-      await group(rows.length, () => deliverGroup(rows, ownerType, msg, row.category))
+      await group(rows.length, () => deliverGroup(rows, ownerType, msg, row.category, finalAttempt))
     }
     for (let i = 0; i < todo.length; i += BROADCAST_CHUNK_SIZE) {
       const ids = todo.slice(i, i + BROADCAST_CHUNK_SIZE)
@@ -389,11 +400,12 @@ export async function runBroadcast(broadcastId: string, finalAttempt = true): Pr
       // the app's list refreshes when it is opened.
       await group(ids.length, async () => {
         const rows = await repo.createBroadcastNotifications({ ownerType, ownerIds: ids, type: row.category, title: row.title, body: row.body, broadcastId: BigInt(broadcastId) })
-        await deliverGroup(rows, ownerType, msg, row.category)
+        return deliverGroup(rows, ownerType, msg, row.category, finalAttempt)
       })
     }
   } catch (err) {
-    await pool.query(`UPDATE notification_broadcasts SET status = 'failed' WHERE id = $1`, [broadcastId]).catch(() => undefined)
+    // Shown as failed only when no retry is left: between attempts the history keeps saying it is sending.
+    if (finalAttempt) await pool.query(`UPDATE notification_broadcasts SET status = 'failed' WHERE id = $1`, [broadcastId]).catch(() => undefined)
     throw err
   }
 
@@ -461,11 +473,12 @@ export async function listBroadcasts(params: z.infer<typeof listQuerySchema>): P
             -- long-stuck broadcast is not "settling", so the page does not poll for it forever
             COALESCE((b.status IN ('queued', 'sending') AND b.created_at > now() - interval '30 minutes')
                      OR (b.status = 'done' AND b.finished_at > now() - interval '2 minutes'), false) AS settling,
-            s.pushed, s.push_failed, s.opened
+            s.logged, s.pushed, s.push_failed, s.opened
        FROM notification_broadcasts b
        LEFT JOIN admins a ON a.id = b.admin_id
        LEFT JOIN LATERAL (
-         SELECT count(*) FILTER (WHERE (l.provider_response->>'successCount')::int > 0)::int AS pushed,
+         SELECT count(*)::int AS logged,
+                count(*) FILTER (WHERE (l.provider_response->>'successCount')::int > 0)::int AS pushed,
                 count(*) FILTER (WHERE (l.provider_response->>'successCount')::int = 0 AND (l.provider_response->>'failureCount')::int > 0)::int AS push_failed,
                 count(*) FILTER (WHERE l.read_at IS NOT NULL)::int AS opened
            FROM notification_logs l WHERE l.broadcast_id = b.id
@@ -478,7 +491,8 @@ export async function listBroadcasts(params: z.infer<typeof listQuerySchema>): P
   const broadcasts: BroadcastSummary[] = page.map((r) => {
     // A tracked broadcast always has finished_at; a 'done' one without it was written by the previous release (see migration 144).
     const tracked = !(r.status === 'done' && !r.finished_at)
-    const sent = tracked ? (r.sent_count as number) : (r.recipient_count as number)
+    // sent_count is written when a run ends; the rows themselves are written as it goes, so a failed or running broadcast is counted from them
+    const sent = tracked ? Math.max(r.sent_count as number, (r.logged as number | undefined) ?? 0) : (r.recipient_count as number)
     const pushed = r.pushed as number
     const pushFailed = r.push_failed as number
     return {

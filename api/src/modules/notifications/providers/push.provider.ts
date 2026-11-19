@@ -170,7 +170,7 @@ export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?
       const code = r.error?.code
       // With a picture on the message, 'invalid-argument' most likely means the message (the picture link) was refused, which says nothing
       // about the phone: removing every phone because of one bad link would silence a whole audience, ride requests included.
-      if (code === 'messaging/invalid-argument' && msg.imageUrl) {
+      if (code === 'messaging/invalid-argument' && msg.imageUrl && !/registration token/i.test(r.error?.message ?? '')) {
         tokenResults.push('rejected')
         return
       }
