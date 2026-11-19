@@ -18,18 +18,22 @@ import LocationPin from '@/features/map/components/LocationPin'
 
 type Field = 'pickup' | 'drop'
 
-// The rider's own marker elsewhere in the app (home map) is this brand pink: keep "you" the same colour here.
-const YOU = '#DC3E93'
-const YOU_RING = 'rgba(220,62,147,0.45)'
-const YOU_FILL = 'rgba(220,62,147,0.10)'
-const YOU_HALO = 'rgba(220,62,147,0.18)'
-// A pickup is placed to the side of a road, so start street-level (~155 m across) -- wider only as far as needed to keep
-// the GPS accuracy ring in view, so a rough fix is never hidden behind an over-tight zoom. A destination starts wider.
-const PICKUP_DELTA_MIN = 0.0014
-const PICKUP_DELTA_MAX = 0.0035
+// "You are here" is the blue dot every maps app uses, so it can never be mistaken for the pin (teal, the brand's pickup colour).
+const YOU = '#2563EB'
+const YOU_RING = 'rgba(37,99,235,0.30)'
+const YOU_FILL = 'rgba(37,99,235,0.07)'
+const YOU_HALO = 'rgba(37,99,235,0.16)'
+// Floating controls (back, hint, distance chip, recenter) share one height so their edges line up.
+const CONTROL = 44
+// A pickup starts at block level (~280 m across): close enough to tell which side of the road, wide enough to see the
+// junctions around it. It widens only as far as needed to keep the GPS accuracy ring in view. A destination starts wider.
+const PICKUP_DELTA_MIN = 0.0025
+const PICKUP_DELTA_MAX = 0.004
 const DROP_DELTA = 0.02
 const pickupDelta = (accuracyM: number | null) =>
-  Math.min(PICKUP_DELTA_MAX, Math.max(PICKUP_DELTA_MIN, accuracyM === null ? 0 : (accuracyM * 2.6) / 111_320))
+  Math.min(PICKUP_DELTA_MAX, Math.max(PICKUP_DELTA_MIN, accuracyM === null ? 0 : (accuracyM * 3.2) / 111_320))
+// The address service can fall back to raw coordinates; never show those as if they were a place.
+const looksLikeCoords = (a: string) => /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(a.trim())
 // Under this the pin is on top of the dot: a dotted line would be a stub.
 const MIN_LINE_M = 12
 // Beyond this the pin is probably on the wrong street: say so instead of letting it through silently.
@@ -78,6 +82,8 @@ export default function MapPickerScreen() {
   // Follows the map while it is being dragged, so the dotted line stays attached to the pin.
   const [liveCenter, setLiveCenter] = useState({ lat: centerLat, lng: centerLng })
   const [cardH, setCardH] = useState(0)
+  // The hint has done its job once the rider starts moving the map.
+  const [touched, setTouched] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // A slow earlier lookup must not overwrite the address of a newer pin position.
   const geocodeSeq = useRef(0)
@@ -111,6 +117,7 @@ export default function MapPickerScreen() {
   }, [lift])
 
   const handlePanDrag = useCallback(() => {
+    setTouched(true)
     if (settleTimer.current) clearTimeout(settleTimer.current)
     settleTimer.current = setTimeout(putPinDown, 400)
     if (lifted.current) return
@@ -154,6 +161,7 @@ export default function MapPickerScreen() {
     goBack(router)
   }
 
+  const coordsOnly = looksLikeCoords(address)
   const far = metresFromYou !== null && metresFromYou > FAR_FROM_YOU_M
   const chipText = metresFromYou === null ? null : metresFromYou < 30 ? 'At your location' : `${fmtMetres(metresFromYou)} from you`
 
@@ -174,14 +182,14 @@ export default function MapPickerScreen() {
         ) : null}
         {/* How far off the GPS fix could be: the rider can see the real spot may sit anywhere inside the ring. */}
         {isPickup && youAt && locAccuracy !== null && locAccuracy > 15 ? (
-          <Circle center={{ latitude: youAt[0], longitude: youAt[1] }} radius={Math.min(locAccuracy, 300)} strokeColor={YOU_RING} strokeWidth={1.5} fillColor={YOU_FILL} />
+          <Circle center={{ latitude: youAt[0], longitude: youAt[1] }} radius={Math.min(locAccuracy, 300)} strokeColor={YOU_RING} strokeWidth={1} fillColor={YOU_FILL} />
         ) : null}
         {/* The way from where you are to where the pin is: dotted, like a walk, and it follows the pin as it moves. */}
         {isPickup && youAt && haversineMetres([liveCenter.lat, liveCenter.lng], youAt) > MIN_LINE_M ? (
           <Polyline
             coordinates={[{ latitude: youAt[0], longitude: youAt[1] }, { latitude: liveCenter.lat, longitude: liveCenter.lng }]}
             strokeColor={YOU}
-            strokeWidth={3}
+            strokeWidth={4}
             lineCap="round"
             lineDashPattern={[1, 7]}
           />
@@ -191,9 +199,9 @@ export default function MapPickerScreen() {
           <Marker coordinate={{ latitude: youAt[0], longitude: youAt[1] }} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false} tappable={false}>
             {/* Drawn as one SVG: a map marker is snapshotted to a bitmap, and nested flex centring inside it is not reliable. */}
             <Svg width={44} height={44} viewBox="0 0 44 44">
-              <SvgCircle cx={22} cy={22} r={22} fill={YOU_HALO} />
-              <SvgCircle cx={22} cy={22} r={10} fill="#FFFFFF" />
-              <SvgCircle cx={22} cy={22} r={7} fill={YOU} />
+              <SvgCircle cx={22} cy={22} r={20} fill={YOU_HALO} />
+              <SvgCircle cx={22} cy={22} r={9} fill="#FFFFFF" />
+              <SvgCircle cx={22} cy={22} r={6} fill={YOU} />
             </Svg>
           </Marker>
         ) : null}
@@ -214,12 +222,12 @@ export default function MapPickerScreen() {
         accessibilityRole="button"
         accessibilityLabel="Cancel"
       >
-        <Feather name="arrow-left" size={18} color={colors.ink900} />
+        <Feather name="arrow-left" size={20} color={colors.ink900} />
       </Pressable>
 
-      {isPickup ? (
+      {isPickup && !touched ? (
         <View style={[styles.hint, { top: insets.top + spacing.md }]} pointerEvents="none">
-          <Text style={styles.hintText}>Drag the map to where you'll stand</Text>
+          <Text style={styles.hintText} numberOfLines={1}>Move the map to where you'll wait</Text>
         </View>
       ) : null}
 
@@ -239,16 +247,21 @@ export default function MapPickerScreen() {
       ) : null}
 
       <View style={[styles.card, { paddingBottom: insets.bottom + spacing.md }]} onLayout={(e) => setCardH(e.nativeEvent.layout.height)}>
-        <Text style={styles.cardLabel}>{isPickup ? 'Pickup point' : 'Destination'}</Text>
-        <View style={styles.addressRow}>
-          <View style={styles.addressIcon}>
-            {resolving ? <ActivityIndicator size="small" color={colors.primary} /> : <Feather name="map-pin" size={16} color={colors.primary} />}
+        <View style={styles.group}>
+          <Text style={styles.cardLabel}>{isPickup ? 'Pickup point' : 'Destination'}</Text>
+          <View style={styles.addressRow}>
+            <View style={styles.addressIcon}>
+              {resolving ? <ActivityIndicator size="small" color={colors.primary} /> : <Feather name="map-pin" size={18} color={colors.primary} />}
+            </View>
+            <View style={styles.addressCol}>
+              <Text style={[styles.addressText, resolving && !address ? styles.addressMuted : null]} numberOfLines={2}>
+                {resolving && !address ? 'Finding address…' : !address ? 'Move the map to set your location' : coordsOnly ? 'Pinned location' : address}
+              </Text>
+              {coordsOnly ? <Text style={styles.cardSub}>{address}</Text> : null}
+            </View>
           </View>
-          <Text style={[styles.addressText, resolving && !address ? styles.addressMuted : null]} numberOfLines={2}>
-            {resolving && !address ? 'Finding address…' : address || 'Move the map to set your location'}
-          </Text>
+          {isPickup ? <Text style={styles.cardSub}>Stand on the side of the road you want the driver to stop.</Text> : null}
         </View>
-        {isPickup ? <Text style={styles.cardSub}>Pick the side of the road you'll be on.</Text> : null}
         <Button
           label={isPickup ? 'Confirm pickup' : 'Confirm location'}
           onPress={confirm}
@@ -270,13 +283,13 @@ const styles = StyleSheet.create({
   // Zero-size anchor at the screen centre: the pin's tip and its ground shadow both hang off this point.
   centerPin: { position: 'absolute', top: '50%', left: '50%', width: 0, height: 0 },
   pinBox: { position: 'absolute', left: -PIN_W / 2, top: -PIN_H, width: PIN_W, height: PIN_H },
-  ground: { position: 'absolute', top: -3, left: -7, width: 14, height: 6, borderRadius: 7, backgroundColor: colors.ink900 },
+  ground: { position: 'absolute', top: -3, left: -8, width: 16, height: 6, borderRadius: 8, backgroundColor: colors.ink900 },
   backButton: {
     position: 'absolute',
     left: spacing.lg,
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: CONTROL,
+    height: CONTROL,
+    borderRadius: CONTROL / 2,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
@@ -285,21 +298,21 @@ const styles = StyleSheet.create({
   // Level with the back button, to its right, so it never covers the map centre where the pin is.
   hint: {
     position: 'absolute',
-    left: spacing.lg + 40 + spacing.sm,
+    left: spacing.lg + CONTROL + spacing.sm,
     right: spacing.lg,
-    minHeight: 40,
+    height: CONTROL,
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    borderRadius: 12,
+    paddingHorizontal: spacing.lg,
+    borderRadius: CONTROL / 2,
     backgroundColor: colors.surface,
     ...shadowFallback(),
   },
-  hintText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.semibold },
+  hintText: { ...typography.label, color: colors.ink900, fontFamily: fonts.semibold, textAlign: 'center' },
   floatRow: { position: 'absolute', left: spacing.lg, right: spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2, height: 36, paddingHorizontal: spacing.sm + 4, borderRadius: radii.full, backgroundColor: colors.surface, ...shadowFallback() },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2, height: CONTROL, paddingHorizontal: spacing.md, borderRadius: radii.full, backgroundColor: colors.surface, ...shadowFallback() },
   chipFar: { backgroundColor: colors.warningLight },
-  chipText: { ...typography.caption, color: colors.ink900, fontFamily: fonts.semibold, fontVariant: ['tabular-nums'] },
-  fab: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', ...shadowFallback() },
+  chipText: { ...typography.label, color: colors.ink900, fontFamily: fonts.semibold, fontVariant: ['tabular-nums'] },
+  fab: { width: CONTROL, height: CONTROL, borderRadius: CONTROL / 2, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', ...shadowFallback() },
   card: {
     position: 'absolute',
     left: 0,
@@ -312,12 +325,14 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     gap: spacing.md,
   },
-  cardLabel: { ...typography.caption, color: colors.ink600, fontFamily: fonts.semibold },
-  addressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4 },
-  addressIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
-  addressText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold, flex: 1 },
+  group: { gap: spacing.sm },
+  cardLabel: { ...typography.label, color: colors.ink600 },
+  addressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  addressIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
+  addressCol: { flex: 1, gap: 2 },
+  addressText: { ...typography.title, color: colors.ink900 },
   addressMuted: { color: colors.ink400, fontFamily: fonts.regular },
-  cardSub: { ...typography.caption, color: colors.ink600, marginTop: -spacing.xs },
+  cardSub: { ...typography.caption, color: colors.ink600 },
 })
 
 // Cross-platform elevation without importing the shared `shadows` token set
@@ -325,7 +340,7 @@ const styles = StyleSheet.create({
 function shadowFallback() {
   return {
     elevation: 3,
-    shadowColor: '#000',
+    shadowColor: colors.ink900,
     shadowOpacity: 0.12,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
