@@ -54,6 +54,7 @@ function AlertStrip({ d }: { d: DriverDetail }) {
   if (d.wallet?.is_frozen) alerts.push({ text: 'Wallet is frozen', tone: 'danger' })
   else if (balance < 500 && (d.status === 'active' || d.status === 'suspended')) alerts.push({ text: `Wallet below ₹500 minimum (₹${balance.toLocaleString('en-IN')})`, tone: 'warning' })
   if (d.status === 'docs_rejected') alerts.push({ text: 'Documents were rejected — awaiting resubmission', tone: 'warning' })
+  if (d.vehicle?.needs_model_review) alerts.push({ text: 'Vehicle model not in the catalogue — confirm it', tone: 'warning' })
   // The exact documents that stop this driver going online, and why: the same list the driver sees in the app.
   // Not for a driver still in the approval queue: pending documents are expected there (the header already shows the count).
   const inQueue = d.status === 'pending_approval' || d.status === 'pending_docs'
@@ -883,6 +884,15 @@ export default function DriverDetailPage() {
                 <p className="text-sm text-text-muted text-center py-8">No vehicle registered yet</p>
               ) : (
                 <div className="bg-surface-2 rounded-xl p-4 border border-border-light">
+                  {d.vehicle.needs_model_review && (
+                    <div className="mb-3 flex items-start gap-2.5 bg-warning/10 border border-warning/30 rounded-xl px-4 py-3" role="status">
+                      <AlertTriangle size={14} className="text-warning flex-shrink-0 mt-0.5" />
+                      <div className="text-xs text-text-secondary">
+                        <p className="font-semibold text-text-primary">This driver could not find their model in the list.</p>
+                        <p className="mt-0.5">They typed <span className="font-semibold">{d.vehicle.vehicle_name}</span> and picked the category themselves. Add the model under Vehicles → Brands &amp; Models if it is missing, then correct this vehicle with the Edit button. Saving a correction clears this notice.</p>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-xs font-semibold text-text-secondary">Vehicle Details</p>
                     {!editingVehicle && (

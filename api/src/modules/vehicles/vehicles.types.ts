@@ -3,6 +3,7 @@ export interface VehicleCategory {
   slug: string
   display_name: string
   max_passengers: number
+  luggage_capacity: number
   is_active: boolean
 }
 
@@ -18,5 +19,7 @@ export interface VehicleModel {
   brand_id: string
   name: string
   typical_category_id: string | null
+  /** Fuel types the model is sold with; null = any. */
+  fuel_types: string[] | null
   is_active: boolean
 }

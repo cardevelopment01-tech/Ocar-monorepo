@@ -7,6 +7,8 @@ import { notificationsQueue } from '@/jobs/queues'
 import * as repo from './drivers.repository'
 import { findDocIssues, type DocIssue } from './doc-issues'
 import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, requiredVehicleDocs } from './required-docs'
+import { applyModelRules } from '@/modules/vehicles/vehicle-rules'
+import { findModelForRules, findCategorySpecs } from '@/modules/vehicles/vehicles.repository'
 import * as safetyRepo from '@/modules/safety/safety.repository'
 import type { Driver, DriverVehicle, OnboardingStatus } from './drivers.types'
 
@@ -206,7 +208,20 @@ export async function saveVehicleInfo(
     throw httpError(422, 'Complete personal info first', 'STEP_NOT_COMPLETE')
   }
 
-  const vehicle = await repo.upsertVehicle(driverId, data)
+  // The model decides the category and the seats, and limits the fuel. Registering without a model (it is not in the list)
+  // is only for a driver not yet live (pending_docs, pending_approval, docs_rejected: an admin reviews the vehicle before
+  // approval); a live driver changing their vehicle must pick a listed model.
+  if (data.model_id === undefined && (driver.status === 'active' || driver.status === 'suspended' || driver.status === 'banned')) {
+    throw httpError(422, 'Choose your model from the list, or contact support to add it.', 'MODEL_REQUIRED')
+  }
+  const model = data.model_id === undefined ? null : await findModelForRules(data.model_id)
+  const { needs_model_review, ...ruled } = applyModelRules(data, model)
+  // Seats and luggage belong to the category, whatever the app sent (this also covers an unlisted model's own category).
+  const specs = await findCategorySpecs(ruled.category_id)
+  const stored = { ...data, ...ruled }
+  if (specs) { stored.seating_capacity = specs.seats; stored.luggage_capacity = specs.luggage }
+  if (model?.name) stored.vehicle_name = model.name // a catalogue model keeps its own name, whatever the app sent
+  const vehicle = await repo.upsertVehicle(driverId, stored, needs_model_review)
 
   if (driver.onboarding_step === 'vehicle_info') {
     await repo.setOnboardingStep(driverId, 'documents')

@@ -25,6 +25,12 @@ export const FUEL_TYPES = [
   { value: 'electric', label: 'EV' },
 ] as const
 
+/** The fuel types a driver may pick for a model: only the ones it is sold with (no list = any). */
+export function fuelOptionsFor(model: { fuel_types?: string[] | null } | undefined): ReadonlyArray<{ value: string; label: string }> {
+  const allowed = model?.fuel_types
+  return allowed && allowed.length ? FUEL_TYPES.filter((f) => allowed.includes(f.value)) : FUEL_TYPES
+}
+
 export const DRIVER_DOC_GROUPS = [
   { groupKey: 'driving_license', label: 'Driving Licence', hasExpiry: true, expiryRequired: true, required: true, slots: [
     { key: 'driving_license_front', slotLabel: 'Front' },
