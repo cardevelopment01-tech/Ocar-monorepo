@@ -307,7 +307,12 @@ function CreateSurgeDialog({
   const pct  = Math.round((mult - 1) * 100)
 
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true); setError('')
+    e.preventDefault(); setError('')
+    const startMs = new Date(form.starts_at).getTime()
+    const endMs = new Date(form.ends_at).getTime()
+    if (Number.isNaN(startMs) || Number.isNaN(endMs)) { setError('Enter a start and end time.'); return }
+    if (endMs <= startMs) { setError('End time must be after the start time.'); return }
+    setLoading(true)
     try {
       await pricingApi.createSurgeEvent({
         city_id:     parseInt(form.city_id, 10),
@@ -315,8 +320,8 @@ function CreateSurgeDialog({
         multiplier:  mult,
         reason:      form.reason || undefined,
         // datetime-local has no zone; the server stores UTC, so send the admin's local time as an absolute instant.
-        starts_at:   new Date(form.starts_at).toISOString(),
-        ends_at:     new Date(form.ends_at).toISOString(),
+        starts_at:   new Date(startMs).toISOString(),
+        ends_at:     new Date(endMs).toISOString(),
       })
       setOpen(false)
       setForm({ city_id: '', category_id: '', multiplier: '1.5', reason: '', starts_at: '', ends_at: '' })

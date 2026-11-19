@@ -124,12 +124,11 @@ export default function BookingFareScreen() {
   // return-cab flag would price and book the wrong ride.
   const noCarIds = driversPolled && !scheduledFor && !isReturnCab ? visibleCategories.filter((c) => (driverEta[c.id]?.count ?? 0) === 0).map((c) => c.id) : []
   const effectiveSelected = resolveSelectedCategory(visibleCategories.map((c) => c.id), selectedCategoryId, noCarIds)
-  const selectedFare = effectiveSelected != null
-    ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])?.breakdown.total
+  const selectedEstimate = effectiveSelected != null
+    ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])
     : undefined
-  const selectedSurge = effectiveSelected != null
-    ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])?.surgeMultiplier ?? 1
-    : 1
+  const selectedFare = selectedEstimate?.breakdown.total
+  const selectedSurge = Number((selectedEstimate?.surgeMultiplier ?? 1).toFixed(2))
   // Offers: the server prices the selected ride again whenever it changes (category, route, schedule, a typed code or
   // the rider's choice). A failed check never blocks booking at the plain fare.
   const offerRequest = useMemo(

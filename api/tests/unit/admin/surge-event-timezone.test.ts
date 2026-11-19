@@ -16,13 +16,19 @@ const base = { cityId: 1, categoryId: null, multiplier: 1.5, reason: null, admin
 describe('createAdminSurgeEvent time zone', () => {
   beforeEach(() => { repo.createAdminSurgeEvent.mockReset().mockResolvedValue({ id: 1 }) })
 
-  it('rejects a time without a zone', async () => {
-    await expect(createAdminSurgeEvent({ ...base, startsAt: '2026-11-19T07:26', endsAt: '2026-11-20T07:26' })).rejects.toBeTruthy()
+  const cases: Array<[string, string, string]> = [
+    ['zone-less start', '2026-11-19T07:26', '2026-11-20T01:56:00Z'],
+    ['zone-less end', '2026-11-19T01:56:00Z', '2026-11-20T07:26'],
+    ['garbage', 'tomorrow', 'later'],
+    ['end not after start', '2026-11-20T01:56:00Z', '2026-11-19T01:56:00Z'],
+  ]
+  it.each(cases)('rejects %s', async (_n, startsAt, endsAt) => {
+    await expect(createAdminSurgeEvent({ ...base, startsAt, endsAt })).rejects.toMatchObject({ httpStatus: 400, appCode: 'VALIDATION_ERROR' })
     expect(repo.createAdminSurgeEvent).not.toHaveBeenCalled()
   })
 
-  it('accepts an absolute instant', async () => {
-    await createAdminSurgeEvent({ ...base, startsAt: '2026-11-19T01:56:00.000Z', endsAt: '2026-11-20T01:56:00+00:00' })
-    expect(repo.createAdminSurgeEvent).toHaveBeenCalledOnce()
+  it('stores an IST offset as the same UTC instant', async () => {
+    await createAdminSurgeEvent({ ...base, startsAt: '2026-11-19T07:26:00+05:30', endsAt: '2026-11-20T07:26:00+05:30' })
+    expect(repo.createAdminSurgeEvent.mock.calls[0]![0]).toMatchObject({ startsAt: '2026-11-19T01:56:00.000Z', endsAt: '2026-11-20T01:56:00.000Z' })
   })
 })
