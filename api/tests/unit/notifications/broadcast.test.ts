@@ -395,6 +395,14 @@ describe('runBroadcast', () => {
     ])
   })
 
+  it('a broadcast never carries a collapse tag, even if the registry gave its type one (another broadcast must not replace it)', async () => {
+    db({ recipients: ['1'] })
+    await runBroadcast('9')
+    const msg = sendPush.mock.calls[0]![1] as Record<string, unknown>
+    expect(msg).not.toHaveProperty('tag')
+    expect(msg['dedupeTag']).toBe('broadcast-9')
+  })
+
   it('every push of a broadcast carries the same replace-tag, so a repeated run shows one notification on the phone', async () => {
     db({ recipients: ['1'] })
     await runBroadcast('9')

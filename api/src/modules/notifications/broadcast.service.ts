@@ -355,7 +355,7 @@ export async function runBroadcast(broadcastId: string, finalAttempt = true): Pr
   const msg: PushMessage = {
     title: row.title, body: row.body, ttlSeconds: defaults.ttlSeconds,
     ...(defaults.channelId !== undefined ? { channelId: defaults.channelId } : {}),
-    ...(defaults.tag !== undefined ? { tag: defaults.tag } : {}),
+    // No `tag` from the registry on purpose: a collapse tag would make one broadcast replace another (and would override the tag below).
     // If this run is repeated after Firebase already accepted a group (the result could not be saved), the phone replaces the first
     // notification with the repeat instead of showing two.
     dedupeTag: `broadcast-${broadcastId}`,

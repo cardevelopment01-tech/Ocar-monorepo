@@ -135,6 +135,14 @@ describe('sendPush: a picture', () => {
     expect(res.invalidTokens).toEqual(['x'])
   })
 
+  it('if a message has both a collapse tag and a dedupe tag the collapse tag wins (so a broadcast must never be given one)', async () => {
+    sendEach.mockResolvedValue({ successCount: 1, failureCount: 0, responses: [ok] })
+    await sendPush(['a'], { title: 'T', body: 'B', tag: 'ride-1-status', dedupeTag: 'broadcast-9' }, [{ notificationId: '1' }])
+    const m = (sendEach.mock.calls[0]![0] as Array<{ android: { collapseKey?: string; notification: { tag?: string } }; apns: { headers: Record<string, string> } }>)[0]!
+    expect(m.android.notification.tag).toBe('ride-1-status')
+    expect(m.apns.headers['apns-collapse-id']).toBe('ride-1-status')
+  })
+
   it('without a picture nothing about an image is sent', async () => {
     sendEachForMulticast.mockResolvedValue({ successCount: 1, failureCount: 0, responses: [ok] })
     await sendPush(['a'], { title: 'T', body: 'B' })
