@@ -9,6 +9,7 @@ import { SkeletonRows, inputCls, labelCls } from './shared'
 import RentalPackagesTab from './RentalPackagesTab'
 import SurgeTab from './SurgeTab'
 import { surgeState } from '@/lib/surge-model'
+import { useNow } from '@/lib/use-now'
 import SuccessToast from '@/components/ui/SuccessToast'
 import SlideOver from '@/components/ui/SlideOver'
 import { cardMode, MODE_LABEL, MODE_ORDER, isRentalCard, modeToCardFields, sameCard } from '@/lib/rate-card-mode'
@@ -432,7 +433,8 @@ export default function RateCardsPage() {
     () => [...new Map(cards.map(c => [c.category_id, { id: c.category_id, slug: c.category_slug, display_name: c.category_name }])).values()],
     [cards],
   )
-  const activeSurges = surges.filter(s => surgeState(s, Date.now()) === 'live')
+  const now = useNow()
+  const activeSurges = surges.filter(s => surgeState(s, now) === 'live')
   const configuredCategories = new Set(cards.map(c => c.category_id)).size
   const citiesWithOverrides = cities.filter(city => cards.some(c => c.city_id === city.id)).length
 

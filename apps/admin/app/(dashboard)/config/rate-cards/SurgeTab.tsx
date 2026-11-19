@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Zap, Clock, MapPin, Plus, X } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
@@ -7,6 +7,7 @@ import { pricingApi, type SurgeEvent } from '@/lib/pricing-api'
 import type { AdminCity } from '@/lib/city-api'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { surgeState, surgePct, fareAfterSurge, formatDuration, presetWindow, windowLabel, type SurgeState } from '@/lib/surge-model'
+import { useNow } from '@/lib/use-now'
 import { inputCls, labelCls } from './shared'
 
 type Category = { id: number; slug: string; display_name: string }
@@ -17,12 +18,7 @@ const DURATIONS: { label: string; hours: number }[] = [
 ]
 const REASONS = ['Heavy rain', 'Festival', 'Peak hours', 'Event']
 const SAMPLE_FARE = 500
-
-function useNow(everyMs = 30_000): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => { const id = setInterval(() => setNow(Date.now()), everyMs); return () => clearInterval(id) }, [everyMs])
-  return now
-}
+const tzName = new Intl.DateTimeFormat('en-IN', { timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value ?? 'local'
 
 function chip(active: boolean): string {
   return `px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors duration-150 ${
@@ -48,18 +44,23 @@ function ScheduleSurgeDialog({ cities, categories, onCreated }: { cities: AdminC
   function pickDuration(h: number) { setHours(h); setForm(f => ({ ...f, ...presetWindow(new Date(), h) })) }
   function openChange(v: boolean) { setOpen(v); if (v) { setForm(newForm()); setHours(4); setError('') } }
 
-  const startMs = new Date(form.starts_at).getTime()
-  const endMs = new Date(form.ends_at).getTime()
-  const timesOk = !Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs > startMs
+  const formStartMs = new Date(form.starts_at).getTime()
+  const formEndMs = new Date(form.ends_at).getTime()
+  const timesOk = !Number.isNaN(formStartMs) && !Number.isNaN(formEndMs) && formEndMs > formStartMs
   const cityName = cities.find(c => String(c.id) === form.city_id)?.name
   const catName = categories.find(c => String(c.id) === form.category_id)?.display_name
   const summary = cityName && timesOk
-    ? `${form.multiplier.toFixed(2)}× on ${catName ?? 'all categories'} in ${cityName}, ${windowLabel(new Date(startMs).toISOString(), new Date(endMs).toISOString(), new Date())} (${formatDuration(endMs - startMs)})`
+    ? `${form.multiplier.toFixed(2)}× on ${catName ?? 'all categories'} in ${cityName}, ${windowLabel(new Date(formStartMs).toISOString(), new Date(formEndMs).toISOString(), new Date())} (${formatDuration(formEndMs - formStartMs)})`
     : null
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setError('')
-    if (!timesOk) { setError(Number.isNaN(startMs) || Number.isNaN(endMs) ? 'Enter a start and end time.' : 'End time must be after the start time.'); return }
+    // A duration chip means "starts now": take the clock at submit, not when the dialog was opened.
+    const fresh = hours !== null ? presetWindow(new Date(), hours) : null
+    const startMs = new Date(fresh?.starts_at ?? form.starts_at).getTime()
+    const endMs = new Date(fresh?.ends_at ?? form.ends_at).getTime()
+    if (!Number.isNaN(endMs) && endMs <= Date.now()) { setError('That window has already ended. Pick a later end time.'); return }
+    if (!fresh && !timesOk) { setError(Number.isNaN(startMs) || Number.isNaN(endMs) ? 'Enter a start and end time.' : 'End time must be after the start time.'); return }
     setLoading(true)
     try {
       await pricingApi.createSurgeEvent({
@@ -135,8 +136,11 @@ function ScheduleSurgeDialog({ cities, categories, onCreated }: { cities: AdminC
                         <div className="text-3xl font-bold font-mono tabular-nums text-text-primary leading-none">{form.multiplier.toFixed(2)}×</div>
                         <div className="text-xs font-semibold text-warning mt-1">+{surgePct(form.multiplier)}% on fares</div>
                       </div>
-                      <input type="range" min="1.1" max="5" step="0.05" value={form.multiplier} aria-label="Multiplier"
+                      <input type="range" min="1.05" max="5" step="0.05" value={form.multiplier} aria-label="Multiplier"
                         onChange={e => set('multiplier', parseFloat(e.target.value))} className="flex-1 accent-warning" />
+                      <input type="number" min="1" max="5" step="0.05" value={form.multiplier} aria-label="Multiplier value"
+                        onChange={e => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) set('multiplier', Math.min(5, Math.max(1, v))) }}
+                        className="w-[4.5rem] border border-border rounded-xl px-2 py-1.5 text-sm font-mono tabular-nums text-center bg-surface focus:outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
                     <div className="flex gap-2 mt-2.5 flex-wrap">
                       {MULTIPLIERS.map(m => (
@@ -166,7 +170,7 @@ function ScheduleSurgeDialog({ cities, categories, onCreated }: { cities: AdminC
                           onChange={e => { setHours(null); set('ends_at', e.target.value) }} />
                       </div>
                     </div>
-                    <p className="text-[11px] text-text-muted mt-1.5">Times are in your local time.</p>
+                    <p className="text-[11px] text-text-muted mt-1.5">Times are in your local time ({tzName}).</p>
                   </section>
 
                   {/* Why */}
@@ -263,6 +267,7 @@ export default function SurgeTab({ surges, cities, categories, onChanged }: {
   const now = useNow()
   const [toCancel, setToCancel] = useState<SurgeEvent | null>(null)
   const [showPast, setShowPast] = useState(false)
+  const [cancelError, setCancelError] = useState('')
 
   const groups = useMemo(() => {
     const g: Record<SurgeState, SurgeEvent[]> = { live: [], upcoming: [], ended: [], cancelled: [] }
@@ -273,7 +278,9 @@ export default function SurgeTab({ surges, cities, categories, onChanged }: {
 
   async function confirmCancel() {
     if (!toCancel) return
-    try { await pricingApi.cancelSurgeEvent(toCancel.id); onChanged('Surge cancelled') } catch { /* row stays; the list is unchanged */ }
+    setCancelError('')
+    try { await pricingApi.cancelSurgeEvent(toCancel.id); onChanged('Surge cancelled') }
+    catch { setCancelError(`Could not cancel the ${toCancel.city_name} surge. It may have just ended. Refresh and check before trying again.`); onChanged() }
     setToCancel(null)
   }
 
@@ -287,6 +294,8 @@ export default function SurgeTab({ surges, cities, categories, onChanged }: {
         </div>
         <ScheduleSurgeDialog cities={cities} categories={categories} onCreated={() => onChanged('Surge scheduled')} />
       </div>
+
+      {cancelError && <p role="alert" className="text-sm font-semibold text-danger bg-danger-light rounded-xl px-4 py-3">{cancelError}</p>}
 
       {none ? (
         <div className="admin-card text-center py-12">

@@ -128,7 +128,7 @@ export default function BookingFareScreen() {
     ? (isReturnCab ? returnCabEstimates[effectiveSelected] : estimates[effectiveSelected])
     : undefined
   const selectedFare = selectedEstimate?.breakdown.total
-  const selectedSurge = Number((selectedEstimate?.surgeMultiplier ?? 1).toFixed(2))
+  const selectedSurge = Number(Number(selectedEstimate?.surgeMultiplier ?? 1).toFixed(2)) || 1
   // Offers: the server prices the selected ride again whenever it changes (category, route, schedule, a typed code or
   // the rider's choice). A failed check never blocks booking at the plain fare.
   const offerRequest = useMemo(
