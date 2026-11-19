@@ -230,7 +230,7 @@ async function fetchActiveSurgeFromDb(cityId: number, categoryId: number) {
 export async function getAllSurgeEvents() {
   const res = await pool.query(
     `SELECT se.*,
-            c.name AS city_name,
+            COALESCE(c.name, 'All cities') AS city_name,
             vc.display_name AS category_name
      FROM surge_events se
      LEFT JOIN cities c ON c.id = se.city_id

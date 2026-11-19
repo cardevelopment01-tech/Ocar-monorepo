@@ -297,7 +297,7 @@ export default function SurgeTab({ surges, cities, categories, onChanged }: {
           <h2 className="text-base font-bold text-text-primary">Surge pricing</h2>
           <p className="text-xs text-text-muted mt-0.5">Raise fares in one city, or in every city, when demand spikes. Riders see the multiplier before they book.</p>
         </div>
-        <ScheduleSurgeDialog cities={cities} categories={categories} onCreated={() => onChanged('Surge scheduled')} />
+        <ScheduleSurgeDialog cities={cities} categories={categories} onCreated={() => { setCancelError(''); onChanged('Surge scheduled') }} />
       </div>
 
       {cancelError && <p role="alert" className="text-sm font-semibold text-danger bg-danger-light rounded-xl px-4 py-3">{cancelError}</p>}

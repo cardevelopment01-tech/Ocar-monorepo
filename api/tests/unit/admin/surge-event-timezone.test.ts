@@ -21,6 +21,7 @@ describe('createAdminSurgeEvent time zone', () => {
     ['zone-less end', '2026-11-19T01:56:00Z', '2026-11-20T07:26'],
     ['garbage', 'tomorrow', 'later'],
     ['end not after start', '2026-11-20T01:56:00Z', '2026-11-19T01:56:00Z'],
+    ['window already ended', '2026-01-01T01:00:00Z', '2026-01-01T05:00:00Z'],
   ]
   it.each(cases)('rejects %s', async (_n, startsAt, endsAt) => {
     await expect(createAdminSurgeEvent({ ...base, startsAt, endsAt })).rejects.toMatchObject({ httpStatus: 422, appCode: 'VALIDATION_ERROR' })
@@ -28,14 +29,19 @@ describe('createAdminSurgeEvent time zone', () => {
   })
 
   it('stores an IST offset as the same UTC instant', async () => {
-    await createAdminSurgeEvent({ ...base, startsAt: '2026-11-19T07:26:00+05:30', endsAt: '2026-11-20T07:26:00+05:30' })
-    expect(repo.createAdminSurgeEvent.mock.calls[0]![0]).toMatchObject({ startsAt: '2026-11-19T01:56:00.000Z', endsAt: '2026-11-20T01:56:00.000Z' })
+    await createAdminSurgeEvent({ ...base, startsAt: '2099-11-19T07:26:00+05:30', endsAt: '2099-11-20T07:26:00+05:30' })
+    expect(repo.createAdminSurgeEvent.mock.calls[0]![0]).toMatchObject({ startsAt: '2099-11-19T01:56:00.000Z', endsAt: '2099-11-20T01:56:00.000Z' })
   })
 
   it('accepts an all-cities surge (null city) and rejects a non-integer city', async () => {
-    await createAdminSurgeEvent({ ...base, cityId: null, startsAt: '2026-11-19T01:56:00Z', endsAt: '2026-11-20T01:56:00Z' })
+    await createAdminSurgeEvent({ ...base, cityId: null, startsAt: '2099-11-19T01:56:00Z', endsAt: '2099-11-20T01:56:00Z' })
     expect(repo.createAdminSurgeEvent.mock.calls[0]![0]).toMatchObject({ cityId: null })
-    await expect(createAdminSurgeEvent({ ...base, cityId: Number.NaN, startsAt: '2026-11-19T01:56:00Z', endsAt: '2026-11-20T01:56:00Z' }))
+    await expect(createAdminSurgeEvent({ ...base, cityId: Number.NaN, startsAt: '2099-11-19T01:56:00Z', endsAt: '2099-11-20T01:56:00Z' }))
+      .rejects.toMatchObject({ httpStatus: 422 })
+  })
+
+  it.each([[0, null], [-5, null], [1.5, null], [1, 0], [1, Number.NaN]])('rejects city %s / category %s', async (cityId, categoryId) => {
+    await expect(createAdminSurgeEvent({ ...base, cityId, categoryId, startsAt: '2099-11-19T01:56:00Z', endsAt: '2099-11-20T01:56:00Z' }))
       .rejects.toMatchObject({ httpStatus: 422 })
   })
 })
