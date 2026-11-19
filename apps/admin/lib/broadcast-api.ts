@@ -38,6 +38,10 @@ export interface BroadcastSummary {
   imageUrl: string | null
   /** The screen a tap opens (a key), or null for just opening the app. */
   link: string | null
+  /** Why it stopped, when it did not finish (e.g. the offer hours passed). */
+  statusNote: string | null
+  /** How many the admin was told it would reach. */
+  promised: number
   status: 'queued' | 'sending' | 'done' | 'failed'
   sentBy: string | null
   createdAt: string

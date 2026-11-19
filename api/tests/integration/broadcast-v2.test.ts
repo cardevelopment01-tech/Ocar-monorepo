@@ -225,29 +225,33 @@ describe('sending, repeating, limits and history', () => {
        VALUES ('driver', $1, 'in_app', 'sent', 'announcement', 'x', 'y', $2)`, [d.d1, first])).rejects.toMatchObject({ code: '23505' })
   })
 
-  it('sends aimed at phone numbers never count toward the daily limit; sends to everyone-style audiences do', async () => {
+  it('sends aimed at phone numbers never count toward the daily limit; offers to everyone-style audiences do; announcements are never limited', async () => {
     // d1 already has 1 test send today; two more to the same phone are allowed (a test must always go through)...
     expect((await send({ role: 'driver', phones: [P.d1] }, 'Second')).status).toBe(202)
     expect((await send({ role: 'driver', phones: [P.d1] }, 'Third')).status).toBe(202)
     for (const id of broadcastIds.slice(-2)) await runBroadcast(id)
     // ...and they do not use up d1's limit for a real broadcast: three tests later, d1 is still in a normal audience.
-    expect((await resolveAudience({ role: 'driver', categoryIds: [sedanCategoryId] }, 'announcement')).includes(d.d1)).toBe(true)
-    // Two real broadcasts (no typed numbers) reach d1 in the last 24 hours, so a normal audience now skips them.
+    expect((await resolveAudience({ role: 'driver', categoryIds: [sedanCategoryId] }, 'offer')).includes(d.d1)).toBe(true)
+    // Two real offers (no typed numbers) reach d1 in the last 24 hours, so a normal audience now skips them.
     const admin = (await pool.query<{ id: string }>('SELECT id::text FROM admins WHERE email = $1', [OPS])).rows[0]!.id
     for (const n of [1, 2]) {
       const id = (await pool.query<{ id: string }>(
         `INSERT INTO notification_broadcasts (admin_id, title, body, category, audience, recipient_count, status)
-         VALUES ($1, $2, 'Body text', 'announcement', '{"role":"driver"}'::jsonb, 1, 'done') RETURNING id::text`, [admin, `Real ${n}`])).rows[0]!.id
+         VALUES ($1, $2, 'Body text', 'offer', '{"role":"driver"}'::jsonb, 1, 'done') RETURNING id::text`, [admin, `Real ${n}`])).rows[0]!.id
       broadcastIds.push(id)
       await pool.query(
         `INSERT INTO notification_logs (owner_type, owner_id, channel, status, type, title, body, broadcast_id)
-         VALUES ('driver', $1, 'in_app', 'sent', 'announcement', $2, 'Body text', $3)`, [d.d1, `Real ${n}`, id])
+         VALUES ('driver', $1, 'in_app', 'sent', 'offer', $2, 'Body text', $3)`, [d.d1, `Real ${n}`, id])
     }
-    expect((await resolveAudience({ role: 'driver', categoryIds: [sedanCategoryId] }, 'announcement')).includes(d.d1)).toBe(false)
-    const preview = body(await api(opsToken).post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'driver' } }))
+    expect((await resolveAudience({ role: 'driver', categoryIds: [sedanCategoryId] }, 'offer')).includes(d.d1)).toBe(false)
+    // ...but an urgent announcement still reaches them: the limit is for offers only
+    expect((await resolveAudience({ role: 'driver', categoryIds: [sedanCategoryId] }, 'announcement')).includes(d.d1)).toBe(true)
+    const preview = body(await api(opsToken).post('/api/v1/admin/notifications/preview', { category: 'offer', audience: { role: 'driver' } }))
     expect(preview.skippedCapped).toBeGreaterThanOrEqual(1)
+    const announcementPreview = body(await api(opsToken).post('/api/v1/admin/notifications/preview', { category: 'announcement', audience: { role: 'driver' } }))
+    expect(announcementPreview.skippedCapped).toBe(0)
     // d3 only ever got test sends, so they are still in
-    expect((await resolveAudience({ role: 'driver', cityIds: [cuttackId] }, 'announcement')).includes(d.d3)).toBe(true)
+    expect((await resolveAudience({ role: 'driver', cityIds: [cuttackId] }, 'offer')).includes(d.d3)).toBe(true)
   })
 
   it('someone who switched announcements off is left out, and a send to only them is refused with a clear reason', async () => {
@@ -287,8 +291,8 @@ describe('sending, repeating, limits and history', () => {
 })
 
 describe('rollback, a stale daily-limit check, and knowing who a typed number is', () => {
-  const sendTo = async (audience: object, title: string) => {
-    const res = await api(opsToken).post('/api/v1/admin/notifications/broadcast', { title, body: 'Body text', category: 'announcement', audience })
+  const sendTo = async (audience: object, title: string, category: 'announcement' | 'offer' = 'announcement') => {
+    const res = await api(opsToken).post('/api/v1/admin/notifications/broadcast', { title, body: 'Body text', category, audience })
     if (res.status === 202) broadcastIds.push(String(body(res).id))
     return res
   }
@@ -307,16 +311,20 @@ describe('rollback, a stale daily-limit check, and knowing who a typed number is
     expect(row).toMatchObject({ status: 'done', tracked: false, sent: 42, pushed: 0, pushFailed: 0, noPush: 0, opened: 0, settling: false, finishedAt: null })
   })
 
-  it('three broadcasts created back to back: every check says the person will be notified, and the third reports who it had to drop', async () => {
+  it('three offers created back to back: every check says the person will be notified, and the third reports who it had to drop', async () => {
+    // Offers are only allowed 10:00-21:00 IST: the clock (Date only) is set to noon IST for this test.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-19T06:30:00Z'))
     const audience = { role: 'driver', cityIds: [cuttackId], categoryIds: [sedanCategoryId] }
     const ids: string[] = []
     for (const t of ['A', 'B', 'C']) {
-      const res = await sendTo(audience, `Back to back ${t}`)
+      const res = await sendTo(audience, `Back to back ${t}`, 'offer')
       expect(res.status, JSON.stringify(res.body)).toBe(202)
       expect(body(res).recipientCount).toBeGreaterThanOrEqual(2) // d3 and d5 both count in all three checks: nothing has been sent yet
       ids.push(String(body(res).id))
     }
     for (const id of ids) await runBroadcast(id)
+    vi.useRealTimers()
 
     const notified = async (id: string) => (await pool.query<{ owner_id: string }>('SELECT owner_id::text FROM notification_logs WHERE broadcast_id = $1', [id])).rows.map((r) => r.owner_id)
     expect(await notified(ids[0]!)).toContain(d.d5)

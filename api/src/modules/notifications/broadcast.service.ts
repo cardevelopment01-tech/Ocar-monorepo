@@ -94,7 +94,8 @@ export function offersAllowedNow(now = new Date()): boolean {
 const PREF_CATEGORY = { announcement: 'announcements', offer: 'offers' } as const
 
 // One row per active person the audience matches, with three facts about them. Table and column names are hardcoded; only values are
-// bound. The daily limit does not apply to sends aimed at specific phone numbers.
+// bound. The daily limit applies to OFFERS only (marketing: a person should not get more than a couple a day); an announcement is
+// never held back by it, so an urgent notice always goes out. It does not apply to sends aimed at specific phone numbers either.
 function candidateQuery(audience: Audience, category: BroadcastInput['category']): { text: string; values: unknown[] } {
   const ownerType = audience.role === 'driver' ? 'driver' : 'user'
   const table = audience.role === 'driver' ? 'drivers' : 'users'
@@ -118,16 +119,18 @@ function candidateQuery(audience: Audience, category: BroadcastInput['category']
     filters.push(`AND EXISTS (SELECT 1 FROM rides r WHERE r.user_id = t.id AND r.requested_at > now() - make_interval(days => ${bind(audience.bookedInLastDays)}::int))`)
   }
 
-  // Broadcasts each person got in the last 24 hours, counted once for everyone (one pass over the recent broadcast rows) instead of one
-  // lookup per candidate: an "all riders" audience used to cost a lookup for every active rider, three times per send.
-  const recent = audience.phones
+  // Offers each person got in the last 24 hours, counted once for everyone (one pass over the recent broadcast rows) instead of one
+  // lookup per candidate: an "all riders" audience used to cost a lookup for every active rider, three times per send. Only needed
+  // when sending an offer: announcements are not limited, so they skip the pass altogether.
+  const limited = category === 'offer' && !audience.phones
+  const recent = !limited
     ? ''
     : `LEFT JOIN (SELECT l.owner_id, count(*) AS n FROM notification_logs l
                  JOIN notification_broadcasts nb ON nb.id = l.broadcast_id
                  -- a send to typed phone numbers is a test or a one-person reminder: it never counts toward the limit
-                 WHERE l.owner_type = $1 AND l.channel = 'in_app' AND l.created_at > now() - interval '24 hours' AND NOT (nb.audience ? 'phones')
+                 WHERE l.owner_type = $1 AND l.channel = 'in_app' AND l.type = 'offer' AND l.created_at > now() - interval '24 hours' AND NOT (nb.audience ? 'phones')
                  GROUP BY l.owner_id) recent ON recent.owner_id = t.id`
-  const capped = audience.phones ? 'false' : `COALESCE(recent.n, 0) >= ${bind(BROADCAST_DAILY_CAP_PER_PERSON)}::int`
+  const capped = !limited ? 'false' : `COALESCE(recent.n, 0) >= ${bind(BROADCAST_DAILY_CAP_PER_PERSON)}::int`
 
   return {
     text: `SELECT t.id,
@@ -244,7 +247,7 @@ export async function createBroadcast(
   if (preview.recipientCount === 0) {
     const why = preview.matched === 0
       ? 'No recipients match this audience'
-      : 'Everyone this matches has switched this type off or already got today\'s limit of broadcasts'
+      : 'Everyone this matches has switched this type off or already got today\'s limit of offers'
     throw httpError(422, why, AppErrors.VALIDATION_ERROR.code)
   }
 
@@ -275,7 +278,7 @@ export async function createBroadcast(
     })
   } catch (err) {
     // Nothing will run it: say so in the history instead of leaving a row that stays "Queued" forever, and tell the admin.
-    await pool.query(`UPDATE notification_broadcasts SET status = 'failed' WHERE id = $1`, [id]).catch(() => undefined)
+    await pool.query(`UPDATE notification_broadcasts SET status = 'failed', status_note = $2 WHERE id = $1`, [id, NOTE_NOT_QUEUED]).catch(() => undefined)
     throw err
   }
   return { id, recipientCount: preview.recipientCount, withDevice: preview.withDevice }
@@ -284,6 +287,10 @@ export async function createBroadcast(
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 const FCM_MAX_PER_CALL = 500
+// Why a broadcast stopped, shown in the history next to "Failed" (what was reached is counted from the rows it did create).
+const NOTE_OFFER_WINDOW = 'Stopped: offers can only go out between 10:00 and 21:00 IST.'
+const NOTE_ERROR = 'Stopped after an error. Ask a developer to check the API logs.'
+const NOTE_NOT_QUEUED = 'Could not be queued to send. Nothing was sent.'
 const RECORD_ATTEMPTS = 3
 const RECORD_RETRY_PAUSE_MS = 300
 
@@ -371,7 +378,7 @@ export async function runBroadcast(broadcastId: string, finalAttempt = true): Pr
   if (!row || row.status === 'done') return 0
   // The 10:00-21:00 window was checked when it was created; a retry can run later, so check again.
   if (row.category === 'offer' && !offersAllowedNow()) {
-    await pool.query(`UPDATE notification_broadcasts SET status = 'failed' WHERE id = $1`, [broadcastId])
+    await pool.query(`UPDATE notification_broadcasts SET status = 'failed', status_note = $2 WHERE id = $1`, [broadcastId, NOTE_OFFER_WINDOW])
     log.warn({ broadcastId }, 'broadcast: an offer was not sent because the allowed hours (10:00-21:00 IST) have passed')
     return 0
   }
@@ -436,7 +443,7 @@ export async function runBroadcast(broadcastId: string, finalAttempt = true): Pr
     }
   } catch (err) {
     // Shown as failed only when no retry is left: between attempts the history keeps saying it is sending.
-    if (finalAttempt) await pool.query(`UPDATE notification_broadcasts SET status = 'failed' WHERE id = $1`, [broadcastId]).catch(() => undefined)
+    if (finalAttempt) await pool.query(`UPDATE notification_broadcasts SET status = 'failed', status_note = $2 WHERE id = $1`, [broadcastId, NOTE_ERROR]).catch(() => undefined)
     throw err
   }
 
@@ -470,6 +477,10 @@ export type BroadcastSummary = {
   audience: ReturnType<typeof maskAudience>
   imageUrl: string | null
   link: string | null
+  /** Why it stopped, when it did not finish (e.g. the offer hours passed). */
+  statusNote: string | null
+  /** How many the admin was told it would reach. */
+  promised: number
   status: 'queued' | 'sending' | 'done' | 'failed'
   sentBy: string | null
   createdAt: string
@@ -499,7 +510,7 @@ export type BroadcastSummary = {
 export async function listBroadcasts(params: z.infer<typeof listQuerySchema>): Promise<{ broadcasts: BroadcastSummary[]; nextBefore: string | null }> {
   const res = await pool.query(
     `SELECT b.id::text AS id, b.title, b.body, b.category, b.audience, b.status, a.email AS sent_by, b.created_at, b.finished_at,
-            b.image_url, b.link, b.sent_count, b.failed_count, b.skipped_opted_out, b.skipped_capped, b.skipped_at_send, b.recipient_count,
+            b.image_url, b.link, b.status_note, b.sent_count, b.failed_count, b.skipped_opted_out, b.skipped_capped, b.skipped_at_send, b.recipient_count,
             -- still going (queued/sending, for at most 30 minutes) or just finished (results keep arriving for ~2 minutes); a failed or
             -- long-stuck broadcast is not "settling", so the page does not poll for it forever
             COALESCE((b.status IN ('queued', 'sending') AND b.created_at > now() - interval '30 minutes')
@@ -532,6 +543,8 @@ export async function listBroadcasts(params: z.infer<typeof listQuerySchema>): P
       body: r.body as string,
       category: r.category as BroadcastSummary['category'],
       audience: maskAudience(r.audience as Audience),
+      statusNote: (r.status_note as string | null) ?? null,
+      promised: r.recipient_count as number,
       imageUrl: (r.image_url as string | null) ?? null,
       link: (r.link as string | null) ?? null,
       status: r.status as BroadcastSummary['status'],

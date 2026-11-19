@@ -127,7 +127,7 @@ export default function BroadcastHistory({ refreshKey }: { refreshKey: number })
                 <th className="py-2 pr-4 font-semibold text-right" title="No registered phone, or the push result has not come back yet">In-app only</th>
                 <th className="py-2 pr-4 font-semibold text-right" title="Firebase refused every phone (a phone that no longer exists is removed from our list)">Refused</th>
                 <th className="py-2 pr-4 font-semibold text-right" title="Opened the notification in the app's notification list. Tapping the push itself is not counted yet.">Opened</th>
-                <th className="py-2 font-semibold text-right" title="Matched the audience but left out: switched this type off, or already got the daily limit (at the check, or by the time it was sent)">Left out</th>
+                <th className="py-2 font-semibold text-right" title="Matched the audience but left out: switched this type off, or already got the daily limit (offers only: 2 a day; at the check, or by the time it was sent)">Left out</th>
               </tr>
             </thead>
             <tbody>
@@ -143,7 +143,10 @@ export default function BroadcastHistory({ refreshKey }: { refreshKey: number })
                       </p>
                     </td>
                     <td className="py-3 pr-4 text-xs text-text-secondary max-w-[14rem]">{describeAudience(b.audience, names)}</td>
-                    <td className="py-3 pr-4"><span className={status.cls}>{status.label}</span></td>
+                    <td className="py-3 pr-4">
+                      <span className={status.cls}>{status.label}</span>
+                      {b.statusNote ? <span className="block text-[11px] text-danger mt-1 max-w-[16rem]">{b.statusNote}{b.status === 'failed' ? ` Reached ${b.sent} of ${b.promised}.` : ''}</span> : null}
+                    </td>
                     <td className="py-3 pr-4 text-right"><Num value={b.sent} /></td>
                     <td className="py-3 pr-4 text-right"><Num value={b.pushed} tone="good" unknown={!b.tracked} /></td>
                     <td className="py-3 pr-4 text-right"><Num value={b.noPush} tone="muted" unknown={!b.tracked} />{b.settling && b.noPush > 0 ? <span className="text-text-muted">*</span> : null}</td>

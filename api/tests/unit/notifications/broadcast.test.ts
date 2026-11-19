@@ -110,8 +110,8 @@ describe('the audience query', () => {
   beforeEach(() => { vi.clearAllMocks(); query.mockResolvedValue({ rows: [] }) })
   const lastQuery = () => query.mock.calls[query.mock.calls.length - 1] as [string, unknown[]]
 
-  it('drivers: only active ones, minus anyone who switched the type off or hit the daily limit', async () => {
-    await resolveAudience(driverAll, 'announcement')
+  it('drivers: only active ones, minus anyone who switched the type off or (for an offer) hit the daily limit', async () => {
+    await resolveAudience(driverAll, 'offer')
     const [sql, values] = lastQuery()
     expect(sql).toContain("t.status = 'active'")
     expect(sql).toContain('FROM drivers t')
@@ -120,8 +120,18 @@ describe('the audience query', () => {
     expect(sql).toContain("l.created_at > now() - interval '24 hours' AND NOT (nb.audience ? 'phones')")
     expect(sql).toContain('GROUP BY l.owner_id') // counted once for everyone
     expect(sql).not.toMatch(/SELECT count\(\*\) FROM notification_logs l WHERE l\.owner_id = t\.id/) // not once per candidate
-    expect(values.slice(0, 2)).toEqual(['driver', 'announcements'])
+    expect(sql).toContain("l.type = 'offer'") // only offers count
+    expect(values.slice(0, 2)).toEqual(['driver', 'offers'])
     expect(values).toContain(2) // the daily limit is a bound value, not text in the SQL
+  })
+
+  it('an announcement is never held back by the daily limit, and does not even look it up', async () => {
+    await resolveAudience(driverAll, 'announcement')
+    const [sql, values] = lastQuery()
+    expect(sql).not.toContain('notification_broadcasts nb') // no pass over recent broadcasts
+    expect(sql).toMatch(/false AS capped/)
+    expect(values.slice(0, 2)).toEqual(['driver', 'announcements'])
+    expect(values).not.toContain(2)
   })
 
   it('riders use the users table and the offers preference for an offer', async () => {
@@ -266,7 +276,7 @@ describe('createBroadcast', () => {
     queueAdd.mockRejectedValueOnce(new Error('redis down'))
     await expect(createBroadcast(input, 1n, null)).rejects.toThrow('redis down')
     const failedUpdate = query.mock.calls.find(([sql]) => String(sql).includes("SET status = 'failed'")) as [string, unknown[]]
-    expect(failedUpdate[1]).toEqual(['4'])
+    expect(failedUpdate[1]).toEqual(['4', expect.stringContaining('Nothing was sent')]) // and says why
   })
 
   it('typed phone numbers never reach the audit log (the stored audience keeps them to resolve the send)', async () => {
@@ -579,6 +589,9 @@ describe('runBroadcast', () => {
     expect(await runBroadcast('9')).toBe(0)
     expect(createRows).not.toHaveBeenCalled()
     expect(calls).toEqual(['failed'])
+    // and the history says why, in words the admin can act on
+    const failedUpdate = query.mock.calls.find(([sql]) => String(sql).includes("SET status = 'failed'")) as [string, unknown[]]
+    expect(failedUpdate[1]).toEqual(['9', 'Stopped: offers can only go out between 10:00 and 21:00 IST.'])
     vi.useRealTimers()
   })
 
@@ -597,6 +610,11 @@ describe('runBroadcast', () => {
 
 describe('listBroadcasts', () => {
   beforeEach(() => vi.clearAllMocks())
+  it('a stopped broadcast carries its reason and how many it was meant to reach', async () => {
+    query.mockResolvedValueOnce({ rows: [{ id: '3', title: 'T', body: 'B', category: 'offer', audience: { role: 'rider' }, status: 'failed', status_note: 'Stopped: offers can only go out between 10:00 and 21:00 IST.', sent_by: null, created_at: '2026-11-17T06:41:04.000Z', finished_at: null, sent_count: 0, failed_count: 0, skipped_opted_out: 0, skipped_capped: 0, skipped_at_send: 0, recipient_count: 20000, settling: false, logged: 12400, pushed: 12000, push_failed: 0, opened: 0 }] })
+    expect((await listBroadcasts({ limit: 20 })).broadcasts[0]).toMatchObject({ status: 'failed', statusNote: expect.stringContaining('10:00 and 21:00'), sent: 12400, promised: 20000 })
+  })
+
   it('a failed or still-running broadcast shows how many were already notified (counted from their rows, not the end-of-run total)', async () => {
     query.mockResolvedValueOnce({ rows: [{ id: '3', title: 'T', body: 'B', category: 'announcement', audience: { role: 'driver' }, status: 'failed', sent_by: null, created_at: '2026-11-17T06:41:04.000Z', finished_at: null, sent_count: 0, failed_count: 0, skipped_opted_out: 0, skipped_capped: 0, skipped_at_send: 0, recipient_count: 500, settling: false, logged: 320, pushed: 300, push_failed: 0, opened: 0 }] })
     expect((await listBroadcasts({ limit: 20 })).broadcasts[0]).toMatchObject({ status: 'failed', sent: 320, tracked: true })

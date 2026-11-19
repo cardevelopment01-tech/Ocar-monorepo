@@ -23,7 +23,7 @@ const preview = (over: Partial<AudiencePreview> = {}): AudiencePreview => ({
 const row = (over: Partial<BroadcastSummary> = {}): BroadcastSummary => ({
   id: '7', title: 'Ocar is live', body: 'Stay online.', category: 'announcement', audience: { role: 'driver', cityIds: [2], docIssues: true },
   status: 'done', sentBy: 'ops@ocar.app', createdAt: '2026-11-17T06:41:04.000Z', finishedAt: '2026-11-17T06:41:06.000Z',
-  imageUrl: null, link: null, sent: 578, pushed: 333, pushFailed: 17, noPush: 228, opened: 27, failed: 0, skippedOptedOut: 3, skippedCapped: 2, skippedAtSend: 0, tracked: true, settling: false, ...over,
+  imageUrl: null, link: null, statusNote: null, promised: 578, sent: 578, pushed: 333, pushFailed: 17, noPush: 228, opened: 27, failed: 0, skippedOptedOut: 3, skippedCapped: 2, skippedAtSend: 0, tracked: true, settling: false, ...over,
 })
 
 async function fillMessage(user: ReturnType<typeof userEvent.setup>, title = 'Hello', body = 'World') {
@@ -63,7 +63,7 @@ describe('Broadcasts page', () => {
     expect(within(box).getByText(/also get the push on their phone/)).toBeInTheDocument()
     expect(within(box).getByText(/get the in-app notification only/)).toBeInTheDocument()
     expect(within(box).getByText(/6 left out: switched this type off/)).toBeInTheDocument()
-    expect(within(box).getByText(/4 left out: already got 2 broadcasts in the last 24 hours/)).toBeInTheDocument()
+    expect(within(box).getByText(/4 left out: already got 2 offers in the last 24 hours/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send to 50 people' })).toBeEnabled()
   })
 
@@ -180,6 +180,16 @@ describe('Broadcasts page', () => {
     await waitFor(() => expect(api.send).toHaveBeenCalled())
     await act(async () => { release({ broadcasts: [], nextBefore: null }) })
     expect(await screen.findByText('Just sent')).toBeInTheDocument()
+  })
+
+  it('a stopped broadcast says why and how many it reached out of how many it was meant for', async () => {
+    api.list.mockResolvedValue({
+      broadcasts: [row({ id: '12', title: 'Diwali offer', category: 'offer', status: 'failed', sent: 12400, promised: 20000, statusNote: 'Stopped: offers can only go out between 10:00 and 21:00 IST.' })],
+      nextBefore: null,
+    })
+    render(<BroadcastsPage />)
+    expect(await screen.findByText(/Stopped: offers can only go out between 10:00 and 21:00 IST\./)).toBeInTheDocument()
+    expect(screen.getByText(/Reached 12400 of 20000/)).toBeInTheDocument()
   })
 
   it('an offer outside the allowed hours cannot be sent', async () => {

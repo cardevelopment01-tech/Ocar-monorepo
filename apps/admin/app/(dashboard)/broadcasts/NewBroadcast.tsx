@@ -154,7 +154,7 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
           <option value="announcement">Announcement (notice, any time)</option>
           <option value="offer">Offer (promotion, 10:00-21:00 IST only)</option>
         </select>
-        <p className="text-[11px] text-text-muted mt-1">People who switched this type off in the app are skipped.</p>
+        <p className="text-[11px] text-text-muted mt-1">People who switched this type off in the app are skipped. A person gets at most {preview?.dailyCap ?? 2} offers in 24 hours; announcements are not limited.</p>
       </div>
 
       <div>
@@ -218,7 +218,7 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
             <li><span className="font-semibold text-text-primary">{preview.withDevice}</span> also get the push on their phone (phone seen in the last 30 days)</li>
             <li><span className="font-semibold text-text-primary">{preview.inAppOnly}</span> get the in-app notification only (no recent phone registered)</li>
             {preview.skippedOptedOut > 0 && <li>{preview.skippedOptedOut} left out: switched this type off in the app</li>}
-            {preview.skippedCapped > 0 && <li>{preview.skippedCapped} left out: already got {preview.dailyCap} broadcasts in the last 24 hours</li>}
+            {preview.skippedCapped > 0 && <li>{preview.skippedCapped} left out: already got {preview.dailyCap} offers in the last 24 hours</li>}
             {preview.phonesNotFound.length > 0 && <li className="text-error">No active {who} account for: {preview.phonesNotFound.join(', ')}</li>}
           </ul>
           {preview.people.length > 0 && (
