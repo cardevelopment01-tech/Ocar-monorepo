@@ -256,6 +256,8 @@ export async function createBroadcast(
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 const FCM_MAX_PER_CALL = 500
+const RECORD_ATTEMPTS = 3
+const RECORD_RETRY_PAUSE_MS = 300
 
 type Outcome = { attempted: boolean; successCount: number; failureCount: number; invalidTokens: number; stillFailing: boolean }
 
@@ -302,13 +304,20 @@ async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'us
   for (const p of pending) { const o = outcome.get(p.ownerId)!; o.failureCount++; o.stillFailing = true }
 
   if (dead.length > 0) await repo.deleteDeviceTokens(dead)
-  await repo.recordBroadcastPushResults(rows.map((r) => {
+  // Firebase has already accepted these pushes, so a failed save here would make the retry push the same group again. Try a few times first.
+  const results = rows.map((r) => {
     const o = outcome.get(r.ownerId)!
     return {
       id: r.id, attempted: o.attempted, successCount: o.successCount, failureCount: o.failureCount, invalidTokens: o.invalidTokens,
       ...(o.stillFailing && o.successCount === 0 ? { failureReason: 'fcm_unavailable' } : {}),
     }
-  }))
+  })
+  for (let attempt = 1; ; attempt++) {
+    try { await repo.recordBroadcastPushResults(results); break } catch (err) {
+      if (attempt >= RECORD_ATTEMPTS) throw err
+      await pause(RECORD_RETRY_PAUSE_MS * attempt)
+    }
+  }
 }
 
 // Runs in the push worker. Safe to run again after a failure: everyone already notified (a row for this broadcast and person) is
@@ -339,6 +348,9 @@ export async function runBroadcast(broadcastId: string, finalAttempt = true): Pr
     title: row.title, body: row.body, ttlSeconds: defaults.ttlSeconds,
     ...(defaults.channelId !== undefined ? { channelId: defaults.channelId } : {}),
     ...(defaults.tag !== undefined ? { tag: defaults.tag } : {}),
+    // If this run is repeated after Firebase already accepted a group (the result could not be saved), the phone replaces the first
+    // notification with the repeat instead of showing two.
+    dedupeTag: `broadcast-${broadcastId}`,
     ...(row.image_url ? { imageUrl: row.image_url } : {}),
     // `link` rides in the data payload: the app reads it on tap (sent for every phone, with each person's own notification id).
     ...(row.link ? { data: { link: row.link } } : {}),

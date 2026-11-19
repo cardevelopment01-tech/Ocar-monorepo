@@ -395,6 +395,20 @@ describe('runBroadcast', () => {
     ])
   })
 
+  it('every push of a broadcast carries the same replace-tag, so a repeated run shows one notification on the phone', async () => {
+    db({ recipients: ['1'] })
+    await runBroadcast('9')
+    expect(sendPush.mock.calls[0]![1]).toMatchObject({ dedupeTag: 'broadcast-9' })
+  })
+
+  it('a failed save of the push results is tried again before the group counts as failed (no repeat push needed)', async () => {
+    record.mockRejectedValueOnce(new Error('db blip')).mockResolvedValue(undefined)
+    db({ recipients: ['1', '2'], sentCount: 2 })
+    expect(await runBroadcast('9')).toBe(2)
+    expect(record).toHaveBeenCalledTimes(2)
+    expect(sendPush).toHaveBeenCalledTimes(1) // pushed once, not again
+  })
+
   it('a message Firebase refuses (e.g. a bad picture link) is counted as failed for each person but removes no phone and is not retried', async () => {
     sendPush.mockResolvedValue({ invalidTokens: [], successCount: 0, failureCount: 2, transientFailure: false, tokenResults: ['rejected', 'rejected'] })
     db({ row: row({ image_url: 'https://cdn.example.com/bad.jpg' }), recipients: ['1', '2'] })

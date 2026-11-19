@@ -99,7 +99,10 @@ export function usePushNotificationRouting(): void {
       const title = remoteMessage.notification?.title
       const body = remoteMessage.notification?.body
       if (!title && !body) return
+      const nid = remoteMessage.data?.['notificationId']
       await Notifications.scheduleNotificationAsync({
+        // Same id = replaces the earlier banner, so a push sent twice shows once.
+        ...(nid ? { identifier: `n-${nid}` } : {}),
         content: { title: title ?? '', body: body ?? '', data: remoteMessage.data ?? {} },
         trigger: { channelId: remoteMessage.notification?.android?.channelId ?? 'default_v2' },
       }).catch(() => {})

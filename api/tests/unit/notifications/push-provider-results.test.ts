@@ -118,6 +118,15 @@ describe('sendPush: a picture', () => {
     expect((await sendPush(['c'], { title: 'T', body: 'B', imageUrl: 'https://cdn.example.com/a.jpg' }, [{ notificationId: '3' }])).invalidTokens).toEqual(['c'])
   })
 
+  it('a dedupe tag makes a repeat replace the earlier notification, without using an FCM collapse key', async () => {
+    sendEach.mockResolvedValue({ successCount: 1, failureCount: 0, responses: [ok] })
+    await sendPush(['a'], { title: 'T', body: 'B', dedupeTag: 'broadcast-9' }, [{ notificationId: '1' }])
+    const m = (sendEach.mock.calls[0]![0] as Array<{ android: { collapseKey?: string; notification: { tag?: string } }; apns: { headers: Record<string, string> } }>)[0]!
+    expect(m.android.notification.tag).toBe('broadcast-9')
+    expect(m.android.collapseKey).toBeUndefined() // FCM keeps only 4 collapse keys per phone, shared with ride pushes
+    expect(m.apns.headers['apns-collapse-id']).toBe('broadcast-9')
+  })
+
   it('without a picture nothing about an image is sent', async () => {
     sendEachForMulticast.mockResolvedValue({ successCount: 1, failureCount: 0, responses: [ok] })
     await sendPush(['a'], { title: 'T', body: 'B' })

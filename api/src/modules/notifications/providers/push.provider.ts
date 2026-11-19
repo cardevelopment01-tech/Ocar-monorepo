@@ -34,6 +34,10 @@ export interface PushMessage {
   // auto-open path planned in docs/superpowers/plans/2026-11-05-driver-app-closed-ride-alert-overlay.md), so it asks for
   // `proxy: 'deny'`.
   noProxy?: boolean
+  // Makes a repeat of this same message REPLACE the earlier one on the phone instead of showing a second notification (Android
+  // notification tag, APNs collapse-id). Unlike `tag` it sets no FCM collapse key: FCM keeps only 4 collapse keys per device, shared
+  // with the ride pushes. Used where a message can legitimately be sent twice (a retried broadcast).
+  dedupeTag?: string
   // A picture shown big in the notification (https only: a malformed value makes Firebase refuse the whole message).
   imageUrl?: string
 }
@@ -107,6 +111,7 @@ export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?
       ...(msg.silent ? {} : { sound: msg.sound?.android ?? 'default' }),
       ...(msg.noProxy ? { proxy: 'deny' as const } : {}),
       ...(msg.imageUrl ? { imageUrl: msg.imageUrl } : {}),
+      ...(msg.dedupeTag ? { tag: msg.dedupeTag } : {}),
     }
     const android: NonNullable<MulticastMessage['android']> = { priority: 'high', notification: androidNotification }
     // ttl/collapseKey/tag were previously only written to the webpush block, so on Android a
@@ -121,6 +126,7 @@ export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?
     const apnsHeaders: Record<string, string> = { 'apns-priority': '10' }
     // iOS shows the picture only when the app has a notification service extension; harmless otherwise.
     if (msg.ttlSeconds !== undefined) apnsHeaders['apns-expiration'] = String(Math.floor(Date.now() / 1000) + msg.ttlSeconds)
+    if (msg.dedupeTag) apnsHeaders['apns-collapse-id'] = msg.dedupeTag.slice(0, 64)
     if (msg.tag) apnsHeaders['apns-collapse-id'] = msg.tag.slice(0, 64)
     const message: MulticastMessage = {
       tokens,
