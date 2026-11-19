@@ -165,6 +165,23 @@ describe('Broadcasts page', () => {
     expect(screen.getByLabelText('How it looks on a phone').querySelector('img')).toBeNull()
   })
 
+  it('a broadcast sent while the list is still loading still shows up (the refresh is not dropped)', async () => {
+    const user = userEvent.setup()
+    let release!: (v: { broadcasts: BroadcastSummary[]; nextBefore: null }) => void
+    api.list.mockReset()
+    api.list
+      .mockImplementationOnce(() => new Promise((r) => { release = r })) // the first load, slow, answered before the send
+      .mockResolvedValue({ broadcasts: [row({ id: '9', title: 'Just sent' })], nextBefore: null })
+    render(<BroadcastsPage />)
+    await fillMessage(user)
+    await user.click(screen.getByRole('button', { name: 'Check audience' }))
+    await user.click(await screen.findByRole('button', { name: /^Send to/ }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Send now' }))
+    await waitFor(() => expect(api.send).toHaveBeenCalled())
+    await act(async () => { release({ broadcasts: [], nextBefore: null }) })
+    expect(await screen.findByText('Just sent')).toBeInTheDocument()
+  })
+
   it('an offer outside the allowed hours cannot be sent', async () => {
     api.preview.mockResolvedValue(preview({ sendableNow: false }))
     const user = userEvent.setup()

@@ -275,7 +275,7 @@ async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'us
   for (let attempt = 1; pending.length > 0 && attempt <= BROADCAST_PUSH_ATTEMPTS; attempt++) {
     if (attempt > 1) await pause(BROADCAST_PUSH_RETRY_PAUSE_MS * (attempt - 1))
     // Firebase takes at most 500 messages per call and one person can have several phones, so a group can hold more than 500 phones.
-    const results: Array<'ok' | 'invalid' | 'retry'> = []
+    const results: Array<'ok' | 'invalid' | 'retry' | 'rejected'> = []
     let configured = true
     for (let i = 0; i < pending.length && configured; i += FCM_MAX_PER_CALL) {
       const slice = pending.slice(i, i + FCM_MAX_PER_CALL)
@@ -294,6 +294,7 @@ async function deliverGroup(rows: repo.BroadcastRow[], ownerType: 'driver' | 'us
       const r = results[i]
       if (r === 'ok') o.successCount++
       else if (r === 'invalid') { o.failureCount++; o.invalidTokens++; dead.push(p.token) }
+      else if (r === 'rejected') o.failureCount++ // the message was refused, not the phone: keep the phone, do not retry
       else again.push(p)
     })
     pending = again

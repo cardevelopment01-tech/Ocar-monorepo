@@ -107,6 +107,17 @@ describe('sendPush: a picture', () => {
     expect(one.android.notification.imageUrl).toBe('https://cdn.example.com/a.jpg')
   })
 
+  it('a refused picture does not remove any phone: with a picture, "invalid argument" is the message being refused, not the phone', async () => {
+    sendEach.mockResolvedValue({ successCount: 0, failureCount: 2, responses: [badArg, badArg] })
+    const res = await sendPush(['a', 'b'], { title: 'T', body: 'B', imageUrl: 'https://cdn.example.com/bad.jpg' }, [{ notificationId: '1' }, { notificationId: '2' }])
+    expect(res.tokenResults).toEqual(['rejected', 'rejected'])
+    expect(res.invalidTokens).toEqual([]) // nothing to delete
+    expect(res.transientFailure).toBe(false) // and nothing worth retrying
+    // a genuinely dead phone is still removed, picture or not
+    sendEach.mockResolvedValue({ successCount: 0, failureCount: 1, responses: [dead] })
+    expect((await sendPush(['c'], { title: 'T', body: 'B', imageUrl: 'https://cdn.example.com/a.jpg' }, [{ notificationId: '3' }])).invalidTokens).toEqual(['c'])
+  })
+
   it('without a picture nothing about an image is sent', async () => {
     sendEachForMulticast.mockResolvedValue({ successCount: 1, failureCount: 0, responses: [ok] })
     await sendPush(['a'], { title: 'T', body: 'B' })

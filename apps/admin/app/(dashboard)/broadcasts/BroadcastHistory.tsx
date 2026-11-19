@@ -39,6 +39,7 @@ export default function BroadcastHistory({ refreshKey }: { refreshKey: number })
   const [cityNames, setCityNames] = useState<ReadonlyMap<number, string>>(new Map())
   const [categoryNames, setCategoryNames] = useState<ReadonlyMap<number, string>>(new Map())
   const inFlight = useRef(false)
+  const reloadAfter = useRef(false)
 
   useEffect(() => {
     cityApi.list().then((cs) => setCityNames(new Map(cs.map((c) => [c.id, c.name])))).catch(() => {})
@@ -47,7 +48,8 @@ export default function BroadcastHistory({ refreshKey }: { refreshKey: number })
 
   // Reloads the newest page. Rows already loaded further down are kept, so a refresh never collapses a list the admin was reading.
   const load = useCallback(async () => {
-    if (inFlight.current) return
+    // A request already running may have started before this one was asked for (e.g. just sent): run once more when it ends.
+    if (inFlight.current) { reloadAfter.current = true; return }
     inFlight.current = true
     try {
       const page = await broadcastApi.list({ limit: 20 })
@@ -63,6 +65,7 @@ export default function BroadcastHistory({ refreshKey }: { refreshKey: number })
     } finally {
       inFlight.current = false
       setLoading(false)
+      if (reloadAfter.current) { reloadAfter.current = false; void load() }
     }
   }, [])
 

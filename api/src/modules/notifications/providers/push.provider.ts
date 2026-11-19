@@ -48,7 +48,8 @@ export interface SendPushResult {
   // What happened to each token, in the order given: 'ok', 'invalid' (dead registration, remove it) or 'retry' (FCM/network trouble a
   // later attempt could fix). Absent when nothing was sent (push not configured). Lets a caller that sends one message to many people
   // tell who got it; existing callers ignore it.
-  tokenResults?: Array<'ok' | 'invalid' | 'retry'>
+  // 'rejected': Firebase refused this message itself (e.g. its picture link), not the phone, so the phone is kept and a retry will not help.
+  tokenResults?: Array<'ok' | 'invalid' | 'retry' | 'rejected'>
 }
 
 const NOTHING_SENT: SendPushResult = { invalidTokens: [], successCount: 0, failureCount: 0, transientFailure: false }
@@ -156,11 +157,17 @@ export async function sendPush(tokens: string[], msg: PushMessage, perTokenData?
     }
 
     const invalidTokens: string[] = []
-    const tokenResults: Array<'ok' | 'invalid' | 'retry'> = []
+    const tokenResults: Array<'ok' | 'invalid' | 'retry' | 'rejected'> = []
     let transientFailure = false
     response.responses.forEach((r, i) => {
       if (r.success) { tokenResults.push('ok'); return }
       const code = r.error?.code
+      // With a picture on the message, 'invalid-argument' most likely means the message (the picture link) was refused, which says nothing
+      // about the phone: removing every phone because of one bad link would silence a whole audience, ride requests included.
+      if (code === 'messaging/invalid-argument' && msg.imageUrl) {
+        tokenResults.push('rejected')
+        return
+      }
       if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-argument') {
         const badToken = tokens[i]
         if (badToken) invalidTokens.push(badToken)

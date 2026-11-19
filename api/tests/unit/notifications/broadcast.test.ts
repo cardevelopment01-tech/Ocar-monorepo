@@ -230,7 +230,7 @@ describe('createBroadcast', () => {
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ afterState: expect.objectContaining({ imageUrl: 'https://cdn.example.com/a.jpg', link: 'wallet' }) }))
   })
 
-  it('refuses a screen the audience's app cannot open (a rider app has no "wallet"), before anything is counted or stored', async () => {
+  it('refuses a screen the audience app cannot open (a rider app has no "wallet"), before anything is counted or stored', async () => {
     await expect(createBroadcast({ ...input, audience: { role: 'rider' as const }, link: 'wallet' }, 1n, null)).rejects.toMatchObject({ httpStatus: 422 })
     await expect(createBroadcast({ ...input, link: 'offers' }, 1n, null)).rejects.toMatchObject({ httpStatus: 422 }) // driver has no 'offers'
     expect(query).not.toHaveBeenCalled()
@@ -392,6 +392,18 @@ describe('runBroadcast', () => {
     expect(recorded()).toEqual([
       { id: 'n1', attempted: false, successCount: 0, failureCount: 0, invalidTokens: 0 },
       { id: 'n2', attempted: false, successCount: 0, failureCount: 0, invalidTokens: 0 },
+    ])
+  })
+
+  it('a message Firebase refuses (e.g. a bad picture link) is counted as failed for each person but removes no phone and is not retried', async () => {
+    sendPush.mockResolvedValue({ invalidTokens: [], successCount: 0, failureCount: 2, transientFailure: false, tokenResults: ['rejected', 'rejected'] })
+    db({ row: row({ image_url: 'https://cdn.example.com/bad.jpg' }), recipients: ['1', '2'] })
+    await runBroadcast('9')
+    expect(sendPush).toHaveBeenCalledTimes(1) // not retried
+    expect(deleteTokens).not.toHaveBeenCalled() // every phone kept
+    expect(recorded()).toEqual([
+      { id: 'n1', attempted: true, successCount: 0, failureCount: 1, invalidTokens: 0 },
+      { id: 'n2', attempted: true, successCount: 0, failureCount: 1, invalidTokens: 0 },
     ])
   })
 
