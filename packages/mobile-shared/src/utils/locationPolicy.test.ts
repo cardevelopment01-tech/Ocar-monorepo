@@ -7,6 +7,8 @@ import {
   isFresh,
   shouldGeocode,
   isApproximate,
+  needsPickupConfirm,
+  PICKUP_CONFIRM_M,
   movedBeyondGeocodeReuse,
   partializeLocation,
   pickBest,
@@ -169,5 +171,22 @@ describe('isApproximate', () => {
     expect(isApproximate('fine', 500)).toBe(false)
     expect(isApproximate('fine', 501)).toBe(true)
     expect(isApproximate('unknown', null)).toBe(false) // no data is not evidence of a rough fix
+  })
+})
+
+describe('needsPickupConfirm', () => {
+  it('trusts a fix at or under the limit and asks above it', () => {
+    expect(needsPickupConfirm('fine', 8)).toBe(false)
+    expect(needsPickupConfirm('fine', PICKUP_CONFIRM_M)).toBe(false)
+    expect(needsPickupConfirm('fine', PICKUP_CONFIRM_M + 1)).toBe(true)
+    expect(needsPickupConfirm('fine', 800)).toBe(true)
+  })
+  it('always asks on approximate-only permission', () => {
+    expect(needsPickupConfirm('coarse', 5)).toBe(true)
+    expect(needsPickupConfirm('coarse', null)).toBe(true)
+  })
+  it('does not ask when the OS reported no accuracy', () => {
+    expect(needsPickupConfirm('fine', null)).toBe(false)
+    expect(needsPickupConfirm('unknown', null)).toBe(false)
   })
 })

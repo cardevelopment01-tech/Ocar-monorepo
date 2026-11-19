@@ -27,6 +27,15 @@ export type PermissionLevel = 'fine' | 'coarse' | 'unknown'
 export function isApproximate(permissionLevel: PermissionLevel, accuracy: number | null): boolean {
   return permissionLevel === 'coarse' || (accuracy !== null && accuracy > APPROX_ACCURACY_M)
 }
+/** A pickup placed from a fix rougher than this (metres) is not trusted: on a narrow or divided road 50 m is the other
+ *  side of the street, so the rider drags the pin to where they will stand instead. A fix with no reported accuracy is
+ *  not evidence either way, so it is trusted (same as isApproximate). */
+export const PICKUP_CONFIRM_M = 50
+
+/** The live fix cannot place a pickup by itself: approximate permission, or an accuracy worse than PICKUP_CONFIRM_M. */
+export function needsPickupConfirm(permissionLevel: PermissionLevel, accuracy: number | null): boolean {
+  return isApproximate(permissionLevel, accuracy) || (accuracy !== null && accuracy > PICKUP_CONFIRM_M)
+}
 export const OLD_MS = 30 * 60_000
 export const FIX_TIMEOUT_MS = 8000
 export const GEOCODE_REUSE_M = 150

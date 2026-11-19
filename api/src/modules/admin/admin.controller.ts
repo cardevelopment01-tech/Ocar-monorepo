@@ -335,6 +335,7 @@ export async function postCategory(
         .replace(/\s+/g, "-"),
       display_name: String(req.body.display_name ?? ""),
       max_passengers: Number(req.body.max_passengers ?? 4),
+      luggage_capacity: Number(req.body.luggage_capacity ?? 2),
       is_active: req.body.is_active !== false,
     });
     res.status(201).json(cat);
@@ -352,12 +353,15 @@ export async function patchCategory(
     const catData: {
       display_name?: string;
       max_passengers?: number;
+      luggage_capacity?: number;
       is_active?: boolean;
     } = {};
     if (req.body.display_name !== undefined)
       catData.display_name = String(req.body.display_name);
     if (req.body.max_passengers != null)
       catData.max_passengers = Number(req.body.max_passengers);
+    if (req.body.luggage_capacity != null)
+      catData.luggage_capacity = Number(req.body.luggage_capacity);
     if (req.body.is_active !== undefined)
       catData.is_active = Boolean(req.body.is_active);
     const cat = await service.updateCategory(
@@ -444,6 +448,7 @@ export async function postModel(
       typical_category_id: req.body.typical_category_id
         ? String(req.body.typical_category_id)
         : null,
+      fuel_types: req.body.fuel_types ?? null,
       is_active: req.body.is_active !== false,
     });
     res.status(201).json(model);
@@ -461,9 +466,11 @@ export async function patchModel(
     const data: {
       name?: string;
       typical_category_id?: string | null;
+      fuel_types?: unknown;
       is_active?: boolean;
     } = {};
     if (req.body.name !== undefined) data.name = String(req.body.name);
+    if ("fuel_types" in req.body) data.fuel_types = req.body.fuel_types;
     if ("typical_category_id" in req.body)
       data.typical_category_id = req.body.typical_category_id
         ? String(req.body.typical_category_id)
@@ -756,7 +763,8 @@ export async function postAdminSurgeEvent(
 ): Promise<void> {
   try {
     const surge = await service.createAdminSurgeEvent({
-      cityId: Number(req.body.city_id),
+      // An explicit null means every city (the default); a missing field must not, so it stays NaN and is rejected.
+      cityId: req.body.city_id === null ? null : Number(req.body.city_id),
       categoryId:
         req.body.category_id != null ? Number(req.body.category_id) : null,
       multiplier: Number(req.body.multiplier),

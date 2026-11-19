@@ -77,6 +77,8 @@ export interface AdminDriverDetail {
     seating_capacity: number
     luggage_capacity: number
     ac_availability: boolean
+    /** The driver could not find their model: an admin confirms the model and category. */
+    needs_model_review: boolean
     category: string
     brand: string
     category_id: string | null
@@ -200,6 +202,7 @@ export interface AdminVehicleCategory {
   slug: string
   display_name: string
   max_passengers: number
+  luggage_capacity: number
   is_active: boolean
   created_at: string
   driver_count: number
@@ -219,6 +222,8 @@ export interface AdminVehicleModel {
   brand_id: string
   name: string
   typical_category_id: string | null
+  /** Fuel types the model is sold with; null = any. */
+  fuel_types: string[] | null
   is_active: boolean
   created_at: string
   brand_name: string
@@ -274,7 +279,8 @@ export interface ExpiringVehicleDoc {
 
 export interface AdminSurgeEvent {
   id: number
-  city_id: number
+  /** null = applies to every city (the default). */
+  city_id: number | null
   city_name: string
   category_id: number | null
   category_name: string | null

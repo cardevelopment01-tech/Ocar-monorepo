@@ -35,9 +35,9 @@ export interface VehicleInfoPayload {
   registration_date?: string
 }
 
-export type VehicleCategory = { id: number; slug: string; display_name: string; max_passengers: number }
+export type VehicleCategory = { id: number; slug: string; display_name: string; max_passengers: number; luggage_capacity?: number }
 export type VehicleBrand = { id: number; name: string }
-export type VehicleModel = { id: number; name: string; typical_category_id: number | null }
+export type VehicleModel = { id: number; name: string; typical_category_id: number | null; fuel_types?: string[] | null }
 
 export type DocumentStatus = {
   identity: { license_number: string | null; aadhaar_number: string | null }

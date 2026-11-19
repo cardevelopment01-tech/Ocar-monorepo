@@ -315,14 +315,14 @@ export async function setAdminStatus(params: {
 export async function listCategories() { return repo.listAdminCategories() }
 
 export async function createCategory(data: {
-  slug: string; display_name: string; max_passengers: number; is_active: boolean
+  slug: string; display_name: string; max_passengers: number; luggage_capacity: number; is_active: boolean
 }) {
   if (!data.slug || !data.display_name) throw createHttpError(AppErrors.VALIDATION_ERROR)
   return repo.createCategory(data)
 }
 
 export async function updateCategory(id: bigint, data: {
-  display_name?: string; max_passengers?: number; is_active?: boolean
+  display_name?: string; max_passengers?: number; luggage_capacity?: number; is_active?: boolean
 }) {
   const updated = await repo.updateCategory(id, data)
   if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
@@ -346,24 +346,42 @@ export async function listModels(brandId?: string) {
   return repo.listAdminModels(brandId ? BigInt(brandId) : undefined)
 }
 
+const MODEL_FUELS = ['petrol', 'diesel', 'cng', 'electric']
+
+// null / empty = the model is not restricted. Anything else must be a set of known fuel types.
+function parseModelFuels(raw: unknown): string[] | null {
+  if (raw === null || raw === undefined) return null
+  if (!Array.isArray(raw) || raw.some((f) => typeof f !== 'string' || !MODEL_FUELS.includes(f))) {
+    throw httpError(422, 'Fuel types must be petrol, diesel, cng or electric.', AppErrors.VALIDATION_ERROR.code)
+  }
+  return raw.length === 0 ? null : [...new Set(raw as string[])]
+}
+
 export async function createModel(data: {
-  brand_id: string; name: string; typical_category_id?: string | null; is_active: boolean
+  brand_id: string; name: string; typical_category_id?: string | null; fuel_types?: unknown; is_active: boolean
 }) {
   if (!data.brand_id || !data.name) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  // The category is what a driver of this model is registered under, so a model cannot exist without one.
+  if (!data.typical_category_id) throw httpError(422, 'Choose the category for this model.', AppErrors.VALIDATION_ERROR.code)
   return repo.createModel({
     brand_id: BigInt(data.brand_id),
     name: data.name,
-    typical_category_id: data.typical_category_id ? BigInt(data.typical_category_id) : null,
+    typical_category_id: BigInt(data.typical_category_id),
+    fuel_types: parseModelFuels(data.fuel_types),
     is_active: data.is_active,
   })
 }
 
 export async function updateModel(id: bigint, data: {
-  name?: string; typical_category_id?: string | null; is_active?: boolean
+  name?: string; typical_category_id?: string | null; fuel_types?: unknown; is_active?: boolean
 }) {
   const payload: Parameters<typeof repo.updateModel>[1] = {}
   if (data.name !== undefined) payload.name = data.name
-  if ('typical_category_id' in data) payload.typical_category_id = data.typical_category_id ? BigInt(data.typical_category_id) : null
+  if ('typical_category_id' in data) {
+    if (!data.typical_category_id) throw httpError(422, 'A model needs a category.', AppErrors.VALIDATION_ERROR.code)
+    payload.typical_category_id = BigInt(data.typical_category_id)
+  }
+  if ('fuel_types' in data) payload.fuel_types = parseModelFuels(data.fuel_types)
   if (data.is_active !== undefined) payload.is_active = data.is_active
   const updated = await repo.updateModel(id, payload)
   if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
@@ -585,7 +603,19 @@ export async function createAdminRateCard(data: Parameters<typeof repo.createAdm
 
 export async function createAdminSurgeEvent(data: Parameters<typeof repo.createAdminSurgeEvent>[0]) {
   if (data.multiplier < 1 || data.multiplier > 5) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  const posInt = (n: number) => Number.isInteger(n) && n > 0
+  if (data.cityId !== null && !posInt(data.cityId)) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (data.categoryId !== null && !posInt(data.categoryId)) throw createHttpError(AppErrors.VALIDATION_ERROR)
   if (!data.startsAt || !data.endsAt) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  // A time with no zone ("2026-11-19T07:26") is read as UTC by the database, which silently shifts an IST entry by 5h30:
+  // require an explicit zone, then store the normalised instant.
+  const ISO_WITH_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/
+  const startMs = Date.parse(data.startsAt)
+  const endMs = Date.parse(data.endsAt)
+  if (!ISO_WITH_ZONE.test(data.startsAt) || !ISO_WITH_ZONE.test(data.endsAt) || Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs || endMs <= Date.now()) {
+    throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
+  data = { ...data, startsAt: new Date(startMs).toISOString(), endsAt: new Date(endMs).toISOString() }
   return repo.createAdminSurgeEvent(data)
 }
 

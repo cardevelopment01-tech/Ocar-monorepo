@@ -341,7 +341,7 @@ export async function getDriverById(
        d.*,
        v.id AS vehicle_id, v.number_plate, v.vehicle_name, v.model_year,
        v.color, v.fuel_type, v.seating_capacity, v.luggage_capacity, v.ac_availability,
-       v.category_id, v.brand_id, v.model_id,
+       v.category_id, v.brand_id, v.model_id, v.needs_model_review,
        vc.display_name AS vehicle_category,
        vb.name AS vehicle_brand,
        dw.balance AS wallet_balance, dw.is_frozen AS wallet_is_frozen,
@@ -473,6 +473,7 @@ export async function getDriverById(
           seating_capacity: r.seating_capacity as number,
           luggage_capacity: r.luggage_capacity as number,
           ac_availability: r.ac_availability as boolean,
+          needs_model_review: r.needs_model_review as boolean,
           category_id: r.category_id ? String(r.category_id) : null,
           brand_id: r.brand_id ? String(r.brand_id) : null,
           model_id: r.model_id ? String(r.model_id) : null,
@@ -1091,7 +1092,7 @@ export async function updateDriverVehicle(
     if (setClauses.length > 0) {
       values.push(vehicleId);
       await client.query(
-        `UPDATE driver_vehicles SET ${setClauses.join(", ")}, updated_at = now() WHERE id = $${values.length}`,
+        `UPDATE driver_vehicles SET ${setClauses.join(", ")}${fields.model_id != null ? ", needs_model_review = false" : ""}, updated_at = now() WHERE id = $${values.length}`,
         values,
       );
     }
@@ -1126,7 +1127,7 @@ export async function updateDriverVehicle(
 
 export async function listAdminCategories(): Promise<AdminVehicleCategory[]> {
   const res = await pool.query(
-    `SELECT vc.id, vc.slug, vc.display_name, vc.max_passengers, vc.is_active, vc.created_at,
+    `SELECT vc.id, vc.slug, vc.display_name, vc.max_passengers, vc.luggage_capacity, vc.is_active, vc.created_at,
             COUNT(dv.id)::int AS driver_count
      FROM vehicle_categories vc
      LEFT JOIN driver_vehicles dv ON dv.category_id = vc.id
@@ -1138,6 +1139,7 @@ export async function listAdminCategories(): Promise<AdminVehicleCategory[]> {
     slug: r.slug as string,
     display_name: r.display_name as string,
     max_passengers: r.max_passengers as number,
+    luggage_capacity: r.luggage_capacity as number,
     is_active: r.is_active as boolean,
     created_at: r.created_at as string,
     driver_count: r.driver_count as number,
@@ -1148,13 +1150,14 @@ export async function createCategory(data: {
   slug: string;
   display_name: string;
   max_passengers: number;
+  luggage_capacity: number;
   is_active: boolean;
 }): Promise<AdminVehicleCategory> {
   const res = await pool.query(
-    `INSERT INTO vehicle_categories (slug, display_name, max_passengers, is_active)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, slug, display_name, max_passengers, is_active, created_at`,
-    [data.slug, data.display_name, data.max_passengers, data.is_active],
+    `INSERT INTO vehicle_categories (slug, display_name, max_passengers, luggage_capacity, is_active)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, slug, display_name, max_passengers, luggage_capacity, is_active, created_at`,
+    [data.slug, data.display_name, data.max_passengers, data.luggage_capacity, data.is_active],
   );
   const r = res.rows[0];
   await invalidate(VEHICLE_CATEGORIES_ALL_KEY);
@@ -1163,6 +1166,7 @@ export async function createCategory(data: {
     slug: r.slug,
     display_name: r.display_name,
     max_passengers: r.max_passengers,
+    luggage_capacity: r.luggage_capacity,
     is_active: r.is_active,
     created_at: r.created_at,
     driver_count: 0,
@@ -1171,7 +1175,7 @@ export async function createCategory(data: {
 
 export async function updateCategory(
   id: bigint,
-  data: { display_name?: string; max_passengers?: number; is_active?: boolean },
+  data: { display_name?: string; max_passengers?: number; luggage_capacity?: number; is_active?: boolean },
 ): Promise<AdminVehicleCategory | null> {
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -1184,6 +1188,10 @@ export async function updateCategory(
     sets.push(`max_passengers = $${p++}`);
     params.push(data.max_passengers);
   }
+  if (data.luggage_capacity !== undefined) {
+    sets.push(`luggage_capacity = $${p++}`);
+    params.push(data.luggage_capacity);
+  }
   if (data.is_active !== undefined) {
     sets.push(`is_active = $${p++}`);
     params.push(data.is_active);
@@ -1192,7 +1200,7 @@ export async function updateCategory(
   params.push(id);
   const res = await pool.query(
     `UPDATE vehicle_categories SET ${sets.join(", ")} WHERE id = $${p}
-     RETURNING id, slug, display_name, max_passengers, is_active, created_at`,
+     RETURNING id, slug, display_name, max_passengers, luggage_capacity, is_active, created_at`,
     params,
   );
   if (!res.rows.length) return null;
@@ -1203,6 +1211,7 @@ export async function updateCategory(
     slug: r.slug,
     display_name: r.display_name,
     max_passengers: r.max_passengers,
+    luggage_capacity: r.luggage_capacity,
     is_active: r.is_active,
     created_at: r.created_at,
     driver_count: 0,
@@ -1292,7 +1301,7 @@ export async function listAdminModels(
   const params: unknown[] = [];
   const where = brandId ? (params.push(brandId), "WHERE vm.brand_id = $1") : "";
   const res = await pool.query(
-    `SELECT vm.id, vm.brand_id, vm.name, vm.typical_category_id, vm.is_active, vm.created_at,
+    `SELECT vm.id, vm.brand_id, vm.name, vm.typical_category_id, vm.fuel_types, vm.is_active, vm.created_at,
             vb.name AS brand_name,
             vc.display_name AS typical_category_name
      FROM vehicle_models vm
@@ -1309,6 +1318,7 @@ export async function listAdminModels(
     typical_category_id: r.typical_category_id
       ? String(r.typical_category_id)
       : null,
+    fuel_types: (r.fuel_types as string[] | null) ?? null,
     is_active: r.is_active as boolean,
     created_at: r.created_at as string,
     brand_name: r.brand_name as string,
@@ -1320,16 +1330,18 @@ export async function createModel(data: {
   brand_id: bigint;
   name: string;
   typical_category_id?: bigint | null;
+  fuel_types?: string[] | null;
   is_active: boolean;
 }): Promise<AdminVehicleModel> {
   const res = await pool.query(
-    `INSERT INTO vehicle_models (brand_id, name, typical_category_id, is_active)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, brand_id, name, typical_category_id, is_active, created_at`,
+    `INSERT INTO vehicle_models (brand_id, name, typical_category_id, fuel_types, is_active)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, brand_id, name, typical_category_id, fuel_types, is_active, created_at`,
     [
       data.brand_id,
       data.name,
       data.typical_category_id ?? null,
+      data.fuel_types ?? null,
       data.is_active,
     ],
   );
@@ -1341,6 +1353,7 @@ export async function createModel(data: {
     typical_category_id: r.typical_category_id
       ? String(r.typical_category_id)
       : null,
+    fuel_types: r.fuel_types ?? null,
     is_active: r.is_active,
     created_at: r.created_at,
     brand_name: "",
@@ -1353,6 +1366,7 @@ export async function updateModel(
   data: {
     name?: string;
     typical_category_id?: bigint | null;
+    fuel_types?: string[] | null;
     is_active?: boolean;
   },
 ): Promise<AdminVehicleModel | null> {
@@ -1367,6 +1381,10 @@ export async function updateModel(
     sets.push(`typical_category_id = $${p++}`);
     params.push(data.typical_category_id ?? null);
   }
+  if ("fuel_types" in data) {
+    sets.push(`fuel_types = $${p++}`);
+    params.push(data.fuel_types ?? null);
+  }
   if (data.is_active !== undefined) {
     sets.push(`is_active = $${p++}`);
     params.push(data.is_active);
@@ -1375,7 +1393,7 @@ export async function updateModel(
   params.push(id);
   const res = await pool.query(
     `UPDATE vehicle_models SET ${sets.join(", ")} WHERE id = $${p}
-     RETURNING id, brand_id, name, typical_category_id, is_active, created_at`,
+     RETURNING id, brand_id, name, typical_category_id, fuel_types, is_active, created_at`,
     params,
   );
   if (!res.rows.length) return null;
@@ -1387,6 +1405,7 @@ export async function updateModel(
     typical_category_id: r.typical_category_id
       ? String(r.typical_category_id)
       : null,
+    fuel_types: r.fuel_types ?? null,
     is_active: r.is_active,
     created_at: r.created_at,
     brand_name: "",
@@ -2026,10 +2045,10 @@ export async function listAdminRateCardHistory() {
 export async function listAdminSurgeEvents() {
   const res = await pool.query(
     `SELECT se.*,
-            c.name AS city_name,
+            COALESCE(c.name, 'All cities') AS city_name,
             vc.display_name AS category_name
      FROM surge_events se
-     JOIN cities c ON c.id = se.city_id
+     LEFT JOIN cities c ON c.id = se.city_id
      LEFT JOIN vehicle_categories vc ON vc.id = se.category_id
      ORDER BY se.created_at DESC`,
   );
@@ -2042,7 +2061,7 @@ export async function listAdminSurgeEvents() {
 // reuses pricing.repository.ts's invalidateSurgeCache rather than duplicating
 // its branching (null-category enumeration) logic here.
 export async function createAdminSurgeEvent(data: {
-  cityId: number;
+  cityId: number | null;
   categoryId: number | null;
   multiplier: number;
   reason: string | null;
@@ -2084,7 +2103,7 @@ export async function cancelAdminSurgeEvent(id: bigint, adminId: bigint) {
   const row = res.rows[0] ?? null;
   if (row)
     await invalidateSurgeCache(
-      Number(row.city_id),
+      row.city_id === null ? null : Number(row.city_id),
       row.category_id === null ? null : Number(row.category_id),
     );
   return row;

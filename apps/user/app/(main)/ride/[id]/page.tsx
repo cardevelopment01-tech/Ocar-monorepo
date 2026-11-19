@@ -10,7 +10,7 @@ import { rideApi, type RideDetail, type RideStop } from '@/lib/ride-api'
 import RouteTimeline from '@/components/route/RouteTimeline'
 import { safetyApi } from '@/lib/safety-api'
 import { formatReturnAt } from '@/lib/utils'
-import { formatEta, statusShowsEta, getApiErrorMessage } from '@ocar/shared'
+import { driverAtPickup, formatEta, statusShowsEta, getApiErrorMessage } from '@ocar/shared'
 import { DriverCard as DriverCardView, MeetAtRow, PinBand, driverViewFromRide } from '@/components/ride/DriverIdentity'
 import { geoApi } from '@/lib/geo-api'
 import { connectSocket, joinRideRoom, leaveRideRoom, getSocket } from '@/lib/socket'
@@ -219,6 +219,8 @@ export default function RidePage() {
   const [ride,           setRide]           = useState<RideDetail | null>(null)
   const [rideStatus,     setRideStatus]     = useState<string>('requested')
   const [driverPos,      setDriverPos]      = useState<[number, number] | undefined>(undefined)
+  // driverPos can come from the ride record (possibly stale); only a live socket fix may say "driver is here".
+  const [driverLive,     setDriverLive]     = useState(false)
   const [encodedPolyline, setEncodedPolyline] = useState<string | undefined>(undefined)
   const [liveEta, setLiveEta] = useState<{ etaMin: number; distanceKm: number } | null>(null)
   // Timestamp of the last server ETA fetch — drives the 1s client-side countdown
@@ -494,6 +496,7 @@ export default function RidePage() {
     }
     const onDriverLocation = (data: { lat: number; lng: number; heading: number }) => {
       setDriverPos([data.lat, data.lng])
+      setDriverLive(true)
     }
     // Road-snapped trail segments (see api rides.service.ts updateLocation) —
     // replaces raw per-ping breadcrumb points so the line follows actual roads
@@ -759,8 +762,12 @@ export default function RidePage() {
       ? { label: 'Rental in progress', sub: 'Your rental is under way' }
       : {}),
   }
+  // A stale route ETA can't say the driver is here; the live distance can (see driverAtPickup).
+  const [wasAtPickup, setWasAtPickup] = useState(false)
+  const atPickup = driverAtPickup(status, driverLive && driverPos ? haversineMetres(driverPos, pickupPos) : null, wasAtPickup)
+  useEffect(() => { setWasAtPickup(atPickup) }, [atPickup])
   // No driver fix yet -> no ETA; say so instead of leaving the banner silently blank.
-  const bannerSub = (cfg as { sub?: string }).sub ?? (status === 'accepted' && !driverPos ? 'Locating your driver…' : undefined)
+  const bannerSub = atPickup ? 'Head to your pickup point' : (cfg as { sub?: string }).sub ?? (status === 'accepted' && !driverPos ? 'Locating your driver…' : undefined)
   const hasDriver = rideStatus !== 'requested' && rideStatus !== 'scheduled'
 
   const fare = ride?.total_final != null
@@ -905,7 +912,7 @@ export default function RidePage() {
             </div>
 
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-gray-900 leading-tight">{cfg.label}</p>
+              <p className="text-sm font-bold text-gray-900 leading-tight">{atPickup ? 'Your driver is at the pickup' : cfg.label}</p>
               {bannerSub && <p className="text-xs text-gray-500 mt-0.5">{bannerSub}</p>}
             </div>
             {!autoNavCancelled && (status === 'completed' || status === 'cancelled' || status === 'no_drivers') && (
@@ -918,7 +925,7 @@ export default function RidePage() {
             )}
 
             {status === 'requested' && <SearchingDots />}
-            {displayEta && statusShowsEta(status) && (
+            {displayEta && statusShowsEta(status) && !atPickup && (
               <div className="flex-shrink-0 text-right">
                 <p className="text-sm font-bold text-gray-900 leading-tight tabular-nums">{formatEta(displayEta.etaMin, displayEta.distanceKm).time}</p>
                 <p className="text-[11px] text-gray-500 tabular-nums">{formatEta(displayEta.etaMin, displayEta.distanceKm).distance}</p>

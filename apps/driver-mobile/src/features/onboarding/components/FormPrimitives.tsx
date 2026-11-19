@@ -58,27 +58,30 @@ export function ChipGroup({ options, value, multiValue, onChange, columns }: { o
   )
 }
 
-export function Stepper({ value, min, max, unit, onChange }: { value: number; min: number; max: number; unit: string; onChange: (v: number) => void }) {
+// `locked` greys the whole stepper and ignores taps: the value is fixed elsewhere (e.g. seats come from the vehicle category).
+export function Stepper({ value, min, max, unit, onChange, locked }: { value: number; min: number; max: number; unit: string; onChange: (v: number) => void; locked?: boolean }) {
+  const minOff = locked || value <= min
+  const maxOff = locked || value >= max
   return (
-    <View style={styles.stepperCard}>
+    <View style={[styles.stepperCard, locked ? { opacity: 0.55 } : null]}>
       <Text style={styles.stepperValue}>{value}</Text>
       <Text style={styles.stepperUnit}>{value === 1 ? unit : `${unit}s`}</Text>
       <View style={styles.stepperBtnRow}>
         <Pressable
           onPress={() => onChange(Math.max(min, value - 1))}
-          disabled={value <= min}
+          disabled={minOff}
           hitSlop={8}
-          style={({ pressed }) => [styles.stepperBtn, value <= min ? styles.stepperBtnDisabled : null, pressed ? styles.pressedScale : null]}
+          style={({ pressed }) => [styles.stepperBtn, minOff ? styles.stepperBtnDisabled : null, pressed ? styles.pressedScale : null]}
         >
-          <Feather name="minus" size={14} color={colors.primary} />
+          <Feather name="minus" size={14} color={locked ? colors.ink400 : colors.primary} />
         </Pressable>
         <Pressable
           onPress={() => onChange(Math.min(max, value + 1))}
-          disabled={value >= max}
+          disabled={maxOff}
           hitSlop={8}
-          style={({ pressed }) => [styles.stepperBtn, value >= max ? styles.stepperBtnDisabled : null, pressed ? styles.pressedScale : null]}
+          style={({ pressed }) => [styles.stepperBtn, maxOff ? styles.stepperBtnDisabled : null, pressed ? styles.pressedScale : null]}
         >
-          <Feather name="plus" size={14} color={colors.primary} />
+          <Feather name="plus" size={14} color={locked ? colors.ink400 : colors.primary} />
         </Pressable>
       </View>
     </View>
