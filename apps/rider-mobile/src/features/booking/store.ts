@@ -10,6 +10,9 @@ interface BookingDraftState {
   /** True while the pickup is the rider's current location filled in automatically: it follows the live fix until the rider
    *  picks a place themselves. */
   pickupAuto: boolean
+  /** True once the rider has placed the pickup pin themselves on the pin screen. Every other way a pickup gets set (live
+   *  location, a searched address, the home pin) is only a starting point, so booking sends it through that screen first. */
+  pickupConfirmed: boolean
   drop: BookingPlace | null
   distanceKm: number | null
   durationMin: number | null
@@ -39,13 +42,16 @@ interface BookingDraftState {
   riderName: string
   riderPhone: string
   setPickup: (place: BookingPlace, auto?: boolean) => void
+  /** The rider's own pin placement: a chosen, confirmed pickup. */
+  confirmPickup: (place: BookingPlace) => void
   clearPickup: () => void
   setDrop: (place: BookingPlace) => void
   setRoute: (distanceKm: number, durationMin: number, originCityId: number | null, routePoints: [number, number][]) => void
   setSelectedCategoryId: (id: number) => void
   setRideType: (rideType: RideType, declared?: boolean, tripMode?: TripMode) => void
   /** Begins a new search from Home: sets the ride type like setRideType and clears everything the previous search left behind
-   *  (destination, stops, route, chosen category, trip hours). The pickup, the scheduled time and who it is for are kept. */
+   *  (destination, stops, route, chosen category, trip hours). The pickup, the scheduled time and who it is for are kept, but the
+   *  pickup is no longer confirmed: every trip goes through the pin screen. */
   startSearch: (rideType: RideType, declared?: boolean, tripMode?: TripMode) => void
   setTripHours: (hours: number) => void
   addStop: (place: BookingPlace) => void
@@ -63,6 +69,7 @@ interface BookingDraftState {
 export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
   pickup: null,
   pickupAuto: false,
+  pickupConfirmed: false,
   drop: null,
   distanceKm: null,
   durationMin: null,
@@ -77,8 +84,9 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
   scheduledFor: null,
   riderName: '',
   riderPhone: '',
-  setPickup: (place, auto = false) => set({ pickup: place, pickupAuto: auto }),
-  clearPickup: () => set({ pickup: null, pickupAuto: false }),
+  setPickup: (place, auto = false) => set({ pickup: place, pickupAuto: auto, pickupConfirmed: false }),
+  confirmPickup: (place) => set({ pickup: place, pickupAuto: false, pickupConfirmed: true }),
+  clearPickup: () => set({ pickup: null, pickupAuto: false, pickupConfirmed: false }),
   setDrop: (place) => set({ drop: place }),
   setRoute: (distanceKm, durationMin, originCityId, routePoints) => set({ distanceKm, durationMin, originCityId, routePoints }),
   setSelectedCategoryId: (id) => set({ selectedCategoryId: id }),
@@ -89,6 +97,8 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
       rideType,
       rideTypeDeclared: declared,
       tripMode,
+      // The kept pickup is only a starting point for this new trip: the rider confirms the exact spot again on the pin screen.
+      pickupConfirmed: false,
       drop: null,
       distanceKm: null,
       durationMin: null,
@@ -118,6 +128,7 @@ export const useBookingDraftStore = create<BookingDraftState>()((set) => ({
     set({
       pickup: null,
       pickupAuto: false,
+      pickupConfirmed: false,
       drop: null,
       distanceKm: null,
       durationMin: null,

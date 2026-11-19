@@ -111,3 +111,35 @@ describe('booking draft store', () => {
     expect(state().tripHours).toBeNull()
   })
 })
+
+describe('pickupConfirmed', () => {
+  it('is set only by the rider placing the pin, and cleared by every other way the pickup changes', () => {
+    state().confirmPickup(place(1))
+    expect(state().pickup).toEqual(place(1))
+    expect(state().pickupConfirmed).toBe(true)
+    expect(state().pickupAuto).toBe(false)
+    state().setPickup(place(2)) // a searched address, the home pin: a starting point, not a confirmation
+    expect(state().pickupConfirmed).toBe(false)
+    state().confirmPickup(place(3))
+    state().setPickup(place(4), true) // live location
+    expect(state().pickupConfirmed).toBe(false)
+    state().confirmPickup(place(5))
+    state().clearPickup()
+    expect(state().pickupConfirmed).toBe(false)
+    state().confirmPickup(place(6))
+    state().reset()
+    expect(state().pickup).toBeNull()
+    expect(state().pickupConfirmed).toBe(false)
+  })
+})
+
+describe('startSearch and pickupConfirmed', () => {
+  it('keeps the pickup but asks for it to be confirmed again on every new search', () => {
+    state().confirmPickup(place(1))
+    state().setDrop(place(2))
+    state().startSearch('one_way')
+    expect(state().pickup).toEqual(place(1))
+    expect(state().pickupConfirmed).toBe(false)
+    expect(state().drop).toBeNull()
+  })
+})

@@ -2045,10 +2045,10 @@ export async function listAdminRateCardHistory() {
 export async function listAdminSurgeEvents() {
   const res = await pool.query(
     `SELECT se.*,
-            c.name AS city_name,
+            COALESCE(c.name, 'All cities') AS city_name,
             vc.display_name AS category_name
      FROM surge_events se
-     JOIN cities c ON c.id = se.city_id
+     LEFT JOIN cities c ON c.id = se.city_id
      LEFT JOIN vehicle_categories vc ON vc.id = se.category_id
      ORDER BY se.created_at DESC`,
   );
@@ -2061,7 +2061,7 @@ export async function listAdminSurgeEvents() {
 // reuses pricing.repository.ts's invalidateSurgeCache rather than duplicating
 // its branching (null-category enumeration) logic here.
 export async function createAdminSurgeEvent(data: {
-  cityId: number;
+  cityId: number | null;
   categoryId: number | null;
   multiplier: number;
   reason: string | null;
@@ -2103,7 +2103,7 @@ export async function cancelAdminSurgeEvent(id: bigint, adminId: bigint) {
   const row = res.rows[0] ?? null;
   if (row)
     await invalidateSurgeCache(
-      Number(row.city_id),
+      row.city_id === null ? null : Number(row.city_id),
       row.category_id === null ? null : Number(row.category_id),
     );
   return row;

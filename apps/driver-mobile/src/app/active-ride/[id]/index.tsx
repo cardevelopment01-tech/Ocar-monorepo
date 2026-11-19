@@ -26,6 +26,7 @@ import { GoogleGuidedMap, GUIDED_CONTROLS_HEIGHT } from '@/features/active-ride/
 import { SpeedAlertToast } from '@/features/active-ride/components/SpeedAlertToast'
 import { triggerSos } from '@/features/active-ride/safety-api'
 import { useDriverPositionStore } from '@/services/location/driverPositionStore'
+import { AT_PICKUP_M, haversineMetres } from '@/features/active-ride/geo'
 import { useSpeedAlert } from '@/features/active-ride/useSpeedAlert'
 import { useTripWindow } from '@/features/active-ride/useTripWindow'
 import { settledCash } from '@/features/active-ride/settledCash'
@@ -121,6 +122,10 @@ export default function ActiveRideScreen() {
   // accepted/driver_arrived (driver may be moving fast on an empty highway
   // approach with no ride constraint on it) and completed.
   const { alertKey, limitKmph } = useSpeedAlert(status === 'in_progress' || status === 'returning')
+  // Within a few metres of the pickup but not yet marked arrived: the rider already sees "your driver is at the
+  // pickup", so prompt the tap here too. A boolean selector, so it re-renders only when it flips.
+  const nearPickup = useDriverPositionStore((s) => status === 'accepted' && !!ride && s.position != null
+    && haversineMetres([s.position.lat, s.position.lng], [ride.originLat, ride.originLng]) <= AT_PICKUP_M)
   // Booked-time clock for hourly round trips (null copy = no window: one-way, rental, legacy pricing).
   const tripClock = useTripWindow(ride)
 
@@ -276,10 +281,10 @@ export default function ActiveRideScreen() {
     stageKey = 'arrived'
   } else {
     header = {
-      icon: 'navigation', label: 'Heading to pickup', title: ride.originAddress ?? 'Pickup location',
+      icon: 'navigation', label: nearPickup ? "You're at the pickup" : 'Heading to pickup', title: ride.originAddress ?? 'Pickup location',
       ...(roundTripBadge ? { badge: roundTripBadge } : {}),
     }
-    primary = <SlideToConfirm label="Slide when you arrive" doneLabel="Arrived" onConfirm={markArrivedAction} />
+    primary = <SlideToConfirm label={nearPickup ? 'Slide to mark arrived' : 'Slide when you arrive'} doneLabel="Arrived" onConfirm={markArrivedAction} />
     stageKey = 'pickup'
   }
 
@@ -291,6 +296,7 @@ export default function ActiveRideScreen() {
           destination={navigateTarget}
           stops={guidedStops}
           meterWait={ride.rideType === 'one_way'}
+          curbPickup={!isReturning && !showsDestination}
           onClose={() => setNavView('diy')}
           onStopResolved={refresh}
         />

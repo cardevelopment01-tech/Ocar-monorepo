@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { haversineMetres, simplifyPolyline, useRoomJoin } from '@ocar/mobile-shared'
-import { statusShowsEta } from '@ocar/shared'
+import { ageEta, driverAtPickup, statusShowsEta } from '@ocar/shared'
 import { socket } from '@/services/socket'
 import { fetchRide, fetchRouteLeg, fetchUnreadChatCount } from './api'
 import type { DriverCancelInfo, RideDetailExtra } from './types'
@@ -267,6 +267,22 @@ export function useRideTracking(rideId: string) {
   }, [routeMode, driverPos, driverLocated, ride, hasDest, stopsKey])
 
   const pickup = useMemo<[number, number]>(() => (ride ? [ride.originLat, ride.originLng] : [0, 0]), [ride])
+
+  // The route ETA is a snapshot fetched at most once a minute and never reads below 1 min, so it can't say
+  // "your driver is here". Count it down locally between fetches, and read the live distance to the pickup.
+  // The fetch time is taken during the render that first sees the new ETA (not in an effect, which runs after it), so the
+  // first paint of every ETA ages by zero rather than by the time since the previous one.
+  const etaAt = useMemo(() => Date.now(), [eta]) // eslint-disable-line react-hooks/exhaustive-deps -- re-stamp only when a new ETA arrives
+  const [etaTick, setEtaTick] = useState(0)
+  useEffect(() => {
+    if (!eta) return
+    const id = setInterval(() => setEtaTick((n) => n + 1), 15_000)
+    return () => clearInterval(id)
+  }, [eta])
+  const agedEta = useMemo(() => (eta ? ageEta(eta, Date.now() - etaAt) : null), [eta, etaAt, etaTick]) // eslint-disable-line react-hooks/exhaustive-deps -- etaTick only forces a re-age
+  const [wasAtPickup, setWasAtPickup] = useState(false)
+  const atPickup = !!ride && driverLocated && driverPos != null && driverAtPickup(ride.status, haversineMetres(driverPos, pickup), wasAtPickup)
+  useEffect(() => { setWasAtPickup(atPickup) }, [atPickup])
   const drop = useMemo<[number, number] | null>(() => (hasDest ? [ride!.destLat!, ride!.destLng!] : null), [ride, hasDest])
 
   return {
@@ -283,7 +299,8 @@ export function useRideTracking(rideId: string) {
     drop,
     routePoints,
     // stale value from the previous leg must not linger once the driver has arrived
-    eta: ride && statusShowsEta(ride.status) ? eta : null,
+    eta: ride && statusShowsEta(ride.status) && !atPickup ? agedEta : null,
+    atPickup,
     driverLocated,
     unreadChatCount,
     fareDrift,

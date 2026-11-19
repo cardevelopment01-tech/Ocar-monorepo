@@ -763,7 +763,8 @@ export async function postAdminSurgeEvent(
 ): Promise<void> {
   try {
     const surge = await service.createAdminSurgeEvent({
-      cityId: Number(req.body.city_id),
+      // An explicit null means every city (the default); a missing field must not, so it stays NaN and is rejected.
+      cityId: req.body.city_id === null ? null : Number(req.body.city_id),
       categoryId:
         req.body.category_id != null ? Number(req.body.category_id) : null,
       multiplier: Number(req.body.multiplier),

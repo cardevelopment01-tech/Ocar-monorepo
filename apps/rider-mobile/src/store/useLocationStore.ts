@@ -10,6 +10,7 @@ import {
   createLocationEngine,
   freshnessOf,
   isApproximate,
+  needsPickupConfirm,
   getLastKnownFix,
   partializeLocation,
   toFix,
@@ -330,6 +331,12 @@ export function useFreshness(): Freshness {
  *  A boolean selector, so it re-renders only when it flips. */
 export function useApproximateLocation(): boolean {
   return useLocationStore((s) => s.permission === 'granted' && isApproximate(s.permissionLevel, s.accuracy))
+}
+
+/** The live fix is too rough to place a pickup on its own (see PICKUP_CONFIRM_M): the rider pins the spot on the map instead.
+ *  A boolean selector, so it re-renders only when it flips. */
+export function usePickupNeedsConfirm(): boolean {
+  return useLocationStore((s) => s.permission === 'granted' && needsPickupConfirm(s.permissionLevel, s.accuracy))
 }
 
 /** Approximate-only permission (Android): the one case where the rider can fix it in Settings, so the only one we say so for. */

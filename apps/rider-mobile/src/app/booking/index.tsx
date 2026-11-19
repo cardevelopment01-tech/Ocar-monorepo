@@ -17,8 +17,9 @@ import { useAutocomplete } from '@/features/booking/hooks/useAutocomplete'
 import { useBookingDraftStore, type BookingPlace } from '@/features/booking/store'
 import type { RideType } from '@/features/booking/api'
 import { resolveInCityRoute, type TripMode } from '@/features/booking/cityRideRoute'
-import { useApproximateLocation, useFreshness, useLocationStore, useLocationTracking } from '@/store/useLocationStore'
+import { useApproximateLocation, useFreshness, useLocationStore, useLocationTracking, usePickupNeedsConfirm } from '@/store/useLocationStore'
 import { PreciseLocationNotice } from '@/features/home/PreciseLocationNotice'
+import { PickupConfirmNotice } from '@/features/home/PickupConfirmNotice'
 import { useRecentSearchesStore } from '@/store/useRecentSearchesStore'
 import { RedirectToast } from '@/features/booking/components/RedirectToast'
 import { sectionLabel } from '@/theme/homeTokens'
@@ -63,8 +64,10 @@ export default function BookingPickersScreen() {
   const pickup = useBookingDraftStore((s) => s.pickup)
   const drop = useBookingDraftStore((s) => s.drop)
   const pickupAuto = useBookingDraftStore((s) => s.pickupAuto)
+  const pickupConfirmed = useBookingDraftStore((s) => s.pickupConfirmed)
   const focused = useIsFocused()
   const approximate = useApproximateLocation()
+  const needsConfirm = usePickupNeedsConfirm()
   useLocationTracking(true, true) // placing a pickup: GPS-grade accuracy while this screen is on show
   const setPickup = useBookingDraftStore((s) => s.setPickup)
   const clearPickup = useBookingDraftStore((s) => s.clearPickup)
@@ -113,13 +116,15 @@ export default function BookingPickersScreen() {
   // The auto-filled pickup also follows the live fix (the rider walked, or the first fix was rough) until they choose a
   // place themselves (and not while they are editing it: a new pickup object closes the editor); one they chose is never moved.
   useEffect(() => {
-    // An approximate location (1-2 km off) must not become the pickup: the rider sets it on the map instead.
-    if (freshness !== 'live' || locLat === null || locLng === null || !focused || approximate || editingField === 'pickup') return
+    // An approximate location (1-2 km off) must not become the pickup: the rider sets it on the map instead. The same goes
+    // for a rough one (over ~50 m): that is the other side of a narrow road, so the rider pins the spot they will stand on.
+    // The fix usually tightens within seconds, and this effect re-runs when it does, so only a fix that stays rough asks.
+    if (freshness !== 'live' || locLat === null || locLng === null || !focused || approximate || needsConfirm || editingField === 'pickup') return
     if (pickup && (!pickupAuto || drop)) return // a chosen pickup never moves; and once a destination is set the quote is being built
     if (pickup && haversineMetres([pickup.lat, pickup.lng], [locLat, locLng]) < 30 && (pickup.address === (locAddress || 'Current Location') || !locAddress)) return
     if (!pickup) track('location_pickup_autofill', { age_s: Math.round(ageMs(useLocationStore.getState().fixedAt ?? 0, Date.now()) / 1000), source: useLocationStore.getState().source ?? 'none' })
     setPickup({ address: locAddress || 'Current Location', lat: locLat, lng: locLng }, true)
-  }, [pickup, pickupAuto, drop, focused, approximate, editingField, freshness, locLat, locLng, locAddress, setPickup])
+  }, [pickup, pickupAuto, drop, focused, approximate, needsConfirm, editingField, freshness, locLat, locLng, locAddress, setPickup])
   const [query, setQuery] = useState('')
   const [continuing, setContinuing] = useState(false)
   const [continueError, setContinueError] = useState<string | null>(null)
@@ -226,6 +231,12 @@ export default function BookingPickersScreen() {
   // chooser.
   async function handleContinue() {
     if (!pickup || !drop || continuing) return
+    // Every pickup starts as a guess (live GPS can be tens of metres off, a searched address lands on the building's centre):
+    // the rider sets the exact spot on the zoomed pin screen once, before the trip is quoted.
+    if (!pickupConfirmed) {
+      router.push({ pathname: '/booking/map-picker', params: { field: 'pickup' } })
+      return
+    }
     setContinueError(null)
     // A one-way or round trip from a place to itself is a 0 km trip at the minimum fare, not a booking. (A city
     // rental can start and end at the same place, so it is allowed through.)
@@ -295,15 +306,15 @@ export default function BookingPickersScreen() {
   const autoTriggeredRef = useRef<string | null>(null)
   useEffect(() => {
     if (!pickup || !drop) return
-    const key = `${pickup.lat},${pickup.lng}|${drop.lat},${drop.lng}`
+    const key = `${pickup.lat},${pickup.lng}|${drop.lat},${drop.lng}|${pickupConfirmed}`
     if (autoTriggeredRef.current === key) return
     autoTriggeredRef.current = key
     void handleContinue()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleContinue closes over pickup/drop/rideType already in this render; including it would refire every render
-  }, [pickup, drop])
+  }, [pickup, drop, pickupConfirmed])
 
   // Same wording as the home pill (pillTextFor), so both screens flip together at the 8 s fix cap.
-  const pickupLabel = pickup ? pickup.address || 'Set pickup location' : approximate ? 'Set pickup location' : pillTextFor(freshness, '').text
+  const pickupLabel = pickup ? pickup.address || 'Set pickup location' : approximate || (needsConfirm && freshness === 'live') ? 'Set pickup location' : pillTextFor(freshness, '').text
   const canContinue = !!pickup && !!drop
 
   return (
@@ -325,6 +336,7 @@ export default function BookingPickersScreen() {
       </View>
 
       <PreciseLocationNotice />
+      {!pickup && freshness === 'live' ? <PickupConfirmNotice onPress={() => router.push({ pathname: '/booking/map-picker', params: { field: 'pickup' } })} /> : null}
 
       <View style={styles.headerBody}>
         {/* Fixed-height route card -- fields only ever show their own text or an

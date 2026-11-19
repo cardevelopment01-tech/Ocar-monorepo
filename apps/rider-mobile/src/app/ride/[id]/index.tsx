@@ -74,7 +74,7 @@ export default function RideTrackingScreen() {
   const insets = useSafeAreaInsets()
   const {
     ride, loading, loadError, socketConnected, driverCancelled, lastLocationAt,
-    driverPos, driverHeading, driverHeadingKnown, pickup, drop, routePoints, eta, driverLocated, unreadChatCount,
+    driverPos, driverHeading, driverHeadingKnown, pickup, drop, routePoints, eta, atPickup, driverLocated, unreadChatCount,
     fareDrift, dismissFareDrift, upgradeCategory, retry,
   } = useRideTracking(rideId)
   const canShare = ride ? canShareRide(ride) : false
@@ -392,7 +392,7 @@ export default function RideTrackingScreen() {
 
           {returnCabNoDriver ? <ReturnCabRecovery ride={ride} /> : null}
 
-          {returnCabNoDriver ? null : <StatusBanner status={status} eta={eta} totalKm={status === 'accepted' ? startKm : (ride.estimatedKm ?? null)}
+          {returnCabNoDriver ? null : <StatusBanner status={status} eta={eta} atPickup={atPickup} totalKm={status === 'accepted' ? startKm : (ride.estimatedKm ?? null)}
             {...(status === 'driver_arrived' && ride.startOtp ? { pin: ride.startOtp } : {})} {...(status === 'accepted' && !driverLocated ? { overrideSub: 'Locating your driver…' } : {})} />}
 
           {unreachableStop ? (
