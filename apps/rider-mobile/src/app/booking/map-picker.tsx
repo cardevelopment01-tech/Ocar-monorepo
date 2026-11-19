@@ -25,9 +25,9 @@ const YOU_FILL = 'rgba(37,99,235,0.07)'
 const YOU_HALO = 'rgba(37,99,235,0.16)'
 // Floating controls (back, hint, distance chip, recenter) share one height so their edges line up.
 const CONTROL = 44
-// A pickup starts at block level (~280 m across): close enough to tell which side of the road, wide enough to see the
+// A pickup starts at block level (~210 m across): close enough to tell which side of the road, wide enough to see the
 // junctions around it. It widens only as far as needed to keep the GPS accuracy ring in view. A destination starts wider.
-const PICKUP_DELTA_MIN = 0.0025
+const PICKUP_DELTA_MIN = 0.0019
 const PICKUP_DELTA_MAX = 0.004
 const DROP_DELTA = 0.02
 const pickupDelta = (accuracyM: number | null) =>
