@@ -130,6 +130,12 @@ export const IN_CITY_MAX_TRIP_DISTANCE_METRES = 15_000
 // A one-way or round trip whose pickup and drop are closer than this is the same place, not a trip.
 export const MIN_TRIP_DISTANCE_METRES = 100
 
+// A one-way ride is billed on the km and minutes actually driven, but never more than this far above or below the
+// estimate the rider was shown (which already follows stops added or skipped). Outside the band the fare is held at
+// the edge and the ride is flagged for ops, so one bad GPS trail cannot overcharge a rider or underpay a driver.
+export const ONE_WAY_FARE_BAND_OVER  = 0.25
+export const ONE_WAY_FARE_BAND_UNDER = 0.25
+
 // Rental overage: extra km/min are only billed once the trip runs past the package
 // limit PLUS this tolerance (GPS jitter / a few minutes of hand-over shouldn't cost
 // the rider). Only the part beyond limit + grace is charged.

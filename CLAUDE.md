@@ -123,6 +123,14 @@ smallest area → nearest centroid → id, so overlapping boundaries (Bhubaneswa
 Writes go through `admin.repository.ts` (`FOR UPDATE` + millisecond-precision `updated_at`
 compare; 409 `BOUNDARY_CHANGED` on a stale save) — never `geo.repository.updateCity`.
 
+### One-way (and city ride) billing
+The one-way estimate is a guide: at completion `verifyEndOTP` bills the km from the GPS trail (`getGpsTrackedDistanceKm`) and the
+minutes from server start/end times, on the ride's own rate card, surge and snapshot stop fees (`priceOneWay`). The result is
+held to +/-`ONE_WAY_FARE_BAND_*` (25%) around `total_estimated`, flagging the ride for ops when it hits the edge. No usable GPS
+trail = the estimate stands. Metered stop wait (`wait_charge`) is added on top once, and its minutes are left out of the billed
+time. `total_estimated` follows stops added or skipped mid-ride (`repriceOneWayRoute`), so the band is measured against an honest
+estimate. Round trips and rentals have their own settlement; do not route them through this.
+
 ### PayU collections
 Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`
 (browser) and `POST /payments/webhook/payu`: response hash → `verify_payment` (`unmappedstatus == 'captured'`,

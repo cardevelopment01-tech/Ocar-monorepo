@@ -64,6 +64,7 @@ import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/mod
 import {
   MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
   RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
+  ONE_WAY_FARE_BAND_OVER, ONE_WAY_FARE_BAND_UNDER,
   PICKUP_EDIT_RADIUS_METRES,
 } from '@/constants/limits'
 import { logger } from '@/lib/logger'
@@ -1685,11 +1686,39 @@ export function planStopOrder(
     .map(({ id, sequence }) => ({ id, sequence }))
 }
 
-// A one-way fare is the quote (total_estimated is what settles), priced on the route through its stops. So when a stop is
-// added or skipped, re-route the path with and without it on the server and move the fare by the difference: the rider
-// pays for the km the stop adds, and stops paying for km they no longer drive. The delta is applied to the quoted km
-// (not replaced by the server's), so it stays consistent with what the rider was shown at booking.
-// Never fails the stop change: a routing hiccup leaves the fare as it was and is logged.
+interface OneWaySnapshot {
+  estimated_km: string; estimated_min: string; is_return_cab: boolean; surge_multiplier: string
+  stop_count: number | null; stop_fare: string; total_estimated: string
+  rate_per_km: string; rate_per_min: string; min_fare: string; base_fare: string | null; return_rate_per_km: string | null
+}
+async function loadOneWaySnapshot(rideId: bigint): Promise<OneWaySnapshot | undefined> {
+  return (await pool.query<OneWaySnapshot>(
+    `SELECT fs.estimated_km, fs.estimated_min, fs.is_return_cab, fs.surge_multiplier, fs.stop_count, fs.stop_fare, fs.total_estimated,
+            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.base_fare, rc.return_rate_per_km
+     FROM fare_snapshots fs JOIN rate_cards rc ON rc.id = fs.rate_card_id WHERE fs.ride_id = $1`,
+    [rideId],
+  )).rows[0]
+}
+// The one-way formula on the ride's own rate card and surge. `withStops` adds the flat per-stop fees already on the snapshot.
+function priceOneWay(snap: OneWaySnapshot, km: number, min: number, withStops = false) {
+  const stops = withStops ? (snap.stop_count ?? 0) : 0
+  return calculateFare({
+    rate_card: {
+      rate_per_km: parseFloat(snap.rate_per_km), rate_per_min: parseFloat(snap.rate_per_min), min_fare: parseFloat(snap.min_fare),
+      base_fare: parseFloat(snap.base_fare ?? '0'),
+      return_rate_per_km: snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
+    },
+    ride_type: 'one_way', is_return_cab: snap.is_return_cab, estimated_km: km, estimated_min: min,
+    stop_count: stops, charge_per_stop: stops > 0 ? parseFloat(snap.stop_fare) / stops : 0,
+    trip_hours: 0, surge_multiplier: parseFloat(snap.surge_multiplier),
+  })
+}
+
+// A one-way ride is billed on what was driven (see the settlement in verifyEndOTP), but the rider sees an estimate all
+// along, so keep that estimate honest: when a stop is added or skipped, re-route the path with and without it on the
+// server and move the estimate by the difference. The delta is applied to the quoted km (not replaced by the server's),
+// so it stays consistent with what the rider was shown at booking. The final-fare band is measured against this
+// estimate. Never fails the stop change: a routing hiccup leaves the estimate as it was and is logged.
 type LatLng = { lat: number; lng: number }
 async function repriceOneWayRoute(
   ride: { ride_type: string; origin_lat: number; origin_lng: number; dest_lat: number | null; dest_lng: number | null },
@@ -1711,26 +1740,10 @@ async function repriceOneWayRoute(
     const [b, a] = await Promise.all([route(before), route(after)])
     if (!b || !a) { log.warn({ rideId }, 'stop change not re-priced: route unavailable'); return }
 
-    const snap = (await pool.query<{
-      estimated_km: string; estimated_min: string; is_return_cab: boolean; surge_multiplier: string
-      rate_per_km: string; rate_per_min: string; min_fare: string; base_fare: string | null; return_rate_per_km: string | null
-    }>(
-      `SELECT fs.estimated_km, fs.estimated_min, fs.is_return_cab, fs.surge_multiplier,
-              rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.base_fare, rc.return_rate_per_km
-       FROM fare_snapshots fs JOIN rate_cards rc ON rc.id = fs.rate_card_id WHERE fs.ride_id = $1`,
-      [rideId],
-    )).rows[0]
+    const snap = await loadOneWaySnapshot(rideId)
     if (!snap) return
 
-    const price = (km: number, min: number) => calculateFare({
-      rate_card: {
-        rate_per_km: parseFloat(snap.rate_per_km), rate_per_min: parseFloat(snap.rate_per_min), min_fare: parseFloat(snap.min_fare),
-        base_fare: parseFloat(snap.base_fare ?? '0'),
-        return_rate_per_km: snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
-      },
-      ride_type: 'one_way', is_return_cab: snap.is_return_cab, estimated_km: km, estimated_min: min,
-      stop_count: 0, charge_per_stop: 0, trip_hours: 0, surge_multiplier: parseFloat(snap.surge_multiplier),
-    })
+    const price = (km: number, min: number) => priceOneWay(snap, km, min)
     const oldKm = parseFloat(snap.estimated_km), oldMin = parseFloat(snap.estimated_min)
     const newKm = Math.max(0.1, Math.round((oldKm + a.km - b.km) * 100) / 100)
     const newMin = Math.max(1, Math.round((oldMin + a.min - b.min) * 100) / 100)
@@ -3164,24 +3177,58 @@ export async function verifyEndOTP(
     finalFare = totalFinal
   }
 
-  // One-way: fold metered stop-wait charges into the final fare. Each stop's
-  // wait_charge was computed live from server timestamps at resume time (see
-  // markStopStatus). One-way total_final always equals total_estimated before
-  // wait (early-termination recompute is round-trip-only), so we RECOMPUTE from
-  // total_estimated rather than add to total_final — that makes a replayed or
-  // concurrent settlement idempotent (never double-charges). No-op for round-
-  // trip/rental, whose stops never accrue wait_charge (wait is in the hours pkg).
+  // One-way (incl. city rides): the estimate is a guide, the bill is what was driven. Km come from the GPS trail and
+  // minutes from the server's own start/end times (never the client's numbers), priced on the ride's rate card and
+  // surge, with the stop fees already on the snapshot. The result is held to a band around the estimate (which follows
+  // stops added or skipped); outside it the fare stops at the edge and the ride is flagged. With no usable GPS trail
+  // the estimate stands, as before. Metered stop wait is billed separately below, so its minutes are left out here.
+  let oneWayBase: number | null = null
+  let oneWayKm: number | null = null
+  let oneWayMin: number | null = null
+  let waitTotal = 0
   if (ride.ride_type === 'one_way') {
-    const waitTotal = await repo.getStopWaitTotal(rideId)
-    if (waitTotal > 0) {
+    waitTotal = await repo.getStopWaitTotal(rideId)
+    if (ride.started_at != null && gpsDurationMin != null) {
+      try {
+        const snap = await loadOneWaySnapshot(rideId)
+        const gpsKm = await repo.getGpsTrackedDistanceKm(rideId, new Date(ride.started_at))
+        if (snap && gpsKm !== null) {
+          const ratePerMin = parseFloat(snap.rate_per_min)
+          const waitMin = ratePerMin > 0 ? waitTotal / ratePerMin : 0
+          oneWayKm  = Math.round(gpsKm * 100) / 100
+          oneWayMin = Math.round(gpsDurationMin * 100) / 100
+          const fare = priceOneWay(snap, oneWayKm, Math.max(1, gpsDurationMin - waitMin), true).total
+          const est = parseFloat(snap.total_estimated)
+          const lo = est * (1 - ONE_WAY_FARE_BAND_UNDER)
+          const hi = est * (1 + ONE_WAY_FARE_BAND_OVER)
+          oneWayBase = Math.round(Math.min(hi, Math.max(lo, fare)) * 100) / 100
+          if (fare > hi || fare < lo) {
+            await repo.flagRideForReview(rideId, `One-way fare from actual km/min (₹${fare}) is outside the band around the estimate (₹${est}); held at ₹${oneWayBase}`)
+          }
+        } else {
+          log.warn({ rideId }, 'one-way fare left at the estimate: no usable GPS trail')
+        }
+      } catch (err) {
+        log.error({ err, rideId }, 'one-way settlement on actuals failed; fare left at the estimate')
+        oneWayBase = null
+      }
+    }
+  }
+  // Each stop's wait_charge was computed live from server timestamps at resume time (see markStopStatus). We RECOMPUTE
+  // from the base rather than add to total_final, so a replayed or concurrent settlement never double-charges.
+  // No-op for round-trip/rental, whose stops never accrue wait_charge (wait is in the hours pkg).
+  if (ride.ride_type === 'one_way') {
+    if (waitTotal > 0 || oneWayBase !== null) {
       const upd = await pool.query<{ total_final: string }>(
         `UPDATE fare_snapshots
-         SET total_final  = round(total_estimated + $2::numeric, 2),
+         SET total_final  = round(COALESCE($3::numeric, total_estimated) + $2::numeric, 2),
+             actual_km    = COALESCE($4::numeric, actual_km),
+             actual_min   = COALESCE($5::numeric, actual_min),
              status       = 'final',
              finalised_at = now()
          WHERE ride_id = $1
          RETURNING total_final`,
-        [rideId, waitTotal]
+        [rideId, waitTotal, oneWayBase, oneWayKm, oneWayMin]
       )
       if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
       await finaliseDiscount(pool, rideId)
