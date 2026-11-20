@@ -1604,8 +1604,7 @@ const STOP_ADDABLE_STATUSES = new Set(['accepted', 'driver_arrived', 'in_progres
 
 // The rider decides to drop a pending stop. The driver can no longer skip (see
 // markStopStatus callers), so this is the only path to 'skipped' besides forced
-// completion. The stop's flat charge is NOT reversed here — that is a pricing
-// decision (new pricing_version), not something to change silently.
+// completion. The stop's flat charge is taken back off the fare (see below).
 export async function skipRideStop(userId: bigint, rideId: bigint, sequence: number) {
   const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
@@ -1622,6 +1621,20 @@ export async function skipRideStop(userId: bigint, rideId: bigint, sequence: num
   const stop = await repo.markStopStatus(rideId, sequence, 'skipped')
   if (!stop) {
     throw Object.assign(new Error('Stop not found or already resolved'), { httpStatus: 409 })
+  }
+
+  // A stop nobody goes to is not billed: take back exactly what it added (the mirror of addRideStop's update).
+  // markStopStatus only moves a still-pending stop, so a repeat tap can never refund twice.
+  const refund = parseFloat(stop.stop_charge_applied ?? '0')
+  if (refund > 0) {
+    await pool.query(
+      `UPDATE fare_snapshots
+       SET stop_fare = GREATEST(stop_fare - $2, 0), stop_count = GREATEST(COALESCE(stop_count, 0) - 1, 0),
+           total_estimated = CASE WHEN $3 THEN GREATEST(total_estimated - $2, 0) ELSE total_estimated END
+       WHERE ride_id = $1`,
+      [rideId, refund, ride.ride_type === 'one_way'],
+    )
+    await finaliseDiscount(pool, rideId)
   }
 
   socketEvents.sendStopUpdated(rideId.toString(), {
