@@ -302,7 +302,7 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 /api/v1/rides/:id/stops                — POST (rider adds a stop; allowed accepted→returning, i.e. also on a
                                           round trip's return leg, until the driver reaches the drop)
 /api/v1/rides/:id/stops/:seq/skip      — POST, rider only: the only user action that skips a stop (the driver's
-                                          PATCH accepts just arrived|reached; force-completion also skips leftovers). The stop's charge is taken back off the fare (stop_fare, stop_count and, for one-way, total_estimated); the per-km detour distance of a booked one-way stop is not re-priced.
+                                          PATCH accepts just arrived|reached; force-completion also skips leftovers). The stop's charge is taken back off the fare (stop_fare, stop_count and, for one-way, total_estimated); a one-way ride is also re-priced on the server for the km the stop adds or removes (added or skipped mid-ride, via `repriceOneWayRoute`).
 /api/v1/rides/:id/stops/:seq/unreachable — POST, driver only: "can't reach this stop" asks the rider to skip
                                           (sets ride_stops.unreachable_requested_at, pushes the rider); never resolves it
 ```

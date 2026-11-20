@@ -1618,10 +1618,13 @@ export async function skipRideStop(userId: bigint, rideId: bigint, sequence: num
     throw Object.assign(new Error('The driver has already reached the drop'), { httpStatus: 409, code: 'DROP_ALREADY_REACHED' })
   }
 
+  const stopsBefore = (await repo.getRideStops(rideId)).filter(s => s.status !== 'skipped')
   const stop = await repo.markStopStatus(rideId, sequence, 'skipped')
   if (!stop) {
     throw Object.assign(new Error('Stop not found or already resolved'), { httpStatus: 409 })
   }
+  // One-way: the km to reach this stop are no longer billed.
+  await repriceOneWayRoute(ride, rideId, stopsBefore, stopsBefore.filter(s => s.sequence !== sequence))
 
   // A stop nobody goes to is not billed: take back exactly what it added (the mirror of addRideStop's update).
   // markStopStatus only moves a still-pending stop, so a repeat tap can never refund twice.
@@ -1680,6 +1683,75 @@ export function planStopOrder(
     .map((s, i) => ({ id: String(s.id), sequence: seqs[i]!, was: s.sequence }))
     .filter(m => m.sequence !== m.was)
     .map(({ id, sequence }) => ({ id, sequence }))
+}
+
+// A one-way fare is the quote (total_estimated is what settles), priced on the route through its stops. So when a stop is
+// added or skipped, re-route the path with and without it on the server and move the fare by the difference: the rider
+// pays for the km the stop adds, and stops paying for km they no longer drive. The delta is applied to the quoted km
+// (not replaced by the server's), so it stays consistent with what the rider was shown at booking.
+// Never fails the stop change: a routing hiccup leaves the fare as it was and is logged.
+type LatLng = { lat: number; lng: number }
+async function repriceOneWayRoute(
+  ride: { ride_type: string; origin_lat: number; origin_lng: number; dest_lat: number | null; dest_lng: number | null },
+  rideId: bigint,
+  before: LatLng[],
+  after: LatLng[],
+): Promise<void> {
+  if (ride.ride_type !== 'one_way' || ride.dest_lat === null || ride.dest_lng === null) return
+  try {
+    const origin = { lat: ride.origin_lat, lng: ride.origin_lng }
+    const dest = { lat: ride.dest_lat, lng: ride.dest_lng }
+    const route = async (stops: LatLng[]) => {
+      const path = [origin, ...stops, dest]
+      const legs = await Promise.all(path.slice(1).map((to, i) => getRoute(path[i]!.lat, path[i]!.lng, to.lat, to.lng, { caller: 'booking_check' })))
+      // A straight-line guess is no basis for moving money either way.
+      if (legs.some(l => l.source === 'fallback')) return null
+      return { km: legs.reduce((a, l) => a + l.distanceKm, 0), min: legs.reduce((a, l) => a + l.durationMin, 0) }
+    }
+    const [b, a] = await Promise.all([route(before), route(after)])
+    if (!b || !a) { log.warn({ rideId }, 'stop change not re-priced: route unavailable'); return }
+
+    const snap = (await pool.query<{
+      estimated_km: string; estimated_min: string; is_return_cab: boolean; surge_multiplier: string
+      rate_per_km: string; rate_per_min: string; min_fare: string; base_fare: string | null; return_rate_per_km: string | null
+    }>(
+      `SELECT fs.estimated_km, fs.estimated_min, fs.is_return_cab, fs.surge_multiplier,
+              rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.base_fare, rc.return_rate_per_km
+       FROM fare_snapshots fs JOIN rate_cards rc ON rc.id = fs.rate_card_id WHERE fs.ride_id = $1`,
+      [rideId],
+    )).rows[0]
+    if (!snap) return
+
+    const price = (km: number, min: number) => calculateFare({
+      rate_card: {
+        rate_per_km: parseFloat(snap.rate_per_km), rate_per_min: parseFloat(snap.rate_per_min), min_fare: parseFloat(snap.min_fare),
+        base_fare: parseFloat(snap.base_fare ?? '0'),
+        return_rate_per_km: snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
+      },
+      ride_type: 'one_way', is_return_cab: snap.is_return_cab, estimated_km: km, estimated_min: min,
+      stop_count: 0, charge_per_stop: 0, trip_hours: 0, surge_multiplier: parseFloat(snap.surge_multiplier),
+    })
+    const oldKm = parseFloat(snap.estimated_km), oldMin = parseFloat(snap.estimated_min)
+    const newKm = Math.max(0.1, Math.round((oldKm + a.km - b.km) * 100) / 100)
+    const newMin = Math.max(1, Math.round((oldMin + a.min - b.min) * 100) / 100)
+    const was = price(oldKm, oldMin), now = price(newKm, newMin)
+    const delta = Math.round((now.total - was.total) * 100) / 100
+    if (delta === 0) return
+
+    await pool.query(
+      `UPDATE fare_snapshots
+       SET estimated_km = $2, estimated_min = $3,
+           distance_fare = distance_fare + $4, time_fare = time_fare + $5,
+           base_fare = base_fare + $6, surge_fare = surge_fare + $7,
+           total_estimated = GREATEST(total_estimated + $8, 0)
+       WHERE ride_id = $1`,
+      [rideId, newKm, newMin, now.distance_fare - was.distance_fare, now.time_fare - was.time_fare,
+        now.base_fare - was.base_fare, now.surge_fare - was.surge_fare, delta],
+    )
+    await finaliseDiscount(pool, rideId)
+  } catch (err) {
+    log.error({ err, rideId }, 'one-way stop re-pricing failed; fare left as it was')
+  }
 }
 
 // Lets the rider add a stop to a ride that's already been accepted/is on the
@@ -1765,6 +1837,10 @@ export async function addRideStop(
     // A sixth writer of the fare total (found by the writers guard test): the discount is re-derived, never grown.
     await finaliseDiscount(pool, rideId)
   }
+
+  // One-way: the detour km this stop adds are billed (the flat fee above is separate, 0 by default).
+  const inPath = (s: { status: string }) => s.status !== 'skipped'
+  await repriceOneWayRoute(ride, rideId, existingStops.filter(inPath), [...existingStops.filter(inPath), stop])
 
   // Re-order so the new stop sits where the driver will actually reach it, then
   // send the full ordered list: clients that only append `stop` would show the

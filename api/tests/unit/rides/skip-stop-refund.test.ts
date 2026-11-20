@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideCoreById: vi.fn(),
+  getRideStops: vi.fn().mockResolvedValue([]),
   markStopStatus: vi.fn(),
 }))
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 1 }) }, withTransaction: vi.fn() }))
