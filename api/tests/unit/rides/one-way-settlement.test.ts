@@ -24,7 +24,7 @@ vi.mock('@/jobs/queues', () => ({
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideById: vi.fn(), getRideForDriverAction: vi.fn(), getRideCoreById: vi.fn(),
   getRideStops: vi.fn().mockResolvedValue([]), updateRideStatus: vi.fn(), updateRideStatusCAS: vi.fn(), logStatusHistory: vi.fn(),
-  getStopWaitTotal: vi.fn().mockResolvedValue(0), getGpsTrailForBilling: vi.fn(),
+  getStopWaitTotal: vi.fn().mockResolvedValue(0), getStopWaitMinutes: vi.fn().mockResolvedValue(0), getGpsTrailForBilling: vi.fn(),
   flagRideForReview: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/modules/payments/payments.service', () => ({
@@ -55,13 +55,14 @@ let settleParams: unknown[] | undefined
 const trail = (over: Partial<Record<string, unknown>> = {}) =>
   ({ pings: 50, trackedKm: 10, silentMovedSec: 0, gaps: [], bookedKm: 10, ...over }) as never
 
-function setup(gpsKm: number | null, waitTotal = 0, trailOver: Partial<Record<string, unknown>> = {}) {
+function setup(gpsKm: number | null, waitTotal = 0, trailOver: Partial<Record<string, unknown>> = {}, waitMinutes = 0) {
   vi.mocked(repo.getRideById).mockResolvedValue({
     id: BigInt(101), user_id: 42, driver_id: 9, status: 'in_progress', ride_type: 'one_way', end_otp_hash: 'h',
     payment_channel: 'cash', origin_lat: 20.3, origin_lng: 85.8, user_phone: null, started_at: minutesAgo(20),
   } as never)
   vi.mocked(repo.getGpsTrailForBilling).mockResolvedValue(trail(gpsKm === null ? { pings: 1 } : { trackedKm: gpsKm, ...trailOver }))
   vi.mocked(repo.getStopWaitTotal).mockResolvedValue(waitTotal)
+  vi.mocked(repo.getStopWaitMinutes).mockResolvedValue(waitMinutes)
   settleParams = undefined
   vi.mocked(pool.query).mockImplementation(((sql: string, params?: unknown[]) => {
     if (/FROM fare_snapshots fs\s+JOIN rate_cards/.test(sql)) return Promise.resolve({ rows: [SNAP], rowCount: 1 })
@@ -124,6 +125,15 @@ describe('verifyEndOTP, one-way ride billed on actuals', () => {
     expect(repo.flagRideForReview).toHaveBeenCalledWith(BigInt(101), expect.stringContaining('GPS gap'))
   })
 
+  it('a small gap is routed and billed without bothering ops', async () => {
+    const gap = { fromLat: 20.3, fromLng: 85.8, toLat: 20.31, toLng: 85.8, m: 1100, sec: 130 }
+    vi.mocked(getRoute).mockResolvedValue({ distanceKm: 1.5, durationMin: 3, source: 'google' } as never)
+    setup(8.5, 0, { gaps: [gap], silentMovedSec: 100 }) // under 10% of the 20-minute ride (a 40-minute ride would tolerate a 4-minute gap)
+    await run()
+    expect(settleParams![3]).toBe(10)
+    expect(repo.flagRideForReview).not.toHaveBeenCalled()
+  })
+
   it('does not trust a trail that is missing for more than 20% of the ride; the quote stands and ops is told', async () => {
     setup(4, 0, { silentMovedSec: 600 }) // 10 of 20 min with no trail
     await run()
@@ -131,9 +141,9 @@ describe('verifyEndOTP, one-way ride billed on actuals', () => {
     expect(repo.flagRideForReview).toHaveBeenCalledWith(BigInt(101), expect.stringContaining('GPS trail missing'))
   })
 
-  it('metered stop wait is added once, and its minutes are not also billed as trip time', async () => {
-    setup(10, 10) // Rs 10 of wait at Rs 1/min = 10 min: billed time is 20 - 10 = 10 -> 120 + 10 = 130
+  it('time spent waiting at stops is not billed as trip time: the free window is free, the rest is billed once as wait', async () => {
+    setup(10, 5, {}, 15) // 15 min at stops (10 free + 5 metered = Rs 5): billed time is 20 - 15 = 5 -> 120 + 5 = 125, wait added on top
     await run()
-    expect(settleParams).toEqual([BigInt(101), 10, 130, 10, 20])
+    expect(settleParams).toEqual([BigInt(101), 5, 125, 10, 20])
   })
 })

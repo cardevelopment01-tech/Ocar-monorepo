@@ -25,7 +25,7 @@ import { driverFare } from '@/modules/offers/driver-fare'
 import { normalizeCode, reserveRedemption } from '@/modules/offers/offers.repository'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
-import { enqueueBreadcrumb } from '@/lib/gps-buffer'
+import { enqueueBreadcrumb, flushBreadcrumbs } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
 import { publishNearbyCar } from '@/websocket/nearby-bus'
 import { generateOtp, hashOtp, deriveRideEndOtp, checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
@@ -1722,6 +1722,8 @@ function priceOneWay(snap: OneWaySnapshot, km: number, min: number, withStops = 
 async function measureTrailKm(
   rideId: bigint, since: Date, rideMin: number,
 ): Promise<{ km: number | null; notes: string[]; untrusted?: string }> {
+  // The last few seconds of live pings can still be in this instance's write buffer; the fare must see them.
+  await flushBreadcrumbs().catch(() => undefined)
   const t = await repo.getGpsTrailForBilling(rideId, since, GPS_GAP_SECONDS, GPS_GAP_MIN_METRES)
   if (t.pings < 2) return { km: null, notes: [] }
   if (rideMin > 0 && t.silentMovedSec / 60 > rideMin * GPS_MAX_SILENT_SHARE) {
@@ -1741,7 +1743,8 @@ async function measureTrailKm(
   if (t.bookedKm != null && t.bookedKm > 0 && km > t.bookedKm * 2.5) {
     return { km: null, notes: [], untrusted: `GPS distance ${km.toFixed(1)} km is implausible against the booked ${t.bookedKm} km` }
   }
-  const notes = t.gaps.length > 0 ? [`${t.gaps.length} GPS gap(s) (${Math.round(t.silentMovedSec / 60)} min) filled by route`] : []
+  // Only worth ops' time when the missing stretch was a real share of the ride; a short one is routed and billed quietly.
+  const notes = t.gaps.length > 0 && rideMin > 0 && t.silentMovedSec / 60 > rideMin * 0.1 ? [`${t.gaps.length} GPS gap(s) (${Math.round(t.silentMovedSec / 60)} min) filled by route`] : []
   return { km, notes }
 }
 
@@ -3225,8 +3228,7 @@ export async function verifyEndOTP(
         const trail = snap ? await measureTrailKm(rideId, new Date(ride.started_at), gpsDurationMin) : null
         const gpsKm = trail?.km ?? null
         if (snap && trail && gpsKm !== null) {
-          const ratePerMin = parseFloat(snap.rate_per_min)
-          const waitMin = ratePerMin > 0 ? waitTotal / ratePerMin : 0
+          const waitMin = await repo.getStopWaitMinutes(rideId)
           oneWayKm  = Math.round(gpsKm * 100) / 100
           oneWayMin = Math.round(gpsDurationMin * 100) / 100
           const fare = priceOneWay(snap, oneWayKm, Math.max(1, gpsDurationMin - waitMin), true).total

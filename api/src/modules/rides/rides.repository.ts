@@ -671,6 +671,17 @@ export async function getStopWaitTotal(rideId: bigint): Promise<number> {
   return parseFloat(res.rows[0]?.total ?? '0')
 }
 
+// Minutes the driver spent waiting at this ride's stops (arrived -> reached), free window included. A one-way fare billed on
+// elapsed trip time leaves these out: the free window is free, and wait beyond it is billed once as wait_charge.
+export async function getStopWaitMinutes(rideId: bigint): Promise<number> {
+  const res = await pool.query<{ minutes: string }>(
+    `SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (reached_at - arrived_at)) / 60.0), 0)::text AS minutes
+     FROM ride_stops WHERE ride_id = $1 AND arrived_at IS NOT NULL AND reached_at IS NOT NULL`,
+    [rideId]
+  )
+  return parseFloat(res.rows[0]?.minutes ?? '0')
+}
+
 // Per-status staleness cutoffs so an orphaned ride (broadcast job never ran,
 // dev/test session interrupted, etc.) can't get treated as "active" forever
 // and trap the user's client on reload. Gated on updated_at, NOT requested_at
