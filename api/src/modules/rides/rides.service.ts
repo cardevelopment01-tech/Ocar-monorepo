@@ -61,6 +61,7 @@ import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
 import { calculateFare, isHourlyRoundTrip, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
 import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
+import { insertGpsTracks } from '@/modules/geo/geo.repository'
 import {
   MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
   RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
@@ -607,6 +608,42 @@ export async function updateLocation(driverId: bigint, data: {
   if (heading !== undefined) breadcrumb.heading = heading
   if (speed   !== undefined) breadcrumb.speed_kmph = speed
   enqueueBreadcrumb(breadcrumb)
+}
+
+// A driver phone uploading the trail it saved while it had no signal (or the app was frozen). Live pings are best-effort and
+// are lost when the network drops, so the app keeps every fix of a ride and sends them here in batches; this is what fills the
+// gaps the one-way fare is billed from. Only this driver's own ride; points are stamped by the device GPS clock, so they are
+// kept only if they fall between the ride's start and now; points the live ping already stored are skipped.
+const MAX_TRAIL_BATCH = 300
+export async function recordTrailBatch(driverId: bigint, rideId: bigint, fixes: unknown): Promise<{ accepted: number }> {
+  if (!Array.isArray(fixes) || fixes.length === 0 || fixes.length > MAX_TRAIL_BATCH) {
+    throw httpError(422, `Send between 1 and ${MAX_TRAIL_BATCH} fixes`, 'VALIDATION_ERROR')
+  }
+  const ride = await repo.getRideCoreForDriverAction(rideId, driverId)
+  if (!ride) throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
+  if (!ride.started_at) return { accepted: 0 }
+  const sessionId = await repo.getLatestSessionId(driverId)
+  if (sessionId === null) return { accepted: 0 }
+  const lo = Date.parse(String(ride.started_at)) - 60_000
+  const hi = Date.now() + 60_000
+  const rows: import('@/modules/geo/geo.types').GpsTrackPayload[] = []
+  for (const f of fixes as Array<Record<string, unknown>>) {
+    const at = typeof f?.['recordedAt'] === 'string' ? Date.parse(f['recordedAt']) : NaN
+    const lat = f?.['lat'], lng = f?.['lng']
+    if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) continue
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180 || !Number.isFinite(at) || at < lo || at > hi) continue
+    const row: import('@/modules/geo/geo.types').GpsTrackPayload = {
+      ride_id: rideId.toString(), session_id: sessionId.toString(), driver_id: driverId.toString(),
+      latitude: lat, longitude: lng, recorded_at: new Date(at).toISOString(),
+    }
+    if (typeof f['heading'] === 'number') row.heading = f['heading']
+    if (typeof f['speed'] === 'number') row.speed_kmph = f['speed']
+    if (typeof f['accuracy'] === 'number') row.accuracy_metres = f['accuracy']
+    rows.push(row)
+  }
+  if (rows.length === 0) return { accepted: 0 }
+  await insertGpsTracks(rows, pool, { skipExisting: true })
+  return { accepted: rows.length }
 }
 
 // Strips the *other* party's raw phone number before a ride row leaves the
