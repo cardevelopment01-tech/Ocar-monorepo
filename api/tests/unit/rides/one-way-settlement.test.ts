@@ -24,7 +24,7 @@ vi.mock('@/jobs/queues', () => ({
 vi.mock('@/modules/rides/rides.repository', () => ({
   getRideById: vi.fn(), getRideForDriverAction: vi.fn(), getRideCoreById: vi.fn(),
   getRideStops: vi.fn().mockResolvedValue([]), updateRideStatus: vi.fn(), updateRideStatusCAS: vi.fn(), logStatusHistory: vi.fn(),
-  getStopWaitTotal: vi.fn().mockResolvedValue(0), getGpsTrackedDistanceKm: vi.fn(),
+  getStopWaitTotal: vi.fn().mockResolvedValue(0), getGpsTrailForBilling: vi.fn(),
   flagRideForReview: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/modules/payments/payments.service', () => ({
@@ -32,10 +32,12 @@ vi.mock('@/modules/payments/payments.service', () => ({
   creditCashback: vi.fn().mockResolvedValue(undefined), confirmRidePayment: vi.fn().mockResolvedValue(true),
   payFromUserWallet: vi.fn().mockResolvedValue(true), createRidePaymentOrder: vi.fn().mockResolvedValue(null),
 }))
+vi.mock('@/modules/geo/geo.service', async (orig) => ({ ...(await orig<object>()), getRoute: vi.fn() }))
 vi.mock('@/lib/system-config', () => ({ getConfigValue: vi.fn().mockResolvedValue('true') }))
 
 import * as repo from '@/modules/rides/rides.repository'
 import { pool } from '@/db/client'
+import { getRoute } from '@/modules/geo/geo.service'
 import { verifyEndOTP } from '@/modules/rides/rides.service'
 
 const flush = () => new Promise(r => setTimeout(r, 0))
@@ -50,12 +52,15 @@ const SNAP = {
 
 let settleParams: unknown[] | undefined
 
-function setup(gpsKm: number | null, waitTotal = 0) {
+const trail = (over: Partial<Record<string, unknown>> = {}) =>
+  ({ pings: 50, trackedKm: 10, silentMovedSec: 0, gaps: [], bookedKm: 10, ...over }) as never
+
+function setup(gpsKm: number | null, waitTotal = 0, trailOver: Partial<Record<string, unknown>> = {}) {
   vi.mocked(repo.getRideById).mockResolvedValue({
     id: BigInt(101), user_id: 42, driver_id: 9, status: 'in_progress', ride_type: 'one_way', end_otp_hash: 'h',
     payment_channel: 'cash', origin_lat: 20.3, origin_lng: 85.8, user_phone: null, started_at: minutesAgo(20),
   } as never)
-  vi.mocked(repo.getGpsTrackedDistanceKm).mockResolvedValue(gpsKm)
+  vi.mocked(repo.getGpsTrailForBilling).mockResolvedValue(trail(gpsKm === null ? { pings: 1 } : { trackedKm: gpsKm, ...trailOver }))
   vi.mocked(repo.getStopWaitTotal).mockResolvedValue(waitTotal)
   settleParams = undefined
   vi.mocked(pool.query).mockImplementation(((sql: string, params?: unknown[]) => {
@@ -90,7 +95,7 @@ describe('verifyEndOTP, one-way ride billed on actuals', () => {
   })
 
   it('a longer route costs more, up to 25% over the quote, and is flagged', async () => {
-    setup(30) // 360 + 20 = 380, held at 150 x 1.25
+    setup(30, 0, { bookedKm: 20 }) // 360 + 20 = 380, held at 150 x 1.25
     await run()
     expect(settleParams![2]).toBe(187.5)
     expect(repo.flagRideForReview).toHaveBeenCalledOnce()
@@ -107,6 +112,23 @@ describe('verifyEndOTP, one-way ride billed on actuals', () => {
     setup(null)
     await run()
     expect(settleParams).toBeUndefined()
+  })
+
+  it('fills a gap where the phone went quiet while the car moved with a route between the two fixes', async () => {
+    const gap = { fromLat: 20.3, fromLng: 85.8, toLat: 20.33, toLng: 85.8, m: 3300, sec: 180 }
+    vi.mocked(getRoute).mockResolvedValue({ distanceKm: 4, durationMin: 8, source: 'google' } as never)
+    setup(6, 0, { gaps: [gap], silentMovedSec: 180 }) // 6 km tracked + 4 km routed = 10 km -> 140
+    await run()
+    expect(settleParams![2]).toBe(140)
+    expect(settleParams![3]).toBe(10)
+    expect(repo.flagRideForReview).toHaveBeenCalledWith(BigInt(101), expect.stringContaining('GPS gap'))
+  })
+
+  it('does not trust a trail that is missing for more than 20% of the ride; the quote stands and ops is told', async () => {
+    setup(4, 0, { silentMovedSec: 600 }) // 10 of 20 min with no trail
+    await run()
+    expect(settleParams).toBeUndefined()
+    expect(repo.flagRideForReview).toHaveBeenCalledWith(BigInt(101), expect.stringContaining('GPS trail missing'))
   })
 
   it('metered stop wait is added once, and its minutes are not also billed as trip time', async () => {

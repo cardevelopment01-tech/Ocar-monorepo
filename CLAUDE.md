@@ -127,7 +127,7 @@ compare; 409 `BOUNDARY_CHANGED` on a stale save) — never `geo.repository.updat
 The one-way estimate is a guide: at completion `verifyEndOTP` bills the km from the GPS trail (`getGpsTrackedDistanceKm`) and the
 minutes from server start/end times, on the ride's own rate card, surge and snapshot stop fees (`priceOneWay`). The result is
 held to +/-`ONE_WAY_FARE_BAND_*` (25%) around `total_estimated`, flagging the ride for ops when it hits the edge. No usable GPS
-trail = the estimate stands. Metered stop wait (`wait_charge`) is added on top once, and its minutes are left out of the billed
+trail = the estimate stands. Gaps in the trail (`measureTrailKm`): pings up to `GPS_GAP_SECONDS` apart are a straight line; silence WITH movement (>= `GPS_GAP_MIN_METRES`) is routed between the two fixes (silence without movement is a parked car, the driver app only pings after 5 m of movement); if those gaps exceed `GPS_MAX_SILENT_SHARE` of the ride the trail is not trusted and ops is flagged. Metered stop wait (`wait_charge`) is added on top once, and its minutes are left out of the billed
 time. `total_estimated` follows stops added or skipped mid-ride (`repriceOneWayRoute`), so the band is measured against an honest
 estimate. Round trips and rentals have their own settlement; do not route them through this.
 

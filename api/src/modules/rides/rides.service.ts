@@ -65,6 +65,7 @@ import {
   MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
   RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
   ONE_WAY_FARE_BAND_OVER, ONE_WAY_FARE_BAND_UNDER,
+  GPS_GAP_SECONDS, GPS_GAP_MIN_METRES, GPS_MAX_ROUTED_GAPS, GPS_MAX_SILENT_SHARE,
   PICKUP_EDIT_RADIUS_METRES,
 } from '@/constants/limits'
 import { logger } from '@/lib/logger'
@@ -1714,6 +1715,36 @@ function priceOneWay(snap: OneWaySnapshot, km: number, min: number, withStops = 
   })
 }
 
+// Km driven from the GPS trail, with the stretches where the phone went quiet while the car moved filled in. Each such gap
+// (up to GPS_MAX_ROUTED_GAPS, biggest first) is a route between the two fixes either side of it; the rest, or a route
+// that cannot be had, use the straight line x ROAD_FACTOR. Returns km null (and says why) when the trail cannot be trusted:
+// fewer than 2 pings, real gaps over GPS_MAX_SILENT_SHARE of the ride, or an implausible total.
+async function measureTrailKm(
+  rideId: bigint, since: Date, rideMin: number,
+): Promise<{ km: number | null; notes: string[]; untrusted?: string }> {
+  const t = await repo.getGpsTrailForBilling(rideId, since, GPS_GAP_SECONDS, GPS_GAP_MIN_METRES)
+  if (t.pings < 2) return { km: null, notes: [] }
+  if (rideMin > 0 && t.silentMovedSec / 60 > rideMin * GPS_MAX_SILENT_SHARE) {
+    return { km: null, notes: [], untrusted: `GPS trail missing for ${Math.round(t.silentMovedSec / 60)} of ${Math.round(rideMin)} min` }
+  }
+  let km = t.trackedKm
+  const filled = await Promise.all(t.gaps.map(async (g, i) => {
+    const straightKm = g.m / 1000
+    if (i >= GPS_MAX_ROUTED_GAPS) return straightKm * ROAD_FACTOR
+    try {
+      return (await getRoute(g.fromLat, g.fromLng, g.toLat, g.toLng, { caller: 'booking_check' })).distanceKm
+    } catch {
+      return straightKm * ROAD_FACTOR
+    }
+  }))
+  km += filled.reduce((a, b) => a + b, 0)
+  if (t.bookedKm != null && t.bookedKm > 0 && km > t.bookedKm * 2.5) {
+    return { km: null, notes: [], untrusted: `GPS distance ${km.toFixed(1)} km is implausible against the booked ${t.bookedKm} km` }
+  }
+  const notes = t.gaps.length > 0 ? [`${t.gaps.length} GPS gap(s) (${Math.round(t.silentMovedSec / 60)} min) filled by route`] : []
+  return { km, notes }
+}
+
 // A one-way ride is billed on what was driven (see the settlement in verifyEndOTP), but the rider sees an estimate all
 // along, so keep that estimate honest: when a stop is added or skipped, re-route the path with and without it on the
 // server and move the estimate by the difference. The delta is applied to the quoted km (not replaced by the server's),
@@ -3191,8 +3222,9 @@ export async function verifyEndOTP(
     if (ride.started_at != null && gpsDurationMin != null) {
       try {
         const snap = await loadOneWaySnapshot(rideId)
-        const gpsKm = await repo.getGpsTrackedDistanceKm(rideId, new Date(ride.started_at))
-        if (snap && gpsKm !== null) {
+        const trail = snap ? await measureTrailKm(rideId, new Date(ride.started_at), gpsDurationMin) : null
+        const gpsKm = trail?.km ?? null
+        if (snap && trail && gpsKm !== null) {
           const ratePerMin = parseFloat(snap.rate_per_min)
           const waitMin = ratePerMin > 0 ? waitTotal / ratePerMin : 0
           oneWayKm  = Math.round(gpsKm * 100) / 100
@@ -3202,11 +3234,12 @@ export async function verifyEndOTP(
           const lo = est * (1 - ONE_WAY_FARE_BAND_UNDER)
           const hi = est * (1 + ONE_WAY_FARE_BAND_OVER)
           oneWayBase = Math.round(Math.min(hi, Math.max(lo, fare)) * 100) / 100
-          if (fare > hi || fare < lo) {
-            await repo.flagRideForReview(rideId, `One-way fare from actual km/min (₹${fare}) is outside the band around the estimate (₹${est}); held at ₹${oneWayBase}`)
-          }
+          const notes = [...trail.notes]
+          if (fare > hi || fare < lo) notes.push(`fare from actual km/min (₹${fare}) is outside the band around the estimate (₹${est}); held at ₹${oneWayBase}`)
+          if (notes.length > 0) await repo.flagRideForReview(rideId, `One-way: ${notes.join('; ')}`)
         } else {
-          log.warn({ rideId }, 'one-way fare left at the estimate: no usable GPS trail')
+          log.warn({ rideId, reason: trail?.untrusted ?? 'no trail' }, 'one-way fare left at the estimate')
+          if (trail?.untrusted) await repo.flagRideForReview(rideId, `One-way fare left at the estimate: ${trail.untrusted}`)
         }
       } catch (err) {
         log.error({ err, rideId }, 'one-way settlement on actuals failed; fare left at the estimate')

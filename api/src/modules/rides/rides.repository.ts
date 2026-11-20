@@ -2097,6 +2097,59 @@ export async function getGpsTrackedDistanceKm(
   return km
 }
 
+export interface GpsTrailForBilling {
+  pings: number
+  /** Km between consecutive pings, leaving out stretches where the phone went quiet AND the car moved (see gaps). */
+  trackedKm: number
+  /** Seconds of those quiet-and-moved stretches. */
+  silentMovedSec: number
+  /** The quiet-and-moved stretches: the car covered `m` metres in `sec` seconds with no ping in between. */
+  gaps: Array<{ fromLat: number; fromLng: number; toLat: number; toLng: number; m: number; sec: number }>
+  bookedKm: number | null
+}
+
+/**
+ * The ride's trail split for billing. A pause with no ping is NOT a lost signal when the car did not move: the driver app only
+ * sends a position after 5 m of movement, so a car waiting at a stop is silent. Only silence that came with real movement
+ * (`minGapMetres` or more) is a gap; that distance is unknown and the caller fills it with a route.
+ */
+export async function getGpsTrailForBilling(
+  rideId: bigint,
+  since: Date,
+  gapSeconds: number,
+  minGapMetres: number,
+): Promise<GpsTrailForBilling> {
+  const res = await pool.query<{
+    pings: string; tracked_km: string; silent_moved_sec: string; gaps: GpsTrailForBilling['gaps'] | null; booked_km: string | null
+  }>(
+    `WITH seg AS (
+       SELECT ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
+              lag(ST_Y(location::geometry)) OVER w AS plat, lag(ST_X(location::geometry)) OVER w AS plng,
+              EXTRACT(EPOCH FROM recorded_at - lag(recorded_at) OVER w) AS sec,
+              ST_Distance(location, lag(location) OVER w) AS m
+       FROM gps_tracks
+       WHERE ride_id = $1 AND recorded_at >= $2
+       WINDOW w AS (ORDER BY recorded_at)
+     )
+     SELECT count(*) AS pings,
+            COALESCE(sum(m) FILTER (WHERE sec IS NOT NULL AND (sec <= $3 OR m < $4)), 0) / 1000 AS tracked_km,
+            COALESCE(sum(sec) FILTER (WHERE sec > $3 AND m >= $4), 0) AS silent_moved_sec,
+            COALESCE(json_agg(json_build_object('fromLat', plat, 'fromLng', plng, 'toLat', lat, 'toLng', lng, 'm', m, 'sec', sec)
+                              ORDER BY m DESC) FILTER (WHERE sec > $3 AND m >= $4), '[]'::json) AS gaps,
+            (SELECT estimated_km FROM fare_snapshots WHERE ride_id = $1) AS booked_km
+     FROM seg`,
+    [rideId, since, gapSeconds, minGapMetres],
+  )
+  const r = res.rows[0]!
+  return {
+    pings: parseInt(r.pings, 10),
+    trackedKm: parseFloat(r.tracked_km),
+    silentMovedSec: parseFloat(r.silent_moved_sec),
+    gaps: r.gaps ?? [],
+    bookedKm: r.booked_km != null ? parseFloat(r.booked_km) : null,
+  }
+}
+
 // ── ETA accuracy instrumentation ────────────────────────────────
 // Logs the routing engine's predicted ETA at the start of a leg, for later
 // comparison against the actual elapsed time (already available from

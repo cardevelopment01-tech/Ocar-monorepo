@@ -135,6 +135,15 @@ export const MIN_TRIP_DISTANCE_METRES = 100
 // the edge and the ride is flagged for ops, so one bad GPS trail cannot overcharge a rider or underpay a driver.
 export const ONE_WAY_FARE_BAND_OVER  = 0.25
 export const ONE_WAY_FARE_BAND_UNDER = 0.25
+// GPS trail gaps (phone offline, app killed, tunnel). Up to GPS_GAP_SECONDS between pings is just a straight line (about 2% error
+// at this size). Longer silence WITH movement of GPS_GAP_MIN_METRES or more is a real gap: the biggest GPS_MAX_ROUTED_GAPS are filled
+// with a route between the two fixes, the rest with straight line x a road factor. If the real gaps add up to more than
+// GPS_MAX_SILENT_SHARE of the ride, the trail is not trusted and the estimate stands. Silence without movement is a car waiting
+// (the driver app only pings after 5 m of movement), never a gap.
+export const GPS_GAP_SECONDS = 120
+export const GPS_GAP_MIN_METRES = 300
+export const GPS_MAX_ROUTED_GAPS = 5
+export const GPS_MAX_SILENT_SHARE = 0.2
 
 // Rental overage: extra km/min are only billed once the trip runs past the package
 // limit PLUS this tolerance (GPS jitter / a few minutes of hand-over shouldn't cost
