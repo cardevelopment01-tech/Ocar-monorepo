@@ -28,6 +28,7 @@ import { triggerSos } from '@/features/active-ride/safety-api'
 import { useDriverPositionStore } from '@/services/location/driverPositionStore'
 import { AT_PICKUP_M, haversineMetres } from '@/features/active-ride/geo'
 import { useSpeedAlert } from '@/features/active-ride/useSpeedAlert'
+import { trail } from '@/services/location/trailBuffer'
 import { useTripWindow } from '@/features/active-ride/useTripWindow'
 import { settledCash } from '@/features/active-ride/settledCash'
 import { cashDueOf, riderOfferDiscount } from '@/features/active-ride/cashDue'
@@ -121,6 +122,10 @@ export default function ActiveRideScreen() {
   // hardening doc's "driver-facing only, during the ride" scope. Off for
   // accepted/driver_arrived (driver may be moving fast on an empty highway
   // approach with no ride constraint on it) and completed.
+  // App reopened mid-trip: keep saving the trail for this ride (no-op when it already is).
+  useEffect(() => {
+    if (rideId && (status === 'in_progress' || status === 'returning')) void trail.start(rideId)
+  }, [rideId, status])
   const { alertKey, limitKmph } = useSpeedAlert(status === 'in_progress' || status === 'returning')
   // Within a few metres of the pickup but not yet marked arrived: the rider already sees "your driver is at the
   // pickup", so prompt the tap here too. A boolean selector, so it re-renders only when it flips.
