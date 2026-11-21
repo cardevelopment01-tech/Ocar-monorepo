@@ -15,7 +15,7 @@ export type AutocompleteState = {
 // short-circuits below that), so don't even fire the request until then.
 const MIN_QUERY_LENGTH = 2
 
-export function useAutocomplete(query: string, bias: { lat?: number; lng?: number }): AutocompleteState {
+export function useAutocomplete(query: string, bias: { lat?: number; lng?: number }, withinCity = false): AutocompleteState {
   const debouncedQuery = useDebouncedValue(query)
   const [results, setResults] = useState<GeoAutocompleteResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -36,7 +36,7 @@ export function useAutocomplete(query: string, bias: { lat?: number; lng?: numbe
     abortRef.current = controller
     setLoading(true)
     setError(null)
-    fetchAutocomplete(trimmed, bias.lat, bias.lng, { signal: controller.signal })
+    fetchAutocomplete(trimmed, bias.lat, bias.lng, { signal: controller.signal }, withinCity)
       .then((res) => {
         setResults(res)
         setLoading(false)

@@ -10,6 +10,8 @@ export type PlaceAutocompleteFieldProps = {
   placeholder: string
   accessibilityHint: string
   bias: { lat?: number; lng?: number }
+  /** Search only inside the city around `bias` (a city ride or rental can't leave it). */
+  withinCity?: boolean
   value: BookingPlace | null
   onSelect: (place: BookingPlace) => void
   // Renders without a label or border, for composing inside a card that
@@ -25,6 +27,7 @@ export function PlaceAutocompleteField({
   placeholder,
   accessibilityHint,
   bias,
+  withinCity = false,
   value,
   onSelect,
   bare = false,
@@ -32,7 +35,7 @@ export function PlaceAutocompleteField({
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
   const [resolving, setResolving] = useState(false)
-  const { results, loading, error, retry } = useAutocomplete(query, bias)
+  const { results, loading, error, retry } = useAutocomplete(query, bias, withinCity)
 
   const showDropdown = focused && (query.trim().length >= 2)
 

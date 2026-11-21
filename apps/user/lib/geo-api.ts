@@ -41,10 +41,13 @@ export const geoApi = {
     q: string,
     lat?: number,
     lng?: number,
+    withinCity = false,
   ): Promise<PlaceSuggestion[]> => {
     const params: Record<string, string> = { q }
     if (lat !== undefined) params['lat'] = String(lat)
     if (lng !== undefined) params['lng'] = String(lng)
+    // Only places inside the city around (lat, lng): a city ride or rental can't leave it.
+    if (withinCity) params['within'] = 'city'
     const res = await api.get('/api/v1/geo/autocomplete', { params })
     return res.data as PlaceSuggestion[]
   },

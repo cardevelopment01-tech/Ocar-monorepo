@@ -92,8 +92,11 @@ export async function autocomplete(
   input: string,
   lat?: number,
   lng?: number,
+  withinCity = false,
 ) {
-  return google.autocomplete(input, lat, lng)
+  // withinCity: search only inside the city that contains (lat, lng). A point in no city searches as usual.
+  const within = withinCity && lat !== undefined && lng !== undefined ? await repo.findCitySearchCircle(lat, lng) : null
+  return google.autocomplete(input, lat, lng, within ?? undefined)
 }
 
 export async function getPlaceDetails(placeId: string) {

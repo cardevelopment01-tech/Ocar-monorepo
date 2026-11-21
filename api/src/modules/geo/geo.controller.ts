@@ -30,6 +30,7 @@ export async function getAutocomplete(req: Request, res: Response, next: NextFun
       q,
       isNaN(lat) ? undefined : lat,
       isNaN(lng) ? undefined : lng,
+      req.query['within'] === 'city',
     )
     res.json(suggestions)
   } catch (err) { next(err) }

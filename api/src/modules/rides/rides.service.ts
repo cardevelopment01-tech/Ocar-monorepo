@@ -146,6 +146,18 @@ function validateStops(data: BookingRequest): void {
   }
 }
 
+// A city ride and a rental stay inside the pickup city, so their stops must too. Only an intercity trip may stop elsewhere.
+// A pickup outside every city boundary can't be judged, so it is let through (same as booking).
+async function assertStopsInPickupCity(origin: { lat: number; lng: number }, stops: Array<{ lat: number; lng: number }>): Promise<void> {
+  if (stops.length === 0) return
+  if ((await classifyTrip(origin.lat, origin.lng, origin.lat, origin.lng)).scope !== 'in_city') return
+  for (const s of stops) {
+    if ((await classifyTrip(origin.lat, origin.lng, s.lat, s.lng)).scope !== 'in_city') {
+      throw httpError(422, 'Stops for this trip must be inside the city. Choose a place within the city.', 'STOP_OUTSIDE_CITY')
+    }
+  }
+}
+
 // ── Driver session management ─────────────────────────────────
 
 async function deactivateReturnCabRoutes(sessionId: bigint) {
@@ -885,6 +897,9 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
 
   validateRider(data)
   validateStops(data)
+  if (tripMode === 'city' || data.rideType === 'rental') {
+    await assertStopsInPickupCity({ lat: data.originLat, lng: data.originLng }, data.stops ?? [])
+  }
   // Derived server-side so the persisted count and ride_stops rows can never
   // diverge — client-supplied stopCount is accepted-but-ignored (see BookingRequest).
   const stopCount = data.stops?.length ?? 0
@@ -1698,6 +1713,9 @@ export async function addRideStop(
     throw Object.assign(new Error('Stop needs a valid location'), { httpStatus: 400, code: 'INVALID_STOP_LOCATION' })
   }
 
+  if (ride.trip_mode === 'city' || ride.ride_type === 'rental') {
+    await assertStopsInPickupCity({ lat: ride.origin_lat, lng: ride.origin_lng }, [stop])
+  }
   const existingStops = await repo.getRideStops(rideId)
   if (existingStops.length + 1 > MAX_STOPS_PER_RIDE) {
     throw Object.assign(new Error(`A ride can have at most ${MAX_STOPS_PER_RIDE} stops`), { httpStatus: 422 })
