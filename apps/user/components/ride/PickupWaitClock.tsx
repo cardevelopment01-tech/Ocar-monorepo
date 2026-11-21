@@ -41,6 +41,8 @@ export default function PickupWaitClock({ status, startedAt, freeMin, perMin, on
     }
     tick()
     if (status === 'driver_arrived' && !startedAt && freeMin != null) {
+      // Ask at once, then every 15 s while it stays unstarted.
+      refreshRef.current?.()
       refresher = setInterval(() => refreshRef.current?.(), REFRESH_MS)
     }
     return () => { clearTimeout(timer); clearInterval(refresher) }

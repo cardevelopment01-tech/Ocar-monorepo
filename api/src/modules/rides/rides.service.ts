@@ -2625,12 +2625,14 @@ export async function forceResolveRide(
     const driverId = BigInt(ride.driver_id)
     try {
       const wait = ride.ride_type === 'one_way' ? await repo.getStopWaitTotal(rideId) : 0
+      // The wait at the pickup was recorded when the trip started and is owed on every ride type, however the trip ends.
+      const pickupWait = await repo.getPickupWaitCharge(rideId)
       await pool.query(
         `UPDATE fare_snapshots
-         SET total_final = round(total_estimated + $2::numeric, 2),
+         SET total_final = round(total_estimated + $2::numeric + $3::numeric, 2),
              status = 'final', finalised_at = now()
          WHERE ride_id = $1`,
-        [rideId, wait]
+        [rideId, wait, pickupWait]
       )
       await finaliseDiscount(pool, rideId)
     } catch (err) {

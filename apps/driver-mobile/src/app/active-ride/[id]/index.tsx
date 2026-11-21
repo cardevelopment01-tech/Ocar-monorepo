@@ -131,7 +131,9 @@ export default function ActiveRideScreen() {
   const tripClock = useTripWindow(ride)
   // The free-minutes countdown (then extra waiting) once the driver is at the pickup. Asks the server again every 15 s while the
   // timer has not started, because it starts when the driver's position reaches the pickup, not when "arrived" is tapped.
-  const pickupClock = usePickupWait(ride, { now: serverNow, audience: 'driver', onNeedRefresh: refresh })
+  // `status` is the live stage (it moves the moment "arrived" is confirmed); the fetched ride's own status only catches up on the next
+  // fetch, which would leave the card missing right after the tap. The hook reads plain fields, so a fresh object each render is fine.
+  const pickupClock = usePickupWait(ride ? { ...ride, status } : null, { now: serverNow, audience: 'driver', onNeedRefresh: refresh })
 
   if (loading) {
     return (
