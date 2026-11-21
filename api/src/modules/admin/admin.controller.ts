@@ -1379,6 +1379,8 @@ export async function patchAdminRentalPackage(
       city_id,
       stop_charge,
       cancellation_fee,
+      pickup_free_wait_min,
+      pickup_wait_per_min,
     } = req.body as Record<string, unknown>;
     const fields: {
       package_fare?: number;
@@ -1391,7 +1393,13 @@ export async function patchAdminRentalPackage(
       city_id?: number | null;
       stop_charge?: number;
       cancellation_fee?: number;
+      pickup_free_wait_min?: number | null;
+      pickup_wait_per_min?: number | null;
     } = {};
+    // Waiting terms: not sent = unchanged; null or blank = clear the override (use the rate card's); else a number the service range-checks.
+    const waitTerm = (v: unknown): number | null => (v === null || v === '' ? null : service.parseRentalFeeInput(v));
+    if (pickup_free_wait_min !== undefined) fields.pickup_free_wait_min = waitTerm(pickup_free_wait_min);
+    if (pickup_wait_per_min !== undefined) fields.pickup_wait_per_min = waitTerm(pickup_wait_per_min);
     if (package_fare !== undefined) fields.package_fare = Number(package_fare);
     if (extra_per_km !== undefined) fields.extra_per_km = Number(extra_per_km);
     if (extra_per_min !== undefined)
@@ -1449,7 +1457,10 @@ export async function postAdminRentalPackage(
       city_id,
       stop_charge,
       cancellation_fee,
+      pickup_free_wait_min,
+      pickup_wait_per_min,
     } = req.body as Record<string, unknown>;
+    const waitTerm = (v: unknown): number | null => (v === null || v === '' ? null : service.parseRentalFeeInput(v));
     const pkg = await service.createAdminRentalPackage(
       {
         category_id: Number(category_id),
@@ -1461,6 +1472,8 @@ export async function postAdminRentalPackage(
         // A missing, null or blank fee is NaN, which the service rejects: both fees are required on create.
         stop_charge: service.parseRentalFeeInput(stop_charge),
         cancellation_fee: service.parseRentalFeeInput(cancellation_fee),
+        ...(pickup_free_wait_min !== undefined ? { pickup_free_wait_min: waitTerm(pickup_free_wait_min) } : {}),
+        ...(pickup_wait_per_min !== undefined ? { pickup_wait_per_min: waitTerm(pickup_wait_per_min) } : {}),
         ...(display_order !== undefined
           ? { display_order: Number(display_order) }
           : {}),

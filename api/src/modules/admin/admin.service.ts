@@ -736,6 +736,14 @@ function assertRentalFee(name: 'stop_charge' | 'cancellation_fee', v: number | u
     throw Object.assign(new Error(`${name} must be between 0 and ${MAX_RENTAL_FEE}`), { httpStatus: 400 })
 }
 
+/** A package's waiting terms: whole free minutes and a rupee rate, each null (= use the rate card's) or in range. undefined = not sent. */
+function assertPickupWaitTerms(freeMin: number | null | undefined, perMin: number | null | undefined): void {
+  if (freeMin !== undefined && freeMin !== null && (!Number.isInteger(freeMin) || freeMin < 0 || freeMin > 120))
+    throw Object.assign(new Error('pickup_free_wait_min must be a whole number between 0 and 120'), { httpStatus: 400 })
+  if (perMin !== undefined && perMin !== null && (!Number.isFinite(perMin) || perMin < 0 || perMin > 999))
+    throw Object.assign(new Error('pickup_wait_per_min must be between 0 and 999'), { httpStatus: 400 })
+}
+
 export async function listAdminRentalPackages(cityId: number | null) {
   return repo.listAdminRentalPackages(cityId)
 }
@@ -746,11 +754,13 @@ export async function updateAdminRentalPackage(
     package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
     duration_minutes?: number; km_limit?: number; display_order?: number; city_id?: number | null
     stop_charge?: number; cancellation_fee?: number
+    pickup_free_wait_min?: number | null; pickup_wait_per_min?: number | null
   },
   adminId: bigint,
 ) {
   assertRentalFee('stop_charge', body.stop_charge, false)
   assertRentalFee('cancellation_fee', body.cancellation_fee, false)
+  assertPickupWaitTerms(body.pickup_free_wait_min, body.pickup_wait_per_min)
   if (body.package_fare     !== undefined && (isNaN(body.package_fare)     || body.package_fare     <= 0))
     throw Object.assign(new Error('package_fare must be > 0'), { httpStatus: 400 })
   if (body.extra_per_km     !== undefined && (isNaN(body.extra_per_km)     || body.extra_per_km     <= 0))
@@ -796,6 +806,7 @@ export async function createAdminRentalPackage(
     package_fare: number; extra_per_km: number; extra_per_min: number
     stop_charge: number; cancellation_fee: number
     display_order?: number; city_id?: number | null
+    pickup_free_wait_min?: number | null; pickup_wait_per_min?: number | null
   },
   adminId: bigint,
 ) {
@@ -816,6 +827,7 @@ export async function createAdminRentalPackage(
   // Both fees are required on create: a forgotten field must not silently become a free cancellation or free stops.
   assertRentalFee('stop_charge', body.stop_charge, true)
   assertRentalFee('cancellation_fee', body.cancellation_fee, true)
+  assertPickupWaitTerms(body.pickup_free_wait_min, body.pickup_wait_per_min)
 
   try {
     return await repo.createAdminRentalPackage(body, adminId)

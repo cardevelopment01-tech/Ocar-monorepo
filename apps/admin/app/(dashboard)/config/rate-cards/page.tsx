@@ -89,7 +89,8 @@ function UpdateRateDialog({
     rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
     return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '',
     km_per_day: card.km_per_day ?? '', driver_allowance_per_day: card.driver_allowance_per_day ?? '',
-    stop_charge: card.stop_charge ?? '0', base_fare: card.base_fare ?? '0', notes: '',
+    stop_charge: card.stop_charge ?? '0', base_fare: card.base_fare ?? '0',
+    pickup_free_wait_min: String(card.pickup_free_wait_min ?? 3), pickup_wait_per_min: card.pickup_wait_per_min ?? '3', notes: '',
   })
 
   useEffect(() => {
@@ -99,7 +100,8 @@ function UpdateRateDialog({
         rate_per_km: card.rate_per_km, rate_per_min: card.rate_per_min, min_fare: card.min_fare,
         return_rate_per_km: card.return_rate_per_km ?? '', hour_rate: card.hour_rate ?? '',
         km_per_day: card.km_per_day ?? '', driver_allowance_per_day: card.driver_allowance_per_day ?? '',
-        stop_charge: card.stop_charge ?? '0', base_fare: card.base_fare ?? '0', notes: '',
+        stop_charge: card.stop_charge ?? '0', base_fare: card.base_fare ?? '0',
+    pickup_free_wait_min: String(card.pickup_free_wait_min ?? 3), pickup_wait_per_min: card.pickup_wait_per_min ?? '3', notes: '',
       })
       setError('')
     }
@@ -124,6 +126,9 @@ function UpdateRateDialog({
         ...(form.stop_charge !== '' ? { stop_charge: parseFloat(form.stop_charge) } : {}),
         // Blank = keep the current base fare; 0 = remove it.
         ...(form.base_fare !== '' && card.ride_type !== 'rental' ? { base_fare: parseFloat(form.base_fare) } : {}),
+        // Blank = keep the current waiting terms; 0 free minutes = every minute at the pickup is charged.
+        ...(form.pickup_free_wait_min !== '' ? { pickup_free_wait_min: parseInt(form.pickup_free_wait_min, 10) } : {}),
+        ...(form.pickup_wait_per_min !== '' ? { pickup_wait_per_min: parseFloat(form.pickup_wait_per_min) } : {}),
         notes: form.notes,
       })
       setOpen(false); onUpdated()
@@ -225,6 +230,21 @@ function UpdateRateDialog({
                 placeholder="0" />
               <p className="text-xs text-text-muted mt-1">was {fmt(card.stop_charge)}. 0 = stops are free. Added to the fare for each stop on this ride type; stops already added are not repriced.</p>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Free wait at pickup (min)</label>
+                <input type="number" step="1" min="0" max="120" value={form.pickup_free_wait_min}
+                  onChange={e => setForm(f => ({ ...f, pickup_free_wait_min: e.target.value }))} className={`${inputCls} font-mono`} placeholder="3" />
+                <p className="text-xs text-text-muted mt-1">was {card.pickup_free_wait_min ?? 3}</p>
+              </div>
+              <div>
+                <label className={labelCls}>Waiting charge (₹ / min)</label>
+                <input type="number" step="0.01" min="0" value={form.pickup_wait_per_min}
+                  onChange={e => setForm(f => ({ ...f, pickup_wait_per_min: e.target.value }))} className={`${inputCls} font-mono`} placeholder="3" />
+                <p className="text-xs text-text-muted mt-1">was {fmt(card.pickup_wait_per_min ?? '3')}</p>
+              </div>
+            </div>
+            <p className="text-xs text-text-muted -mt-2">The driver&rsquo;s wait at the pickup, from arrival until the start code is entered. After the free minutes each minute is charged and added to the final fare. Rides already booked keep the terms they were booked with.{card.ride_type === 'rental' ? ' A rental package can set its own on the Rental packages tab.' : ''}</p>
             {cardMode(card) === 'one_way' && (
               <div>
                 <label className={labelCls}>Return Cab Rate /km (₹)</label>
@@ -680,7 +700,7 @@ function CreateRateCardDialog({
   const [form, setForm] = useState({
     city_id: '', category_id: '', ride_type: 'one_way',
     rate_per_km: '', rate_per_min: '', min_fare: '',
-    return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', stop_charge: '', base_fare: '', notes: '',
+    return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', stop_charge: '', base_fare: '', pickup_free_wait_min: '', pickup_wait_per_min: '', notes: '',
   })
 
   useEffect(() => {
@@ -688,7 +708,7 @@ function CreateRateCardDialog({
       setForm({
         city_id: '', category_id: '', ride_type: 'one_way',
         rate_per_km: '', rate_per_min: '', min_fare: '',
-        return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', stop_charge: '', base_fare: '', notes: '',
+        return_rate_per_km: '', hour_rate: '', km_per_day: '', driver_allowance_per_day: '', stop_charge: '', base_fare: '', pickup_free_wait_min: '', pickup_wait_per_min: '', notes: '',
       })
       setError('')
     }
@@ -713,6 +733,9 @@ function CreateRateCardDialog({
         driver_allowance_per_day: form.driver_allowance_per_day ? parseFloat(form.driver_allowance_per_day) : null,
         stop_charge: form.stop_charge !== '' ? parseFloat(form.stop_charge) : 0, // default: stops are free
         base_fare: form.ride_type !== 'rental' && form.base_fare !== '' ? parseFloat(form.base_fare) : 0, // default: no base fare; rentals are priced from the package fare
+        // Blank = the default of 3 free minutes and ₹3 a minute (the server applies it).
+        ...(form.pickup_free_wait_min !== '' ? { pickup_free_wait_min: parseInt(form.pickup_free_wait_min, 10) } : {}),
+        ...(form.pickup_wait_per_min !== '' ? { pickup_wait_per_min: parseFloat(form.pickup_wait_per_min) } : {}),
         notes: form.notes,
       })
       setOpen(false); onCreated()
@@ -809,6 +832,19 @@ function CreateRateCardDialog({
                 onChange={e => set('stop_charge', e.target.value)} className={`${inputCls} font-mono`} placeholder="0" />
               <p className="text-xs text-text-muted mt-1">0 = stops are free. Added to the fare for each stop on this ride type.</p>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Free wait at pickup (min)</label>
+                <input type="number" step="1" min="0" max="120" value={form.pickup_free_wait_min}
+                  onChange={e => set('pickup_free_wait_min', e.target.value)} className={`${inputCls} font-mono`} placeholder="3" />
+              </div>
+              <div>
+                <label className={labelCls}>Waiting charge (₹ / min)</label>
+                <input type="number" step="0.01" min="0" value={form.pickup_wait_per_min}
+                  onChange={e => set('pickup_wait_per_min', e.target.value)} className={`${inputCls} font-mono`} placeholder="3" />
+              </div>
+            </div>
+            <p className="text-xs text-text-muted -mt-2">Blank = 3 free minutes, then ₹3 a minute. The driver&rsquo;s wait at the pickup, until the start code is entered.</p>
             {form.ride_type === 'one_way' && (
               <div>
                 <label className={labelCls}>Return Cab Rate /km (₹)</label>

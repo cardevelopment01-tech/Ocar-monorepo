@@ -2007,7 +2007,8 @@ export async function listAdminRateCards() {
     `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type, rc.trip_mode,
             rc.city_id::int AS city_id, rc.rate_per_km, rc.rate_per_min, rc.min_fare,
             rc.return_rate_per_km, rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day,
-            rc.cancellation_fee, rc.stop_charge, rc.base_fare, rc.effective_from, rc.effective_to, rc.notes,
+            rc.cancellation_fee, rc.stop_charge, rc.base_fare, rc.pickup_free_wait_min, rc.pickup_wait_per_min,
+            rc.effective_from, rc.effective_to, rc.notes,
             rc.created_by::int AS created_by, rc.created_at,
             vc.display_name AS category_name,
             vc.slug AS category_slug,
@@ -2370,7 +2371,7 @@ export async function listAdminRentalPackages(cityId: number | null) {
       `SELECT rp.id::int AS id, rp.category_id::int AS category_id, vc.display_name AS category_name, vc.slug AS category_slug,
               rp.duration_minutes, rp.km_limit, rp.display_order,
               rp.package_fare::text, rp.extra_per_km::text, rp.extra_per_min::text,
-              rp.stop_charge::text, rp.cancellation_fee::text,
+              rp.stop_charge::text, rp.cancellation_fee::text, rp.pickup_free_wait_min, rp.pickup_wait_per_min::text,
               rp.is_active, rp.city_id::int AS city_id, c.name AS city_name,
               rp.updated_by::int AS updated_by, rp.created_at, rp.updated_at
        FROM rental_packages rp
@@ -2388,7 +2389,7 @@ export async function listAdminRentalPackages(cityId: number | null) {
               rp.id::int AS id, rp.category_id::int AS category_id, vc.display_name AS category_name, vc.slug AS category_slug,
               rp.duration_minutes, rp.km_limit, rp.display_order,
               rp.package_fare::text, rp.extra_per_km::text, rp.extra_per_min::text,
-              rp.stop_charge::text, rp.cancellation_fee::text,
+              rp.stop_charge::text, rp.cancellation_fee::text, rp.pickup_free_wait_min, rp.pickup_wait_per_min::text,
               rp.is_active, rp.city_id::int AS city_id, c.name AS city_name,
               rp.updated_by::int AS updated_by, rp.created_at, rp.updated_at
        FROM rental_packages rp
@@ -2416,6 +2417,9 @@ export async function updateAdminRentalPackage(
     city_id?: number | null;
     stop_charge?: number;
     cancellation_fee?: number;
+    /** Waiting at the pickup. null = use the rate card's value (clears an override). */
+    pickup_free_wait_min?: number | null;
+    pickup_wait_per_min?: number | null;
   },
   adminId: bigint,
 ) {
@@ -2463,6 +2467,14 @@ export async function updateAdminRentalPackage(
     sets.push(`cancellation_fee = $${p++}`);
     params.push(fields.cancellation_fee);
   }
+  if (fields.pickup_free_wait_min !== undefined) {
+    sets.push(`pickup_free_wait_min = $${p++}`);
+    params.push(fields.pickup_free_wait_min);
+  }
+  if (fields.pickup_wait_per_min !== undefined) {
+    sets.push(`pickup_wait_per_min = $${p++}`);
+    params.push(fields.pickup_wait_per_min);
+  }
 
   sets.push(`updated_by = $${p++}`);
   params.push(adminId);
@@ -2472,6 +2484,7 @@ export async function updateAdminRentalPackage(
     `UPDATE rental_packages SET ${sets.join(", ")} WHERE id = $${p} RETURNING
        id::int AS id, category_id::int AS category_id, duration_minutes, km_limit, display_order,
        package_fare::text, extra_per_km::text, extra_per_min::text, stop_charge::text, cancellation_fee::text,
+       pickup_free_wait_min, pickup_wait_per_min::text,
        is_active, city_id::int AS city_id, updated_by::int AS updated_by, created_at, updated_at`,
     params,
   );
@@ -2502,17 +2515,21 @@ export async function createAdminRentalPackage(
     cancellation_fee: number;
     display_order?: number;
     city_id?: number | null;
+    /** Waiting at the pickup. Omitted/null = use the rate card's value. */
+    pickup_free_wait_min?: number | null;
+    pickup_wait_per_min?: number | null;
   },
   adminId: bigint,
 ) {
   const res = await pool.query(
     `INSERT INTO rental_packages
        (category_id, duration_minutes, km_limit, package_fare, extra_per_km, extra_per_min, display_order, city_id, updated_by,
-        stop_charge, cancellation_fee)
-     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 100), $8, $9, $10, $11)
+        stop_charge, cancellation_fee, pickup_free_wait_min, pickup_wait_per_min)
+     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 100), $8, $9, $10, $11, $12, $13)
      RETURNING
        id::int AS id, category_id::int AS category_id, duration_minutes, km_limit, display_order,
        package_fare::text, extra_per_km::text, extra_per_min::text, stop_charge::text, cancellation_fee::text,
+       pickup_free_wait_min, pickup_wait_per_min::text,
        is_active, city_id::int AS city_id, updated_by::int AS updated_by, created_at, updated_at`,
     [
       fields.category_id,
@@ -2526,6 +2543,8 @@ export async function createAdminRentalPackage(
       adminId,
       fields.stop_charge,
       fields.cancellation_fee,
+      fields.pickup_free_wait_min ?? null,
+      fields.pickup_wait_per_min ?? null,
     ],
   );
   const row = res.rows[0] as AdminRentalPackage;
