@@ -590,6 +590,13 @@ export async function createAdminRateCard(data: Parameters<typeof repo.createAdm
   if (data.stopCharge !== undefined && (!Number.isFinite(data.stopCharge) || data.stopCharge < 0 || data.stopCharge > 99999)) {
     throw createHttpError(AppErrors.VALIDATION_ERROR)
   }
+  // Pickup waiting: whole free minutes (0 = none) and a per-minute rate (0 = waiting is free after the window).
+  if (data.pickupFreeWaitMin !== undefined && (!Number.isInteger(data.pickupFreeWaitMin) || data.pickupFreeWaitMin < 0 || data.pickupFreeWaitMin > 120)) {
+    throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
+  if (data.pickupWaitPerMin !== undefined && (!Number.isFinite(data.pickupWaitPerMin) || data.pickupWaitPerMin < 0 || data.pickupWaitPerMin > 999)) {
+    throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
   if (data.baseFare !== undefined && (!Number.isFinite(data.baseFare) || data.baseFare < 0 || data.baseFare > 99999)) {
     throw createHttpError(AppErrors.VALIDATION_ERROR)
   }

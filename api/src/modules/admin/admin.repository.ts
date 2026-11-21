@@ -2682,6 +2682,9 @@ export async function createAdminRateCard(data: {
   stopCharge?: number;
   /** Flat base fare added to every fare. Omitted = carry the previous version's value forward (0 for a brand-new card). */
   baseFare?: number;
+  /** Free minutes and rupees per minute for waiting at the pickup. Omitted = carry the previous version's value forward (3 and 3 for a brand-new card). */
+  pickupFreeWaitMin?: number;
+  pickupWaitPerMin?: number;
   cityId?: number | null;
   notes?: string | null;
   adminId: bigint;
@@ -2734,8 +2737,9 @@ export async function createAdminRateCard(data: {
       `INSERT INTO rate_cards
          (category_id, ride_type, rate_per_km, rate_per_min,
           min_fare, return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-          city_id, notes, created_by, stop_charge, cancellation_fee, base_fare, trip_mode)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+          city_id, notes, created_by, stop_charge, cancellation_fee, base_fare, trip_mode,
+          pickup_free_wait_min, pickup_wait_per_min)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        RETURNING *`,
       [
         data.categoryId,
@@ -2758,6 +2762,9 @@ export async function createAdminRateCard(data: {
         // Same carry-forward for the flat base fare.
         data.baseFare ?? Number(expired.rows[0]?.base_fare ?? 0),
         tripMode,
+        // Same carry-forward for the pickup waiting terms (3 free minutes, 3 rupees a minute for a brand-new card).
+        data.pickupFreeWaitMin ?? Number(expired.rows[0]?.pickup_free_wait_min ?? 3),
+        data.pickupWaitPerMin ?? Number(expired.rows[0]?.pickup_wait_per_min ?? 3),
       ],
     );
 

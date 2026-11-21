@@ -347,3 +347,12 @@ export function estimateFare(params: {
   if (params.pricing_version !== undefined) input.pricing_version = params.pricing_version
   return calculateFare(input)
 }
+
+/**
+ * Waiting charge at the pickup: the minutes past the free window, at a per-minute rate, rounded to a whole rupee like a stop's wait.
+ * Not surged and not part of the one-way band: it is a separate line added to the final fare.
+ */
+export function pickupWaitCharge(waitMin: number, freeMin: number, perMin: number): number {
+  const chargeable = Math.max(0, waitMin - freeMin)
+  return Math.round(chargeable * perMin)
+}

@@ -59,13 +59,13 @@ import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowW
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
-import { calculateFare, isHourlyRoundTrip, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
+import { calculateFare, isHourlyRoundTrip, pickupWaitCharge, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
 import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import {
   MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
   RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
   ONE_WAY_FARE_BAND_OVER, ONE_WAY_FARE_BAND_UNDER,
-  GPS_GAP_SECONDS, GPS_GAP_MIN_METRES, GPS_MAX_ROUTED_GAPS, GPS_MAX_SILENT_SHARE,
+  GPS_GAP_SECONDS, GPS_GAP_MIN_METRES, GPS_MAX_ROUTED_GAPS, GPS_MAX_SILENT_SHARE, PICKUP_WAIT_RADIUS_METRES,
   PICKUP_EDIT_RADIUS_METRES,
 } from '@/constants/limits'
 import { logger } from '@/lib/logger'
@@ -1349,6 +1349,27 @@ export async function startReturn(driverId: bigint, rideId: bigint) {
   return { success: true }
 }
 
+// The start OTP was just accepted, so the rider's wait at the pickup is over. Records the minutes and the charge for the ones past the
+// free window (terms pinned at booking; none for a ride booked before waiting charges existed). Never blocks the trip from starting.
+async function recordPickupWaitAtStart(
+  rideId: bigint,
+  ride: { driver_arrived_at: string | null; origin_lat: number; origin_lng: number },
+): Promise<void> {
+  try {
+    const terms = await repo.getPickupWaitTerms(rideId)
+    if (!terms || !ride.driver_arrived_at) return
+    await flushBreadcrumbs().catch(() => undefined)
+    const minutes = await repo.getPickupWaitMinutes(rideId, new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+    if (minutes === null) {
+      log.warn({ rideId }, 'no position recorded at the pickup: no waiting charge')
+      return
+    }
+    await repo.recordPickupWait(rideId, minutes, pickupWaitCharge(minutes, terms.freeMin, terms.perMin))
+  } catch (err) {
+    log.error({ err, rideId }, 'pickup wait not recorded')
+  }
+}
+
 export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: string) {
   const ride = await repo.getRideCoreForDriverAction(rideId, driverId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
@@ -1381,6 +1402,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     end_otp_hash: endHash,
   })
   if (!started) throw httpError(409, 'Ride is not awaiting start', 'RIDE_NOT_ARRIVED')
+  await recordPickupWaitAtStart(rideId, ride)
 
   if (ride.dest_lat != null && ride.dest_lng != null) {
     void logEtaSnapshot(
@@ -3268,6 +3290,23 @@ export async function verifyEndOTP(
       if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
       await finaliseDiscount(pool, rideId)
     }
+  }
+
+  // The wait at the pickup (recorded when the trip started) is its own line on top of whatever was settled above, for every ride
+  // type. Single winner: the status CAS above lets only one end-OTP submit reach this point, so it is added exactly once.
+  const pickupWait = await repo.getPickupWaitCharge(rideId)
+  if (pickupWait > 0) {
+    const upd = await pool.query<{ total_final: string }>(
+      `UPDATE fare_snapshots
+       SET total_final  = round(COALESCE(total_final, total_estimated) + $2::numeric, 2),
+           status       = 'final',
+           finalised_at = COALESCE(finalised_at, now())
+       WHERE ride_id = $1
+       RETURNING total_final`,
+      [rideId, pickupWait]
+    )
+    if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
+    await finaliseDiscount(pool, rideId)
   }
 
   await pool.query(

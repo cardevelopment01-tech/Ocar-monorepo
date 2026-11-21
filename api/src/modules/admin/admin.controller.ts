@@ -698,6 +698,8 @@ export async function postAdminRateCard(
       driverAllowancePerDay?: number | null;
       stopCharge?: number;
       baseFare?: number;
+      pickupFreeWaitMin?: number;
+      pickupWaitPerMin?: number;
       cityId?: number | null;
       notes?: string | null;
       tripMode?: "standard" | "city";
@@ -726,6 +728,11 @@ export async function postAdminRateCard(
     if (req.body.base_fare !== undefined && req.body.base_fare !== null)
       // Strict: Number('') / Number(true) / Number([]) would quietly become a real rate. Non-numbers become NaN, which the service rejects.
       data.baseFare = typeof req.body.base_fare === 'number' ? req.body.base_fare : NaN;
+    // Pickup waiting terms. Omitted = the repository carries the previous version's values forward. Strict like base_fare.
+    if (req.body.pickup_free_wait_min !== undefined && req.body.pickup_free_wait_min !== null)
+      data.pickupFreeWaitMin = typeof req.body.pickup_free_wait_min === 'number' ? req.body.pickup_free_wait_min : NaN;
+    if (req.body.pickup_wait_per_min !== undefined && req.body.pickup_wait_per_min !== null)
+      data.pickupWaitPerMin = typeof req.body.pickup_wait_per_min === 'number' ? req.body.pickup_wait_per_min : NaN;
     if (req.body.city_id !== undefined)
       data.cityId = req.body.city_id != null ? Number(req.body.city_id) : null;
     if (req.body.notes !== undefined) data.notes = String(req.body.notes);

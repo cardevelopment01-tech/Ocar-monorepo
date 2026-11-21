@@ -40,24 +40,24 @@ describe('createRateCard — stop_charge', () => {
     wire([OLD])
     await createRateCard(BASE)
 
-    expect(insertedCard()[1].at(-4)).toBe(25)
+    expect(insertedCard()[1].at(-6)).toBe(25)
   })
 
   it('uses the supplied stop_charge, including 0 (= make stops free)', async () => {
     wire([OLD])
     await createRateCard({ ...BASE, stopCharge: 0 })
-    expect(insertedCard()[1].at(-4)).toBe(0)
+    expect(insertedCard()[1].at(-6)).toBe(0)
 
     wire([OLD])
     await createRateCard({ ...BASE, stopCharge: 40 })
-    expect(insertedCard()[1].at(-4)).toBe(40)
+    expect(insertedCard()[1].at(-6)).toBe(40)
   })
 
   it('a brand-new card (no previous version) defaults to 0', async () => {
     wire([])
     await createRateCard(BASE)
 
-    expect(insertedCard()[1].at(-4)).toBe(0)
+    expect(insertedCard()[1].at(-6)).toBe(0)
   })
 
   it('records the replaced version\'s stop_charge in the history row', async () => {
@@ -70,6 +70,32 @@ describe('createRateCard — stop_charge', () => {
   it('carries the previous cancellation_fee forward instead of resetting it to NULL', async () => {
     wire([OLD])
     await createRateCard(BASE)
-    expect(insertedCard()[1].at(-3)).toBe('50.00')
+    expect(insertedCard()[1].at(-5)).toBe('50.00')
+  })
+})
+
+describe('createRateCard — pickup waiting terms', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+  const prev = { ...OLD, pickup_free_wait_min: 5, pickup_wait_per_min: '2.50' }
+
+  it("carries the previous version's free minutes and rate forward when none are supplied", async () => {
+    wire([prev])
+    await createRateCard(BASE)
+    expect(insertedCard()[1].at(-2)).toBe(5)
+    expect(insertedCard()[1].at(-1)).toBe(2.5)
+  })
+
+  it('uses the supplied values, including 0', async () => {
+    wire([prev])
+    await createRateCard({ ...BASE, pickupFreeWaitMin: 0, pickupWaitPerMin: 4 })
+    expect(insertedCard()[1].at(-2)).toBe(0)
+    expect(insertedCard()[1].at(-1)).toBe(4)
+  })
+
+  it('a brand-new card starts at 3 free minutes and 3 rupees a minute', async () => {
+    wire([])
+    await createRateCard(BASE)
+    expect(insertedCard()[1].at(-2)).toBe(3)
+    expect(insertedCard()[1].at(-1)).toBe(3)
   })
 })
