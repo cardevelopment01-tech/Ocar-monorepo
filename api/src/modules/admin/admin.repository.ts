@@ -2314,6 +2314,7 @@ export async function getAdminRideById(rideId: bigint) {
        fs.overage_km::text, fs.overage_min::text, fs.refund_amount::text,
        r.trip_hours::float8 AS trip_hours, fs.pricing_version::int AS pricing_version, fs.waiting_fare::text AS waiting_fare,
        fs.overtime_min, fs.overtime_fare::text AS overtime_fare, hrc.hour_rate::float8 AS round_trip_hour_rate,
+       fs.pickup_wait_min::text AS pickup_wait_min, fs.pickup_free_wait_min, fs.pickup_wait_charge::text AS pickup_wait_charge,
        pay.status AS payment_status, pay.channel AS payment_channel,
        rc.reason_code AS cancellation_reason_code, rc.reason AS cancellation_reason, rc.actor AS cancellation_actor,
        rc.fee_applicable AS cancellation_fee_applicable, rc.fee_amount::text AS cancellation_fee_amount,

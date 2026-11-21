@@ -803,6 +803,8 @@ const RIDE_SELECT_SQL = `SELECT
        -- Rental extras, so a client can show package price / extra km / extra time as their own lines.
        fs.overage_km, fs.overage_min, fs.rental_extra_per_km, fs.rental_extra_per_min, fs.rental_duration_minutes,
        fs.pricing_version, fs.waiting_fare, fs.overtime_min, fs.overtime_fare,
+       -- Waiting at the pickup: minutes waited, the free minutes the ride was booked with, and the charge (0 when within the free window).
+       fs.pickup_wait_min, fs.pickup_free_wait_min, fs.pickup_wait_charge,
        hrc.hour_rate  AS round_trip_hour_rate,
        rc.reason      AS cancellation_reason,
        rc.reason_code AS cancellation_reason_code,

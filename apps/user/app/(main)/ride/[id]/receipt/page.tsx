@@ -22,7 +22,7 @@ function money(v: string | null | undefined): string | null {
   return n && n > 0 ? `₹${Math.round(n).toLocaleString('en-IN')}` : null
 }
 
-const FARE_LINES: { key: 'base_fare' | 'distance_fare' | 'time_fare' | 'stop_fare' | 'hour_surcharge' | 'waiting_fare' | 'surge_fare' | 'overage_fare'; label: string }[] = [
+const FARE_LINES: { key: 'base_fare' | 'distance_fare' | 'time_fare' | 'stop_fare' | 'hour_surcharge' | 'waiting_fare' | 'surge_fare' | 'overage_fare' | 'pickup_wait_charge'; label: string }[] = [
   { key: 'base_fare',      label: 'Base fare' },
   { key: 'distance_fare',  label: 'Distance' },
   { key: 'time_fare',      label: 'Time' },
@@ -32,6 +32,8 @@ const FARE_LINES: { key: 'base_fare' | 'distance_fare' | 'time_fare' | 'stop_far
   { key: 'waiting_fare',   label: 'Booked time' },
   { key: 'surge_fare',     label: 'Surge' },
   { key: 'overage_fare',   label: 'Overage' },
+  // The driver's wait at the pickup past the free minutes (not surged).
+  { key: 'pickup_wait_charge', label: 'Waiting at pickup' },
 ]
 
 const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
@@ -87,6 +89,10 @@ function fareDetail(key: string, ride: RideDetail): string | null {
   if (key === 'distance_fare' && ride.actual_km) return `${parseFloat(ride.actual_km)} km`
   if (key === 'time_fare' && ride.actual_min) return `${Math.round(parseFloat(ride.actual_min))} min`
   if (key === 'waiting_fare' && ride.trip_hours) return `${ride.trip_hours} ${ride.trip_hours === 1 ? 'hour' : 'hours'}`
+  if (key === 'pickup_wait_charge' && ride.pickup_wait_min) {
+    const free = ride.pickup_free_wait_min
+    return `${Math.round(parseFloat(ride.pickup_wait_min))} min${free != null ? `, after ${free} free minutes` : ''}`
+  }
   return null
 }
 
