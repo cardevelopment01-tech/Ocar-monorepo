@@ -6,6 +6,7 @@ import * as repo from './analytics.repository'
 import { parseRange, InvalidRangeError, type ParsedRange } from './analytics.range'
 import { roleClassOf, type RoleClass } from './analytics.service'
 import { toCsv } from './csv'
+import { listInvoicesBetween } from '@/modules/packages/package-invoice.service'
 import { recordAuditLog } from '@/lib/audit-log'
 import { analyticsExportTotal } from '@/observability/metrics'
 import { logger } from '@/lib/logger'
@@ -98,6 +99,25 @@ async function buildExport(tab: ExportTab, p: ParsedRange): Promise<string> {
     cities.map(c => [c.city_name, c.ride_count, c.revenue, c.cancelled_count, c.cancellation_rate, c.active_drivers])
   )
 }
+
+// GST tax invoices issued to drivers for ride-credit plans, one row each, in the columns the CA needs for the GSTR-1 return.
+router.get('/export/gst-invoices.csv', authenticate(), FINANCE_ONLY, handle(async (req, res) => {
+  const p = parseRange(req.query as Record<string, unknown>)
+  const rows = await listInvoicesBetween(p.range.start, p.range.end)
+  const csv = toCsv(
+    ['Invoice no', 'Type', 'Invoice date (IST)', 'Period', 'Recipient', 'Recipient state', 'Place of supply code', 'SAC', 'Taxable value', 'CGST rate %', 'CGST', 'SGST rate %', 'SGST', 'IGST rate %', 'IGST', 'Invoice value', 'Supplier GSTIN', 'Payment reference'],
+    rows.map(r => [
+      r.invoice_no, r.kind === 'commission' ? 'Commission' : 'Ride-credit plan', new Date(r.issued_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
+      r.period_start ? `${r.period_start} to ${r.period_end}` : '', r.recipient.name, r.recipient.state_name ?? '',
+      r.place_of_supply_code, r.sac, r.taxable_value, r.cgst_rate, r.cgst_amount, r.sgst_rate, r.sgst_amount, r.igst_rate, r.igst_amount, r.total,
+      r.supplier.gstin ?? '', r.gateway_payment_id ?? '',
+    ])
+  )
+  await recordAuditLog({ adminId: req.admin!.id, action: 'analytics_export', targetTable: 'package_invoices', targetId: 0n, ipAddress: req.ip ?? null, afterState: { tab: 'gst-invoices', from: p.from, to: p.to, rows: rows.length } })
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', `attachment; filename="ocar-gst-invoices-${p.from}_${p.to}.csv"`)
+  res.send(csv)
+}))
 
 router.get('/export/:tab.csv', authenticate(), FINANCE_ONLY, handle(async (req, res) => {
   const tab = req.params['tab'] as ExportTab

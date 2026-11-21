@@ -4,8 +4,19 @@ export interface PackageTier {
   price: string
   threshold_value: string
   is_active: boolean
+  /** Which drivers see this plan: every car type shares 'cab', autos have 'auto'. */
+  vehicle_group: 'cab' | 'auto'
+  /** How long a purchase of this plan lasts. */
+  validity_days: number
   created_at: string
   updated_at: string
+}
+
+/** A plan as the driver apps show it: the price, the GST added on top, what is charged, and what it buys. */
+export interface PackageTierView extends PackageTier {
+  gst_percent: number
+  gst_amount: string
+  total_amount: string
 }
 
 export interface DriverPackageWallet {
@@ -20,7 +31,7 @@ export interface DriverPackageWallet {
 
 export interface DriverPackageLedgerEntry {
   id: string
-  entry_type: 'topup' | 'ride_consumption' | 'admin_adjustment'
+  entry_type: 'topup' | 'ride_consumption' | 'admin_adjustment' | 'expiry'
   amount: string
   direction: 'credit' | 'debit'
   balance_after: string

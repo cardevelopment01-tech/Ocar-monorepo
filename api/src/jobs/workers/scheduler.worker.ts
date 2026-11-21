@@ -16,6 +16,7 @@ import { docLabel } from '@/modules/admin/admin.service'
 import { runAdminDigest } from '@/modules/analytics/admin-digest'
 import { sweepStaleSosAlerts, sweepBreachedDisputeSlas } from '@/modules/safety/safety.sweeps'
 import { endExpiredOffers, releaseStaleReservations } from '@/modules/offers/offers.worker'
+import { issueCommissionInvoices } from '@/modules/packages/package-invoice.service'
 
 const log = createWorkerLogger('scheduler')
 
@@ -87,6 +88,12 @@ export const schedulerWorker = new Worker(
 
     if (job.name === 'admin_daily_digest') {
       await runAdminDigest()
+      return
+    }
+
+    // GST commission invoices: one consolidated invoice per driver for each period that has ended (monthly by default).
+    if (job.name === 'issue_commission_invoices') {
+      await issueCommissionInvoices()
       return
     }
   },

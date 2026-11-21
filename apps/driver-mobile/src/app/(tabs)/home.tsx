@@ -186,6 +186,10 @@ export default function HomeScreen() {
   // Actionable, not just informational, tapping goes straight to the screen that fixes it, matching
   // the rule every driver-app rejection writeup agrees on: never leave a driver guessing what to do next.
   const walletBlock = walletBlockMessage(walletGate)
+  // A package driver is allowed online with no credit but gets no requests: say so instead of leaving them waiting.
+  const packageNotice = walletGate.packageCredit?.exhausted
+    ? { title: 'No ride credit left', message: 'You will not receive ride requests until you add credit. Choose a plan in your wallet.', actionLabel: 'Add credit', route: '/wallet' as const }
+    : null
   const blockedBanner = documentGate.hasRejected
     ? { title: documentGate.title ?? (documentGate.isMissingUpload ? 'Action needed' : 'Document rejected'), message: documentGate.rejectionReason ?? 'Reupload it to go online again.', actionLabel: documentGate.issues.length > 0 && documentGate.issues.every((i) => i.reason === 'pending_review') ? 'View status' : 'Fix now', route: '/documents' as const }
     : walletGate.isFrozen
@@ -193,6 +197,8 @@ export default function HomeScreen() {
       : walletBlock
         ? { ...walletBlock, actionLabel: 'Top up', route: '/wallet' as const }
         : null
+  // What the banner shows. The no-credit notice is display-only: it never stops the driver going online (blockedBanner does that).
+  const shownBanner = blockedBanner ?? packageNotice
 
   const toggleDisabled =
     flow.sessionCheck !== 'ready' || flow.checkingVerification || (!isOnline && (!!blockedBanner || !flow.vehicle))
@@ -299,8 +305,8 @@ export default function HomeScreen() {
           </Card>
         ) : null}
 
-        {blockedBanner ? (
-          <Pressable onPress={() => router.push(blockedBanner.route)} style={({ pressed }) => [styles.alertCard, pressed ? styles.pressedScale : null]} accessibilityRole="button">
+        {shownBanner ? (
+          <Pressable onPress={() => router.push(shownBanner.route)} style={({ pressed }) => [styles.alertCard, pressed ? styles.pressedScale : null]} accessibilityRole="button">
             {/* Pulse only for the rejected-doc case, a frozen wallet doesn't get worse by the minute
                 the way a rejected document review clock does, so it doesn't need the same urgency cue. */}
             {documentGate.hasRejected ? (
@@ -309,11 +315,11 @@ export default function HomeScreen() {
               <Feather name="alert-triangle" size={16} color={colors.error} />
             )}
             <View style={styles.alertBody}>
-              <Text style={styles.alertTitle}>{blockedBanner.title}</Text>
-              <Text style={styles.alertText} numberOfLines={3}>{blockedBanner.message}</Text>
+              <Text style={styles.alertTitle}>{shownBanner.title}</Text>
+              <Text style={styles.alertText} numberOfLines={3}>{shownBanner.message}</Text>
             </View>
             <View style={styles.alertAction}>
-              <Text style={styles.alertActionText}>{blockedBanner.actionLabel}</Text>
+              <Text style={styles.alertActionText}>{shownBanner.actionLabel}</Text>
               <Feather name="chevron-right" size={14} color={colors.error} />
             </View>
           </Pressable>

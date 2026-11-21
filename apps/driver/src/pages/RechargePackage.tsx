@@ -12,8 +12,15 @@ import { getApiErrorMessage } from '@/lib/api-error'
 interface PackageTier {
   id: number
   label: string
+  /** The plan price before GST. */
   price: string
+  /** The ride value the driver gets. */
   threshold_value: string
+  /** GST added on top of the price, and what is actually charged (worked out by the server). */
+  gst_percent?: number
+  gst_amount?: string
+  total_amount?: string
+  validity_days?: number
 }
 
 interface PackageWallet {
@@ -21,12 +28,24 @@ interface PackageWallet {
   is_frozen: boolean
   lifetime_topup: string
   lifetime_consumed: string
+  /** Each purchase's remaining ride value and when it expires, soonest first. */
+  lots?: Array<{ remaining: string; expires_at: string }>
+  next_expiry?: string | null
 }
+
+// Whole rupees drop the decimals, paise keep two ("₹47.20", "₹550").
+const money = (v: string | number): string => {
+  const n = typeof v === 'number' ? v : parseFloat(v)
+  const whole = Math.abs(n - Math.round(n)) < 0.005
+  return n.toLocaleString('en-IN', whole ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+const dayLabel = (iso: string): string => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 
 const TERMS = [
   'Credit is added to your ride balance instantly',
-  "Used automatically to settle each ride's fare",
-  'Credit never expires',
+  "Used automatically to settle each ride's fare, oldest purchase first",
+  'GST is added to the plan price; you get the full ride credit',
+  'Each purchase is valid for 365 days from the day you buy it. Credit left after that expires',
   'Purchases are non-refundable',
 ]
 
@@ -178,6 +197,9 @@ export default function RechargePackage() {
               <p className="text-white font-black text-[38px] leading-none tabular-nums">
                 ₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </p>
+              {wallet?.next_expiry && (
+                <p className="text-white/70 text-[12px] font-medium mt-1.5">Next expiry {dayLabel(wallet.next_expiry)}</p>
+              )}
 
               {/* Threshold bar: remaining vs. total ever purchased */}
               <div className="mt-4">
@@ -244,9 +266,8 @@ export default function RechargePackage() {
 
         <div className="space-y-2.5">
           {tiers.map((t, i) => {
-            const price = parseFloat(t.price)
             const threshold = parseFloat(t.threshold_value)
-            const multiplier = price > 0 ? threshold / price : 0
+            const multiplier = parseFloat(t.total_amount ?? t.price) > 0 ? threshold / parseFloat(t.total_amount ?? t.price) : 0
             const selected = t.id === selectedId
             return (
               <motion.button
@@ -269,11 +290,16 @@ export default function RechargePackage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-text-primary font-bold text-base tabular-nums">
-                    ₹{t.threshold_value} <span className="text-text-muted font-medium text-xs">ride credit</span>
+                    ₹{money(t.threshold_value)} <span className="text-text-muted font-medium text-xs">ride credit</span>
                   </p>
                   <p className="text-text-muted text-xs mt-0.5">
-                    Pay ₹{t.price}{multiplier >= 1.05 ? ` · ${multiplier.toFixed(1)}× value` : ''}
+                    Pay ₹{money(t.total_amount ?? t.price)}{multiplier >= 1.05 ? ` · ${multiplier.toFixed(1)}× value` : ''}
                   </p>
+                  {t.gst_amount && parseFloat(t.gst_amount) > 0 && (
+                    <p className="text-text-muted text-xs mt-0.5">
+                      ₹{money(t.price)} + ₹{money(t.gst_amount)} GST ({t.gst_percent}%){t.validity_days ? ` · valid ${t.validity_days} days` : ''}
+                    </p>
+                  )}
                 </div>
               </motion.button>
             )
@@ -307,7 +333,7 @@ export default function RechargePackage() {
         >
           <div className="flex items-center justify-between mb-2.5">
             <p className="text-text-muted text-xs font-medium">You pay</p>
-            <p className="text-text-primary font-bold text-lg tabular-nums">₹{selectedTier?.price ?? '0'}</p>
+            <p className="text-text-primary font-bold text-lg tabular-nums">₹{money(selectedTier?.total_amount ?? selectedTier?.price ?? '0')}</p>
           </div>
           <button
             onClick={() => void handleBuy()}

@@ -956,6 +956,8 @@ export async function postPackageTier(
       label: String(req.body.label ?? ""),
       price: Number(req.body.price),
       thresholdValue: Number(req.body.thresholdValue),
+      vehicleGroup: req.body.vehicleGroup === "auto" ? "auto" : "cab",
+      validityDays: req.body.validityDays === undefined ? 365 : Number(req.body.validityDays),
       createdBy: req.admin!.id,
     });
     res.status(201).json(tier);
@@ -975,6 +977,8 @@ export async function patchPackageTier(
       price?: number;
       thresholdValue?: number;
       isActive?: boolean;
+      vehicleGroup?: "cab" | "auto";
+      validityDays?: number;
     } = {};
     if (req.body.label !== undefined) data.label = String(req.body.label);
     if (req.body.price !== undefined) data.price = Number(req.body.price);
@@ -982,6 +986,10 @@ export async function patchPackageTier(
       data.thresholdValue = Number(req.body.thresholdValue);
     if (req.body.isActive !== undefined)
       data.isActive = Boolean(req.body.isActive);
+    if (req.body.vehicleGroup !== undefined)
+      data.vehicleGroup = req.body.vehicleGroup === "auto" ? "auto" : "cab";
+    if (req.body.validityDays !== undefined)
+      data.validityDays = Number(req.body.validityDays);
     res.json(await service.updatePackageTier(BigInt(req.params["id"]!), data));
   } catch (err) {
     next(err);

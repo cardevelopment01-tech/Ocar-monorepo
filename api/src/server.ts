@@ -127,6 +127,14 @@ async function start(): Promise<void> {
     { name: 'admin_daily_digest', opts: { removeOnComplete: true, removeOnFail: true, attempts: 3, backoff: { type: 'exponential', delay: 60_000 } } }
   )
 
+  // GST commission invoices: runs every day at 02:30 IST and invoices any period that has ended and not been invoiced yet, so the monthly
+  // run lands on the 1st and a missed day or an outage is caught up the next night. Idempotent, so every instance can register it.
+  await schedulerQueue.upsertJobScheduler(
+    'commission-invoices',
+    { pattern: '30 2 * * *', tz: 'Asia/Kolkata' },
+    { name: 'issue_commission_invoices', opts: { removeOnComplete: true, removeOnFail: true, attempts: 3, backoff: { type: 'exponential', delay: 5 * 60_000 } } }
+  )
+
   void partitionMaintenanceWorker
   logger.info('partition maintenance worker started')
   // Runs on the 25th of each month (same convention ADR-003 specified),
