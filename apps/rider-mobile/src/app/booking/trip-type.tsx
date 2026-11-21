@@ -113,12 +113,12 @@ export default function TripTypeScreen() {
           onPress={() => setChoice('one_way')}
           icon="arrow-right"
           title="One way"
-          sub="A to B at one fixed fare"
+          sub="A to B, estimated fare"
           badge={cheaperOneWay}
           loading={loading}
           est={oneWayEst}
           unit="one way"
-          chips={[{ label: 'Fixed fare' }, { label: 'Pay on arrival' }]}
+          chips={[{ label: 'Estimated fare' }, { label: 'Pay on arrival' }]}
         />
         <View style={{ height: 18 }} />
         <TypeCard
@@ -139,12 +139,12 @@ export default function TripTypeScreen() {
           ]}
         />
 
-        {/* Only what is true: a one-way fare is fixed at booking; a round trip's booked fare is fixed, and extra km beyond the quoted route plus time past the booked hours (after a short grace) are added at settlement. */}
+        {/* Only what is true: a one-way fare is an estimate, billed on the km and time actually driven; a round trip's booked fare is fixed, and extra km beyond the quoted route plus time past the booked hours (after a short grace) are added at settlement. */}
         <View style={styles.lockRow}>
-          <Feather name="lock" size={16} color={h.tealText} />
+          <Feather name={choice === 'one_way' ? 'info' : 'lock'} size={16} color={h.tealText} />
           <Text style={styles.lockText}>
             {choice === 'one_way'
-              ? 'Your fare is locked when you book.'
+              ? 'This is an estimate. You pay for the km and time actually driven, so your final fare can be a little higher or lower.'
               : 'Your fare is locked when you book. Extra km beyond your route and time past your booked hours are added after the trip.'}
           </Text>
         </View>
