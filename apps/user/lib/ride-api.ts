@@ -287,6 +287,12 @@ export const rideApi = {
     }
   },
 
+  // The trip receipt as a PDF (the server draws it; only the rider who took the trip can fetch it).
+  getReceiptPdf: async (rideId: string): Promise<Blob> => {
+    const res = await api.get(`/api/v1/rides/${rideId}/receipt.pdf`, { responseType: 'blob' })
+    return res.data as Blob
+  },
+
   getRide: async (rideId: string): Promise<RideDetail> => {
     const res = await api.get(`/api/v1/rides/${rideId}`)
     return res.data as RideDetail

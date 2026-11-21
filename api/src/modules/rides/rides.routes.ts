@@ -12,6 +12,8 @@ import * as repo from './rides.repository'
 import * as paymentsService from '@/modules/payments/payments.service'
 import { returnCabAvailability } from './return-cab-availability'
 import { maxPickupRadiusMetres } from '@/constants/limits'
+import { buildReceipt } from './receipt/receipt.model'
+import { renderReceiptPdf } from './receipt/receipt.pdf'
 
 const HISTORY_LIMIT = 20
 
@@ -266,6 +268,32 @@ router.get('/:id', authenticate(), async (req, res, next) => {
     const viewer = req.admin ? 'admin' : isRider ? 'user' : 'driver'
     const maskedRide = await service.withPickupWait(withTripWindow(service.maskRideContacts(ride, viewer)))
     res.json({ ...maskedRide, stops, driver_photo: driverPhoto, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
+  } catch (err) { next(err) }
+})
+
+// ── Trip receipt (PDF) ────────────────────────────────────────
+// The rider's own receipt for a finished trip (or a cancellation that carried a fee). Generated on request, never stored or cached
+// publicly; the response is private. A trip that is still running, or a free cancellation, has no receipt.
+router.get('/:id/receipt.pdf', authenticate(), onlyUser, async (req, res, next) => {
+  try {
+    const rideId = BigInt(req.params['id']!)
+    const ride = await repo.getRideById(rideId)
+    if (!ride || String(ride.user_id) !== String(req.user!.id)) { res.status(404).json({ error: 'Ride not found' }); return }
+    const cancelled = ride.status === 'cancelled' || ride.status === 'no_drivers'
+    const hasFee = Number(ride.cancellation_fee ?? 0) > 0
+    if (!(ride.status === 'completed' || (cancelled && hasFee))) {
+      res.status(409).json({ error: 'There is no receipt for this trip', code: 'RECEIPT_NOT_AVAILABLE' }); return
+    }
+    const [stops, trail] = await Promise.all([
+      repo.getRideStops(rideId),
+      ride.started_at && !cancelled ? repo.getTrailPoints(rideId, new Date(ride.started_at)) : Promise.resolve([] as Array<[number, number]>),
+    ])
+    const model = buildReceipt(withTripWindow(ride), stops, trail)
+    const pdf = await renderReceiptPdf(model)
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="Ocar-receipt-${rideId}.pdf"`)
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.send(pdf)
   } catch (err) { next(err) }
 })
 
