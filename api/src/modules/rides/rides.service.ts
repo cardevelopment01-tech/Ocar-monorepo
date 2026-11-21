@@ -10,7 +10,7 @@ import { getPresignedUrl } from '@/lib/storage'
 import crypto from 'crypto'
 import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
-import { assertCityRideAllowed, parseTripMode } from './city-ride'
+import { assertCityRideAllowed, cityStopLimitError, parseCityStopLimit, parseTripMode, stopLimitFor } from './city-ride'
 import * as repo from './rides.repository'
 import { storeShadowLeg, recordShadowPing } from './eta-shadow'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
@@ -121,6 +121,15 @@ function validateRider(data: BookingRequest): void {
   if (!data.riderPhone || !INDIAN_PHONE_RE.test(data.riderPhone)) {
     throw Object.assign(new Error('Rider phone must be a valid Indian mobile number (+91XXXXXXXXXX)'), { httpStatus: 422 })
   }
+}
+
+/**
+ * The most stops a ride may carry: a city ride has its own limit (system_config city_ride_max_stops, default 2), every other ride the global one.
+ * The booking check, the add-stop check and the `max_stops` the apps read from GET /rides/:id all come from here, so they cannot disagree.
+ */
+export async function maxStopsFor(tripMode: 'standard' | 'city' | null | undefined): Promise<number> {
+  if (tripMode !== 'city') return MAX_STOPS_PER_RIDE
+  return stopLimitFor('city', parseCityStopLimit(await getConfigValue('city_ride_max_stops', ''), MAX_STOPS_PER_RIDE), MAX_STOPS_PER_RIDE)
 }
 
 function validateStops(data: BookingRequest): void {
@@ -959,6 +968,11 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
   validateStops(data)
   if (tripMode === 'city' || data.rideType === 'rental') {
     await assertStopsInPickupCity({ lat: data.originLat, lng: data.originLng }, data.stops ?? [])
+  }
+  if (tripMode === 'city' && data.stops && data.stops.length > 0) {
+    // A city ride has its own stop limit (the client's rule: 2).
+    const limit = await maxStopsFor('city')
+    if (data.stops.length > limit) throw cityStopLimitError(limit)
   }
   // Derived server-side so the persisted count and ride_stops rows can never
   // diverge — client-supplied stopCount is accepted-but-ignored (see BookingRequest).
@@ -1969,6 +1983,10 @@ export async function addRideStop(
   const existingStops = await repo.getRideStops(rideId)
   if (existingStops.length + 1 > MAX_STOPS_PER_RIDE) {
     throw Object.assign(new Error(`A ride can have at most ${MAX_STOPS_PER_RIDE} stops`), { httpStatus: 422 })
+  }
+  if (ride.trip_mode === 'city') {
+    const limit = await maxStopsFor('city')
+    if (existingStops.length + 1 > limit) throw cityStopLimitError(limit)
   }
   const anchors: Array<{ lat: number; lng: number }> = [{ lat: ride.origin_lat, lng: ride.origin_lng }]
   if (ride.dest_lat !== null && ride.dest_lng !== null) {

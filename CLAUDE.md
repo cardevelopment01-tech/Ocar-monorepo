@@ -123,6 +123,11 @@ smallest area → nearest centroid → id, so overlapping boundaries (Bhubaneswa
 Writes go through `admin.repository.ts` (`FOR UPDATE` + millisecond-precision `updated_at`
 compare; 409 `BOUNDARY_CHANGED` on a stale save) — never `geo.repository.updateCity`.
 
+### City ride stops
+A city ride (`trip_mode = 'city'`) may have at most `system_config.city_ride_max_stops` stops (default 2, 0 to 3; other ride types keep `MAX_STOPS_PER_RIDE` = 3), enforced at booking (`createBooking`) and when a stop is added mid-ride (`addRideStop`), code `CITY_RIDE_STOP_LIMIT`.
+The limit comes from one place, `maxStopsFor` (rides.service.ts), and `GET /rides/:id` sends it as `max_stops`: the rider app hides "Add stop" on a ride that is full (`stopsFull`). Every stop must also lie inside the pickup's city (`assertStopsInPickupCity`, code `STOP_OUTSIDE_CITY`).
+Each stop's 10 minutes is a FREE wait window (`STOP_FREE_WAIT_MINUTES`) after which wait is metered at the rate card's per-minute rate; it is not a hard cap (client wording unconfirmed).
+
 ### Driver ride-credit packages (billing_mode = 'package'): GST and expiry
 A plan has a price, a ride value (`threshold_value`), a vehicle group (`cab` or `auto`: a driver is shown only their group's plans, resolved from their primary vehicle category) and `validity_days` (365).
 **GST is added on top of the price** (`system_config.package_gst_percent`, 18): price 40 -> 7.20 GST -> the driver pays 47.20 and gets the full 550 of ride value. `package_purchase_orders.amount` is

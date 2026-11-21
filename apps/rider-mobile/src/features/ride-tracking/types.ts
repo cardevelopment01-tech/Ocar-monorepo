@@ -22,6 +22,8 @@ export type RideDetailExtra = RideDetail & {
   isReturnCab?: boolean
   // 'city' for a city ride (a one-way ride booked as City ride); absent on an older server.
   tripMode?: 'standard' | 'city'
+  // How many stops this ride may carry (a city ride has its own, lower, limit); absent on an older server.
+  maxStops?: number
   // Who ended a cancelled ride (the API reads it from ride_cancellations). Absent on older servers and on rides that were never cancelled.
   cancellationActor?: 'user' | 'driver' | 'admin' | 'system' | null
   // The late-cancel fee charged to the rider and whether an admin waived it (0 / false when there was none).

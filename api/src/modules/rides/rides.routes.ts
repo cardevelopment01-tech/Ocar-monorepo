@@ -275,7 +275,9 @@ router.get('/:id', authenticate(), async (req, res, next) => {
 
     const viewer = req.admin ? 'admin' : isRider ? 'user' : 'driver'
     const maskedRide = await service.withPickupWait(withTripWindow(service.maskRideContacts(ride, viewer)))
-    res.json({ ...maskedRide, stops, driver_photo: driverPhoto, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
+    // max_stops: how many stops this ride may carry (a city ride has its own, lower, limit), so the apps hide "Add stop" when it is full.
+    const max_stops = await service.maxStopsFor(ride.trip_mode === 'city' ? 'city' : 'standard')
+    res.json({ ...maskedRide, stops, max_stops, driver_photo: driverPhoto, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
   } catch (err) { next(err) }
 })
 

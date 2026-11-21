@@ -12,7 +12,7 @@ export function parseTripMode(raw: unknown): TripMode {
 
 /**
  * The rules of a city ride booking (owner decisions D3 and D8): a point-to-point one-way inside one city boundary, no distance cap,
- * not a return cab, switched on by city_rides_enabled. The stop limit is the existing one for every ride type.
+ * not a return cab, switched on by city_rides_enabled. Stops: at most city_ride_max_stops (2) (see stopLimitFor); they must be inside the pickup city (assertStopsInPickupCity in rides.service).
  */
 export function assertCityRideAllowed(
   data: Pick<BookingRequest, 'rideType' | 'isReturnCab' | 'destinationLat' | 'destinationLng'>,
@@ -26,3 +26,23 @@ export function assertCityRideAllowed(
   }
   if (ctx.scope !== 'in_city') throw httpError(422, 'This trip leaves the city, so it cannot be a city ride', 'CITY_RIDE_NOT_IN_CITY')
 }
+
+/** Most stops a city ride may have when system_config city_ride_max_stops is missing or unreadable (the client's rule: 2). */
+export const CITY_RIDE_MAX_STOPS_DEFAULT = 2
+
+/** Reads the configured city stop limit: a whole number from 0 up to the global ceiling, else the default. */
+export function parseCityStopLimit(raw: string | null | undefined, globalMax: number): number {
+  const n = Number((raw ?? '').trim())
+  return raw != null && raw.trim() !== '' && Number.isInteger(n) && n >= 0 && n <= globalMax ? n : Math.min(CITY_RIDE_MAX_STOPS_DEFAULT, globalMax)
+}
+
+/** The most stops this ride may carry: a city ride has its own (lower) limit, every other ride the global one. */
+export function stopLimitFor(tripMode: TripMode | undefined, cityLimit: number, globalMax: number): number {
+  return tripMode === 'city' ? Math.min(cityLimit, globalMax) : globalMax
+}
+
+/** The refusal for a city ride that has (or would have) more stops than allowed, in words the rider app can show. */
+export function cityStopLimitError(limit: number) {
+  return httpError(422, limit === 0 ? 'A city ride cannot have stops' : `A city ride can have at most ${limit} ${limit === 1 ? 'stop' : 'stops'}`, 'CITY_RIDE_STOP_LIMIT')
+}
+

@@ -24,11 +24,17 @@ vi.mock('@/modules/notifications/notifications.service', () => ({
   notifyAllAdmins: vi.fn(),
 }))
 
+// The city stop limit is a system_config value; a test sets it through here (null = unset, so the default of 2 applies).
+const cfg = vi.hoisted(() => ({ cityMaxStops: null as string | null }))
+vi.mock('@/lib/system-config', () => ({
+  getConfigValue: vi.fn(async (key: string, fallback: string) => (key === 'city_ride_max_stops' && cfg.cityMaxStops !== null ? cfg.cityMaxStops : fallback)),
+}))
+
 import * as repo from '@/modules/rides/rides.repository'
 import { pool } from '@/db/client'
 import { socketEvents } from '@/websocket/socket.server'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
-import { addRideStop } from '@/modules/rides/rides.service'
+import { addRideStop, maxStopsFor } from '@/modules/rides/rides.service'
 import { MAX_STOPS_PER_RIDE } from '@/constants/limits'
 
 const USER_ID = BigInt(7)
@@ -207,5 +213,77 @@ describe('addRideStop', () => {
 
     await expect(addRideStop(USER_ID, RIDE_ID, STOP)).rejects.toThrow(/too close to another point/)
     expect(repo.appendRideStop).not.toHaveBeenCalled()
+  })
+})
+
+// Value: protects=a city ride refuses a 3rd stop while the ride is on the way (and leaves nothing written),
+// accepts one that fits, a standard ride keeps its limit of 3, and maxStopsFor (the one place the limit is decided, also sent to the apps
+// as max_stops) honours the setting and falls back to 2 for a bad value; fails_when=the city branch of addRideStop is removed, the limit
+// leaks onto standard rides, or an unreadable setting opens the limit; why_new=the client capped city rides at 2 stops inside the city;
+// seam=repo, config and the boundary query mocked; no_claim=real PostGIS (checked separately against a database).
+describe('addRideStop on a city ride', () => {
+  const cityRide = (over: Record<string, unknown> = {}) => ({
+    id: RIDE_ID, user_id: USER_ID, driver_id: BigInt(55), status: 'in_progress', ride_type: 'one_way', trip_mode: 'city', category_id: BigInt(1),
+    origin_lat: 20.10, origin_lng: 85.70, dest_lat: 20.40, dest_lng: 85.90, ...over,
+  })
+  const existing = (n: number) => Array.from({ length: n }, (_, i) => ({
+    id: BigInt(i + 1), ride_id: RIDE_ID, sequence: i + 1, lat: 20.15 + i * 0.05, lng: 85.75 + i * 0.05,
+    address: `S${i + 1}`, status: 'pending', arrived_at: null, reached_at: null, stop_charge_applied: '0', wait_charge: '0',
+  }))
+
+  beforeEach(() => {
+    vi.clearAllMocks() // call counts only; the shared repo mocks keep their default answers
+    cfg.cityMaxStops = null
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ '?column?': 1 }], rowCount: 1 } as never) // the stop is inside the city
+  })
+
+  it('refuses a 3rd stop with CITY_RIDE_STOP_LIMIT and writes nothing', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(cityRide() as never)
+    vi.mocked(repo.getRideStops).mockResolvedValue(existing(2) as never)
+    await expect(addRideStop(USER_ID, RIDE_ID, STOP)).rejects.toMatchObject({ httpStatus: 422, appCode: 'CITY_RIDE_STOP_LIMIT' })
+    expect(repo.appendRideStop).not.toHaveBeenCalled()
+  })
+
+
+  it('accepts a stop that fits: the 2nd, inside the city', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(cityRide() as never)
+    vi.mocked(repo.getRideStops).mockResolvedValue(existing(1) as never)
+    await addRideStop(USER_ID, RIDE_ID, STOP)
+    expect(repo.appendRideStop).toHaveBeenCalledTimes(1)
+  })
+
+  it('follows the setting: with the limit at 1, a 2nd stop is refused', async () => {
+    cfg.cityMaxStops = '1'
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(cityRide() as never)
+    vi.mocked(repo.getRideStops).mockResolvedValue(existing(1) as never)
+    await expect(addRideStop(USER_ID, RIDE_ID, STOP)).rejects.toMatchObject({ appCode: 'CITY_RIDE_STOP_LIMIT', message: 'A city ride can have at most 1 stop' })
+  })
+
+  it('a standard ride is not held to the city limit: a 3rd stop is accepted and no boundary query runs', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(cityRide({ trip_mode: 'standard' }) as never)
+    vi.mocked(repo.getRideStops).mockResolvedValue(existing(2) as never)
+    vi.mocked(pool.query).mockClear()
+    await addRideStop(USER_ID, RIDE_ID, STOP)
+    expect(repo.appendRideStop).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(pool.query).mock.calls.some((c) => String(c[0]).includes('unnest'))).toBe(false)
+  })
+})
+
+describe('maxStopsFor', () => {
+  beforeEach(() => { cfg.cityMaxStops = null })
+  it('a standard ride (or an unknown mode) gets the global limit', async () => {
+    expect(await maxStopsFor('standard')).toBe(MAX_STOPS_PER_RIDE)
+    expect(await maxStopsFor(null)).toBe(MAX_STOPS_PER_RIDE)
+    expect(await maxStopsFor(undefined)).toBe(MAX_STOPS_PER_RIDE)
+  })
+  it('a city ride gets the configured limit, 2 when none is set', async () => {
+    expect(await maxStopsFor('city')).toBe(2)
+    cfg.cityMaxStops = '1'
+    expect(await maxStopsFor('city')).toBe(1)
+    cfg.cityMaxStops = '3'
+    expect(await maxStopsFor('city')).toBe(3)
+  })
+  it('an unreadable or out-of-range setting falls back to 2, never to no limit', async () => {
+    for (const bad of ['abc', '', '7', '-1', '2.5']) { cfg.cityMaxStops = bad; expect(await maxStopsFor('city')).toBe(2) }
   })
 })
