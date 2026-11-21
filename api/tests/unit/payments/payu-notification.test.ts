@@ -358,18 +358,18 @@ describe('handlePayuNotification', () => {
     expect(payuUnattributedCapturesTotal.inc).toHaveBeenCalledWith({ reason: 'amount_mismatch' })
   })
 
-  const pendingPurchase = { id: '4', driver_id: '7', threshold_value: '1200.00', amount: '1000.00', status: 'pending', gateway_payment_id: null }
+  const pendingPurchase = { id: '4', driver_id: '7', threshold_value: '1200.00', amount: '1000.00', status: 'pending', gateway_payment_id: null, validity_days: 365 }
 
   it('package captured: claims the purchase and credits the threshold', async () => {
     sql({})
     vi.mocked(redis.get).mockResolvedValue(null)
     vi.mocked(pkgRepo.findPurchaseByTxnId).mockResolvedValue(pendingPurchase)
     vi.mocked(payu.fetchPayuStatus).mockResolvedValue(captured(100000))
-    vi.mocked(pkgRepo.markPurchaseCompletedPayu).mockResolvedValue({ id: '4', driver_id: '7', threshold_value: '1200.00' })
+    vi.mocked(pkgRepo.markPurchaseCompletedPayu).mockResolvedValue({ id: '4', driver_id: '7', threshold_value: '1200.00', validity_days: 365 })
     const out = await handlePayuNotification({ ...body, txnid: 'P7xabc' })
     expect(out).toEqual({ kind: 'package', id: '7', result: 'success' })
     expect(pkgSvc.creditPackageBalance).toHaveBeenCalledTimes(1)
-    expect(pkgSvc.creditPackageBalance).toHaveBeenCalledWith(7n, 1200, '555')
+    expect(pkgSvc.creditPackageBalance).toHaveBeenCalledWith(7n, 1200, '555', { orderId: '4', validityDays: 365 })
   })
 
   it('package: claim already won (credit may have failed last time) → re-runs the deduped credit with the stored payment id', async () => {
@@ -384,7 +384,7 @@ describe('handlePayuNotification', () => {
     expect(out).toEqual({ kind: 'package', id: '7', result: 'success' })
     // creditPackageBalance dedupes on (wallet, reference_id) → a no-op if it already ran
     expect(pkgSvc.creditPackageBalance).toHaveBeenCalledTimes(1)
-    expect(pkgSvc.creditPackageBalance).toHaveBeenCalledWith(7n, 1200, '555')
+    expect(pkgSvc.creditPackageBalance).toHaveBeenCalledWith(7n, 1200, '555', { orderId: '4', validityDays: 365 })
   })
 
   it('package: claim lost and purchase not completed → no credit', async () => {

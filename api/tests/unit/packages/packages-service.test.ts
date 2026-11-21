@@ -40,6 +40,22 @@ describe('consumePackageBalance', () => {
     expect(updateCall?.[1]).toEqual([9, -30, 80])
   })
 
+  // Value: protects=a ride is never charged to a driver's package credit twice; fails_when=a retried or legacy settle path debits the same fare again;
+  // why_new=found while reviewing the kill-switch cash path, which settles without first claiming the ride; seam=none; no_claim=the real row lock.
+  it('charges a ride only once: a ride that already has a consumption row is skipped', async () => {
+    client.query.mockReset()
+    client.query.mockImplementation((sql: string) => {
+      if (sql.includes('SELECT id, balance, is_frozen')) return Promise.resolve({ rows: [{ id: 9, balance: '200.00', is_frozen: false }], rowCount: 1 })
+      if (sql.includes("entry_type = 'ride_consumption'")) return Promise.resolve({ rows: [{ '?column?': 1 }], rowCount: 1 })
+      return Promise.resolve({ rows: [], rowCount: 0 })
+    })
+    await consumePackageBalance(BigInt(2), BigInt(42), 80)
+
+    expect(client.query.mock.calls.some((c: unknown[]) => (c[0] as string).includes('UPDATE driver_package_wallets'))).toBe(false)
+    expect(client.query.mock.calls.some((c: unknown[]) => (c[0] as string).includes('INSERT INTO driver_package_ledger'))).toBe(false)
+    expect(client.query.mock.calls.some((c: unknown[]) => c[0] === 'ROLLBACK')).toBe(true)
+  })
+
   it('writes a ride_consumption ledger row with direction debit', async () => {
     scriptConsume('200.00')
     await consumePackageBalance(BigInt(2), BigInt(42), 80)

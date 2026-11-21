@@ -50,6 +50,8 @@ COPY --from=builder /app/api/dist ./dist
 # Fonts and logo the receipt PDF draws with: receipt.pdf.ts resolves them as <app root>/assets, from src/ and from dist/ alike.
 COPY api/assets ./assets
 COPY api/entrypoint.sh ./entrypoint.sh
+# Fonts and logo the invoice PDF draws with: package-invoice.pdf.ts resolves them as <app root>/assets, from src/ and from dist/ alike.
+COPY api/assets ./assets
 
 EXPOSE 4000
 

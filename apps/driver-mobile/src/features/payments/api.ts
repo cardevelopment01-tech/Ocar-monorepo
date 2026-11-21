@@ -51,9 +51,17 @@ export async function confirmPayment(txnId: string): Promise<ConfirmResult> {
 export type PackageTier = {
   id: string
   label?: string
+  /** The plan price before GST. */
   price: string
+  /** The ride value the driver gets. */
   threshold_value: string
   is_active?: boolean
+  /** GST added on top of the price at purchase, and what is actually charged (the server works these out). */
+  gst_percent?: number
+  gst_amount?: string
+  total_amount?: string
+  /** How long a purchase lasts. */
+  validity_days?: number
 }
 
 export async function fetchPackageTiers(): Promise<PackageTier[]> {
@@ -61,7 +69,60 @@ export async function fetchPackageTiers(): Promise<PackageTier[]> {
   return res.data as PackageTier[]
 }
 
-export async function fetchPackageWallet(): Promise<{ balance: string; is_frozen: boolean }> {
+export type PackageWallet = {
+  balance: string
+  is_frozen: boolean
+  /** Each purchase's remaining ride value and when it expires, soonest first. */
+  lots?: Array<{ remaining: string; expires_at: string }>
+  next_expiry?: string | null
+}
+
+export type PackageLedgerEntry = {
+  id: string
+  entry_type: 'topup' | 'ride_consumption' | 'admin_adjustment' | 'expiry'
+  amount: string
+  direction: 'credit' | 'debit'
+  balance_after: string
+  ride_id: string | null
+  note: string | null
+  created_at: string
+}
+
+/**
+ * A GST tax invoice: one for a ride-credit plan purchase, or one consolidated commission invoice for a period (then `period_start` /
+ * `period_end` are IST dates 'YYYY-MM-DD' and `ride_count` is how many rides it covers). Amounts are rupees.
+ */
+export type PackageInvoiceRow = {
+  id: string
+  kind: 'package' | 'commission'
+  period_start: string | null
+  period_end: string | null
+  ride_count: number | null
+  invoice_no: string
+  issued_at: string
+  description: string
+  taxable_value: number
+  gst_total: number
+  total: number
+}
+
+export async function fetchPackageInvoices(): Promise<PackageInvoiceRow[]> {
+  const res = await api.get('/api/v1/payments/packages/invoices')
+  return res.data as PackageInvoiceRow[]
+}
+
+/** A five-minute link that opens the invoice PDF in a browser tab. */
+export async function fetchPackageInvoiceLink(id: string): Promise<string> {
+  const res = await api.get(`/api/v1/payments/packages/invoices/${id}/link`)
+  return (res.data as { url: string }).url
+}
+
+export async function fetchPackageLedger(): Promise<PackageLedgerEntry[]> {
+  const res = await api.get('/api/v1/payments/packages/ledger')
+  return res.data as PackageLedgerEntry[]
+}
+
+export async function fetchPackageWallet(): Promise<PackageWallet> {
   const res = await api.get('/api/v1/payments/packages/wallet')
-  return res.data as { balance: string; is_frozen: boolean }
+  return res.data as PackageWallet
 }

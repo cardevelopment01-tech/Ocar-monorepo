@@ -10,7 +10,8 @@ import { usePayment } from '@/features/payments/usePayment'
 import { createTopupOrder, createPackageOrder } from '@/features/payments/api'
 import { PaymentStatus } from '@/features/payments/PaymentStatus'
 import { AddMoneyCard } from '@/features/payments/AddMoneyCard'
-import { PackageCard } from '@/features/payments/PackageCard'
+import { PackageWalletView } from '@/features/payments/PackageWalletView'
+import { InvoicesCard } from '@/features/payments/InvoicesCard'
 
 // Fallback when the in-app payment is unavailable (kill switch off, SDK failed to start):
 // the web portal's wallet/package page in a Custom Tab -- never an embedded WebView.
@@ -69,7 +70,9 @@ export default function WalletScreen() {
 
   useEffect(() => { void load() }, [load])
 
-  const payment = usePayment(() => { void load(true) })
+  // Bumped when a payment settles so the package view re-reads its balance and activity.
+  const [paidTick, setPaidTick] = useState(0)
+  const payment = usePayment(() => { void load(true); setPaidTick((n) => n + 1) })
 
   const balance = wallet ? parseFloat(wallet.balance) : 0
   // The minimum comes from the server (min_balance). While the recharge gate is switched off for testing the server
@@ -86,7 +89,7 @@ export default function WalletScreen() {
           <Text style={styles.subtitle}>{packageMode ? 'Ride package' : 'Compliance deposit'}</Text>
         </View>
         {!loading ? (
-          <Pressable onPress={() => void load()} style={styles.refreshBtn} accessibilityLabel="Refresh wallet">
+          <Pressable onPress={() => { void load(); setPaidTick((n) => n + 1) }} style={styles.refreshBtn} accessibilityLabel="Refresh wallet">
             <Feather name="refresh-cw" size={15} color={colors.ink600} />
           </Pressable>
         ) : null}
@@ -102,7 +105,7 @@ export default function WalletScreen() {
           />
         ) : null}
         {packageMode ? (
-          <PackageCard busy={payment.busy} onBuy={(tierId) => payment.start('package', () => createPackageOrder(tierId))} />
+          <PackageWalletView busy={payment.busy} refreshKey={paidTick} onBuy={(tierId) => payment.start('package', () => createPackageOrder(tierId))} />
         ) : loading ? (
           <Skeleton height={144} borderRadius={24} />
         ) : error && !wallet ? (
@@ -164,6 +167,8 @@ export default function WalletScreen() {
                 ))
               )}
             </View>
+
+            <InvoicesCard refreshKey={paidTick} />
           </>
         )}
       </ScrollView>

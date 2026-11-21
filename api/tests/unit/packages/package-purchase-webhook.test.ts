@@ -77,14 +77,15 @@ describe('handleWebhookEvent — payment.captured for a package purchase order',
       id: '9', driver_id: '42', threshold_value: '10000.00',
     })
     markPurchaseCompleted.mockResolvedValueOnce({
-      id: '9', driver_id: '42', threshold_value: '10000.00',
+      id: '9', driver_id: '42', threshold_value: '10000.00', validity_days: 365,
     })
 
     await handleWebhookEvent(capturedPayload('pay_123', 'order_abc'))
 
     expect(findPendingPurchaseByOrderId).toHaveBeenCalledWith('order_abc')
     expect(markPurchaseCompleted).toHaveBeenCalledWith('9', 'pay_123')
-    expect(creditPackageBalance).toHaveBeenCalledWith(BigInt(42), 10000, 'pay_123')
+    // each purchase becomes its own credit lot that lasts the plan's days
+    expect(creditPackageBalance).toHaveBeenCalledWith(BigInt(42), 10000, 'pay_123', { orderId: '9', validityDays: 365 })
   })
 
   it('no-ops when the order matches neither a ride payment nor a package purchase', async () => {
@@ -123,21 +124,23 @@ describe('handleWebhookEvent — payment.captured for a package purchase order',
 describe('createPackagePurchaseOrder (PayU)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getTierById.mockResolvedValue({ id: '3', is_active: true, price: '1000.00', threshold_value: '1200.00' })
+    getTierById.mockResolvedValue({ id: '3', is_active: true, price: '1000.00', threshold_value: '1200.00', validity_days: 365 })
     vi.mocked(pool.query).mockResolvedValue({
       rows: [{ name: 'Ravi', email: 'r@x.in', phone: '8888888888' }], rowCount: 1,
     } as never)
   })
 
-  it('persists a pending purchase keyed by txnid and returns a signed form for the tier price', async () => {
+  it('charges the tier price plus 18% GST, persists the split, and returns a signed form for the total', async () => {
     const out = await createPackagePurchaseOrder(7n, 3n)
     if (!('payu' in out)) throw new Error('expected payu form')
-    expect(out.amount).toBe(1000)
-    expect(out.payu.fields['amount']).toBe('1000.00')
+    expect(out.amount).toBe(1180)
+    expect(out.payu.fields['amount']).toBe('1180.00')
     const txnId = out.payu.fields['txnid']!
     expect(txnId).toMatch(/^P7x/)
     expect(createPayuPurchaseOrder).toHaveBeenCalledWith(
-      expect.objectContaining({ driverId: 7n, tierId: 3n, amount: 1000, thresholdValue: 1200, txnId })
+      expect.objectContaining({
+        driverId: 7n, tierId: 3n, amount: 1180, priceAmount: 1000, gstPercent: 18, gstAmount: 180, validityDays: 365, thresholdValue: 1200, txnId,
+      })
     )
   })
 

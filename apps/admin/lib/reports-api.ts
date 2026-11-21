@@ -7,6 +7,8 @@ import { apiParams, type ReportFilters } from './reports-range'
 export interface Totals {
   gross_bookings?: number
   commission?: number
+  /** Plan price (GST excluded) of ride-credit plans sold in the period; absent for ops_admin like the other money fields. */
+  subscription_revenue?: number
   completed_rides: number
   active_drivers: number
   cohort_completed: number

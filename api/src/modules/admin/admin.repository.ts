@@ -727,10 +727,18 @@ export async function deleteDriver(
       "DELETE FROM driver_wallet_ledger WHERE wallet_id IN (SELECT id FROM driver_wallets WHERE driver_id = $1) OR driver_id = $1",
       [driverId],
     );
+    // GST tax invoices must be kept for 72 months (CGST Act s.36): a driver who has been issued one is not purged. Checked first, so the
+    // whole purge rolls back instead of leaving a half-deleted driver.
+    const invoiced = await client.query("SELECT 1 FROM driver_invoices WHERE driver_id = $1 LIMIT 1", [driverId]);
+    if ((invoiced.rowCount ?? 0) > 0) {
+      throw Object.assign(new Error("This driver has GST tax invoices, which must be kept for 72 months, so the account cannot be purged. Suspend it instead."), { httpStatus: 409 });
+    }
     await client.query(
       "DELETE FROM driver_package_ledger WHERE wallet_id IN (SELECT id FROM driver_package_wallets WHERE driver_id = $1) OR driver_id = $1",
       [driverId],
     );
+    // credit lots reference the wallet and the purchase order: they go before both
+    await client.query("DELETE FROM package_credit_lots WHERE driver_id = $1", [driverId]);
     await client.query("DELETE FROM settlements WHERE driver_id = $1", [
       driverId,
     ]);
@@ -2996,23 +3004,51 @@ export async function listPackageTiers(): Promise<PackageTier[]> {
 
 async function fetchPackageTiersFromDb(): Promise<PackageTier[]> {
   const res = await pool.query<PackageTier>(
-    `SELECT id, label, price::text, threshold_value::text, is_active, created_at, updated_at
-     FROM package_tiers ORDER BY price ASC`,
+    `SELECT id, label, price::text, threshold_value::text, is_active, vehicle_group, validity_days, created_at, updated_at
+     FROM package_tiers ORDER BY package_tiers.vehicle_group ASC, package_tiers.price ASC`, // qualified: a bare "price" would sort by the price::text output column ('250.00' before '40.00')
   );
   return res.rows;
+}
+
+/** One plan straight from the database (not the cached list), for checking an edit against what is saved. */
+export async function getPackageTierById(id: bigint): Promise<PackageTier | null> {
+  const res = await pool.query<PackageTier>(
+    `SELECT id, label, price::text, threshold_value::text, is_active, vehicle_group, validity_days, created_at, updated_at
+     FROM package_tiers WHERE id = $1`,
+    [id],
+  );
+  return res.rows[0] ?? null;
+}
+
+/** Whether an ACTIVE plan with the same drivers, price and ride value already exists (other than `excludeId`): two of them would look identical to a driver. */
+export async function packageTierDuplicateExists(
+  vehicleGroup: "cab" | "auto",
+  price: number,
+  thresholdValue: number,
+  excludeId?: bigint,
+): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT 1 FROM package_tiers
+      WHERE is_active = true AND vehicle_group = $1 AND price = $2 AND threshold_value = $3 AND ($4::bigint IS NULL OR id <> $4)
+      LIMIT 1`,
+    [vehicleGroup, price, thresholdValue, excludeId ?? null],
+  );
+  return (res.rowCount ?? 0) > 0;
 }
 
 export async function createPackageTier(data: {
   label: string;
   price: number;
   thresholdValue: number;
+  vehicleGroup: "cab" | "auto";
+  validityDays: number;
   createdBy: bigint;
 }): Promise<PackageTier> {
   const res = await pool.query<PackageTier>(
-    `INSERT INTO package_tiers (label, price, threshold_value, created_by)
-     VALUES ($1,$2,$3,$4)
-     RETURNING id, label, price::text, threshold_value::text, is_active, created_at, updated_at`,
-    [data.label, data.price, data.thresholdValue, data.createdBy],
+    `INSERT INTO package_tiers (label, price, threshold_value, vehicle_group, validity_days, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     RETURNING id, label, price::text, threshold_value::text, is_active, vehicle_group, validity_days, created_at, updated_at`,
+    [data.label, data.price, data.thresholdValue, data.vehicleGroup, data.validityDays, data.createdBy],
   );
   await invalidate(PACKAGE_TIERS_ALL_KEY);
   return res.rows[0]!;
@@ -3025,6 +3061,8 @@ export async function updatePackageTier(
     price?: number;
     thresholdValue?: number;
     isActive?: boolean;
+    vehicleGroup?: "cab" | "auto";
+    validityDays?: number;
   },
 ): Promise<PackageTier | null> {
   const sets: string[] = [];
@@ -3046,11 +3084,19 @@ export async function updatePackageTier(
     sets.push(`is_active = $${p++}`);
     values.push(data.isActive);
   }
+  if (data.vehicleGroup !== undefined) {
+    sets.push(`vehicle_group = $${p++}`);
+    values.push(data.vehicleGroup);
+  }
+  if (data.validityDays !== undefined) {
+    sets.push(`validity_days = $${p++}`);
+    values.push(data.validityDays);
+  }
   if (!sets.length) return null;
   values.push(id);
   const res = await pool.query<PackageTier>(
     `UPDATE package_tiers SET ${sets.join(", ")} WHERE id = $${p}
-     RETURNING id, label, price::text, threshold_value::text, is_active, created_at, updated_at`,
+     RETURNING id, label, price::text, threshold_value::text, is_active, vehicle_group, validity_days, created_at, updated_at`,
     values,
   );
   const row = res.rows[0] ?? null;

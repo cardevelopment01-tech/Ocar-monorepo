@@ -963,8 +963,10 @@ export async function postPackageTier(
       label: String(req.body.label ?? ""),
       price: Number(req.body.price),
       thresholdValue: Number(req.body.thresholdValue),
+      vehicleGroup: req.body.vehicleGroup === "auto" ? "auto" : "cab",
+      validityDays: req.body.validityDays === undefined ? 365 : Number(req.body.validityDays),
       createdBy: req.admin!.id,
-    });
+    }, req.ip ?? null);
     res.status(201).json(tier);
   } catch (err) {
     next(err);
@@ -982,14 +984,27 @@ export async function patchPackageTier(
       price?: number;
       thresholdValue?: number;
       isActive?: boolean;
+      vehicleGroup?: "cab" | "auto";
+      validityDays?: number;
     } = {};
     if (req.body.label !== undefined) data.label = String(req.body.label);
     if (req.body.price !== undefined) data.price = Number(req.body.price);
     if (req.body.thresholdValue !== undefined)
       data.thresholdValue = Number(req.body.thresholdValue);
-    if (req.body.isActive !== undefined)
-      data.isActive = Boolean(req.body.isActive);
-    res.json(await service.updatePackageTier(BigInt(req.params["id"]!), data));
+    // A real boolean only: Boolean("false") is true, which would switch a plan ON when an integration meant OFF.
+    if (req.body.isActive !== undefined) {
+      if (typeof req.body.isActive !== "boolean") {
+        throw httpError(422, "isActive must be true or false", AppErrors.VALIDATION_ERROR.code);
+      }
+      data.isActive = req.body.isActive;
+    }
+    if (req.body.vehicleGroup !== undefined)
+      data.vehicleGroup = req.body.vehicleGroup === "auto" ? "auto" : "cab";
+    if (req.body.validityDays !== undefined)
+      data.validityDays = Number(req.body.validityDays);
+    const rawId = req.params["id"]!;
+    if (!/^\d+$/.test(rawId)) throw createHttpError(AppErrors.NOT_FOUND);
+    res.json(await service.updatePackageTier(BigInt(rawId), data, req.admin!.id, req.ip ?? null));
   } catch (err) {
     next(err);
   }
