@@ -51,6 +51,8 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
   // The wait at the pickup past the free minutes, so the driver sees it is part of the fare they collect.
   const pickupWaitFare = ride.pickupWaitCharge != null ? parseFloat(ride.pickupWaitCharge) : 0
   const pickupWaitMin = ride.pickupWaitMin != null ? Math.round(parseFloat(ride.pickupWaitMin)) : 0
+  // An airport toll is part of the cash the driver collects and is paid on to them, not taken as commission.
+  const tollFare = ride.tollCharge != null ? parseFloat(ride.tollCharge) : 0
 
   return (
     <View style={styles.wrap}>
@@ -106,6 +108,12 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
             // Already inside the fare above: a caption, not another amount to add up.
             <Text style={styles.overtimeNote}>
               Booked {ride.tripHours}h · Overtime {overtime.min} min {fmt(overtime.fare)}
+            </Text>
+          ) : null}
+          {tollFare > 0 ? (
+            // Already inside the fare above: a caption, not another amount to add up.
+            <Text style={styles.overtimeNote}>
+              Airport toll · {fmt(tollFare)} · paid to you, no commission
             </Text>
           ) : null}
           {pickupWaitFare > 0 ? (

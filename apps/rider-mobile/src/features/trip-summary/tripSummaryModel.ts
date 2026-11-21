@@ -25,7 +25,7 @@ type InvoiceSource = Pick<RideDetail,
   'baseFare' | 'distanceFare' | 'timeFare' | 'stopFare' | 'hourSurcharge' | 'overageFare' | 'surgeFare' |
   'surgeMultiplier' | 'actualKm' | 'actualMin' | 'totalFinal' | 'totalEstimated'> &
   Partial<Pick<RideDetail, 'tripHours' | 'waitingFare' | 'overtimeMin' | 'overtimeFare' | 'overtimeGraceMin' | 'discountAmount' |
-    'pickupWaitMin' | 'pickupFreeWaitMin' | 'pickupWaitCharge' |
+    'pickupWaitMin' | 'pickupFreeWaitMin' | 'pickupWaitCharge' | 'tollCharge' | 'tollDetail' |
     'rideType' | 'overageKm' | 'overageMin' | 'rentalExtraPerKm' | 'rentalExtraPerMin' | 'rentalKmLimit' | 'rentalDurationMinutes'>>
 
 // Only components that were actually charged (> 0), each labelled with its quantity. If the
@@ -55,6 +55,8 @@ export function buildInvoiceRows(r: InvoiceSource): { rows: InvoiceRow[]; total:
     // After surge: overtime is not surged. Only present once the trip settled with time past the booked window.
     { key: 'overtime', label: 'Extra time', detail: `${num(r.overtimeMin)} min${grace ? `, after ${grace} free minutes` : ''}`, amount: (r.overtimeMin ?? 0) > 0 ? num(r.overtimeFare) : 0 },
     // The driver's wait at the pickup past the free minutes; not surged, so it follows surge.
+    // Airport toll: its own line, not surged, with the zone it was charged for.
+    { key: 'toll', label: 'Airport toll', ...(r.tollDetail?.length && { detail: r.tollDetail.map((t) => t.zone).join(', ') }), amount: num(r.tollCharge) },
     { key: 'pickupWait', label: 'Waiting at pickup', ...(num(r.pickupWaitMin) > 0 && { detail: `${Math.round(num(r.pickupWaitMin))} min${r.pickupFreeWaitMin != null ? `, after ${r.pickupFreeWaitMin} free minutes` : ''}` }), amount: num(r.pickupWaitCharge) },
   ]
   let rows = candidates.filter((c) => c.amount > 0)

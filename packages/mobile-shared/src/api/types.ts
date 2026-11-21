@@ -88,6 +88,9 @@ export type RideDetail = {
   pickupWaitMin?: string | null
   pickupFreeWaitMin?: number | null
   pickupWaitCharge?: string | null
+  // Airport toll charged on this ride (numeric string, 0 when none) and the zones it came from.
+  tollCharge?: string | null
+  tollDetail?: Array<{ zone: string; amount: number }> | null
   // While the driver is at the pickup: when the wait clock started (absent/null until they are really there) and the rate it runs at.
   pickupWaitStartedAt?: string | null
   pickupWaitPerMin?: string | null
