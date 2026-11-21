@@ -19,7 +19,7 @@ const FLUSH_MS = 600
  *
  * Live positions come over the socket (`nearby:car`, see attachNearbyCars); a REST snapshot fills the map the moment the screen
  * opens and takes over if the push is not reaching the phone. `within` is how far from the pickup to show cars and `categoryId`
- * the booked category (its cars are shown, or every car when there are none near: see chooseCars). Empty when disabled. A failed fetch keeps the cars already shown:
+ * the booked category (only its cars are shown: see chooseCars). Empty when disabled. A failed fetch keeps the cars already shown:
  * this is a reassurance layer, not booking data, so it must never throw into the screen or blank the map.
  */
 export function useNearbyDrivers(
