@@ -40,3 +40,17 @@ ALTER TABLE fare_snapshots
 COMMENT ON COLUMN fare_snapshots.toll_terms IS 'Airport toll rates copied at booking: [{zone_id, name, amount}] for the ride''s vehicle category. NULL = none apply.';
 COMMENT ON COLUMN fare_snapshots.toll_charge IS 'Rupees of airport toll charged, recorded at settlement; added to the final fare and paid on to the driver.';
 COMMENT ON COLUMN fare_snapshots.toll_detail IS 'The zones that were entered and what each charged: [{zone, amount}].';
+
+-- Audit trail: every change to a zone or its tolls, with who made it and the reason they gave. zone_id is not a foreign key so the
+-- history of a deleted zone survives it.
+CREATE TABLE IF NOT EXISTS airport_zone_changes (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  zone_id     BIGINT NOT NULL,
+  zone_name   VARCHAR(80) NOT NULL,
+  action      TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+  changed_by  BIGINT NULL REFERENCES admins(id),
+  reason      TEXT NOT NULL,
+  summary     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS airport_zone_changes_created_idx ON airport_zone_changes (created_at DESC);

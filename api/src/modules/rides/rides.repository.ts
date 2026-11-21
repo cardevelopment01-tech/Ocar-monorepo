@@ -2275,35 +2275,43 @@ export async function getPickupWaitStartedAt(
 
 // ── Airport toll ──────────────────────────────────────────────
 
+/** Pings inside a zone needed before the trail alone earns a toll: one stray or spoofed position is not a trip through the airport. */
+export const TOLL_MIN_TRAIL_PINGS = 3
+
+export interface TollResult { total: number; detail: Array<{ zone: string; amount: number }>; trailOnly: boolean }
+
 /**
- * The airport toll owed on this ride: each zone whose rate was pinned at booking, entered at least once. "Entered" is any position
- * recorded while the trip was under way inside the zone, or the pickup or drop sitting inside it (a short airport trip may record no
- * ping inside the polygon). Positions before the trip started (the driver's approach) never count. One charge per zone per ride.
+ * The airport toll owed on this ride: each zone whose rate was pinned at booking, entered at least once. "Entered" is the pickup or drop
+ * sitting inside it, or at least TOLL_MIN_TRAIL_PINGS positions recorded while the trip was under way inside it (a short airport trip may
+ * record no ping inside the polygon, hence the endpoints). Positions before the trip started never count. One charge per zone per ride.
+ * trailOnly = some charged zone was earned by the trail alone (the only evidence a driver's own phone can fake), so the caller flags it.
  */
-export async function getTollForRide(rideId: bigint): Promise<{ total: number; detail: Array<{ zone: string; amount: number }> }> {
-  const res = await pool.query<{ total: string; detail: Array<{ zone: string; amount: number }> }>(
+export async function getTollForRide(rideId: bigint): Promise<TollResult> {
+  const res = await pool.query<{ total: string; detail: Array<{ zone: string; amount: number }>; trail_only: boolean }>(
     `WITH terms AS (
        SELECT (e->>'zone_id')::bigint AS zone_id, e->>'name' AS name, (e->>'amount')::numeric AS amount
          FROM fare_snapshots fs, jsonb_array_elements(fs.toll_terms) e
         WHERE fs.ride_id = $1
      ),
-     hit AS (
-       SELECT t.name, t.amount
+     seen AS (
+       SELECT t.name, t.amount,
+              (ST_Intersects(z.boundary, r.origin) OR ST_Intersects(z.boundary, r.destination)) AS at_end,
+              (SELECT count(*) FROM gps_tracks g
+                WHERE g.ride_id = $1 AND r.started_at IS NOT NULL AND g.recorded_at >= r.started_at
+                  AND ST_Intersects(z.boundary, g.location)) AS pings
          FROM terms t
          JOIN airport_zones z ON z.id = t.zone_id
          JOIN rides r ON r.id = $1
-        WHERE ST_Intersects(z.boundary, r.origin) OR ST_Intersects(z.boundary, r.destination)
-           OR EXISTS (SELECT 1 FROM gps_tracks g
-                       WHERE g.ride_id = $1 AND r.started_at IS NOT NULL AND g.recorded_at >= r.started_at
-                         AND ST_Intersects(z.boundary, g.location))
-     )
+     ),
+     hit AS (SELECT name, amount, at_end FROM seen WHERE at_end OR pings >= $2)
      SELECT COALESCE(sum(amount), 0)::text AS total,
-            COALESCE(jsonb_agg(jsonb_build_object('zone', name, 'amount', amount)), '[]'::jsonb) AS detail
+            COALESCE(jsonb_agg(jsonb_build_object('zone', name, 'amount', amount)), '[]'::jsonb) AS detail,
+            COALESCE(bool_or(NOT at_end), false) AS trail_only
        FROM hit`,
-    [rideId],
+    [rideId, TOLL_MIN_TRAIL_PINGS],
   )
   const r = res.rows[0]
-  return { total: parseFloat(r?.total ?? '0'), detail: r?.detail ?? [] }
+  return { total: parseFloat(r?.total ?? '0'), detail: r?.detail ?? [], trailOnly: r?.trail_only ?? false }
 }
 
 export async function recordToll(rideId: bigint, total: number, detail: Array<{ zone: string; amount: number }>): Promise<void> {

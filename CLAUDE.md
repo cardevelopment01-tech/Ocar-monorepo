@@ -154,6 +154,9 @@ At completion and on force-complete, `settleToll` adds the toll of every pinned 
 inside, or that holds the pickup or drop (`getTollForRide`; approach pings before the start never count), recorded in `toll_charge` / `toll_detail`
 and added to the final fare together with the pickup wait, outside the one-way band, not surged. It is a pass-through: `createPaymentRecord` takes
 commission on the payable without the toll, so the driver earns the toll on top of their fare share.
+Guards: the trail alone needs `TOLL_MIN_TRAIL_PINGS` (3) pings in the zone (one spoofed ping earns nothing), and a toll earned by the trail alone
+flags the ride for ops review. A zone must intersect an active city (catches a lat/lng-swapped paste). Every zone/rate/toggle/delete needs a
+reason and writes `airport_zone_changes` (kept after the zone is deleted).
 
 ### PayU collections
 Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`

@@ -11,7 +11,14 @@ export const MAX_ZONE_KM2 = 100
 export const MAX_TOLL = 5000
 
 export interface AirportRateInput { category_id: number; amount: number }
-export interface AirportZoneInput { name?: string; boundary?: unknown; is_active?: boolean; rates?: AirportRateInput[] }
+export interface AirportZoneInput { name?: string; boundary?: unknown; is_active?: boolean; rates?: AirportRateInput[]; reason?: string }
+
+/** Every change needs a short reason; it is kept with who made it (airport_zone_changes). */
+export function checkReason(v: unknown): string {
+  const r = typeof v === 'string' ? v.trim() : ''
+  if (r.length < 3 || r.length > 300) throw httpError(422, 'Give a reason for this change (3 to 300 characters)', 'VALIDATION_ERROR')
+  return r
+}
 
 /** A GeoJSON Polygon with a closed outer ring of at least 4 points, as a JSON string ready for ST_GeomFromGeoJSON. */
 export function polygonText(v: unknown): string {
@@ -59,19 +66,34 @@ export async function listZones() {
 
 /** Rejects a shape PostGIS cannot use, or one too big to be an airport (a typo that would charge half a city). */
 async function assertUsablePolygon(text: string): Promise<void> {
-  let row: { ok: boolean; reason: string | null; km2: number } | undefined
+  let row: { ok: boolean; reason: string | null; km2: number; in_city: boolean } | undefined
   try {
     row = (await pool.query(
       `WITH g AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON($1::text), 4326) AS geom)
-       SELECT ST_IsValid(geom) AS ok, ST_IsValidReason(geom) AS reason, ST_Area(geom::geography) / 1000000.0 AS km2 FROM g`, [text])).rows[0]
+       SELECT ST_IsValid(geom) AS ok, ST_IsValidReason(geom) AS reason, ST_Area(geom::geography) / 1000000.0 AS km2,
+              EXISTS (SELECT 1 FROM cities c WHERE c.status = 'active' AND c.boundary IS NOT NULL AND ST_Intersects(c.boundary, geom)) AS in_city FROM g`, [text])).rows[0]
   } catch {
     throw httpError(422, 'That shape could not be read as a polygon', 'VALIDATION_ERROR')
   }
   if (!row?.ok) throw httpError(422, `That shape is not valid: ${row?.reason ?? 'unknown'}`, 'VALIDATION_ERROR')
+  // An airport sits in one of our cities. A zone touching none is almost always longitude and latitude pasted the wrong way round.
+  if (!row.in_city) throw httpError(422, 'That zone is not inside any active city. Check the corners are longitude first, then latitude.', 'ZONE_OUTSIDE_CITIES')
   if (row.km2 > MAX_ZONE_KM2) throw httpError(422, `That zone is ${Math.round(row.km2)} km². An airport zone can be at most ${MAX_ZONE_KM2} km².`, 'ZONE_TOO_LARGE')
 }
 
-async function saveRates(client: { query: typeof pool.query }, zoneId: number, rates: AirportRateInput[]): Promise<void> {
+type Db = { query: typeof pool.query }
+async function logChange(c: Db, zoneId: number, zoneName: string, action: 'create' | 'update' | 'delete', adminId: bigint, reason: string, summary: Record<string, unknown>) {
+  await c.query('INSERT INTO airport_zone_changes (zone_id, zone_name, action, changed_by, reason, summary) VALUES ($1,$2,$3,$4,$5,$6::jsonb)', [zoneId, zoneName, action, adminId, reason, JSON.stringify(summary)])
+}
+
+export async function listChanges(limit = 30) {
+  const res = await pool.query(
+    `SELECT h.id::int AS id, h.zone_id::int AS zone_id, h.zone_name, h.action, h.reason, h.summary, h.created_at, a.email AS changed_by
+       FROM airport_zone_changes h LEFT JOIN admins a ON a.id = h.changed_by ORDER BY h.id DESC LIMIT $1`, [limit])
+  return res.rows
+}
+
+async function saveRates(client: Db, zoneId: number, rates: AirportRateInput[]): Promise<void> {
   await client.query('DELETE FROM airport_toll_rates WHERE zone_id = $1', [zoneId])
   for (const r of rates) {
     await client.query('INSERT INTO airport_toll_rates (zone_id, category_id, amount) VALUES ($1,$2,$3)', [zoneId, r.category_id, r.amount])
@@ -82,6 +104,7 @@ export async function createZone(input: AirportZoneInput, adminId: bigint) {
   const name = checkName(input.name)
   const text = polygonText(input.boundary)
   const rates = checkRates(input.rates ?? [])
+  const reason = checkReason(input.reason)
   await assertUsablePolygon(text)
   const client = await pool.connect()
   try {
@@ -90,6 +113,7 @@ export async function createZone(input: AirportZoneInput, adminId: bigint) {
       `INSERT INTO airport_zones (name, boundary, created_by) VALUES ($1, ST_SetSRID(ST_GeomFromGeoJSON($2::text), 4326)::geography, $3) RETURNING id::int AS id`,
       [name, text, adminId])
     await saveRates(client, ins.rows[0]!.id, rates)
+    await logChange(client, ins.rows[0]!.id, name, 'create', adminId, reason, { rates })
     await client.query('COMMIT')
     return ins.rows[0]!.id
   } catch (err) {
@@ -98,10 +122,11 @@ export async function createZone(input: AirportZoneInput, adminId: bigint) {
   } finally { client.release() }
 }
 
-export async function updateZone(id: number, input: AirportZoneInput) {
+export async function updateZone(id: number, input: AirportZoneInput, adminId: bigint) {
   const name = input.name !== undefined ? checkName(input.name) : undefined
   const text = input.boundary !== undefined ? polygonText(input.boundary) : undefined
   const rates = input.rates !== undefined ? checkRates(input.rates) : undefined
+  const reason = checkReason(input.reason)
   if (text) await assertUsablePolygon(text)
   const client = await pool.connect()
   try {
@@ -116,6 +141,13 @@ export async function updateZone(id: number, input: AirportZoneInput) {
       : await client.query('SELECT 1 FROM airport_zones WHERE id = $1', [id])
     if ((exists.rowCount ?? 0) === 0) { await client.query('ROLLBACK'); throw httpError(404, 'Zone not found', 'NOT_FOUND') }
     if (rates) await saveRates(client, id, rates)
+    const now = await client.query<{ name: string }>('SELECT name FROM airport_zones WHERE id = $1', [id])
+    const summary: Record<string, unknown> = {}
+    if (name !== undefined) summary['name'] = name
+    if (text !== undefined) summary['boundary_changed'] = true
+    if (input.is_active !== undefined) summary['is_active'] = Boolean(input.is_active)
+    if (rates) summary['rates'] = rates
+    await logChange(client, id, now.rows[0]!.name, 'update', adminId, reason, summary)
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK').catch(() => undefined)
@@ -123,16 +155,27 @@ export async function updateZone(id: number, input: AirportZoneInput) {
   } finally { client.release() }
 }
 
-export async function deleteZone(id: number) {
-  const res = await pool.query('DELETE FROM airport_zones WHERE id = $1', [id])
-  if ((res.rowCount ?? 0) === 0) throw httpError(404, 'Zone not found', 'NOT_FOUND')
+export async function deleteZone(id: number, adminId: bigint, reasonInput: unknown) {
+  const reason = checkReason(reasonInput)
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const res = await client.query<{ name: string }>('DELETE FROM airport_zones WHERE id = $1 RETURNING name', [id])
+    if ((res.rowCount ?? 0) === 0) throw httpError(404, 'Zone not found', 'NOT_FOUND')
+    await logChange(client, id, res.rows[0]!.name, 'delete', adminId, reason, {})
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw err
+  } finally { client.release() }
 }
 
 const router: IRouter = Router()
 // The admin router already authenticated; ops may manage zones, like cities.
 const who = requireAdmin('super_admin', 'ops_admin')
 router.get('/', who, async (_req, res, next) => { try { res.json(await listZones()) } catch (e) { next(e) } })
+router.get('/changes', who, async (_req, res, next) => { try { res.json(await listChanges()) } catch (e) { next(e) } })
 router.post('/', who, async (req, res, next) => { try { res.status(201).json({ id: await createZone(req.body as AirportZoneInput, req.admin!.id) }) } catch (e) { next(e) } })
-router.patch('/:id', who, async (req, res, next) => { try { await updateZone(Number(req.params['id']), req.body as AirportZoneInput); res.json({ success: true }) } catch (e) { next(e) } })
-router.delete('/:id', who, async (req, res, next) => { try { await deleteZone(Number(req.params['id'])); res.status(204).end() } catch (e) { next(e) } })
+router.patch('/:id', who, async (req, res, next) => { try { await updateZone(Number(req.params['id']), req.body as AirportZoneInput, req.admin!.id); res.json({ success: true }) } catch (e) { next(e) } })
+router.delete('/:id', who, async (req, res, next) => { try { await deleteZone(Number(req.params['id']), req.admin!.id, (req.body as AirportZoneInput | undefined)?.reason); res.status(204).end() } catch (e) { next(e) } })
 export default router

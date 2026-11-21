@@ -1278,8 +1278,12 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
 async function settleToll(rideId: bigint): Promise<number> {
   try {
     await flushBreadcrumbs().catch(() => undefined)
-    const { total, detail } = await repo.getTollForRide(rideId)
+    const { total, detail, trailOnly } = await repo.getTollForRide(rideId)
     if (total > 0) await repo.recordToll(rideId, total, detail)
+    // A toll earned by GPS pings alone is the one a faked trail could produce: let ops look. Never drops the toll if flagging fails.
+    if (total > 0 && trailOnly) {
+      await repo.flagRideForReview(rideId, `Airport toll charged from the GPS trail alone (${detail.map(d => d.zone).join(', ')})`).catch((err) => log.warn({ err, rideId }, 'toll review flag failed'))
+    }
     return total
   } catch (err) {
     log.error({ err, rideId }, 'airport toll not settled')

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn(), connect: vi.fn() } }))
 
-import { polygonText, checkRates, MAX_TOLL } from '@/modules/admin/airport-zones'
+import { polygonText, checkRates, checkReason, MAX_TOLL } from '@/modules/admin/airport-zones'
 
 const SQUARE = { type: 'Polygon', coordinates: [[[85.808, 20.235], [85.828, 20.235], [85.828, 20.254], [85.808, 20.254], [85.808, 20.235]]] }
 
@@ -38,5 +38,14 @@ describe('airport toll rates input', () => {
     ['something that is not a list', 'x'],
   ])('rejects %s', (_n, v) => {
     expect(() => checkRates(v)).toThrow(expect.objectContaining({ httpStatus: 422 }))
+  })
+})
+
+describe('airport zone change reason', () => {
+  it('is required, trimmed and bounded', () => {
+    expect(checkReason('  Airport gate moved ')).toBe('Airport gate moved')
+    for (const v of [undefined, '', '  ', 'ab', 'x'.repeat(301), 5]) {
+      expect(() => checkReason(v)).toThrow(expect.objectContaining({ httpStatus: 422 }))
+    }
   })
 })
