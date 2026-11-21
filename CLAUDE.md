@@ -131,6 +131,42 @@ trail = the estimate stands. Gaps in the trail (`measureTrailKm`): pings up to `
 time. `total_estimated` follows stops added or skipped mid-ride (`repriceOneWayRoute`), so the band is measured against an honest
 estimate. Round trips and rentals have their own settlement; do not route them through this.
 
+### Waiting at the pickup (every ride type)
+The driver's wait is charged after a free window: `max(0, minutes waited - free minutes) x rate`, to the whole rupee (`pickupWaitCharge` in
+`lib/fare.ts`). The defaults, 3 free minutes and 3 rupees a minute, live on the rate card (`rate_cards.pickup_free_wait_min` /
+`pickup_wait_per_min`, versioned and city-scoped like `stop_charge`; both create paths must carry them forward). A rental package may override
+either (`rental_packages.pickup_*`, NULL = use the rate card). Both are pinned on the ride's `fare_snapshots` at booking, so an admin edit never
+reprices a ride in flight; NULL pinned terms (a ride booked before migration 148) are never charged.
+The wait runs from the driver's arrival to the start OTP, but the clock starts at the LATER of the "arrived" tap and the first position recorded
+within `PICKUP_WAIT_RADIUS_METRES` of the pickup (`getPickupWaitStartedAt`), so tapping "arrived" from far away starts nothing; no position at the
+pickup = no charge. The minutes and charge are recorded at start OTP (`recordPickupWaitAtStart`) and added to the final fare at the end of
+`verifyEndOTP` for every ride type, outside the one-way +/-25% band. Admin force-complete does not add it.
+The apps count the free minutes from `pickup_wait_started_at` (sent while status is `driver_arrived`, `withPickupWait`) on the server-corrected clock:
+a countdown, then extra waiting counting up. They never show a running rupee amount; the charge appears once, on the receipt. One push tells the
+rider when the free minutes end (`pickup_wait_nudge` job set by `markArrived`; it re-checks the clock before sending).
+
+### Airport toll
+A flat toll per vehicle category is charged once per ride when the trip enters an airport zone, shown as its own "Airport toll" line and
+paid on to the driver. Zones are admin-drawn polygons (`airport_zones`, edited at Config > Airport Tolls; never written by a migration) with one
+amount per category (`airport_toll_rates`; none or 0 = that category pays nothing there). The rates in force are copied onto the ride at booking
+(`fare_snapshots.toll_terms`), so an admin edit or a deactivated zone never reprices a ride in flight; NULL terms = no toll.
+At completion and on force-complete, `settleToll` adds the toll of every pinned zone that the trip's positions recorded after it started were
+inside, or that holds the pickup or drop (`getTollForRide`; approach pings before the start never count), recorded in `toll_charge` / `toll_detail`
+and added to the final fare together with the pickup wait, outside the one-way band, not surged. It is a pass-through: `createPaymentRecord` takes
+commission on the payable without the toll, so the driver earns the toll on top of their fare share.
+Guards: the trail alone needs `TOLL_MIN_TRAIL_PINGS` (3) pings in the zone (one spoofed ping earns nothing), and a toll earned by the trail alone
+flags the ride for ops review. A zone must intersect an active city (catches a lat/lng-swapped paste). Every zone/rate/toggle/delete needs a
+reason and writes `airport_zone_changes` (kept after the zone is deleted).
+
+### Trip receipt (PDF)
+`GET /rides/:id/receipt.pdf` (rider only, own ride; 409 `RECEIPT_NOT_AVAILABLE` for an unfinished trip or a free cancellation) draws the receipt on request with
+pdfkit (pure JS, no browser): `rides/receipt/receipt.model.ts` works out everything printed (pure, unit-tested), `receipt.pdf.ts` draws it. Never stored,
+`Cache-Control: private, no-store`. The fare rows mirror the rider app's `buildInvoiceRows`/`rentalFareLines` (only charges > 0; rental = package + extra
+distance + extra time; an "Adjustments" row for any gap, so the rows ALWAYS sum to the total printed; offer after a "Fare before offer" subtotal). **If the app's
+fare lines change (a new charge), change `buildFareRows` too.** Payment pill is data-driven (Paid / Cash due / Payment pending), never hard-coded. The route is drawn
+from `gps_tracks` in the app's palette with no map provider. Fonts + logo live in `api/assets` (Plus Jakarta Sans, Noto Sans Oriya for Odia addresses) and are copied
+into the image by the Dockerfile. The rider app shares it via expo-sharing (needs a native build); the web trip page downloads it.
+
 ### PayU collections
 Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`
 (browser) and `POST /payments/webhook/payu`: response hash → `verify_payment` (`unmappedstatus == 'captured'`,

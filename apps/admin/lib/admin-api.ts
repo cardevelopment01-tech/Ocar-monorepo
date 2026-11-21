@@ -350,6 +350,12 @@ export interface AdminRideFareBreakdown {
   actual_min: string | null
   overage_km: string | null
   overage_min: string | null
+  /** Waiting at the pickup: minutes waited, the free minutes booked with, and the charge. */
+  pickup_wait_min?: string | null
+  pickup_free_wait_min?: number | null
+  pickup_wait_charge?: string | null
+  toll_charge?: string | null
+  toll_detail?: Array<{ zone: string; amount: number }> | null
   refund_amount: string | null
 }
 
