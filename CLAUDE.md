@@ -158,6 +158,15 @@ Guards: the trail alone needs `TOLL_MIN_TRAIL_PINGS` (3) pings in the zone (one 
 flags the ride for ops review. A zone must intersect an active city (catches a lat/lng-swapped paste). Every zone/rate/toggle/delete needs a
 reason and writes `airport_zone_changes` (kept after the zone is deleted).
 
+### Trip receipt (PDF)
+`GET /rides/:id/receipt.pdf` (rider only, own ride; 409 `RECEIPT_NOT_AVAILABLE` for an unfinished trip or a free cancellation) draws the receipt on request with
+pdfkit (pure JS, no browser): `rides/receipt/receipt.model.ts` works out everything printed (pure, unit-tested), `receipt.pdf.ts` draws it. Never stored,
+`Cache-Control: private, no-store`. The fare rows mirror the rider app's `buildInvoiceRows`/`rentalFareLines` (only charges > 0; rental = package + extra
+distance + extra time; an "Adjustments" row for any gap, so the rows ALWAYS sum to the total printed; offer after a "Fare before offer" subtotal). **If the app's
+fare lines change (a new charge), change `buildFareRows` too.** Payment pill is data-driven (Paid / Cash due / Payment pending), never hard-coded. The route is drawn
+from `gps_tracks` in the app's palette with no map provider. Fonts + logo live in `api/assets` (Plus Jakarta Sans, Noto Sans Oriya for Odia addresses) and are copied
+into the image by the Dockerfile. The rider app shares it via expo-sharing (needs a native build); the web trip page downloads it.
+
 ### PayU collections
 Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`
 (browser) and `POST /payments/webhook/payu`: response hash → `verify_payment` (`unmappedstatus == 'captured'`,

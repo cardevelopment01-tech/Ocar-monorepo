@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { ChevronDown, ChevronLeft, CheckCircle2, XCircle, Star, LifeBuoy, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronLeft, CheckCircle2, XCircle, Star, LifeBuoy, AlertCircle, Download } from 'lucide-react'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
 import { submitPayuForm, payMessage } from '@/lib/payu-checkout'
 import { DriverRow, driverViewFromRide } from '@/components/ride/DriverIdentity'
@@ -123,6 +123,8 @@ export default function RideReceiptPage() {
   const [loading, setLoading] = useState(true)
   const [retrying, setRetrying] = useState(false)
   const [payMsg, setPayMsg]     = useState<string | null>(null)
+  const [receiptBusy, setReceiptBusy] = useState(false)
+  const [receiptMsg, setReceiptMsg]   = useState<string | null>(null)
 
   useEffect(() => {
     if (!rideId) return
@@ -162,6 +164,27 @@ export default function RideReceiptPage() {
       setPayMsg(getApiErrorMessage(err, 'Could not start payment. Please try again.'))
     } finally {
       setRetrying(false)
+    }
+  }
+
+  async function handleDownloadReceipt() {
+    if (!rideId || receiptBusy) return
+    setReceiptBusy(true)
+    setReceiptMsg(null)
+    try {
+      const blob = await rideApi.getReceiptPdf(rideId)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Ocar-receipt-${rideId}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch {
+      setReceiptMsg('Could not get the receipt. Please try again.')
+    } finally {
+      setReceiptBusy(false)
     }
   }
 
@@ -400,6 +423,20 @@ export default function RideReceiptPage() {
               Rate this trip
             </button>
           )
+        )}
+        {isCompleted && (
+          <>
+            <button
+              type="button"
+              onClick={() => void handleDownloadReceipt()}
+              disabled={receiptBusy}
+              className="w-full flex items-center justify-center gap-2 bg-surface text-text-primary border border-border text-sm font-semibold py-3.5 rounded-full active:scale-[0.98] transition-transform disabled:opacity-50"
+            >
+              <Download size={15} />
+              {receiptBusy ? 'Preparing receipt…' : 'Download receipt'}
+            </button>
+            {receiptMsg && <p className="text-xs text-status-error text-center">{receiptMsg}</p>}
+          </>
         )}
         <button
           type="button"

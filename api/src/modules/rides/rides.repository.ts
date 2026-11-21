@@ -2320,3 +2320,22 @@ export async function recordToll(rideId: bigint, total: number, detail: Array<{ 
     [rideId, total, JSON.stringify(detail)],
   )
 }
+
+// ── Receipt ───────────────────────────────────────────────────
+
+/**
+ * The recorded route of a trip as [lat, lng] pairs, thinned to at most `max` points, for the receipt's route drawing. `since` (the
+ * ride's started_at) lets Postgres prune the monthly gps_tracks partitions. Empty when nothing was recorded.
+ */
+export async function getTrailPoints(rideId: bigint, since: Date, max = 140): Promise<Array<[number, number]>> {
+  const res = await pool.query<{ lat: number; lng: number }>(
+    `WITH t AS (
+       SELECT ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
+              row_number() OVER (ORDER BY recorded_at) AS rn, count(*) OVER () AS n
+         FROM gps_tracks WHERE ride_id = $1 AND recorded_at >= $2
+     )
+     SELECT lat, lng FROM t WHERE rn = 1 OR rn = n OR rn % GREATEST(n / $3::int, 1) = 0 ORDER BY rn`,
+    [rideId, since, max],
+  )
+  return res.rows.map((r) => [Number(r.lat), Number(r.lng)] as [number, number])
+}
