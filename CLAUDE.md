@@ -145,6 +145,16 @@ The apps count the free minutes from `pickup_wait_started_at` (sent while status
 a countdown, then extra waiting counting up. They never show a running rupee amount; the charge appears once, on the receipt. One push tells the
 rider when the free minutes end (`pickup_wait_nudge` job set by `markArrived`; it re-checks the clock before sending).
 
+### Airport toll
+A flat toll per vehicle category is charged once per ride when the trip enters an airport zone, shown as its own "Airport toll" line and
+paid on to the driver. Zones are admin-drawn polygons (`airport_zones`, edited at Config > Airport Tolls; never written by a migration) with one
+amount per category (`airport_toll_rates`; none or 0 = that category pays nothing there). The rates in force are copied onto the ride at booking
+(`fare_snapshots.toll_terms`), so an admin edit or a deactivated zone never reprices a ride in flight; NULL terms = no toll.
+At completion and on force-complete, `settleToll` adds the toll of every pinned zone that the trip's positions recorded after it started were
+inside, or that holds the pickup or drop (`getTollForRide`; approach pings before the start never count), recorded in `toll_charge` / `toll_detail`
+and added to the final fare together with the pickup wait, outside the one-way band, not surged. It is a pass-through: `createPaymentRecord` takes
+commission on the payable without the toll, so the driver earns the toll on top of their fare share.
+
 ### PayU collections
 Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`
 (browser) and `POST /payments/webhook/payu`: response hash → `verify_payment` (`unmappedstatus == 'captured'`,

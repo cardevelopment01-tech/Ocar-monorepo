@@ -35,6 +35,15 @@ describe('buildInvoiceRows', () => {
     expect(rows.some((r) => r.key === 'adjust')).toBe(false)
     expect(rows.reduce((sum, r) => sum + r.amount, 0)).toBe(total)
   })
+  it('shows an airport toll as its own line with the zone it was charged for, so it is not an adjustment', () => {
+    const { rows, total } = buildInvoiceRows({ ...base, totalFinal: '1470.00', tollCharge: '40.00', tollDetail: [{ zone: 'Biju Patnaik Airport', amount: 40 }] })
+    expect(rows.find((r) => r.key === 'toll')).toMatchObject({ label: 'Airport toll', detail: 'Biju Patnaik Airport', amount: 40 })
+    expect(rows.some((r) => r.key === 'adjust')).toBe(false)
+    expect(rows.reduce((sum, r) => sum + r.amount, 0)).toBe(total)
+  })
+  it('shows no toll line when there was no toll', () => {
+    expect(buildInvoiceRows({ ...base, tollCharge: '0.00' }).rows.some((r) => r.key === 'toll')).toBe(false)
+  })
   it('shows no waiting line when the wait was inside the free minutes', () => {
     const { rows } = buildInvoiceRows({ ...base, pickupWaitMin: '2.50', pickupFreeWaitMin: 3, pickupWaitCharge: '0.00' })
     expect(rows.some((r) => r.key === 'pickupWait')).toBe(false)
