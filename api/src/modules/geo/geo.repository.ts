@@ -250,3 +250,18 @@ export async function updateCity(
   await invalidate(CITIES_ALL_KEY, cityByIdKey(id))
   return res.rows[0] ?? null
 }
+
+/** Whether ONE active city's boundary contains every one of these points (pickup, drop and stops of a city ride). Parameterised, never string-built. */
+export async function activeCityContainsAll(points: Array<{ lat: number; lng: number }>): Promise<boolean> {
+  if (points.length === 0) return true
+  const res = await pool.query(
+    `SELECT 1 FROM cities c
+      WHERE c.status = 'active' AND c.boundary IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM unnest($1::float8[], $2::float8[]) AS p(lat, lng)
+           WHERE NOT ST_Contains(c.boundary, ST_SetSRID(ST_MakePoint(p.lng, p.lat), 4326)))
+      LIMIT 1`,
+    [points.map((p) => p.lat), points.map((p) => p.lng)]
+  )
+  return (res.rowCount ?? 0) > 0
+}

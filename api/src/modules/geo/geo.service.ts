@@ -206,3 +206,8 @@ export async function updateCity(
   if (!updated) throw Object.assign(new Error('City not found'), { httpStatus: 404 })
   return updated
 }
+
+/** True when every point lies inside the same active city boundary. */
+export async function pointsShareACity(points: Array<{ lat: number; lng: number }>): Promise<boolean> {
+  return repo.activeCityContainsAll(points)
+}

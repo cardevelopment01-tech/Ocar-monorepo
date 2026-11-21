@@ -123,6 +123,12 @@ smallest area → nearest centroid → id, so overlapping boundaries (Bhubaneswa
 Writes go through `admin.repository.ts` (`FOR UPDATE` + millisecond-precision `updated_at`
 compare; 409 `BOUNDARY_CHANGED` on a stale save) — never `geo.repository.updateCity`.
 
+### City ride stops
+A city ride (`trip_mode = 'city'`) may have at most `system_config.city_ride_max_stops` stops (default 2, 0 to 3; other ride types keep `MAX_STOPS_PER_RIDE` = 3) and every stop must lie inside the same active city boundary as the pickup and drop
+(`pointsShareACity`, one parameterised `ST_Contains` query). Both are enforced at booking (`createBooking`) and when a stop is added mid-ride (`addRideStop`), with codes `CITY_RIDE_STOP_LIMIT` and `CITY_RIDE_STOP_OUTSIDE_CITY`. The rider app
+limit comes from one place, `maxStopsFor` (rides.service.ts), and `GET /rides/:id` sends it as `max_stops`: the rider app hides "Add stop" on a ride that is full (`stopsFull`). The booking-time stop screens (round trip and rental only) still use the app's own `MAX_STOPS` (3) because a city ride has no stop screen at booking. Each stop's 10 minutes is a FREE wait window (`STOP_FREE_WAIT_MINUTES`) after which wait is metered at the rate
+card's per-minute rate; it is not a hard cap (client wording unconfirmed). A one-way or city ride is billed at the quoted fare plus stop waits: distance and duration are NOT recalculated on a normal completion.
+
 ### PayU collections
 Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`
 (browser) and `POST /payments/webhook/payu`: response hash → `verify_payment` (`unmappedstatus == 'captured'`,

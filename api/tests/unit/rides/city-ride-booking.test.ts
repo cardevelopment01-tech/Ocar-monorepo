@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // behave exactly as before; legacy-client-compat.test.ts pins that side.
 
 const bookingClient = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [], rowCount: 0 })), release: vi.fn() }))
-const world = vi.hoisted(() => ({ inCity: true, flagOn: true }))
+const world = vi.hoisted(() => ({ inCity: true, flagOn: true, stopsInside: true }))
 
 vi.mock('@/modules/rides/rides.repository', () => ({
   insertFareSnapshot: vi.fn(), insertRideStops: vi.fn(), createRide: vi.fn(), logStatusHistory: vi.fn(),
@@ -33,7 +33,9 @@ vi.mock('@/db/client', () => ({
   pool: {
     connect: vi.fn(async () => bookingClient),
     query: vi.fn((sql: string) =>
-      sql.includes('boundary') && world.inCity
+      sql.includes('unnest') // the stops-inside-the-city check
+        ? Promise.resolve(world.stopsInside ? { rows: [{ '?column?': 1 }], rowCount: 1 } : { rows: [], rowCount: 0 })
+        : sql.includes('boundary') && world.inCity
         ? Promise.resolve({ rows: [{ id: 1, name: 'Bhubaneswar' }], rowCount: 1 })
         : Promise.resolve({ rows: [], rowCount: 0 })
     ),
@@ -65,6 +67,7 @@ describe('createBooking: tripMode "city"', () => {
     vi.clearAllMocks()
     world.inCity = true
     world.flagOn = true
+    world.stopsInside = true
     vi.mocked(pricing.getFareEstimate).mockResolvedValue(FARE as never)
     vi.mocked(repo.createRide).mockResolvedValue(RIDE as never)
     vi.mocked(repo.getActiveRideIdForUser).mockResolvedValue(null)
@@ -100,11 +103,23 @@ describe('createBooking: tripMode "city"', () => {
     expect(repo.createRide).not.toHaveBeenCalled()
   })
 
-  it('allows three stops and refuses a fourth', async () => {
+  it('allows two stops and refuses a third (the client rule: a city ride has at most 2 stops)', async () => {
     const stop = (i: number) => ({ lat: 20.30 + i * 0.01, lng: 85.83 + i * 0.01, address: `S${i}` })
-    await book({ tripMode: 'city', stops: [stop(1), stop(2), stop(3)] })
+    await book({ tripMode: 'city', stops: [stop(1), stop(2)] })
     expect(repo.createRide).toHaveBeenCalledTimes(1)
-    await expect(book({ tripMode: 'city', stops: [stop(1), stop(2), stop(3), stop(4)] })).rejects.toMatchObject({ httpStatus: 422 })
+    await expect(book({ tripMode: 'city', stops: [stop(1), stop(2), stop(3)] })).rejects.toMatchObject({ httpStatus: 422, appCode: 'CITY_RIDE_STOP_LIMIT' })
+  })
+
+  it('refuses a stop that is outside the city boundary', async () => {
+    world.stopsInside = false
+    await expect(book({ tripMode: 'city', stops: [{ lat: 20.50, lng: 86.20, address: 'Far away' }] })).rejects.toMatchObject({ httpStatus: 422, appCode: 'CITY_RIDE_STOP_OUTSIDE_CITY' })
+    expect(repo.createRide).not.toHaveBeenCalled()
+  })
+
+  it('a standard ride keeps the global limit of three stops', async () => {
+    const stop = (i: number) => ({ lat: 20.30 + i * 0.01, lng: 85.83 + i * 0.01, address: `S${i}` })
+    await book({ stops: [stop(1), stop(2), stop(3)] })
+    expect(repo.createRide).toHaveBeenCalledTimes(1)
   })
 
   it('checks the city rules once: one trip classification and one read of the switch per booking', async () => {

@@ -10,7 +10,7 @@ import { getPresignedUrl } from '@/lib/storage'
 import crypto from 'crypto'
 import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
-import { assertCityRideAllowed, parseTripMode } from './city-ride'
+import { assertCityRideAllowed, cityStopLimitError, cityStopOutsideError, parseCityStopLimit, parseTripMode, stopLimitFor } from './city-ride'
 import * as repo from './rides.repository'
 import { storeShadowLeg, recordShadowPing } from './eta-shadow'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
@@ -60,7 +60,7 @@ import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
 import { calculateFare, isHourlyRoundTrip, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
-import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
+import { classifyTrip, findNearestCity, getRoute, pointsShareACity, snapTrailToRoads } from '@/modules/geo/geo.service'
 import {
   MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
   RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
@@ -118,6 +118,15 @@ function validateRider(data: BookingRequest): void {
   if (!data.riderPhone || !INDIAN_PHONE_RE.test(data.riderPhone)) {
     throw Object.assign(new Error('Rider phone must be a valid Indian mobile number (+91XXXXXXXXXX)'), { httpStatus: 422 })
   }
+}
+
+/**
+ * The most stops a ride may carry: a city ride has its own limit (system_config city_ride_max_stops, default 2), every other ride the global one.
+ * The booking check, the add-stop check and the `max_stops` the apps read from GET /rides/:id all come from here, so they cannot disagree.
+ */
+export async function maxStopsFor(tripMode: 'standard' | 'city' | null | undefined): Promise<number> {
+  if (tripMode !== 'city') return MAX_STOPS_PER_RIDE
+  return stopLimitFor('city', parseCityStopLimit(await getConfigValue('city_ride_max_stops', ''), MAX_STOPS_PER_RIDE), MAX_STOPS_PER_RIDE)
 }
 
 function validateStops(data: BookingRequest): void {
@@ -885,6 +894,14 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
 
   validateRider(data)
   validateStops(data)
+  if (tripMode === 'city' && data.stops && data.stops.length > 0) {
+    // A city ride has its own stop limit (the client's rule: 2) and every stop must lie in the same city boundary as the pickup and drop.
+    const limit = await maxStopsFor('city')
+    if (data.stops.length > limit) throw cityStopLimitError(limit)
+    const pts = [{ lat: data.originLat, lng: data.originLng }, ...data.stops.map((st) => ({ lat: st.lat, lng: st.lng }))]
+    if (data.destinationLat !== undefined && data.destinationLng !== undefined) pts.push({ lat: data.destinationLat, lng: data.destinationLng })
+    if (!(await pointsShareACity(pts))) throw cityStopOutsideError()
+  }
   // Derived server-side so the persisted count and ride_stops rows can never
   // diverge — client-supplied stopCount is accepted-but-ignored (see BookingRequest).
   const stopCount = data.stops?.length ?? 0
@@ -1701,6 +1718,13 @@ export async function addRideStop(
   const existingStops = await repo.getRideStops(rideId)
   if (existingStops.length + 1 > MAX_STOPS_PER_RIDE) {
     throw Object.assign(new Error(`A ride can have at most ${MAX_STOPS_PER_RIDE} stops`), { httpStatus: 422 })
+  }
+  if (ride.trip_mode === 'city') {
+    const limit = await maxStopsFor('city')
+    if (existingStops.length + 1 > limit) throw cityStopLimitError(limit)
+    const pts = [{ lat: ride.origin_lat, lng: ride.origin_lng }, { lat: stop.lat, lng: stop.lng }]
+    if (ride.dest_lat !== null && ride.dest_lng !== null) pts.push({ lat: ride.dest_lat, lng: ride.dest_lng })
+    if (!(await pointsShareACity(pts))) throw cityStopOutsideError()
   }
   const anchors: Array<{ lat: number; lng: number }> = [{ lat: ride.origin_lat, lng: ride.origin_lng }]
   if (ride.dest_lat !== null && ride.dest_lng !== null) {

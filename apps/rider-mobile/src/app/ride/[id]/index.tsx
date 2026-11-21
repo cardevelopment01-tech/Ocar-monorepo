@@ -11,6 +11,7 @@ import { useLocationStore } from '@/store/useLocationStore'
 import { useLiveLocation } from '@/features/home/useLiveLocation'
 import { SearchingBar } from '@/features/ride-tracking/components/SearchingBar'
 import { TripDetailsRow } from '@/features/ride-tracking/components/TripDetailsRow'
+import { stopsFull } from '@/features/ride-tracking/stopLimit'
 import { DriverCard } from '@/features/ride-tracking/components/DriverCard'
 import { MeetAtRow, PinBand } from '@/features/ride-tracking/components/DriverIdentity'
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
@@ -275,9 +276,10 @@ export default function RideTrackingScreen() {
   const status = (ride.status as StatusKey)
   // 'returning' = a round trip's return leg: calling, adding and skipping stops all stay available on it.
   const canCall = ride.status === 'accepted' || ride.status === 'driver_arrived' || ride.status === 'in_progress' || ride.status === 'returning'
-  const canAddStop = canCall
+  const canAddStop = canCall && !stopsFull(ride.stops.length, ride.maxStops)
   // Mirrors api skipRideStop: the driver can no longer skip, so the rider owns it until the drop is reached.
-  const canSkipStop = canAddStop && !ride.dropArrivedAt
+  // Skipping does not depend on there being room for another stop.
+  const canSkipStop = canCall && !ride.dropArrivedAt
   const unreachableStop = canSkipStop
     ? ride.stops.find((s) => s.status === 'pending' && s.unreachableRequestedAt && !keptStops.includes(s.sequence))
     : undefined

@@ -46,6 +46,8 @@ const BOUNDS: Record<string, ConfigBounds> = {
   // Idle driver sweep (cleanup worker). Pause: how long a driver may be silent before they stop getting offers. Offline: before the session ends.
   driver_idle_pause_seconds:        { min: 30, max: 900 },
   driver_idle_offline_minutes:      { min: 5, max: 240 },
+  // Most stops a city ride may have; the global ceiling (MAX_STOPS_PER_RIDE) is 3, so a higher value would only be ignored.
+  city_ride_max_stops:              { min: 0, max: 3 },
 }
 
 // Typed `string` in the table but really booleans — free text here would silently break the reader.
