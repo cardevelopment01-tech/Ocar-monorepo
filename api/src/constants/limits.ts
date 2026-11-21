@@ -130,6 +130,21 @@ export const IN_CITY_MAX_TRIP_DISTANCE_METRES = 15_000
 // A one-way or round trip whose pickup and drop are closer than this is the same place, not a trip.
 export const MIN_TRIP_DISTANCE_METRES = 100
 
+// A one-way ride is billed on the km and minutes actually driven, but never more than this far above or below the
+// estimate the rider was shown (which already follows stops added or skipped). Outside the band the fare is held at
+// the edge and the ride is flagged for ops, so one bad GPS trail cannot overcharge a rider or underpay a driver.
+export const ONE_WAY_FARE_BAND_OVER  = 0.25
+export const ONE_WAY_FARE_BAND_UNDER = 0.25
+// GPS trail gaps (phone offline, app killed, tunnel). Up to GPS_GAP_SECONDS between pings is just a straight line (about 2% error
+// at this size). Longer silence WITH movement of GPS_GAP_MIN_METRES or more is a real gap: the biggest GPS_MAX_ROUTED_GAPS are filled
+// with a route between the two fixes, the rest with straight line x a road factor. If the real gaps add up to more than
+// GPS_MAX_SILENT_SHARE of the ride, the trail is not trusted and the estimate stands. Silence without movement is a car waiting
+// (the driver app only pings after 5 m of movement), never a gap.
+export const GPS_GAP_SECONDS = 120
+export const GPS_GAP_MIN_METRES = 300
+export const GPS_MAX_ROUTED_GAPS = 5
+export const GPS_MAX_SILENT_SHARE = 0.2
+
 // Rental overage: extra km/min are only billed once the trip runs past the package
 // limit PLUS this tolerance (GPS jitter / a few minutes of hand-over shouldn't cost
 // the rider). Only the part beyond limit + grace is charged.
@@ -211,3 +226,7 @@ export const BROADCAST_PUSH_ATTEMPTS = 3
 export const BROADCAST_PUSH_RETRY_PAUSE_MS = 2000
 // A broadcast job is tried this many times (a retry only notifies people not yet notified).
 export const BROADCAST_JOB_ATTEMPTS = 3
+
+// Waiting at the pickup counts only from the moment the driver is really there: the later of their "arrived" tap and the first
+// recorded position within this distance of the pickup, so tapping "arrived" from far away cannot start the meter.
+export const PICKUP_WAIT_RADIUS_METRES = 150

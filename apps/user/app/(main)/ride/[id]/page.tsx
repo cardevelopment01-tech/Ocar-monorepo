@@ -20,6 +20,7 @@ import { submitPayuForm, type PayuForm } from '@/lib/payu-checkout'
 import CancelSheet from './CancelSheet'
 import SOSButton from '@/components/ui/SOSButton'
 import TripClock from '@/components/ride/TripClock'
+import PickupWaitClock from '@/components/ride/PickupWaitClock'
 import AddStopSheet, { type PickedStop } from '@/components/route/AddStopSheet'
 import { SHEET_SPRING } from '@/lib/motion'
 
@@ -1059,6 +1060,16 @@ export default function RidePage() {
                     <PinBand otp={startOtp} phase="start" />
                   </>
                 )}
+                {/* Free-waiting countdown, then extra waiting, once the driver is really at the pickup (renders nothing before that) */}
+                {rideStatus === 'driver_arrived' && (
+                  <PickupWaitClock
+                    status={rideStatus}
+                    startedAt={ride?.pickup_wait_started_at}
+                    freeMin={ride?.pickup_free_wait_min}
+                    perMin={ride?.pickup_wait_per_min}
+                    onNeedRefresh={() => { void loadRide() }}
+                  />
+                )}
                 {/* Booked-time clock (hourly round trips only; renders nothing without a window) */}
                 {(rideStatus === 'in_progress' || rideStatus === 'returning') && (
                   <TripClock bookedUntil={ride?.bookedUntil} overtimeGraceMin={ride?.overtimeGraceMin} overtimeRate={ride?.overtimeRate} />
@@ -1266,6 +1277,8 @@ export default function RidePage() {
         onClose={() => setAddStopOpen(false)}
         onSelect={handleAddStop}
         title="Add a stop"
+        {...(ride ? { originLat: ride.origin_lat, originLng: ride.origin_lng } : {})}
+        cityOnly={ride?.ride_type === 'rental' || ride?.trip_mode === 'city'}
       />
 
       <EditPickupSheet

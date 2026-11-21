@@ -75,7 +75,7 @@ describe('createRateCard: a standard and a city card never close each other', ()
     const expire = call(/^\s*UPDATE rate_cards/)
     expect(String(expire[0])).toMatch(/trip_mode = \$4/)
     expect(expire[1]).toEqual([2, 'one_way', null, 'standard'])
-    expect(call(/INSERT INTO rate_cards/)[1].at(-1)).toBe('standard')
+    expect(call(/INSERT INTO rate_cards/)[1].at(-3)).toBe('standard')
   })
 
   it('creating a city card expires only the city card and carries ITS fees forward', async () => {
@@ -83,10 +83,10 @@ describe('createRateCard: a standard and a city card never close each other', ()
     await createRateCard({ ...BASE, tripMode: 'city' })
     expect(call(/^\s*UPDATE rate_cards/)[1]).toEqual([2, 'one_way', null, 'city'])
     const insert = call(/INSERT INTO rate_cards/)[1] as unknown[]
-    expect(insert.at(-1)).toBe('city')
-    expect(insert.at(-4)).toBe(10) // stop_charge carried from the city card
-    expect(insert.at(-3)).toBe('40') // cancellation_fee carried from the city card
-    expect(insert.at(-2)).toBe(5) // base_fare carried from the city card
+    expect(insert.at(-3)).toBe('city')
+    expect(insert.at(-6)).toBe(10) // stop_charge carried from the city card
+    expect(insert.at(-5)).toBe('40') // cancellation_fee carried from the city card
+    expect(insert.at(-4)).toBe(5) // base_fare carried from the city card
   })
 })
 
@@ -97,7 +97,7 @@ describe('createAdminRateCard: a standard and a city card never close each other
     wire([OLD_CITY])
     await createAdminRateCard({ ...BASE, adminId: 9n, tripMode: 'city' })
     expect(call(/^\s*UPDATE rate_cards/)[1]).toEqual([2, 'one_way', null, 'city'])
-    expect((call(/INSERT INTO rate_cards/)[1] as unknown[]).at(-1)).toBe('city')
+    expect((call(/INSERT INTO rate_cards/)[1] as unknown[]).at(-3)).toBe('city')
   })
 
   it('defaults to standard when no trip mode is sent (old admin clients)', async () => {

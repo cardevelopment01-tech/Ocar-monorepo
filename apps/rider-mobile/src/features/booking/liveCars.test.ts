@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIVE_FRESH_MS, LIVE_TTL_MS, MAX_SHOWN, SNAPSHOT_TTL_MS, applyLive, applySnapshot, carsNear, chooseCars, expireCars, liveIsFlowing, parseCarEvent, sameCars, showWithinMetres, type LiveCars } from './liveCars'
+import { LIVE_FRESH_MS, LIVE_TTL_MS, MAX_SHOWN, SNAPSHOT_TTL_MS, applyLive, applySnapshot, carsForBooking, carsNear, chooseCars, expireCars, liveIsFlowing, parseCarEvent, sameCars, showWithinMetres, type LiveCars } from './liveCars'
 
 // Value: protects=the cars on a searching rider's map are the freshest word on each driver: live positions win, the REST
 // snapshot fills in and takes over when the push is not arriving, silent cars drop out, and a hostile or malformed socket
@@ -108,13 +108,16 @@ describe('vehicle category on the live feed', () => {
   })
 })
 
-describe('chooseCars (which cars this ride could actually be offered to)', () => {
+describe('chooseCars (only the category being booked)', () => {
   const c = (id: string, categoryId: number | undefined) => ({ driverId: id, lat: 1, lng: 2, ...(categoryId !== undefined ? { categoryId } : {}) })
-  it('shows only the booked category when there are cars of it near (the first round goes to that category alone)', () => {
+  it('shows only the booked category when there are cars of it near', () => {
     expect(chooseCars([c('a', 2), c('b', 6), c('c', 2), c('d', 1)], 2).map((x) => x.driverId)).toEqual(['a', 'c'])
   })
-  it('shows every car, each with its own category, when none of the booked category is near (later rounds widen)', () => {
-    expect(chooseCars([c('a', 6), c('b', 1)], 2).map((x) => x.driverId)).toEqual(['a', 'b'])
+  it('shows no car at all when none of the booked category is near, rather than cars of other types (an auto booking never shows sedans)', () => {
+    expect(chooseCars([c('a', 6), c('b', 1)], 2)).toEqual([])
+  })
+  it('never shows a car whose category is not known when a category is being booked', () => {
+    expect(chooseCars([c('a', undefined), c('b', 2)], 2).map((x) => x.driverId)).toEqual(['b'])
   })
   it('shows every car when the booked category is unknown (the category list has not loaded)', () => {
     expect(chooseCars([c('a', 6), c('b', undefined)], null)).toHaveLength(2)
@@ -124,6 +127,21 @@ describe('chooseCars (which cars this ride could actually be offered to)', () =>
     const shown = chooseCars(many, 2)
     expect(shown).toHaveLength(MAX_SHOWN)
     expect(shown.map((x) => x.driverId)).toEqual(many.slice(0, MAX_SHOWN).map((x) => x.driverId))
+  })
+})
+
+describe('carsForBooking (the booking map: only the category being booked, near the pickup, nearest first)', () => {
+  const at = (id: string, categoryId: number, northM: number) => ({ driverId: id, lat: P[0] + northM * DEG_PER_M, lng: P[1], categoryId })
+  const fleet = [at('auto1', 6, 400), at('hatch1', 1, 200), at('sedan1', 2, 300), at('auto2', 6, 100), at('suv1', 3, 500), at('autoFar', 6, 5_000)]
+  it('an auto being booked shows only autos, nearest first, and not one beyond the show radius', () => {
+    expect(carsForBooking(fleet, P, 6).map((c) => c.driverId)).toEqual(['auto2', 'auto1'])
+  })
+  it('a hatchback being booked shows only hatchbacks; a category with none near shows none', () => {
+    expect(carsForBooking(fleet, P, 1).map((c) => c.driverId)).toEqual(['hatch1'])
+    expect(carsForBooking(fleet, P, 5)).toEqual([])
+  })
+  it('with no category chosen yet, every near car shows, so the map is not blank while the list loads', () => {
+    expect(carsForBooking(fleet, P, null).map((c) => c.driverId)).toEqual(['auto2', 'hatch1', 'sedan1', 'auto1', 'suv1'])
   })
 })
 

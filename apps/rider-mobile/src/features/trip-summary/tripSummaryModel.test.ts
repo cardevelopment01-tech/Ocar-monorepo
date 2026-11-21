@@ -29,6 +29,25 @@ describe('buildInvoiceRows', () => {
     const { rows } = buildInvoiceRows({ ...base, surgeFare: '100.00', surgeMultiplier: '1.20', totalFinal: '1530.00' })
     expect(rows.find((r) => r.key === 'surge')).toMatchObject({ label: 'Surge', detail: '1.2x' })
   })
+  it('shows waiting at the pickup as its own line, with the minutes and the free minutes, so it is not an adjustment', () => {
+    const { rows, total } = buildInvoiceRows({ ...base, totalFinal: '1454.00', pickupWaitMin: '11.00', pickupFreeWaitMin: 3, pickupWaitCharge: '24.00' })
+    expect(rows.find((r) => r.key === 'pickupWait')).toMatchObject({ label: 'Waiting at pickup', detail: '11 min, after 3 free minutes', amount: 24 })
+    expect(rows.some((r) => r.key === 'adjust')).toBe(false)
+    expect(rows.reduce((sum, r) => sum + r.amount, 0)).toBe(total)
+  })
+  it('shows an airport toll as its own line with the zone it was charged for, so it is not an adjustment', () => {
+    const { rows, total } = buildInvoiceRows({ ...base, totalFinal: '1470.00', tollCharge: '40.00', tollDetail: [{ zone: 'Biju Patnaik Airport', amount: 40 }] })
+    expect(rows.find((r) => r.key === 'toll')).toMatchObject({ label: 'Airport toll', detail: 'Biju Patnaik Airport', amount: 40 })
+    expect(rows.some((r) => r.key === 'adjust')).toBe(false)
+    expect(rows.reduce((sum, r) => sum + r.amount, 0)).toBe(total)
+  })
+  it('shows no toll line when there was no toll', () => {
+    expect(buildInvoiceRows({ ...base, tollCharge: '0.00' }).rows.some((r) => r.key === 'toll')).toBe(false)
+  })
+  it('shows no waiting line when the wait was inside the free minutes', () => {
+    const { rows } = buildInvoiceRows({ ...base, pickupWaitMin: '2.50', pickupFreeWaitMin: 3, pickupWaitCharge: '0.00' })
+    expect(rows.some((r) => r.key === 'pickupWait')).toBe(false)
+  })
   it('adds an Adjustments row when components do not reach the total', () => {
     const { rows } = buildInvoiceRows({ ...base, totalFinal: '1400.00' })
     expect(rows.at(-1)).toMatchObject({ key: 'adjust', label: 'Adjustments', amount: -30 })

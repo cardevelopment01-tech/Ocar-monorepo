@@ -3,9 +3,11 @@ import { useIsFocused } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
 import MapView, { Polyline } from 'react-native-maps'
 import { OCAR_MAP_PROPS, ROUTE } from '@/theme/mapStyle'
-import CarMarker from '@/features/map/components/CarMarker'
+import NearbyCarMarker from '@/features/map/components/NearbyCarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { fetchNearbyDrivers } from '@/features/booking/api'
+import { carsForBooking } from '@/features/booking/liveCars'
+import { useVehicleKinds } from '@/features/booking/useVehicleKinds'
 
 const POLL_MS = 8000
 
@@ -27,6 +29,8 @@ export type SelectRideMapProps = {
   /** Full nearby-driver list (with category), for the parent to compute
    *  per-category ETA -- same poll as onNearbyDriversChange, no second request. */
   onDrivers?: (drivers: Array<{ driverId: string; lat: number; lng: number; categoryId: number }>) => void
+  /** The category being booked: only its cars are drawn, each with its own icon (an auto shows autos, never sedans). Unknown = every car. */
+  categoryId?: number | null
   /** Bump this to force an immediate re-poll (e.g. a "Retry now" tap on the
    *  no-drivers banner) without waiting out the rest of the 8s interval. */
   refreshSignal?: number
@@ -36,9 +40,10 @@ export type SelectRideMapProps = {
 // scattering of nearby driver car icons around pickup -- the "cars are close,
 // you'll be matched fast" reassurance beat. Polls the same nearby-drivers
 // endpoint the web select-ride page polls, at the same 8s cadence.
-export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDriversChange, onDrivers, refreshSignal }: SelectRideMapProps) {
+export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDriversChange, onDrivers, refreshSignal, categoryId = null }: SelectRideMapProps) {
   const mapRef = useRef<MapView>(null)
-  const [nearbyDrivers, setNearbyDrivers] = useState<Array<{ driverId: string; lat: number; lng: number }>>([])
+  const [nearbyDrivers, setNearbyDrivers] = useState<Array<{ driverId: string; lat: number; lng: number; categoryId: number }>>([])
+  const { kinds: vehicleKinds } = useVehicleKinds()
   // react-native-maps' native view isn't ready for ref calls the instant it
   // mounts -- calling fitToCoordinates from an effect that fires on mount
   // silently no-ops, leaving the camera stuck on initialRegion (a tight box
@@ -93,6 +98,13 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, pickup[0], pickup[1], drop[0], drop[1]])
 
+  // The cars to draw: near the pickup, nearest first, only the category being booked (see carsForBooking).
+  const shownCars = useMemo(
+    () => carsForBooking(nearbyDrivers, [pickup[0], pickup[1]], categoryId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nearbyDrivers, categoryId, pickup[0], pickup[1]],
+  )
+
   // Stable identity: a new array per render re-sent the whole polyline (twice) to the native map.
   const routeCoords = useMemo(
     () => routePoints.map(([latitude, longitude]) => ({ latitude, longitude })),
@@ -117,8 +129,8 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
         ) : null}
         <LocationPin position={pickup} variant="pickup" />
         <LocationPin position={drop} variant="drop" />
-        {nearbyDrivers.map((d) => (
-          <CarMarker key={d.driverId} position={[d.lat, d.lng]} />
+        {shownCars.map((d) => (
+          <NearbyCarMarker key={d.driverId} position={[d.lat, d.lng]} ready={mapReady} kind={(d.categoryId !== undefined ? vehicleKinds.get(d.categoryId) : undefined) ?? 'sedan'} />
         ))}
       </MapView>
     </View>

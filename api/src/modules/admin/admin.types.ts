@@ -408,6 +408,9 @@ export interface AdminRentalPackage {
   /** What a rental is charged for each added stop, and for a late cancellation (rupees, numeric strings). */
   stop_charge: string
   cancellation_fee: string
+  /** Waiting at the pickup for rides on this package; null = use the rate card's free minutes / rate. */
+  pickup_free_wait_min: number | null
+  pickup_wait_per_min: string | null
   is_active: boolean
   city_id: number | null
   city_name?: string | null

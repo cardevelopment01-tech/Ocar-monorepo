@@ -9,6 +9,10 @@ import {
   processTripWindowNudge,
   type TripWindowNudgeJobData,
 } from '@/jobs/processors/trip-window-nudge.processor'
+import {
+  processPickupWaitNudge,
+  type PickupWaitNudgeJobData,
+} from '@/jobs/processors/pickup-wait-nudge.processor'
 import { createWorkerLogger } from '@/lib/worker-logger'
 import { findDocsNeedingExpiryNotice } from '@/modules/drivers/drivers.repository'
 import { notifyDocumentExpiring, notifyDocumentExpired } from '@/modules/notifications/notifications.service'
@@ -42,6 +46,12 @@ export const schedulerWorker = new Worker(
 
     if (job.name === 'trip_window_nudge') {
       await processTripWindowNudge(job.data as TripWindowNudgeJobData)
+      return
+    }
+
+    // One-shot delayed job set when the driver marks arrived: tells the rider once that the free waiting minutes are over.
+    if (job.name === 'pickup_wait_nudge') {
+      await processPickupWaitNudge(job.data as PickupWaitNudgeJobData)
       return
     }
 

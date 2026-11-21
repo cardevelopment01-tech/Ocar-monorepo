@@ -10,11 +10,13 @@ export type AddStopSheetProps = {
   visible: boolean
   originLat: number
   originLng: number
+  /** A city ride or rental stays in the pickup city, so search only there. */
+  cityOnly?: boolean
   onClose: () => void
   onSelect: (stop: StopInput) => void
 }
 
-export function AddStopSheet({ visible, originLat, originLng, onClose, onSelect }: AddStopSheetProps) {
+export function AddStopSheet({ visible, originLat, originLng, cityOnly = false, onClose, onSelect }: AddStopSheetProps) {
   const [picked, setPicked] = useState<{ address: string; lat: number; lng: number } | null>(null)
   const keyboardOffset = useKeyboardOffset()
   // This Modal had no keyboard handling at all -- the sheet is docked to the
@@ -42,6 +44,7 @@ export function AddStopSheet({ visible, originLat, originLng, onClose, onSelect 
             placeholder="Search for a place…"
             accessibilityHint="Search for an address to add as a stop"
             bias={{ lat: originLat, lng: originLng }}
+            withinCity={cityOnly}
             value={picked}
             onSelect={(place) => {
               setPicked(place)
