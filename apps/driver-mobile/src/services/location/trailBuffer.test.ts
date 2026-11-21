@@ -65,6 +65,18 @@ describe('trail buffer', () => {
     expect(posts).toHaveLength(0)
   })
 
+  it('keeps the trail on a temporary refusal (rate limit, timeout, expired token)', async () => {
+    for (const status of [401, 408, 429]) {
+      const { buf, posts, setFail } = make({ failWith: { response: { status } } })
+      await buf.start('101')
+      await buf.add(fixes(10))
+      await settle()
+      setFail(undefined)
+      await buf.flush()
+      expect(posts, `status ${status}`).toEqual([{ rideId: '101', n: 10, first: fix(0).recordedAt }])
+    }
+  })
+
   it('survives the app being killed: a new instance reads the saved trail', async () => {
     const a = make()
     await a.buf.start('101')

@@ -13,6 +13,7 @@ export const MAX_BUFFERED_FIXES = 4000
 const BATCH_SIZE = 300 // the server's cap
 const PERSIST_EVERY_MS = 10_000 // a kill loses at most this much of what was not yet uploaded
 const FLUSH_EVERY_MS = 30_000
+const PERMANENT_REFUSALS = new Set([400, 403, 404, 422])
 
 export interface TrailDeps {
   load: () => Promise<string | null>
@@ -73,9 +74,10 @@ export function createTrailBuffer(deps: TrailDeps) {
         try {
           await deps.post(s.rideId, sent)
         } catch (err) {
-          // The server refused it for good (not our ride, bad data): keeping it would retry forever.
+          // The server refused it for good (bad data, not our ride): keeping it would retry forever. 401/408/429 are temporary
+          // (expired token, timeout, rate limit), so those keep the trail for the next try.
           const status = (err as { response?: { status?: number } })?.response?.status
-          if (status !== undefined && status >= 400 && status < 500) s.fixes = []
+          if (status !== undefined && PERMANENT_REFUSALS.has(status)) s.fixes = []
           await persist(true)
           return
         }
