@@ -110,11 +110,6 @@ describe('createBooking: tripMode "city"', () => {
     await expect(book({ tripMode: 'city', stops: [stop(1), stop(2), stop(3)] })).rejects.toMatchObject({ httpStatus: 422, appCode: 'CITY_RIDE_STOP_LIMIT' })
   })
 
-  it('refuses a stop that is outside the city boundary', async () => {
-    world.stopsInside = false
-    await expect(book({ tripMode: 'city', stops: [{ lat: 20.50, lng: 86.20, address: 'Far away' }] })).rejects.toMatchObject({ httpStatus: 422, appCode: 'CITY_RIDE_STOP_OUTSIDE_CITY' })
-    expect(repo.createRide).not.toHaveBeenCalled()
-  })
 
   it('a standard ride keeps the global limit of three stops', async () => {
     const stop = (i: number) => ({ lat: 20.30 + i * 0.01, lng: 85.83 + i * 0.01, address: `S${i}` })

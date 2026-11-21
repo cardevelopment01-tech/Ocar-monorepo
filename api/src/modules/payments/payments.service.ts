@@ -90,8 +90,8 @@ export async function createPaymentRecord(
   await finaliseDiscount(q, rideId)
   const fareRes = await q.query(
     `SELECT fs.id AS fare_snapshot_id,
-            fs.total_final, fs.total_estimated, fs.discount_amount,
-            r.user_id, r.driver_id
+            fs.total_final, fs.total_estimated, fs.discount_amount, fs.toll_charge,
+            r.user_id, r.driver_id, r.billing_mode_snapshot
      FROM fare_snapshots fs
      JOIN rides r ON r.id = fs.ride_id
      WHERE fs.ride_id = $1`,
@@ -103,8 +103,12 @@ export async function createPaymentRecord(
 
   const discount = parseFloat(fare.discount_amount ?? '0')
   const amount = payableOf({ total: fare.total_final ?? fare.total_estimated, discount_amount: discount })
-  const commissionPct = await getCommissionPercent()
-  const commissionAmt = Math.round(amount * commissionPct) / 100
+  // A ride settled under a driver's prepaid package takes no commission: the package credit is the fee. Recording the percent here would
+  // make reports count revenue the platform never earned.
+  const commissionPct = fare.billing_mode_snapshot === 'package' ? 0 : await getCommissionPercent()
+  // An airport toll is a pass-through: the rider pays it and it goes on to the driver, so commission is taken on the fare without it.
+  const toll = parseFloat(fare.toll_charge ?? '0')
+  const commissionAmt = Math.round(Math.max(amount - toll, 0) * commissionPct) / 100
   const driverEarning = Math.round((amount - commissionAmt) * 100) / 100
 
   const status = opts.status ?? 'completed'
@@ -922,7 +926,8 @@ async function applyRazorpayEvent(
         await packagesService.creditPackageBalance(
           BigInt(claimed.driver_id),
           parseFloat(claimed.threshold_value),
-          eventId
+          eventId,
+          { orderId: claimed.id, validityDays: claimed.validity_days }
         )
       }
     }
@@ -1087,7 +1092,7 @@ export async function settlePayuTxn(txnId: string, auditBody: Record<string, str
     } else if (pkg) {
       const claimed = await packagesRepo.markPurchaseCompletedPayu(pkg.id, paymentId)
       if (claimed) {
-        await packagesService.creditPackageBalance(BigInt(claimed.driver_id), parseFloat(claimed.threshold_value), paymentId)
+        await packagesService.creditPackageBalance(BigInt(claimed.driver_id), parseFloat(claimed.threshold_value), paymentId, { orderId: claimed.id, validityDays: claimed.validity_days })
       } else {
         // Claim already won (replay, or a previous attempt whose credit threw
         // after the claim committed). Re-run the credit with the payment id the
@@ -1095,7 +1100,7 @@ export async function settlePayuTxn(txnId: string, auditBody: Record<string, str
         // if the earlier credit never landed.
         const cur = await packagesRepo.findPurchaseByTxnId(txnId)
         if (cur?.status === 'completed' && cur.gateway_payment_id) {
-          await packagesService.creditPackageBalance(BigInt(cur.driver_id), parseFloat(cur.threshold_value), cur.gateway_payment_id)
+          await packagesService.creditPackageBalance(BigInt(cur.driver_id), parseFloat(cur.threshold_value), cur.gateway_payment_id, { orderId: cur.id, validityDays: cur.validity_days })
         }
       }
     } else if (binding) {

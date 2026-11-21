@@ -48,6 +48,9 @@ const BOUNDS: Record<string, ConfigBounds> = {
   driver_idle_offline_minutes:      { min: 5, max: 240 },
   // Most stops a city ride may have; the global ceiling (MAX_STOPS_PER_RIDE) is 3, so a higher value would only be ignored.
   city_ride_max_stops:              { min: 0, max: 3 },
+  // GST rates in percent: the commission invoice backs this out of the amount cut, so a typo like 180 would invoice the wrong tax on every driver.
+  package_gst_percent:              { min: 0, max: 50 },
+  commission_gst_percent:           { min: 0, max: 50 },
 }
 
 // Typed `string` in the table but really booleans — free text here would silently break the reader.
@@ -77,6 +80,8 @@ const ALLOWED_VALUES: Record<string, readonly string[]> = {
   verification_mode: ['off', 'shadow', 'flag', 'block'],
   // Read as on only when exactly 'true'; a typo must be refused, not left looking like an enabled re-check.
   spot_check_enabled: ['true', 'false'],
+  // Anything but 'weekly' reads as monthly, so a typo would silently change how often drivers are invoiced.
+  commission_invoice_period: ['monthly', 'weekly'],
 }
 
 // Version rows (app_update_<app>_<platform>_min|recommended): the policy compares major.minor.patch,

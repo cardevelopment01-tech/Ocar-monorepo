@@ -92,8 +92,11 @@ export async function autocomplete(
   input: string,
   lat?: number,
   lng?: number,
+  withinCity = false,
 ) {
-  return google.autocomplete(input, lat, lng)
+  // withinCity: search only inside the city that contains (lat, lng). A point in no city searches as usual.
+  const within = withinCity && lat !== undefined && lng !== undefined ? await repo.findCitySearchCircle(lat, lng) : null
+  return google.autocomplete(input, lat, lng, within ?? undefined)
 }
 
 export async function getPlaceDetails(placeId: string) {
@@ -205,9 +208,4 @@ export async function updateCity(
   const updated = await repo.updateCity(id, data)
   if (!updated) throw Object.assign(new Error('City not found'), { httpStatus: 404 })
   return updated
-}
-
-/** True when every point lies inside the same active city boundary. */
-export async function pointsShareACity(points: Array<{ lat: number; lng: number }>): Promise<boolean> {
-  return repo.activeCityContainsAll(points)
 }

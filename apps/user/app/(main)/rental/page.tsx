@@ -728,6 +728,7 @@ function RentalContent() {
         title={`Add stop ${stops.length + 1}`}
         originLat={originLat}
         originLng={originLng}
+        cityOnly
       />
     </div>
   )

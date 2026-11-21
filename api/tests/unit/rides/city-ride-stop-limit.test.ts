@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CITY_RIDE_MAX_STOPS_DEFAULT, cityStopLimitError, cityStopOutsideError, parseCityStopLimit, stopLimitFor } from '@/modules/rides/city-ride'
+import { CITY_RIDE_MAX_STOPS_DEFAULT, cityStopLimitError, parseCityStopLimit, stopLimitFor } from '@/modules/rides/city-ride'
 
 // Value: protects=a city ride never carries more than the client's 2 stops (setting city_ride_max_stops), while other ride types keep the
 // global limit of 3, and a bad setting falls back to 2 instead of opening the limit; fails_when=a city ride accepts a 3rd stop, the limit
@@ -34,6 +34,5 @@ describe('refusals', () => {
     expect(cityStopLimitError(2)).toMatchObject({ httpStatus: 422, appCode: 'CITY_RIDE_STOP_LIMIT', message: 'A city ride can have at most 2 stops' })
     expect(cityStopLimitError(1).message).toBe('A city ride can have at most 1 stop')
     expect(cityStopLimitError(0).message).toBe('A city ride cannot have stops')
-    expect(cityStopOutsideError()).toMatchObject({ httpStatus: 422, appCode: 'CITY_RIDE_STOP_OUTSIDE_CITY' })
   })
 })

@@ -216,7 +216,7 @@ describe('addRideStop', () => {
   })
 })
 
-// Value: protects=a city ride refuses a 3rd stop and a stop outside the city while the ride is on the way (and leaves nothing written),
+// Value: protects=a city ride refuses a 3rd stop while the ride is on the way (and leaves nothing written),
 // accepts one that fits, a standard ride keeps its limit of 3, and maxStopsFor (the one place the limit is decided, also sent to the apps
 // as max_stops) honours the setting and falls back to 2 for a bad value; fails_when=the city branch of addRideStop is removed, the limit
 // leaks onto standard rides, or an unreadable setting opens the limit; why_new=the client capped city rides at 2 stops inside the city;
@@ -244,13 +244,6 @@ describe('addRideStop on a city ride', () => {
     expect(repo.appendRideStop).not.toHaveBeenCalled()
   })
 
-  it('refuses a stop outside the city with CITY_RIDE_STOP_OUTSIDE_CITY and writes nothing', async () => {
-    vi.mocked(pool.query).mockResolvedValue({ rows: [], rowCount: 0 } as never)
-    vi.mocked(repo.getRideCoreById).mockResolvedValue(cityRide() as never)
-    vi.mocked(repo.getRideStops).mockResolvedValue(existing(1) as never)
-    await expect(addRideStop(USER_ID, RIDE_ID, STOP)).rejects.toMatchObject({ httpStatus: 422, appCode: 'CITY_RIDE_STOP_OUTSIDE_CITY' })
-    expect(repo.appendRideStop).not.toHaveBeenCalled()
-  })
 
   it('accepts a stop that fits: the 2nd, inside the city', async () => {
     vi.mocked(repo.getRideCoreById).mockResolvedValue(cityRide() as never)

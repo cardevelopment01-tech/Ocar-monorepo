@@ -1,6 +1,7 @@
 import { createHttpError, httpError } from '@/lib/errors'
 import { resolvePersonName } from '@/lib/person-name'
 import { AppErrors } from '@/constants/errors'
+import { validateTierFields } from '@/modules/packages/package-tier-rules'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
 import type { DriverStatus, UpdateDriverStatusPayload, UpdateDriverProfilePayload, UpdateDriverVehiclePayload, CityBoundaryGeoJson, CityBoundaryAnalysis, CityBoundaryWrite } from './admin.types'
@@ -16,6 +17,8 @@ import { notificationsQueue } from '@/jobs/queues'
 import { recordAuditLog } from '@/lib/audit-log'
 import { logger } from '@/lib/logger'
 import { withTripWindow } from '@/lib/trip-window'
+import { packagePricing } from '@/modules/packages/package-money'
+import { getPackageGstPercent } from '@/modules/packages/packages.service'
 import { hasAllRequiredDocsApproved, findDriverById } from '@/modules/drivers/drivers.repository'
 
 export function docLabel(docType: string): string {
@@ -590,6 +593,13 @@ export async function createAdminRateCard(data: Parameters<typeof repo.createAdm
   if (data.stopCharge !== undefined && (!Number.isFinite(data.stopCharge) || data.stopCharge < 0 || data.stopCharge > 99999)) {
     throw createHttpError(AppErrors.VALIDATION_ERROR)
   }
+  // Pickup waiting: whole free minutes (0 = none) and a per-minute rate (0 = waiting is free after the window).
+  if (data.pickupFreeWaitMin !== undefined && (!Number.isInteger(data.pickupFreeWaitMin) || data.pickupFreeWaitMin < 0 || data.pickupFreeWaitMin > 120)) {
+    throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
+  if (data.pickupWaitPerMin !== undefined && (!Number.isFinite(data.pickupWaitPerMin) || data.pickupWaitPerMin < 0 || data.pickupWaitPerMin > 999)) {
+    throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
   if (data.baseFare !== undefined && (!Number.isFinite(data.baseFare) || data.baseFare < 0 || data.baseFare > 99999)) {
     throw createHttpError(AppErrors.VALIDATION_ERROR)
   }
@@ -729,6 +739,14 @@ function assertRentalFee(name: 'stop_charge' | 'cancellation_fee', v: number | u
     throw Object.assign(new Error(`${name} must be between 0 and ${MAX_RENTAL_FEE}`), { httpStatus: 400 })
 }
 
+/** A package's waiting terms: whole free minutes and a rupee rate, each null (= use the rate card's) or in range. undefined = not sent. */
+function assertPickupWaitTerms(freeMin: number | null | undefined, perMin: number | null | undefined): void {
+  if (freeMin !== undefined && freeMin !== null && (!Number.isInteger(freeMin) || freeMin < 0 || freeMin > 120))
+    throw Object.assign(new Error('pickup_free_wait_min must be a whole number between 0 and 120'), { httpStatus: 400 })
+  if (perMin !== undefined && perMin !== null && (!Number.isFinite(perMin) || perMin < 0 || perMin > 999))
+    throw Object.assign(new Error('pickup_wait_per_min must be between 0 and 999'), { httpStatus: 400 })
+}
+
 export async function listAdminRentalPackages(cityId: number | null) {
   return repo.listAdminRentalPackages(cityId)
 }
@@ -739,11 +757,13 @@ export async function updateAdminRentalPackage(
     package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
     duration_minutes?: number; km_limit?: number; display_order?: number; city_id?: number | null
     stop_charge?: number; cancellation_fee?: number
+    pickup_free_wait_min?: number | null; pickup_wait_per_min?: number | null
   },
   adminId: bigint,
 ) {
   assertRentalFee('stop_charge', body.stop_charge, false)
   assertRentalFee('cancellation_fee', body.cancellation_fee, false)
+  assertPickupWaitTerms(body.pickup_free_wait_min, body.pickup_wait_per_min)
   if (body.package_fare     !== undefined && (isNaN(body.package_fare)     || body.package_fare     <= 0))
     throw Object.assign(new Error('package_fare must be > 0'), { httpStatus: 400 })
   if (body.extra_per_km     !== undefined && (isNaN(body.extra_per_km)     || body.extra_per_km     <= 0))
@@ -789,6 +809,7 @@ export async function createAdminRentalPackage(
     package_fare: number; extra_per_km: number; extra_per_min: number
     stop_charge: number; cancellation_fee: number
     display_order?: number; city_id?: number | null
+    pickup_free_wait_min?: number | null; pickup_wait_per_min?: number | null
   },
   adminId: bigint,
 ) {
@@ -809,6 +830,7 @@ export async function createAdminRentalPackage(
   // Both fees are required on create: a forgotten field must not silently become a free cancellation or free stops.
   assertRentalFee('stop_charge', body.stop_charge, true)
   assertRentalFee('cancellation_fee', body.cancellation_fee, true)
+  assertPickupWaitTerms(body.pickup_free_wait_min, body.pickup_wait_per_min)
 
   try {
     return await repo.createAdminRentalPackage(body, adminId)
@@ -956,22 +978,68 @@ export async function deleteAdminCityBoundary(
 
 // ─── Package tiers / driver package wallet ────────────────────────────────────
 
+/** Each plan with the GST that is added on top at purchase and the total the driver is charged. */
 export async function listPackageTiers() {
-  return repo.listPackageTiers()
+  const [tiers, gstPercent] = await Promise.all([repo.listPackageTiers(), getPackageGstPercent()])
+  return tiers.map((t) => {
+    const p = packagePricing(parseFloat(t.price), gstPercent)
+    return { ...t, gst_percent: p.gstPercent, gst_amount: p.gstAmount.toFixed(2), total_amount: p.total.toFixed(2) }
+  })
 }
 
-export async function createPackageTier(data: { label: string; price: number; thresholdValue: number; createdBy: bigint }) {
-  if (!data.label) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  if (isNaN(data.price) || data.price <= 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  if (isNaN(data.thresholdValue) || data.thresholdValue <= 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  return repo.createPackageTier(data)
+// A plan is money-affecting: what is saved here is what every driver in a package city is offered and charged. Both paths below refuse a plan
+// that breaks the rules in package-tier-rules.ts with a message the admin page shows as is, and write who changed what to the audit log.
+const DUPLICATE_PLAN_MESSAGE = 'An active plan with the same price and ride value already exists for these drivers.'
+const tierAudit = (t: { label: string; price: string | number; threshold_value?: string | number; is_active?: boolean; vehicle_group?: string; validity_days?: number }) => ({
+  label: t.label, price: t.price, threshold_value: t.threshold_value, is_active: t.is_active, vehicle_group: t.vehicle_group, validity_days: t.validity_days,
+})
+
+export async function createPackageTier(
+  data: { label: string; price: number; thresholdValue: number; vehicleGroup: 'cab' | 'auto'; validityDays: number; createdBy: bigint },
+  ipAddress: string | null = null,
+) {
+  const label = data.label.trim()
+  const problem = validateTierFields({ label, price: data.price, thresholdValue: data.thresholdValue, validityDays: data.validityDays })
+  if (problem) throw httpError(422, problem, AppErrors.VALIDATION_ERROR.code)
+  if (await repo.packageTierDuplicateExists(data.vehicleGroup, data.price, data.thresholdValue)) {
+    throw httpError(409, DUPLICATE_PLAN_MESSAGE, AppErrors.VALIDATION_ERROR.code)
+  }
+  const tier = await repo.createPackageTier({ ...data, label })
+  await recordAuditLog({
+    adminId: data.createdBy, action: 'package_tier.create', targetTable: 'package_tiers', targetId: BigInt(tier.id),
+    afterState: tierAudit(tier), ipAddress,
+  })
+  return tier
 }
 
-export async function updatePackageTier(id: bigint, data: { label?: string; price?: number; thresholdValue?: number; isActive?: boolean }) {
-  if (data.price !== undefined && (isNaN(data.price) || data.price <= 0)) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  if (data.thresholdValue !== undefined && (isNaN(data.thresholdValue) || data.thresholdValue <= 0)) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  const updated = await repo.updatePackageTier(id, data)
+export async function updatePackageTier(
+  id: bigint,
+  data: { label?: string; price?: number; thresholdValue?: number; isActive?: boolean; vehicleGroup?: 'cab' | 'auto'; validityDays?: number },
+  adminId: bigint | null = null,
+  ipAddress: string | null = null,
+) {
+  const before = await repo.getPackageTierById(id)
+  if (!before) throw createHttpError(AppErrors.NOT_FOUND)
+  // Judge the plan as it would be after the change, so editing only the price cannot leave a ride value below it.
+  const next = {
+    label: (data.label ?? before.label).trim(),
+    price: data.price ?? parseFloat(before.price),
+    thresholdValue: data.thresholdValue ?? parseFloat(before.threshold_value),
+    validityDays: data.validityDays ?? before.validity_days,
+    vehicleGroup: data.vehicleGroup ?? before.vehicle_group,
+    isActive: data.isActive ?? before.is_active,
+  }
+  const problem = validateTierFields(next)
+  if (problem) throw httpError(422, problem, AppErrors.VALIDATION_ERROR.code)
+  if (next.isActive && (await repo.packageTierDuplicateExists(next.vehicleGroup, next.price, next.thresholdValue, id))) {
+    throw httpError(409, DUPLICATE_PLAN_MESSAGE, AppErrors.VALIDATION_ERROR.code)
+  }
+  const updated = await repo.updatePackageTier(id, { ...data, ...(data.label !== undefined ? { label: next.label } : {}) })
   if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
+  await recordAuditLog({
+    adminId, action: 'package_tier.update', targetTable: 'package_tiers', targetId: id,
+    beforeState: tierAudit(before), afterState: tierAudit(updated), ipAddress,
+  })
   return updated
 }
 

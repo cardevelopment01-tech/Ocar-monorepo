@@ -31,6 +31,8 @@ export const NOTIFICATION_TYPES = {
   ride_completed:    { channelId: 'ride_updates_v1', ttlSeconds: DAY, collapse: 'ride_status' },
   ride_no_drivers:   { channelId: 'ride_updates_v1', ttlSeconds: 1800, collapse: 'ride_status' },
   payment_failed:    { channelId: 'ride_updates_v1', ttlSeconds: DAY, collapse: 'ride_type' },
+  // The free minutes at the pickup ran out: stale after 10 minutes (the driver has either been met or left by then).
+  pickup_wait_started: { channelId: 'ride_updates_v1', ttlSeconds: 600, collapse: 'ride_type' },
   stop_unreachable:  { channelId: 'ride_updates_v1', ttlSeconds: 1800, collapse: 'ride_type' },
   // ── Ride lifecycle (rider and driver) ──
   ride_cancelled:    { channelId: 'ride_updates_v1', ttlSeconds: HOUR, collapse: 'ride_status' },

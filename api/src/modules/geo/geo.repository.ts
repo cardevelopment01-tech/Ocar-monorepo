@@ -101,12 +101,31 @@ export async function findContainingCity(
   return res.rows[0] ?? null
 }
 
+// The circle that encloses the active city containing a point (smallest boundary wins, like findContainingCity), for
+// limiting place search to that city. Null when the point is in no city.
+export async function findCitySearchCircle(lat: number, lng: number): Promise<{ lat: number; lng: number; radiusM: number } | null> {
+  const res = await pool.query(
+    `SELECT ST_Y(ST_Centroid(boundary)) AS lat, ST_X(ST_Centroid(boundary)) AS lng,
+            CEIL(ST_MaxDistance(ST_Centroid(boundary), boundary) * 111320)::int AS radius_m
+     FROM cities
+     WHERE status = 'active' AND boundary IS NOT NULL
+       AND ST_Contains(boundary, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326))
+     ORDER BY ST_Area(boundary::geography) ASC, id ASC
+     LIMIT 1`,
+    [lat, lng]
+  )
+  const r = res.rows[0]
+  return r ? { lat: Number(r.lat), lng: Number(r.lng), radiusM: Number(r.radius_m) } : null
+}
+
 // One round trip for the whole batch (was one INSERT per row inside a transaction). Column arrays are unnested
 // server-side; heading/speed/accuracy are clamped to what their NUMERIC columns can hold so a single odd value
 // can't fail the batch. `executor` lets the background flusher use the worker pool instead of the request pool.
 export async function insertGpsTracks(
   tracks: GpsTrackPayload[],
-  executor: { query: (text: string, params: unknown[]) => Promise<unknown> } = pool
+  executor: { query: (text: string, params: unknown[]) => Promise<unknown> } = pool,
+  // A phone uploading its saved trail may re-send points the live ping already stored: skip any (ride, time) already there.
+  opts: { skipExisting?: boolean } = {}
 ): Promise<void> {
   if (!tracks.length) return
   const clamp = (v: number | undefined, max: number): number | null =>
@@ -120,6 +139,7 @@ export async function insertGpsTracks(
        FROM unnest($1::bigint[], $2::bigint[], $3::bigint[], $4::float8[], $5::float8[],
                    $6::numeric[], $7::numeric[], $8::numeric[], $9::timestamptz[])
          AS u(ride_id, session_id, driver_id, lat, lng, heading, speed, accuracy, recorded_at)
+     ${opts.skipExisting ? 'WHERE NOT EXISTS (SELECT 1 FROM gps_tracks g WHERE g.ride_id = u.ride_id AND g.recorded_at = u.recorded_at)' : ''}
      ON CONFLICT DO NOTHING`,
     [
       tracks.map(t => t.ride_id),
@@ -249,23 +269,4 @@ export async function updateCity(
   )
   await invalidate(CITIES_ALL_KEY, cityByIdKey(id))
   return res.rows[0] ?? null
-}
-
-/**
- * Whether ONE active city's boundary contains every one of these points (pickup, drop and stops of a city ride). Parameterised, never string-built.
- * A point with a missing or null coordinate is NOT inside: ST_Contains is NULL for it, and without the COALESCE the NOT EXISTS below would
- * treat that NULL as "no point outside" and pass it.
- */
-export async function activeCityContainsAll(points: Array<{ lat: number; lng: number }>): Promise<boolean> {
-  if (points.length === 0) return true
-  const res = await pool.query(
-    `SELECT 1 FROM cities c
-      WHERE c.status = 'active' AND c.boundary IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM unnest($1::float8[], $2::float8[]) AS p(lat, lng)
-           WHERE NOT COALESCE(ST_Contains(c.boundary, ST_SetSRID(ST_MakePoint(p.lng, p.lat), 4326)), false))
-      LIMIT 1`,
-    [points.map((p) => p.lat), points.map((p) => p.lng)]
-  )
-  return (res.rowCount ?? 0) > 0
 }

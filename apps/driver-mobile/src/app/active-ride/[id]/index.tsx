@@ -3,7 +3,8 @@ import { Alert, BackHandler, Pressable, StyleSheet, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { CancelSheet, ErrorState, SOSButton, Skeleton, TripClock, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { CancelSheet, ErrorState, PickupWaitClock, SOSButton, Skeleton, TripClock, usePickupWait, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { serverNow } from '@/services/api'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useActiveRide } from '@/features/active-ride/useActiveRide'
@@ -28,6 +29,7 @@ import { triggerSos } from '@/features/active-ride/safety-api'
 import { useDriverPositionStore } from '@/services/location/driverPositionStore'
 import { AT_PICKUP_M, haversineMetres } from '@/features/active-ride/geo'
 import { useSpeedAlert } from '@/features/active-ride/useSpeedAlert'
+import { trail } from '@/services/location/trailBuffer'
 import { useTripWindow } from '@/features/active-ride/useTripWindow'
 import { settledCash } from '@/features/active-ride/settledCash'
 import { cashDueOf, riderOfferDiscount } from '@/features/active-ride/cashDue'
@@ -121,6 +123,10 @@ export default function ActiveRideScreen() {
   // hardening doc's "driver-facing only, during the ride" scope. Off for
   // accepted/driver_arrived (driver may be moving fast on an empty highway
   // approach with no ride constraint on it) and completed.
+  // App reopened mid-trip: keep saving the trail for this ride (no-op when it already is).
+  useEffect(() => {
+    if (rideId && (status === 'in_progress' || status === 'returning')) void trail.start(rideId)
+  }, [rideId, status])
   const { alertKey, limitKmph } = useSpeedAlert(status === 'in_progress' || status === 'returning')
   // Within a few metres of the pickup but not yet marked arrived: the rider already sees "your driver is at the
   // pickup", so prompt the tap here too. A boolean selector, so it re-renders only when it flips.
@@ -128,6 +134,11 @@ export default function ActiveRideScreen() {
     && haversineMetres([s.position.lat, s.position.lng], [ride.originLat, ride.originLng]) <= AT_PICKUP_M)
   // Booked-time clock for hourly round trips (null copy = no window: one-way, rental, legacy pricing).
   const tripClock = useTripWindow(ride)
+  // The free-minutes countdown (then extra waiting) once the driver is at the pickup. Asks the server again every 15 s while the
+  // timer has not started, because it starts when the driver's position reaches the pickup, not when "arrived" is tapped.
+  // `status` is the live stage (it moves the moment "arrived" is confirmed); the fetched ride's own status only catches up on the next
+  // fetch, which would leave the card missing right after the tap. The hook reads plain fields, so a fresh object each render is fine.
+  const pickupClock = usePickupWait(ride ? { ...ride, status } : null, { now: serverNow, audience: 'driver', onNeedRefresh: refresh })
 
   if (loading) {
     return (
@@ -381,9 +392,11 @@ export default function ActiveRideScreen() {
           primary={primary}
           stageKey={stageKey}
           clock={
-            (status === 'in_progress' || isReturning) && tripClock.copy
-              ? <TripClock copy={tripClock.copy} stateKey={tripClock.state.kind} />
-              : null
+            status === 'driver_arrived' && pickupClock.copy
+              ? <PickupWaitClock copy={pickupClock.copy} stateKey={pickupClock.state.kind} />
+              : (status === 'in_progress' || isReturning) && tripClock.copy
+                ? <TripClock copy={tripClock.copy} stateKey={tripClock.state.kind} />
+                : null
           }
         >
           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}

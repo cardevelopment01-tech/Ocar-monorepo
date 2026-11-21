@@ -27,7 +27,8 @@ const count = (text: string, re: RegExp) => (text.match(re) ?? []).length
 describe('gross-fare readers are classified', () => {
   // Raw COALESCE(..total_final, ..total_estimated) not wrapped in ocar_payable(). Admin lists show the gross "fare" next
   // to the payment's own paid amount; Task 9 adds the Gross / Paid / Discount columns.
-  const GROSS_DISPLAY_ALLOWLIST: Record<string, number> = { 'modules/admin/admin.repository.ts': 4 }
+  // rides.service.ts: the pickup waiting charge is added on top of the gross fare at settlement (a writer, followed by finaliseDiscount), not shown.
+  const GROSS_DISPLAY_ALLOWLIST: Record<string, number> = { 'modules/admin/admin.repository.ts': 4, 'modules/rides/rides.service.ts': 1 }
 
   it('no unclassified raw reader exists', () => {
     const found: Record<string, number> = {}
@@ -42,12 +43,12 @@ describe('gross-fare readers are classified', () => {
 describe('every fare write re-derives the discount', () => {
   // Statements that SET a fare total, per file (an UPDATE assigning total_final = or total_estimated =).
   const WRITERS: Record<string, number> = {
-    'modules/rides/rides.service.ts': 7, // add stop, early end, early end of a rental (billed the quote, D7), force-complete, rental, generic settle, one-way wait
+    'modules/rides/rides.service.ts': 10, // add stop, early end, early end of a rental (billed the quote, D7), force-complete, rental, generic settle, one-way wait, skip-stop refund, one-way stop re-price, pickup waiting charge
     'modules/rides/rides.repository.ts': 1, // updateFareSnapshotEstimate, called by the scheduled re-quote
   }
   // finaliseDiscount call sites that cover them. updateFareSnapshotEstimate is covered by its only caller.
   const CALLERS: Record<string, number> = {
-    'modules/rides/rides.service.ts': 7,
+    'modules/rides/rides.service.ts': 10,
     'jobs/processors/dispatch-scheduled.processor.ts': 1,
   }
 

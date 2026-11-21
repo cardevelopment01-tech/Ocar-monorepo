@@ -8,7 +8,7 @@ vi.mock('@/websocket/socket.server', () => ({
 }))
 vi.mock('@/jobs/queues', () => ({ queues: {}, QUEUE_NAMES: {}, gpsFlushQueue: { add: vi.fn() } }))
 vi.mock('@/modules/rides/rides.repository', () => ({
-  getRideCoreById: vi.fn(), markStopStatus: vi.fn(), getRideStops: vi.fn(), markStopUnreachable: vi.fn(),
+  getRideCoreById: vi.fn(), markStopStatus: vi.fn(), getRideStops: vi.fn().mockResolvedValue([]), markStopUnreachable: vi.fn(),
 }))
 vi.mock('@/modules/notifications/notifications.service', () => ({
   notifyOwner: vi.fn().mockResolvedValue(undefined),

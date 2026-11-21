@@ -38,6 +38,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   updateRideStatusCAS:      vi.fn(),
   logStatusHistory:         vi.fn(),
   getStopWaitTotal:         vi.fn().mockResolvedValue(0),
+  getPickupWaitTerms: vi.fn().mockResolvedValue(null), getPickupWaitMinutes: vi.fn(), recordPickupWait: vi.fn(), getPickupWaitCharge: vi.fn().mockResolvedValue(0), getTollForRide: vi.fn().mockResolvedValue({ total: 0, detail: [], trailOnly: false }), recordToll: vi.fn(),
   getGpsTrackedDistanceKm:  vi.fn().mockResolvedValue(null),
   flagRideForReview:        vi.fn().mockResolvedValue(undefined),
 }))
@@ -154,7 +155,7 @@ describe('verifyEndOTP — payment channel branch', () => {
     vi.mocked(repo.getRideById).mockResolvedValue(baseRide('cash') as never)
     vi.mocked(repo.getStopWaitTotal).mockResolvedValueOnce(45)
     vi.mocked(pool.query).mockImplementation(((sql: string) => {
-      if (/UPDATE fare_snapshots/.test(sql) && /total_final\s*=\s*round\(total_estimated/.test(sql)) {
+      if (/UPDATE fare_snapshots/.test(sql) && /total_final\s*=\s*round\(COALESCE\(\$3::numeric,\s*total_estimated/.test(sql)) {
         return Promise.resolve({ rows: [{ total_final: '545.00' }], rowCount: 1 })
       }
       return Promise.resolve({ rows: [{ amount: '500.00' }], rowCount: 1 })

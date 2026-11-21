@@ -10,7 +10,7 @@ import { getPresignedUrl } from '@/lib/storage'
 import crypto from 'crypto'
 import { config } from '@/config'
 import { getConfigValue } from '@/lib/system-config'
-import { assertCityRideAllowed, cityStopLimitError, cityStopOutsideError, parseCityStopLimit, parseTripMode, stopLimitFor } from './city-ride'
+import { assertCityRideAllowed, cityStopLimitError, parseCityStopLimit, parseTripMode, stopLimitFor } from './city-ride'
 import * as repo from './rides.repository'
 import { storeShadowLeg, recordShadowPing } from './eta-shadow'
 import { getTodayStatus } from '@/modules/drivers/driver-verification.repository'
@@ -25,7 +25,7 @@ import { driverFare } from '@/modules/offers/driver-fare'
 import { normalizeCode, reserveRedemption } from '@/modules/offers/offers.repository'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
-import { enqueueBreadcrumb } from '@/lib/gps-buffer'
+import { enqueueBreadcrumb, flushBreadcrumbs } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
 import { publishNearbyCar } from '@/websocket/nearby-bus'
 import { generateOtp, hashOtp, deriveRideEndOtp, checkRideOtpAttempts, clearRideOtpAttempts } from '@/lib/otp'
@@ -59,11 +59,14 @@ import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowW
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
-import { calculateFare, isHourlyRoundTrip, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
-import { classifyTrip, findNearestCity, getRoute, pointsShareACity, snapTrailToRoads } from '@/modules/geo/geo.service'
+import { calculateFare, isHourlyRoundTrip, pickupWaitCharge, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
+import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
+import { insertGpsTracks } from '@/modules/geo/geo.repository'
 import {
   MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
   RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
+  ONE_WAY_FARE_BAND_OVER, ONE_WAY_FARE_BAND_UNDER,
+  GPS_GAP_SECONDS, GPS_GAP_MIN_METRES, GPS_MAX_ROUTED_GAPS, GPS_MAX_SILENT_SHARE, PICKUP_WAIT_RADIUS_METRES,
   PICKUP_EDIT_RADIUS_METRES,
 } from '@/constants/limits'
 import { logger } from '@/lib/logger'
@@ -151,6 +154,18 @@ function validateStops(data: BookingRequest): void {
           { httpStatus: 422 }
         )
       }
+    }
+  }
+}
+
+// A city ride and a rental stay inside the pickup city, so their stops must too. Only an intercity trip may stop elsewhere.
+// A pickup outside every city boundary can't be judged, so it is let through (same as booking).
+async function assertStopsInPickupCity(origin: { lat: number; lng: number }, stops: Array<{ lat: number; lng: number }>): Promise<void> {
+  if (stops.length === 0) return
+  if ((await classifyTrip(origin.lat, origin.lng, origin.lat, origin.lng)).scope !== 'in_city') return
+  for (const s of stops) {
+    if ((await classifyTrip(origin.lat, origin.lng, s.lat, s.lng)).scope !== 'in_city') {
+      throw httpError(422, 'Stops for this trip must be inside the city. Choose a place within the city.', 'STOP_OUTSIDE_CITY')
     }
   }
 }
@@ -618,6 +633,42 @@ export async function updateLocation(driverId: bigint, data: {
   enqueueBreadcrumb(breadcrumb)
 }
 
+// A driver phone uploading the trail it saved while it had no signal (or the app was frozen). Live pings are best-effort and
+// are lost when the network drops, so the app keeps every fix of a ride and sends them here in batches; this is what fills the
+// gaps the one-way fare is billed from. Only this driver's own ride; points are stamped by the device GPS clock, so they are
+// kept only if they fall between the ride's start and now; points the live ping already stored are skipped.
+const MAX_TRAIL_BATCH = 300
+export async function recordTrailBatch(driverId: bigint, rideId: bigint, fixes: unknown): Promise<{ accepted: number }> {
+  if (!Array.isArray(fixes) || fixes.length === 0 || fixes.length > MAX_TRAIL_BATCH) {
+    throw httpError(422, `Send between 1 and ${MAX_TRAIL_BATCH} fixes`, 'VALIDATION_ERROR')
+  }
+  const ride = await repo.getRideCoreForDriverAction(rideId, driverId)
+  if (!ride) throw httpError(404, 'Ride not found', 'RIDE_NOT_FOUND')
+  if (!ride.started_at) return { accepted: 0 }
+  const sessionId = await repo.getLatestSessionId(driverId)
+  if (sessionId === null) return { accepted: 0 }
+  const lo = Date.parse(String(ride.started_at)) - 60_000
+  const hi = Date.now() + 60_000
+  const rows: import('@/modules/geo/geo.types').GpsTrackPayload[] = []
+  for (const f of fixes as Array<Record<string, unknown>>) {
+    const at = typeof f?.['recordedAt'] === 'string' ? Date.parse(f['recordedAt']) : NaN
+    const lat = f?.['lat'], lng = f?.['lng']
+    if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) continue
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180 || !Number.isFinite(at) || at < lo || at > hi) continue
+    const row: import('@/modules/geo/geo.types').GpsTrackPayload = {
+      ride_id: rideId.toString(), session_id: sessionId.toString(), driver_id: driverId.toString(),
+      latitude: lat, longitude: lng, recorded_at: new Date(at).toISOString(),
+    }
+    if (typeof f['heading'] === 'number') row.heading = f['heading']
+    if (typeof f['speed'] === 'number') row.speed_kmph = f['speed']
+    if (typeof f['accuracy'] === 'number') row.accuracy_metres = f['accuracy']
+    rows.push(row)
+  }
+  if (rows.length === 0) return { accepted: 0 }
+  await insertGpsTracks(rows, pool, { skipExisting: true })
+  return { accepted: rows.length }
+}
+
 // Strips the *other* party's raw phone number before a ride row leaves the
 // API — the rider must never see the driver's number and vice versa (admin
 // ops views are exempt). Applied at the route boundary, not the repository,
@@ -626,6 +677,27 @@ export async function updateLocation(driverId: bigint, data: {
 // reversed or enumerated into real driver ids.
 export function publicDriverRef(driverId: string): string {
   return crypto.createHmac('sha256', config.JWT_REFRESH_SECRET).update(`nearby-driver:${driverId}`).digest('hex').slice(0, 12)
+}
+
+/**
+ * While the driver is at the pickup, tell the apps when the wait clock started (so both phones count the same free minutes from the
+ * same server instant). Absent until the driver has really reached the pickup: an "arrived" tap from far away starts nothing.
+ * Never fails the ride fetch.
+ */
+export async function withPickupWait<T extends {
+  id?: unknown; status?: string; driver_arrived_at?: string | Date | null
+  origin_lat?: number | null; origin_lng?: number | null; pickup_free_wait_min?: number | null
+}>(ride: T): Promise<T & { pickup_wait_started_at?: string | null }> {
+  if (ride.status !== 'driver_arrived' || ride.pickup_free_wait_min == null || !ride.driver_arrived_at
+    || ride.origin_lat == null || ride.origin_lng == null) return ride
+  try {
+    const startedAt = await repo.getPickupWaitStartedAt(
+      BigInt(ride.id as string | number | bigint), new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+    return { ...ride, pickup_wait_started_at: startedAt }
+  } catch (err) {
+    log.warn({ err }, 'pickup wait start not added to the ride')
+    return ride
+  }
 }
 
 export function maskRideContacts<T extends {
@@ -894,13 +966,13 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
 
   validateRider(data)
   validateStops(data)
+  if (tripMode === 'city' || data.rideType === 'rental') {
+    await assertStopsInPickupCity({ lat: data.originLat, lng: data.originLng }, data.stops ?? [])
+  }
   if (tripMode === 'city' && data.stops && data.stops.length > 0) {
-    // A city ride has its own stop limit (the client's rule: 2) and every stop must lie in the same city boundary as the pickup and drop.
+    // A city ride has its own stop limit (the client's rule: 2).
     const limit = await maxStopsFor('city')
     if (data.stops.length > limit) throw cityStopLimitError(limit)
-    const pts = [{ lat: data.originLat, lng: data.originLng }, ...data.stops.map((st) => ({ lat: st.lat, lng: st.lng }))]
-    if (data.destinationLat !== undefined && data.destinationLng !== undefined) pts.push({ lat: data.destinationLat, lng: data.destinationLng })
-    if (!(await pointsShareACity(pts))) throw cityStopOutsideError()
   }
   // Derived server-side so the persisted count and ride_stops rows can never
   // diverge — client-supplied stopCount is accepted-but-ignored (see BookingRequest).
@@ -1266,6 +1338,42 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
   }
 }
 
+// The airport toll for a finished ride: any zone whose rate was pinned at booking that the trip entered (see getTollForRide), recorded
+// on the ride and returned so the caller can add it to the final fare. 0 for a ride with no toll terms. The last live pings may still be in
+// this instance's write buffer, so flush them first. Never fails a completion: a lookup error charges nothing and is logged.
+async function settleToll(rideId: bigint): Promise<number> {
+  try {
+    await flushBreadcrumbs().catch(() => undefined)
+    const { total, detail, trailOnly } = await repo.getTollForRide(rideId)
+    if (total > 0) await repo.recordToll(rideId, total, detail)
+    // A toll earned by GPS pings alone is the one a faked trail could produce: let ops look. Never drops the toll if flagging fails.
+    if (total > 0 && trailOnly) {
+      await repo.flagRideForReview(rideId, `Airport toll charged from the GPS trail alone (${detail.map(d => d.zone).join(', ')})`).catch((err) => log.warn({ err, rideId }, 'toll review flag failed'))
+    }
+    return total
+  } catch (err) {
+    log.error({ err, rideId }, 'airport toll not settled')
+    return 0
+  }
+}
+
+// When the driver marks arrived, line up one check for the moment the free waiting minutes would end (see the processor: the real
+// clock starts when the driver's position reaches the pickup, so it re-checks before it sends). No push for a ride booked before
+// waiting charges, with no free window, or where waiting costs nothing after it. Never blocks marking arrived.
+async function schedulePickupWaitNudge(rideId: bigint): Promise<void> {
+  try {
+    const terms = await repo.getPickupWaitTerms(rideId)
+    if (!terms || terms.freeMin <= 0 || terms.perMin <= 0) return
+    await queues[QUEUE_NAMES.SCHEDULER].add(
+      'pickup_wait_nudge',
+      { rideId: rideId.toString(), attempt: 0 },
+      { delay: terms.freeMin * 60_000, jobId: `pickup-wait-${rideId}-0`, removeOnComplete: true, removeOnFail: 100 },
+    )
+  } catch (err) {
+    log.error({ err, rideId }, 'pickup wait nudge scheduling failed')
+  }
+}
+
 export async function markArrived(driverId: bigint, rideId: bigint) {
   const ride = await repo.getRideCoreForDriverAction(rideId, driverId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
@@ -1293,6 +1401,8 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
       actor:      'driver',
       actorId:    driverId,
     })
+    // Only the tap that wins the CAS schedules it, so a double tap or retry never queues a second push.
+    await schedulePickupWaitNudge(rideId)
   } else {
     // Lost the CAS. If the ride is already driver_arrived this is a RETRY (double tap, or a first attempt whose
     // Redis write / response never landed). A plain 409 would strand a ride whose PIN was never delivered, but
@@ -1364,6 +1474,27 @@ export async function startReturn(driverId: bigint, rideId: bigint) {
   return { success: true }
 }
 
+// The start OTP was just accepted, so the rider's wait at the pickup is over. Records the minutes and the charge for the ones past the
+// free window (terms pinned at booking; none for a ride booked before waiting charges existed). Never blocks the trip from starting.
+async function recordPickupWaitAtStart(
+  rideId: bigint,
+  ride: { driver_arrived_at: string | null; origin_lat: number; origin_lng: number },
+): Promise<void> {
+  try {
+    const terms = await repo.getPickupWaitTerms(rideId)
+    if (!terms || !ride.driver_arrived_at) return
+    await flushBreadcrumbs().catch(() => undefined)
+    const minutes = await repo.getPickupWaitMinutes(rideId, new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+    if (minutes === null) {
+      log.warn({ rideId }, 'no position recorded at the pickup: no waiting charge')
+      return
+    }
+    await repo.recordPickupWait(rideId, minutes, pickupWaitCharge(minutes, terms.freeMin, terms.perMin))
+  } catch (err) {
+    log.error({ err, rideId }, 'pickup wait not recorded')
+  }
+}
+
 export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: string) {
   const ride = await repo.getRideCoreForDriverAction(rideId, driverId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
@@ -1396,6 +1527,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     end_otp_hash: endHash,
   })
   if (!started) throw httpError(409, 'Ride is not awaiting start', 'RIDE_NOT_ARRIVED')
+  await recordPickupWaitAtStart(rideId, ride)
 
   if (ride.dest_lat != null && ride.dest_lng != null) {
     void logEtaSnapshot(
@@ -1621,8 +1753,7 @@ const STOP_ADDABLE_STATUSES = new Set(['accepted', 'driver_arrived', 'in_progres
 
 // The rider decides to drop a pending stop. The driver can no longer skip (see
 // markStopStatus callers), so this is the only path to 'skipped' besides forced
-// completion. The stop's flat charge is NOT reversed here — that is a pricing
-// decision (new pricing_version), not something to change silently.
+// completion. The stop's flat charge is taken back off the fare (see below).
 export async function skipRideStop(userId: bigint, rideId: bigint, sequence: number) {
   const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
@@ -1636,9 +1767,26 @@ export async function skipRideStop(userId: bigint, rideId: bigint, sequence: num
     throw Object.assign(new Error('The driver has already reached the drop'), { httpStatus: 409, code: 'DROP_ALREADY_REACHED' })
   }
 
+  const stopsBefore = (await repo.getRideStops(rideId)).filter(s => s.status !== 'skipped')
   const stop = await repo.markStopStatus(rideId, sequence, 'skipped')
   if (!stop) {
     throw Object.assign(new Error('Stop not found or already resolved'), { httpStatus: 409 })
+  }
+  // One-way: the km to reach this stop are no longer billed.
+  await repriceOneWayRoute(ride, rideId, stopsBefore, stopsBefore.filter(s => s.sequence !== sequence))
+
+  // A stop nobody goes to is not billed: take back exactly what it added (the mirror of addRideStop's update).
+  // markStopStatus only moves a still-pending stop, so a repeat tap can never refund twice.
+  const refund = parseFloat(stop.stop_charge_applied ?? '0')
+  if (refund > 0) {
+    await pool.query(
+      `UPDATE fare_snapshots
+       SET stop_fare = GREATEST(stop_fare - $2, 0), stop_count = GREATEST(COALESCE(stop_count, 0) - 1, 0),
+           total_estimated = CASE WHEN $3 THEN GREATEST(total_estimated - $2, 0) ELSE total_estimated END
+       WHERE ride_id = $1`,
+      [rideId, refund, ride.ride_type === 'one_way'],
+    )
+    await finaliseDiscount(pool, rideId)
   }
 
   socketEvents.sendStopUpdated(rideId.toString(), {
@@ -1686,6 +1834,120 @@ export function planStopOrder(
     .map(({ id, sequence }) => ({ id, sequence }))
 }
 
+interface OneWaySnapshot {
+  estimated_km: string; estimated_min: string; is_return_cab: boolean; surge_multiplier: string
+  stop_count: number | null; stop_fare: string; total_estimated: string
+  rate_per_km: string; rate_per_min: string; min_fare: string; base_fare: string | null; return_rate_per_km: string | null
+}
+async function loadOneWaySnapshot(rideId: bigint): Promise<OneWaySnapshot | undefined> {
+  return (await pool.query<OneWaySnapshot>(
+    `SELECT fs.estimated_km, fs.estimated_min, fs.is_return_cab, fs.surge_multiplier, fs.stop_count, fs.stop_fare, fs.total_estimated,
+            rc.rate_per_km, rc.rate_per_min, rc.min_fare, rc.base_fare, rc.return_rate_per_km
+     FROM fare_snapshots fs JOIN rate_cards rc ON rc.id = fs.rate_card_id WHERE fs.ride_id = $1`,
+    [rideId],
+  )).rows[0]
+}
+// The one-way formula on the ride's own rate card and surge. `withStops` adds the flat per-stop fees already on the snapshot.
+function priceOneWay(snap: OneWaySnapshot, km: number, min: number, withStops = false) {
+  const stops = withStops ? (snap.stop_count ?? 0) : 0
+  return calculateFare({
+    rate_card: {
+      rate_per_km: parseFloat(snap.rate_per_km), rate_per_min: parseFloat(snap.rate_per_min), min_fare: parseFloat(snap.min_fare),
+      base_fare: parseFloat(snap.base_fare ?? '0'),
+      return_rate_per_km: snap.return_rate_per_km != null ? parseFloat(snap.return_rate_per_km) : null,
+    },
+    ride_type: 'one_way', is_return_cab: snap.is_return_cab, estimated_km: km, estimated_min: min,
+    stop_count: stops, charge_per_stop: stops > 0 ? parseFloat(snap.stop_fare) / stops : 0,
+    trip_hours: 0, surge_multiplier: parseFloat(snap.surge_multiplier),
+  })
+}
+
+// Km driven from the GPS trail, with the stretches where the phone went quiet while the car moved filled in. Each such gap
+// (up to GPS_MAX_ROUTED_GAPS, biggest first) is a route between the two fixes either side of it; the rest, or a route
+// that cannot be had, use the straight line x ROAD_FACTOR. Returns km null (and says why) when the trail cannot be trusted:
+// fewer than 2 pings, real gaps over GPS_MAX_SILENT_SHARE of the ride, or an implausible total.
+async function measureTrailKm(
+  rideId: bigint, since: Date, rideMin: number,
+): Promise<{ km: number | null; notes: string[]; untrusted?: string }> {
+  // The last few seconds of live pings can still be in this instance's write buffer; the fare must see them.
+  await flushBreadcrumbs().catch(() => undefined)
+  const t = await repo.getGpsTrailForBilling(rideId, since, GPS_GAP_SECONDS, GPS_GAP_MIN_METRES)
+  if (t.pings < 2) return { km: null, notes: [] }
+  if (rideMin > 0 && t.silentMovedSec / 60 > rideMin * GPS_MAX_SILENT_SHARE) {
+    return { km: null, notes: [], untrusted: `GPS trail missing for ${Math.round(t.silentMovedSec / 60)} of ${Math.round(rideMin)} min` }
+  }
+  let km = t.trackedKm
+  const filled = await Promise.all(t.gaps.map(async (g, i) => {
+    const straightKm = g.m / 1000
+    if (i >= GPS_MAX_ROUTED_GAPS) return straightKm * ROAD_FACTOR
+    try {
+      return (await getRoute(g.fromLat, g.fromLng, g.toLat, g.toLng, { caller: 'booking_check' })).distanceKm
+    } catch {
+      return straightKm * ROAD_FACTOR
+    }
+  }))
+  km += filled.reduce((a, b) => a + b, 0)
+  if (t.bookedKm != null && t.bookedKm > 0 && km > t.bookedKm * 2.5) {
+    return { km: null, notes: [], untrusted: `GPS distance ${km.toFixed(1)} km is implausible against the booked ${t.bookedKm} km` }
+  }
+  // Only worth ops' time when the missing stretch was a real share of the ride; a short one is routed and billed quietly.
+  const notes = t.gaps.length > 0 && rideMin > 0 && t.silentMovedSec / 60 > rideMin * 0.1 ? [`${t.gaps.length} GPS gap(s) (${Math.round(t.silentMovedSec / 60)} min) filled by route`] : []
+  return { km, notes }
+}
+
+// A one-way ride is billed on what was driven (see the settlement in verifyEndOTP), but the rider sees an estimate all
+// along, so keep that estimate honest: when a stop is added or skipped, re-route the path with and without it on the
+// server and move the estimate by the difference. The delta is applied to the quoted km (not replaced by the server's),
+// so it stays consistent with what the rider was shown at booking. The final-fare band is measured against this
+// estimate. Never fails the stop change: a routing hiccup leaves the estimate as it was and is logged.
+type LatLng = { lat: number; lng: number }
+async function repriceOneWayRoute(
+  ride: { ride_type: string; origin_lat: number; origin_lng: number; dest_lat: number | null; dest_lng: number | null },
+  rideId: bigint,
+  before: LatLng[],
+  after: LatLng[],
+): Promise<void> {
+  if (ride.ride_type !== 'one_way' || ride.dest_lat === null || ride.dest_lng === null) return
+  try {
+    const origin = { lat: ride.origin_lat, lng: ride.origin_lng }
+    const dest = { lat: ride.dest_lat, lng: ride.dest_lng }
+    const route = async (stops: LatLng[]) => {
+      const path = [origin, ...stops, dest]
+      const legs = await Promise.all(path.slice(1).map((to, i) => getRoute(path[i]!.lat, path[i]!.lng, to.lat, to.lng, { caller: 'booking_check' })))
+      // A straight-line guess is no basis for moving money either way.
+      if (legs.some(l => l.source === 'fallback')) return null
+      return { km: legs.reduce((a, l) => a + l.distanceKm, 0), min: legs.reduce((a, l) => a + l.durationMin, 0) }
+    }
+    const [b, a] = await Promise.all([route(before), route(after)])
+    if (!b || !a) { log.warn({ rideId }, 'stop change not re-priced: route unavailable'); return }
+
+    const snap = await loadOneWaySnapshot(rideId)
+    if (!snap) return
+
+    const price = (km: number, min: number) => priceOneWay(snap, km, min)
+    const oldKm = parseFloat(snap.estimated_km), oldMin = parseFloat(snap.estimated_min)
+    const newKm = Math.max(0.1, Math.round((oldKm + a.km - b.km) * 100) / 100)
+    const newMin = Math.max(1, Math.round((oldMin + a.min - b.min) * 100) / 100)
+    const was = price(oldKm, oldMin), now = price(newKm, newMin)
+    const delta = Math.round((now.total - was.total) * 100) / 100
+    if (delta === 0) return
+
+    await pool.query(
+      `UPDATE fare_snapshots
+       SET estimated_km = $2, estimated_min = $3,
+           distance_fare = distance_fare + $4, time_fare = time_fare + $5,
+           base_fare = base_fare + $6, surge_fare = surge_fare + $7,
+           total_estimated = GREATEST(total_estimated + $8, 0)
+       WHERE ride_id = $1`,
+      [rideId, newKm, newMin, now.distance_fare - was.distance_fare, now.time_fare - was.time_fare,
+        now.base_fare - was.base_fare, now.surge_fare - was.surge_fare, delta],
+    )
+    await finaliseDiscount(pool, rideId)
+  } catch (err) {
+    log.error({ err, rideId }, 'one-way stop re-pricing failed; fare left as it was')
+  }
+}
+
 // Lets the rider add a stop to a ride that's already been accepted/is on the
 // way. Mirrors createBooking's stop pricing rule: only round_trip levies the
 // flat per-stop charge (one_way prices the detour through distance instead;
@@ -1715,6 +1977,9 @@ export async function addRideStop(
     throw Object.assign(new Error('Stop needs a valid location'), { httpStatus: 400, code: 'INVALID_STOP_LOCATION' })
   }
 
+  if (ride.trip_mode === 'city' || ride.ride_type === 'rental') {
+    await assertStopsInPickupCity({ lat: ride.origin_lat, lng: ride.origin_lng }, [stop])
+  }
   const existingStops = await repo.getRideStops(rideId)
   if (existingStops.length + 1 > MAX_STOPS_PER_RIDE) {
     throw Object.assign(new Error(`A ride can have at most ${MAX_STOPS_PER_RIDE} stops`), { httpStatus: 422 })
@@ -1722,9 +1987,6 @@ export async function addRideStop(
   if (ride.trip_mode === 'city') {
     const limit = await maxStopsFor('city')
     if (existingStops.length + 1 > limit) throw cityStopLimitError(limit)
-    const pts = [{ lat: ride.origin_lat, lng: ride.origin_lng }, { lat: stop.lat, lng: stop.lng }]
-    if (ride.dest_lat !== null && ride.dest_lng !== null) pts.push({ lat: ride.dest_lat, lng: ride.dest_lng })
-    if (!(await pointsShareACity(pts))) throw cityStopOutsideError()
   }
   const anchors: Array<{ lat: number; lng: number }> = [{ lat: ride.origin_lat, lng: ride.origin_lng }]
   if (ride.dest_lat !== null && ride.dest_lng !== null) {
@@ -1776,6 +2038,10 @@ export async function addRideStop(
     // A sixth writer of the fare total (found by the writers guard test): the discount is re-derived, never grown.
     await finaliseDiscount(pool, rideId)
   }
+
+  // One-way: the detour km this stop adds are billed (the flat fee above is separate, 0 by default).
+  const inPath = (s: { status: string }) => s.status !== 'skipped'
+  await repriceOneWayRoute(ride, rideId, existingStops.filter(inPath), [...existingStops.filter(inPath), stop])
 
   // Re-order so the new stop sits where the driver will actually reach it, then
   // send the full ordered list: clients that only append `stop` would show the
@@ -2451,12 +2717,14 @@ export async function forceResolveRide(
     const driverId = BigInt(ride.driver_id)
     try {
       const wait = ride.ride_type === 'one_way' ? await repo.getStopWaitTotal(rideId) : 0
+      // The wait at the pickup (recorded when the trip started) and any airport toll are owed on every ride type, however the trip ends.
+      const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId))
       await pool.query(
         `UPDATE fare_snapshots
-         SET total_final = round(total_estimated + $2::numeric, 2),
+         SET total_final = round(total_estimated + $2::numeric + $3::numeric, 2),
              status = 'final', finalised_at = now()
          WHERE ride_id = $1`,
-        [rideId, wait]
+        [rideId, wait, pickupWait]
       )
       await finaliseDiscount(pool, rideId)
     } catch (err) {
@@ -3099,28 +3367,80 @@ export async function verifyEndOTP(
     finalFare = totalFinal
   }
 
-  // One-way: fold metered stop-wait charges into the final fare. Each stop's
-  // wait_charge was computed live from server timestamps at resume time (see
-  // markStopStatus). One-way total_final always equals total_estimated before
-  // wait (early-termination recompute is round-trip-only), so we RECOMPUTE from
-  // total_estimated rather than add to total_final — that makes a replayed or
-  // concurrent settlement idempotent (never double-charges). No-op for round-
-  // trip/rental, whose stops never accrue wait_charge (wait is in the hours pkg).
+  // One-way (incl. city rides): the estimate is a guide, the bill is what was driven. Km come from the GPS trail and
+  // minutes from the server's own start/end times (never the client's numbers), priced on the ride's rate card and
+  // surge, with the stop fees already on the snapshot. The result is held to a band around the estimate (which follows
+  // stops added or skipped); outside it the fare stops at the edge and the ride is flagged. With no usable GPS trail
+  // the estimate stands, as before. Metered stop wait is billed separately below, so its minutes are left out here.
+  let oneWayBase: number | null = null
+  let oneWayKm: number | null = null
+  let oneWayMin: number | null = null
+  let waitTotal = 0
   if (ride.ride_type === 'one_way') {
-    const waitTotal = await repo.getStopWaitTotal(rideId)
-    if (waitTotal > 0) {
+    waitTotal = await repo.getStopWaitTotal(rideId)
+    if (ride.started_at != null && gpsDurationMin != null) {
+      try {
+        const snap = await loadOneWaySnapshot(rideId)
+        const trail = snap ? await measureTrailKm(rideId, new Date(ride.started_at), gpsDurationMin) : null
+        const gpsKm = trail?.km ?? null
+        if (snap && trail && gpsKm !== null) {
+          const waitMin = await repo.getStopWaitMinutes(rideId)
+          oneWayKm  = Math.round(gpsKm * 100) / 100
+          oneWayMin = Math.round(gpsDurationMin * 100) / 100
+          const fare = priceOneWay(snap, oneWayKm, Math.max(1, gpsDurationMin - waitMin), true).total
+          const est = parseFloat(snap.total_estimated)
+          const lo = est * (1 - ONE_WAY_FARE_BAND_UNDER)
+          const hi = est * (1 + ONE_WAY_FARE_BAND_OVER)
+          oneWayBase = Math.round(Math.min(hi, Math.max(lo, fare)) * 100) / 100
+          const notes = [...trail.notes]
+          if (fare > hi || fare < lo) notes.push(`fare from actual km/min (₹${fare}) is outside the band around the estimate (₹${est}); held at ₹${oneWayBase}`)
+          if (notes.length > 0) await repo.flagRideForReview(rideId, `One-way: ${notes.join('; ')}`)
+        } else {
+          log.warn({ rideId, reason: trail?.untrusted ?? 'no trail' }, 'one-way fare left at the estimate')
+          if (trail?.untrusted) await repo.flagRideForReview(rideId, `One-way fare left at the estimate: ${trail.untrusted}`)
+        }
+      } catch (err) {
+        log.error({ err, rideId }, 'one-way settlement on actuals failed; fare left at the estimate')
+        oneWayBase = null
+      }
+    }
+  }
+  // Each stop's wait_charge was computed live from server timestamps at resume time (see markStopStatus). We RECOMPUTE
+  // from the base rather than add to total_final, so a replayed or concurrent settlement never double-charges.
+  // No-op for round-trip/rental, whose stops never accrue wait_charge (wait is in the hours pkg).
+  if (ride.ride_type === 'one_way') {
+    if (waitTotal > 0 || oneWayBase !== null) {
       const upd = await pool.query<{ total_final: string }>(
         `UPDATE fare_snapshots
-         SET total_final  = round(total_estimated + $2::numeric, 2),
+         SET total_final  = round(COALESCE($3::numeric, total_estimated) + $2::numeric, 2),
+             actual_km    = COALESCE($4::numeric, actual_km),
+             actual_min   = COALESCE($5::numeric, actual_min),
              status       = 'final',
              finalised_at = now()
          WHERE ride_id = $1
          RETURNING total_final`,
-        [rideId, waitTotal]
+        [rideId, waitTotal, oneWayBase, oneWayKm, oneWayMin]
       )
       if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
       await finaliseDiscount(pool, rideId)
     }
+  }
+
+  // The wait at the pickup (recorded when the trip started) and any airport toll are their own lines on top of whatever was settled above, for every ride
+  // type. Single winner: the status CAS above lets only one end-OTP submit reach this point, so it is added exactly once.
+  const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId))
+  if (pickupWait > 0) {
+    const upd = await pool.query<{ total_final: string }>(
+      `UPDATE fare_snapshots
+       SET total_final  = round(COALESCE(total_final, total_estimated) + $2::numeric, 2),
+           status       = 'final',
+           finalised_at = COALESCE(finalised_at, now())
+       WHERE ride_id = $1
+       RETURNING total_final`,
+      [rideId, pickupWait]
+    )
+    if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
+    await finaliseDiscount(pool, rideId)
   }
 
   await pool.query(

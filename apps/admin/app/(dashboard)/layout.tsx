@@ -24,6 +24,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   '/settlements':           { title: 'Settlements',    subtitle: 'Driver payout management' },
   '/refunds':               { title: 'Refunds',        subtitle: 'Refund processing' },
   '/config/rate-cards':     { title: 'Rate Cards',     subtitle: 'Fare configuration' },
+  '/config/airport-zones':  { title: 'Airport Tolls',  subtitle: 'Zones and the toll per vehicle type' },
   '/config/system-config':  { title: 'System Config',  subtitle: 'Fees, payouts, switches' },
   '/config/feature-flags':  { title: 'Feature Flags',  subtitle: 'Toggle platform features' },
   '/broadcasts':            { title: 'Broadcasts',     subtitle: 'Send a notice or offer to drivers or riders' },

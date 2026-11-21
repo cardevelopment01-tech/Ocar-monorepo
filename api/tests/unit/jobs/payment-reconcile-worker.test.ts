@@ -9,16 +9,19 @@ vi.mock('@/modules/payments/payments.service', () => ({
   reconcilePendingPayuPurchases: vi.fn(),
 }))
 vi.mock('@/modules/rides/rides.service', () => ({ settleStrandedRideCompletions: vi.fn().mockResolvedValue(0) }))
+vi.mock('@/modules/packages/packages.service', () => ({ expireDueLots: vi.fn().mockResolvedValue(0) }))
 
 import * as svc from '@/modules/payments/payments.service'
 import * as rides from '@/modules/rides/rides.service'
+import * as packages from '@/modules/packages/packages.service'
 import { runPaymentReconcile } from '@/jobs/workers/payment-reconcile.worker'
 
 describe('payment-reconcile worker', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('runs the ride sweep then the PayU purchase/top-up sweep', async () => {
+  it('runs the ride sweep, the PayU purchase/top-up sweep and the package credit expiry sweep', async () => {
     await runPaymentReconcile()
+    expect(packages.expireDueLots).toHaveBeenCalledTimes(1)
     expect(svc.reconcilePendingRidePayments).toHaveBeenCalledTimes(1)
     expect(svc.reconcilePendingPayuPurchases).toHaveBeenCalledTimes(1)
     expect(rides.settleStrandedRideCompletions).toHaveBeenCalledTimes(1)
@@ -37,6 +40,13 @@ describe('payment-reconcile worker', () => {
     vi.mocked(svc.reconcilePendingRidePayments).mockRejectedValueOnce(new Error('db down'))
     await expect(runPaymentReconcile()).resolves.toBeUndefined()
     expect(svc.reconcilePendingPayuPurchases).toHaveBeenCalledTimes(1)
+    expect(error).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failing package expiry sweep is logged, not thrown, and the stranded-ride sweep still runs', async () => {
+    vi.mocked(packages.expireDueLots).mockRejectedValueOnce(new Error('db down'))
+    await expect(runPaymentReconcile()).resolves.toBeUndefined()
+    expect(rides.settleStrandedRideCompletions).toHaveBeenCalledTimes(1)
     expect(error).toHaveBeenCalledTimes(1)
   })
 

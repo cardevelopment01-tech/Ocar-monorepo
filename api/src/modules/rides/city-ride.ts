@@ -12,7 +12,7 @@ export function parseTripMode(raw: unknown): TripMode {
 
 /**
  * The rules of a city ride booking (owner decisions D3 and D8): a point-to-point one-way inside one city boundary, no distance cap,
- * not a return cab, switched on by city_rides_enabled. Stops: at most city_ride_max_stops (2), all inside the same city boundary (see stopLimitFor and pointsShareACity).
+ * not a return cab, switched on by city_rides_enabled. Stops: at most city_ride_max_stops (2) (see stopLimitFor); they must be inside the pickup city (assertStopsInPickupCity in rides.service).
  */
 export function assertCityRideAllowed(
   data: Pick<BookingRequest, 'rideType' | 'isReturnCab' | 'destinationLat' | 'destinationLng'>,
@@ -46,4 +46,3 @@ export function cityStopLimitError(limit: number) {
   return httpError(422, limit === 0 ? 'A city ride cannot have stops' : `A city ride can have at most ${limit} ${limit === 1 ? 'stop' : 'stops'}`, 'CITY_RIDE_STOP_LIMIT')
 }
 
-export const cityStopOutsideError = () => httpError(422, 'A stop on a city ride must be inside the city', 'CITY_RIDE_STOP_OUTSIDE_CITY')

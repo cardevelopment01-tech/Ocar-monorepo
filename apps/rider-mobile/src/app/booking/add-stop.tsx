@@ -7,7 +7,7 @@ import { Feather } from '@expo/vector-icons'
 import { formatEstimatedRoadKm } from '@ocar/shared'
 import { Text, font, h } from '@ocar/mobile-shared'
 import { IconButton } from '@/components/ui'
-import { fetchPlaceDetail, fetchSavedPlaces, type SavedPlace } from '@/features/booking/api'
+import { fetchClassifyTrip, fetchPlaceDetail, fetchSavedPlaces, type SavedPlace } from '@/features/booking/api'
 import { MAX_STOPS } from '@/features/booking/constants'
 import { useAutocomplete } from '@/features/booking/hooks/useAutocomplete'
 import { useBookingDraftStore } from '@/features/booking/store'
@@ -53,6 +53,8 @@ export default function AddStopScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const pickup = useBookingDraftStore((s) => s.pickup)
+  // A rental and a city ride stay inside the pickup city, so their stops must too (the server refuses anything else).
+  const cityOnly = useBookingDraftStore((s) => s.rideType === 'rental' || s.tripMode === 'city')
   const stopCount = useBookingDraftStore((s) => s.stops.length)
   const addStop = useBookingDraftStore((s) => s.addStop)
   const recents = useRecentSearchesStore((s) => s.recents)
@@ -60,8 +62,9 @@ export default function AddStopScreen() {
 
   const [query, setQuery] = useState('')
   const bias = pickup ? { lat: pickup.lat, lng: pickup.lng } : {}
-  const { results, loading, error, retry } = useAutocomplete(query, bias)
+  const { results, loading, error, retry } = useAutocomplete(query, bias, cityOnly)
   const [resolving, setResolving] = useState(false)
+  const [outside, setOutside] = useState(false)
   const showSuggestions = query.trim().length >= 2
 
   // Supplementary quick picks: a failed fetch just shows fewer chips.
@@ -69,20 +72,38 @@ export default function AddStopScreen() {
   useEffect(() => { fetchSavedPlaces().then(setSaved).catch(() => {}) }, [])
   const quick = saved.filter((p) => p.kind !== 'other')
 
+  // Search is already limited to the city, but saved places and recents are not, so every pick is checked here too.
+  // An unreachable check lets it through: the server refuses a stop outside the city when the ride is booked.
+  async function insideCity(p: { lat: number; lng: number }): Promise<boolean> {
+    if (!cityOnly || !pickup) return true
+    const c = await fetchClassifyTrip(pickup.lat, pickup.lng, p.lat, p.lng)
+    return c === null || c.scope === 'in_city'
+  }
+
+  async function add(p: { address: string; lat: number; lng: number }) {
+    setResolving(true)
+    setOutside(false)
+    if (!(await insideCity(p))) {
+      setOutside(true)
+      setResolving(false)
+      return
+    }
+    addStop(p)
+    goBack(router)
+  }
+
   async function pick(placeId: string, description: string) {
     setResolving(true)
     try {
       const d = await fetchPlaceDetail(placeId)
-      addStop({ address: d.address || description, lat: d.lat, lng: d.lng })
-      goBack(router)
+      await add({ address: d.address || description, lat: d.lat, lng: d.lng })
     } catch {
       setResolving(false)
     }
   }
 
   function addKnown(p: { address: string; lat: number; lng: number }) {
-    addStop({ address: p.address, lat: p.lat, lng: p.lng })
-    goBack(router)
+    void add(p)
   }
 
   const q = query.trim()
@@ -104,7 +125,7 @@ export default function AddStopScreen() {
         <Feather name="search" size={18} color={h.label} />
         <TextInput
           value={query}
-          onChangeText={setQuery}
+          onChangeText={(t) => { setQuery(t); setOutside(false) }}
           placeholder="Search for a stop"
           placeholderTextColor={h.faint}
           selectionColor={h.tealCta}
@@ -121,6 +142,7 @@ export default function AddStopScreen() {
       </View>
 
       <ScrollView style={styles.body} contentContainerStyle={[styles.bodyContent, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled">
+        {outside ? <Text style={styles.note}>Stops for this trip must be inside the city. Choose a place within the city.</Text> : null}
         {full ? <Text style={styles.note}>{`You have added the maximum of ${MAX_STOPS} stops. Remove one to add another.`}</Text> : null}
         {showSuggestions ? (
           <>
@@ -185,10 +207,14 @@ export default function AddStopScreen() {
               </>
             ) : null}
 
-            <Text style={quick.length > 0 || recents.length > 0 ? styles.section : styles.sectionFirst}>Popular</Text>
-            {POPULAR.map((p) => (
-              <Row key={p.label} icon="map-pin" name={p.label} sub={p.address} disabled={full} onPress={() => addKnown(p)} />
-            ))}
+            {cityOnly ? null : (
+              <>
+                <Text style={quick.length > 0 || recents.length > 0 ? styles.section : styles.sectionFirst}>Popular</Text>
+                {POPULAR.map((p) => (
+                  <Row key={p.label} icon="map-pin" name={p.label} sub={p.address} disabled={full} onPress={() => addKnown(p)} />
+                ))}
+              </>
+            )}
           </>
         )}
       </ScrollView>

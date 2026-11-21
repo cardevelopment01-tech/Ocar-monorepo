@@ -124,10 +124,81 @@ Writes go through `admin.repository.ts` (`FOR UPDATE` + millisecond-precision `u
 compare; 409 `BOUNDARY_CHANGED` on a stale save) — never `geo.repository.updateCity`.
 
 ### City ride stops
-A city ride (`trip_mode = 'city'`) may have at most `system_config.city_ride_max_stops` stops (default 2, 0 to 3; other ride types keep `MAX_STOPS_PER_RIDE` = 3) and every stop must lie inside the same active city boundary as the pickup and drop
-(`pointsShareACity`, one parameterised `ST_Contains` query). Both are enforced at booking (`createBooking`) and when a stop is added mid-ride (`addRideStop`), with codes `CITY_RIDE_STOP_LIMIT` and `CITY_RIDE_STOP_OUTSIDE_CITY`. The rider app
-limit comes from one place, `maxStopsFor` (rides.service.ts), and `GET /rides/:id` sends it as `max_stops`: the rider app hides "Add stop" on a ride that is full (`stopsFull`). The booking-time stop screens (round trip and rental only) still use the app's own `MAX_STOPS` (3) because a city ride has no stop screen at booking. Each stop's 10 minutes is a FREE wait window (`STOP_FREE_WAIT_MINUTES`) after which wait is metered at the rate
-card's per-minute rate; it is not a hard cap (client wording unconfirmed). A one-way or city ride is billed at the quoted fare plus stop waits: distance and duration are NOT recalculated on a normal completion.
+A city ride (`trip_mode = 'city'`) may have at most `system_config.city_ride_max_stops` stops (default 2, 0 to 3; other ride types keep `MAX_STOPS_PER_RIDE` = 3), enforced at booking (`createBooking`) and when a stop is added mid-ride (`addRideStop`), code `CITY_RIDE_STOP_LIMIT`.
+The limit comes from one place, `maxStopsFor` (rides.service.ts), and `GET /rides/:id` sends it as `max_stops`: the rider app hides "Add stop" on a ride that is full (`stopsFull`). Every stop must also lie inside the pickup's city (`assertStopsInPickupCity`, code `STOP_OUTSIDE_CITY`).
+Each stop's 10 minutes is a FREE wait window (`STOP_FREE_WAIT_MINUTES`) after which wait is metered at the rate card's per-minute rate; it is not a hard cap (client wording unconfirmed).
+
+### Driver ride-credit packages (billing_mode = 'package'): GST and expiry
+A plan has a price, a ride value (`threshold_value`), a vehicle group (`cab` or `auto`: a driver is shown only their group's plans, resolved from their primary vehicle category) and `validity_days` (365).
+**GST is added on top of the price** (`system_config.package_gst_percent`, 18): price 40 -> 7.20 GST -> the driver pays 47.20 and gets the full 550 of ride value. `package_purchase_orders.amount` is
+what PayU charges (the total, so the captured-amount check still matches); `price_amount` / `gst_percent` / `gst_amount` record the split and `package-money.ts packagePricing` is the only place that
+works it out (the apps just render what the API sends). Every purchase is its own **credit lot** (`package_credit_lots`, migration 151) with its own expiry: a completed ride draws on the lot that expires first
+(`drawLots`; lots already past expiry but not yet swept are still drawn on so a ride under way is not penalised), and the payments sweep (`expireDueLots`, every 5 minutes) lapses what is left of a lot after its
+days as an `expiry` ledger entry (no refund). `driver_package_wallets.balance` stays the single number the dispatch gate reads and equals the live lots plus any never-expiring credit (balances from before
+migration 151 and admin credits are in no lot). A purchase made while overdrawn starts its lot with what is left after the overdraft. A new table holding driver data must be added to the admin driver-delete block.
+Open with the client/CA: whether Ocar has Section 9(5) exposure on ride fares, the GST treatment of lapsed credit, and the SAC code (see below).
+
+**GST tax invoices to drivers** (migration 152, table `driver_invoices`, `package-invoice.ts` + `commission-invoice.ts` pure rules, `package-invoice.service.ts`, `package-invoice.pdf.ts`). Two kinds share the table, the supplier/recipient/state logic, the PDF and the driver list.
+**Package invoices:** every completed purchase that recorded a GST amount gets one invoice, issued by `creditPackageBalance`
+after the credit commits (it can never undo the credit; a failure is logged and retried by the replayed confirmation or when the driver opens their invoice list). One gap-free series per financial year, `PK/2627/000001`
+(Rule 46: at most 16 characters, unique per FY); the number comes from `invoice_counters` in the same transaction as the invoice row, so a duplicate or failed attempt rolls it back. Everything printed is copied onto the row at issue time.
+Place of supply is the driver's state on their profile (else their operating city's state); same state as the supplier is CGST + SGST at half the rate each (an odd paisa goes to CGST), another state is IGST, and with no state on record
+it is the supplier's state (IGST Act s.12(2)). **No invoice is issued until the super admin sets `gst_supplier_gstin`, `gst_supplier_legal_name` and `gst_supplier_address`** under System config (`gst_supplier_state_code` defaults to 21,
+`gst_invoice_sac` to 998319): a missing/invalid GSTIN is logged and skipped, and the invoices are issued late, dated the day they are issued, the first time the driver opens their list. **The SAC is unconfirmed: sources disagree
+(9983 / 998319 / 997331; a Karnataka ruling on a ride-hailing subscription used 9985), so the CA must confirm it before the first real invoice.** The driver app opens a PDF through a five-minute HMAC-signed link (`.../invoices/:id/link`
+then `.../invoices/:id/pdf?t=`), so no native module or download code is needed. Finance admins export every invoice for a period as `GET /admin/analytics/export/gst-invoices.csv` (the GSTR-1 columns). Invoices are kept for 72 months:
+purging a driver who has one is refused.
+**Commission invoices (`kind = 'commission'`, series `CM`, `CM/2627/000001`):** the commission cut from a driver's wallet on every ride **already includes the GST** (the client's rule), so a driver gets ONE consolidated invoice per period for everything cut
+in it, with the tax backed out of the period total (`taxFromInclusive`: ₹30 at 18% is 25.42 taxable + 4.58 GST; worked on the total, never summed from per-ride rounded amounts) and the rides listed as a paginated annexure. It is built from the wallet ledger's
+`commission_debit` rows (what was actually taken, not `payments.commission_amount`), so a changed `commission_percent` or a frozen/zero-commission ride never produces an invoice for money that wasn't cut. The scheduler job `issue_commission_invoices` runs
+daily at 02:30 IST and invoices every period that has ended and has no invoice yet for that driver (looks back 3 periods, so a missed night or the first deploy heals itself); a driver is never invoiced twice for a period (unique on driver + period start,
+and the number is rolled back on a lost race). Periods are IST: `commission_invoice_period` = `monthly` (previous calendar month, the default) or `weekly` (Mon to Sun), rate in `commission_gst_percent` (18), SAC in `gst_commission_sac`. The same supplier
+settings gate it. `refund_credit` ledger rows tied to a ride in an invoiced period log a warning: nothing reverses a commission today, so seeing one means a manual adjustment that may need a credit note.
+Not built: credit notes (a refund, cancelled purchase or reversed commission needs one), e-invoicing (not required under the turnover threshold, confirm with the CA), and a QR code. The driver web portal does not list invoices yet.
+
+### One-way (and city ride) billing
+The one-way estimate is a guide: at completion `verifyEndOTP` bills the km from the GPS trail (`getGpsTrackedDistanceKm`) and the
+minutes from server start/end times, on the ride's own rate card, surge and snapshot stop fees (`priceOneWay`). The result is
+held to +/-`ONE_WAY_FARE_BAND_*` (25%) around `total_estimated`, flagging the ride for ops when it hits the edge. No usable GPS
+trail = the estimate stands. Gaps in the trail (`measureTrailKm`): pings up to `GPS_GAP_SECONDS` apart are a straight line; silence WITH movement (>= `GPS_GAP_MIN_METRES`) is routed between the two fixes (silence without movement is a parked car, the driver app only pings after 5 m of movement); if those gaps exceed `GPS_MAX_SILENT_SHARE` of the ride the trail is not trusted and ops is flagged. Metered stop wait (`wait_charge`) is added on top once, and its minutes are left out of the billed
+time. `total_estimated` follows stops added or skipped mid-ride (`repriceOneWayRoute`), so the band is measured against an honest
+estimate. Round trips and rentals have their own settlement; do not route them through this.
+
+### Waiting at the pickup (every ride type)
+The driver's wait is charged after a free window: `max(0, minutes waited - free minutes) x rate`, to the whole rupee (`pickupWaitCharge` in
+`lib/fare.ts`). The defaults, 3 free minutes and 3 rupees a minute, live on the rate card (`rate_cards.pickup_free_wait_min` /
+`pickup_wait_per_min`, versioned and city-scoped like `stop_charge`; both create paths must carry them forward). A rental package may override
+either (`rental_packages.pickup_*`, NULL = use the rate card). Both are pinned on the ride's `fare_snapshots` at booking, so an admin edit never
+reprices a ride in flight; NULL pinned terms (a ride booked before migration 148) are never charged.
+The wait runs from the driver's arrival to the start OTP, but the clock starts at the LATER of the "arrived" tap and the first position recorded
+within `PICKUP_WAIT_RADIUS_METRES` of the pickup (`getPickupWaitStartedAt`), so tapping "arrived" from far away starts nothing; no position at the
+pickup = no charge. The minutes and charge are recorded at start OTP (`recordPickupWaitAtStart`) and added to the final fare at the end of
+`verifyEndOTP` for every ride type, outside the one-way +/-25% band. Admin force-complete does not add it.
+The apps count the free minutes from `pickup_wait_started_at` (sent while status is `driver_arrived`, `withPickupWait`) on the server-corrected clock:
+a countdown, then extra waiting counting up. They never show a running rupee amount; the charge appears once, on the receipt. One push tells the
+rider when the free minutes end (`pickup_wait_nudge` job set by `markArrived`; it re-checks the clock before sending).
+
+### Airport toll
+A flat toll per vehicle category is charged once per ride when the trip enters an airport zone, shown as its own "Airport toll" line and
+paid on to the driver. Zones are admin-drawn polygons (`airport_zones`, edited at Config > Airport Tolls; never written by a migration) with one
+amount per category (`airport_toll_rates`; none or 0 = that category pays nothing there). The rates in force are copied onto the ride at booking
+(`fare_snapshots.toll_terms`), so an admin edit or a deactivated zone never reprices a ride in flight; NULL terms = no toll.
+At completion and on force-complete, `settleToll` adds the toll of every pinned zone that the trip's positions recorded after it started were
+inside, or that holds the pickup or drop (`getTollForRide`; approach pings before the start never count), recorded in `toll_charge` / `toll_detail`
+and added to the final fare together with the pickup wait, outside the one-way band, not surged. It is a pass-through: `createPaymentRecord` takes
+commission on the payable without the toll, so the driver earns the toll on top of their fare share.
+Guards: the trail alone needs `TOLL_MIN_TRAIL_PINGS` (3) pings in the zone (one spoofed ping earns nothing), and a toll earned by the trail alone
+flags the ride for ops review. A zone must intersect an active city (catches a lat/lng-swapped paste). Every zone/rate/toggle/delete needs a
+reason and writes `airport_zone_changes` (kept after the zone is deleted).
+
+### Trip receipt (PDF)
+`GET /rides/:id/receipt.pdf` (rider only, own ride; 409 `RECEIPT_NOT_AVAILABLE` for an unfinished trip or a free cancellation) draws the receipt on request with
+pdfkit (pure JS, no browser): `rides/receipt/receipt.model.ts` works out everything printed (pure, unit-tested), `receipt.pdf.ts` draws it. Never stored,
+`Cache-Control: private, no-store`. The fare rows mirror the rider app's `buildInvoiceRows`/`rentalFareLines` (only charges > 0; rental = package + extra
+distance + extra time; an "Adjustments" row for any gap, so the rows ALWAYS sum to the total printed; offer after a "Fare before offer" subtotal). **If the app's
+fare lines change (a new charge), change `buildFareRows` too.** Payment pill is data-driven (Paid / Cash due / Payment pending), never hard-coded. The route is drawn
+from `gps_tracks` in the app's palette with no map provider. Fonts + logo live in `api/assets` (Plus Jakarta Sans, Noto Sans Oriya for Odia addresses) and are copied
+into the image by the Dockerfile. The rider app shares it via expo-sharing (needs a native build); the web trip page downloads it.
 
 ### PayU collections
 Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`
@@ -308,7 +379,7 @@ Server initialised in `api/src/websocket/socket.server.ts`.
 /api/v1/rides/:id/stops                — POST (rider adds a stop; allowed accepted→returning, i.e. also on a
                                           round trip's return leg, until the driver reaches the drop)
 /api/v1/rides/:id/stops/:seq/skip      — POST, rider only: the only user action that skips a stop (the driver's
-                                          PATCH accepts just arrived|reached; force-completion also skips leftovers). Any stop charge already added stays.
+                                          PATCH accepts just arrived|reached; force-completion also skips leftovers). The stop's charge is taken back off the fare (stop_fare, stop_count and, for one-way, total_estimated); a one-way ride is also re-priced on the server for the km the stop adds or removes (added or skipped mid-ride, via `repriceOneWayRoute`).
 /api/v1/rides/:id/stops/:seq/unreachable — POST, driver only: "can't reach this stop" asks the rider to skip
                                           (sets ride_stops.unreachable_requested_at, pushes the rider); never resolves it
 ```

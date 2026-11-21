@@ -124,7 +124,7 @@ export interface AnalyticsSummary {
   category_breakdown: (Omit<CategoryBreakdown, 'revenue'> & { revenue?: number })[]
 }
 
-type MoneyOptional<T> = Omit<T, 'gross_bookings' | 'commission'> & { gross_bookings?: number; commission?: number }
+type MoneyOptional<T> = Omit<T, 'gross_bookings' | 'commission'> & { gross_bookings?: number; commission?: number; subscription_revenue?: number }
 type SeriesPoint = Omit<DailyPoint, 'gross' | 'commission'> & { gross?: number; commission?: number }
 
 export interface KpisResponse {

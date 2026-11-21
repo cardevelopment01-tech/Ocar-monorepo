@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { ChevronDown, ChevronLeft, CheckCircle2, XCircle, Star, LifeBuoy, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronLeft, CheckCircle2, XCircle, Star, LifeBuoy, AlertCircle, Download } from 'lucide-react'
 import { rideApi, type RideDetail } from '@/lib/ride-api'
 import { submitPayuForm, payMessage } from '@/lib/payu-checkout'
 import { DriverRow, driverViewFromRide } from '@/components/ride/DriverIdentity'
@@ -22,7 +22,7 @@ function money(v: string | null | undefined): string | null {
   return n && n > 0 ? `₹${Math.round(n).toLocaleString('en-IN')}` : null
 }
 
-const FARE_LINES: { key: 'base_fare' | 'distance_fare' | 'time_fare' | 'stop_fare' | 'hour_surcharge' | 'waiting_fare' | 'surge_fare' | 'overage_fare'; label: string }[] = [
+const FARE_LINES: { key: 'base_fare' | 'distance_fare' | 'time_fare' | 'stop_fare' | 'hour_surcharge' | 'waiting_fare' | 'surge_fare' | 'overage_fare' | 'pickup_wait_charge' | 'toll_charge'; label: string }[] = [
   { key: 'base_fare',      label: 'Base fare' },
   { key: 'distance_fare',  label: 'Distance' },
   { key: 'time_fare',      label: 'Time' },
@@ -32,6 +32,10 @@ const FARE_LINES: { key: 'base_fare' | 'distance_fare' | 'time_fare' | 'stop_far
   { key: 'waiting_fare',   label: 'Booked time' },
   { key: 'surge_fare',     label: 'Surge' },
   { key: 'overage_fare',   label: 'Overage' },
+  // The driver's wait at the pickup past the free minutes (not surged).
+  { key: 'pickup_wait_charge', label: 'Waiting at pickup' },
+  // Airport toll: its own line, paid on to the driver.
+  { key: 'toll_charge', label: 'Airport toll' },
 ]
 
 const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
@@ -87,6 +91,11 @@ function fareDetail(key: string, ride: RideDetail): string | null {
   if (key === 'distance_fare' && ride.actual_km) return `${parseFloat(ride.actual_km)} km`
   if (key === 'time_fare' && ride.actual_min) return `${Math.round(parseFloat(ride.actual_min))} min`
   if (key === 'waiting_fare' && ride.trip_hours) return `${ride.trip_hours} ${ride.trip_hours === 1 ? 'hour' : 'hours'}`
+  if (key === 'toll_charge' && ride.toll_detail?.length) return ride.toll_detail.map((t) => t.zone).join(', ')
+  if (key === 'pickup_wait_charge' && ride.pickup_wait_min) {
+    const free = ride.pickup_free_wait_min
+    return `${Math.round(parseFloat(ride.pickup_wait_min))} min${free != null ? `, after ${free} free minutes` : ''}`
+  }
   return null
 }
 
@@ -114,6 +123,8 @@ export default function RideReceiptPage() {
   const [loading, setLoading] = useState(true)
   const [retrying, setRetrying] = useState(false)
   const [payMsg, setPayMsg]     = useState<string | null>(null)
+  const [receiptBusy, setReceiptBusy] = useState(false)
+  const [receiptMsg, setReceiptMsg]   = useState<string | null>(null)
 
   useEffect(() => {
     if (!rideId) return
@@ -153,6 +164,27 @@ export default function RideReceiptPage() {
       setPayMsg(getApiErrorMessage(err, 'Could not start payment. Please try again.'))
     } finally {
       setRetrying(false)
+    }
+  }
+
+  async function handleDownloadReceipt() {
+    if (!rideId || receiptBusy) return
+    setReceiptBusy(true)
+    setReceiptMsg(null)
+    try {
+      const blob = await rideApi.getReceiptPdf(rideId)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Ocar-receipt-${rideId}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch {
+      setReceiptMsg('Could not get the receipt. Please try again.')
+    } finally {
+      setReceiptBusy(false)
     }
   }
 
@@ -391,6 +423,20 @@ export default function RideReceiptPage() {
               Rate this trip
             </button>
           )
+        )}
+        {isCompleted && (
+          <>
+            <button
+              type="button"
+              onClick={() => void handleDownloadReceipt()}
+              disabled={receiptBusy}
+              className="w-full flex items-center justify-center gap-2 bg-surface text-text-primary border border-border text-sm font-semibold py-3.5 rounded-full active:scale-[0.98] transition-transform disabled:opacity-50"
+            >
+              <Download size={15} />
+              {receiptBusy ? 'Preparing receipt…' : 'Download receipt'}
+            </button>
+            {receiptMsg && <p className="text-xs text-status-error text-center">{receiptMsg}</p>}
+          </>
         )}
         <button
           type="button"
