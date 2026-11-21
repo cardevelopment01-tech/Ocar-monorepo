@@ -1,6 +1,7 @@
 import { createHttpError, httpError } from '@/lib/errors'
 import { resolvePersonName } from '@/lib/person-name'
 import { AppErrors } from '@/constants/errors'
+import { validateTierFields } from '@/modules/packages/package-tier-rules'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
 import type { DriverStatus, UpdateDriverStatusPayload, UpdateDriverProfilePayload, UpdateDriverVehiclePayload, CityBoundaryGeoJson, CityBoundaryAnalysis, CityBoundaryWrite } from './admin.types'
@@ -967,22 +968,59 @@ export async function listPackageTiers() {
   })
 }
 
-const validValidity = (n: number) => Number.isInteger(n) && n >= 1 && n <= 3650
+// A plan is money-affecting: what is saved here is what every driver in a package city is offered and charged. Both paths below refuse a plan
+// that breaks the rules in package-tier-rules.ts with a message the admin page shows as is, and write who changed what to the audit log.
+const DUPLICATE_PLAN_MESSAGE = 'An active plan with the same price and ride value already exists for these drivers.'
+const tierAudit = (t: { label: string; price: string | number; threshold_value?: string | number; is_active?: boolean; vehicle_group?: string; validity_days?: number }) => ({
+  label: t.label, price: t.price, threshold_value: t.threshold_value, is_active: t.is_active, vehicle_group: t.vehicle_group, validity_days: t.validity_days,
+})
 
-export async function createPackageTier(data: { label: string; price: number; thresholdValue: number; vehicleGroup: 'cab' | 'auto'; validityDays: number; createdBy: bigint }) {
-  if (!data.label) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  if (isNaN(data.price) || data.price <= 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  if (isNaN(data.thresholdValue) || data.thresholdValue <= 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  if (!validValidity(data.validityDays)) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  return repo.createPackageTier(data)
+export async function createPackageTier(
+  data: { label: string; price: number; thresholdValue: number; vehicleGroup: 'cab' | 'auto'; validityDays: number; createdBy: bigint },
+  ipAddress: string | null = null,
+) {
+  const label = data.label.trim()
+  const problem = validateTierFields({ label, price: data.price, thresholdValue: data.thresholdValue, validityDays: data.validityDays })
+  if (problem) throw httpError(422, problem, AppErrors.VALIDATION_ERROR.code)
+  if (await repo.packageTierDuplicateExists(data.vehicleGroup, data.price, data.thresholdValue)) {
+    throw httpError(409, DUPLICATE_PLAN_MESSAGE, AppErrors.VALIDATION_ERROR.code)
+  }
+  const tier = await repo.createPackageTier({ ...data, label })
+  await recordAuditLog({
+    adminId: data.createdBy, action: 'package_tier.create', targetTable: 'package_tiers', targetId: BigInt(tier.id),
+    afterState: tierAudit(tier), ipAddress,
+  })
+  return tier
 }
 
-export async function updatePackageTier(id: bigint, data: { label?: string; price?: number; thresholdValue?: number; isActive?: boolean; vehicleGroup?: 'cab' | 'auto'; validityDays?: number }) {
-  if (data.price !== undefined && (isNaN(data.price) || data.price <= 0)) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  if (data.thresholdValue !== undefined && (isNaN(data.thresholdValue) || data.thresholdValue <= 0)) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  if (data.validityDays !== undefined && !validValidity(data.validityDays)) throw createHttpError(AppErrors.VALIDATION_ERROR)
-  const updated = await repo.updatePackageTier(id, data)
+export async function updatePackageTier(
+  id: bigint,
+  data: { label?: string; price?: number; thresholdValue?: number; isActive?: boolean; vehicleGroup?: 'cab' | 'auto'; validityDays?: number },
+  adminId: bigint | null = null,
+  ipAddress: string | null = null,
+) {
+  const before = await repo.getPackageTierById(id)
+  if (!before) throw createHttpError(AppErrors.NOT_FOUND)
+  // Judge the plan as it would be after the change, so editing only the price cannot leave a ride value below it.
+  const next = {
+    label: (data.label ?? before.label).trim(),
+    price: data.price ?? parseFloat(before.price),
+    thresholdValue: data.thresholdValue ?? parseFloat(before.threshold_value),
+    validityDays: data.validityDays ?? before.validity_days,
+    vehicleGroup: data.vehicleGroup ?? before.vehicle_group,
+    isActive: data.isActive ?? before.is_active,
+  }
+  const problem = validateTierFields(next)
+  if (problem) throw httpError(422, problem, AppErrors.VALIDATION_ERROR.code)
+  if (next.isActive && (await repo.packageTierDuplicateExists(next.vehicleGroup, next.price, next.thresholdValue, id))) {
+    throw httpError(409, DUPLICATE_PLAN_MESSAGE, AppErrors.VALIDATION_ERROR.code)
+  }
+  const updated = await repo.updatePackageTier(id, { ...data, ...(data.label !== undefined ? { label: next.label } : {}) })
   if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
+  await recordAuditLog({
+    adminId, action: 'package_tier.update', targetTable: 'package_tiers', targetId: id,
+    beforeState: tierAudit(before), afterState: tierAudit(updated), ipAddress,
+  })
   return updated
 }
 

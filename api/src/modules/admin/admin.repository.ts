@@ -2978,9 +2978,35 @@ export async function listPackageTiers(): Promise<PackageTier[]> {
 async function fetchPackageTiersFromDb(): Promise<PackageTier[]> {
   const res = await pool.query<PackageTier>(
     `SELECT id, label, price::text, threshold_value::text, is_active, vehicle_group, validity_days, created_at, updated_at
-     FROM package_tiers ORDER BY vehicle_group ASC, price ASC`,
+     FROM package_tiers ORDER BY package_tiers.vehicle_group ASC, package_tiers.price ASC`, // qualified: a bare "price" would sort by the price::text output column ('250.00' before '40.00')
   );
   return res.rows;
+}
+
+/** One plan straight from the database (not the cached list), for checking an edit against what is saved. */
+export async function getPackageTierById(id: bigint): Promise<PackageTier | null> {
+  const res = await pool.query<PackageTier>(
+    `SELECT id, label, price::text, threshold_value::text, is_active, vehicle_group, validity_days, created_at, updated_at
+     FROM package_tiers WHERE id = $1`,
+    [id],
+  );
+  return res.rows[0] ?? null;
+}
+
+/** Whether an ACTIVE plan with the same drivers, price and ride value already exists (other than `excludeId`): two of them would look identical to a driver. */
+export async function packageTierDuplicateExists(
+  vehicleGroup: "cab" | "auto",
+  price: number,
+  thresholdValue: number,
+  excludeId?: bigint,
+): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT 1 FROM package_tiers
+      WHERE is_active = true AND vehicle_group = $1 AND price = $2 AND threshold_value = $3 AND ($4::bigint IS NULL OR id <> $4)
+      LIMIT 1`,
+    [vehicleGroup, price, thresholdValue, excludeId ?? null],
+  );
+  return (res.rowCount ?? 0) > 0;
 }
 
 export async function createPackageTier(data: {
