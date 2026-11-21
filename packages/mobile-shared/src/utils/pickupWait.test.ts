@@ -65,9 +65,9 @@ describe('pickupWaitCopy: the words', () => {
     })
   })
 
-  it('driver: the same time, framed as income, and told to ask for the code', () => {
+  it('driver: the same time, framed as income, with what comes after the free minutes', () => {
     expect(pickupWaitCopy(free, 'driver', { perMin: 3 })).toMatchObject({
-      tone: 'neutral', label: 'Free waiting left', value: '2:41', note: 'Ask the rider for the start code.',
+      tone: 'neutral', label: 'Free waiting left', value: '2:41', note: 'Then ₹3 a minute is added to the fare.',
     })
     expect(pickupWaitCopy(charging, 'driver', { perMin: 3 })).toMatchObject({
       tone: 'earn', label: 'Extra waiting', value: '+1:20', note: '₹3 a minute is added to the fare.',

@@ -82,10 +82,9 @@ export function pickupWaitCopy(
         icon: 'clock', tone: 'neutral',
         label: rider ? 'Free waiting' : 'Free waiting left',
         value,
-        ...(rider
-          ? (rate ? { note: `Then ${rate}.` } : {})
-          : { note: 'Ask the rider for the start code.' }),
-        a11y: rider ? `Free waiting, ${value} left` : `Free waiting, ${value} left. Ask the rider for the start code.`,
+        // The start-code prompt already sits under the button, so this line only states what comes after the free minutes.
+        ...(rate ? { note: rider ? `Then ${rate}.` : `Then ${rate} is added to the fare.` } : {}),
+        a11y: `Free waiting, ${value} left.${rate ? ` Then ${rate}${rider ? '' : ' is added to the fare'}.` : ''}`,
       }
     }
     case 'charging': {
