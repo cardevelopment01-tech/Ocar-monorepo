@@ -35,13 +35,27 @@ export function showWithinMetres(rideType: string | null | undefined, categorySl
 }
 
 /**
- * Which of the (nearest-first) cars to draw. A ride is offered first to drivers of the category it was booked in, and only if
- * nobody accepts, to the next category up: so show the booked category's cars, and only when there are none near, every car
- * (each with its own icon) so the rider still sees that drivers are around. At most MAX_SHOWN.
+ * Which of the (nearest-first) cars to draw: only the category being booked. Someone booking an auto sees autos, a hatchback
+ * sees hatchbacks; a category with none near draws none (the booking screen already greys such a category out, so an empty map
+ * is the honest picture). Only when the category is unknown (the list has not loaded) is every car shown, each with its own
+ * icon, rather than a blank map. At most MAX_SHOWN.
  */
 export function chooseCars(cars: readonly NearbyCar[], categoryId: number | null, max = MAX_SHOWN): NearbyCar[] {
-  const booked = categoryId === null ? [] : cars.filter((c) => c.categoryId === categoryId)
-  return (booked.length > 0 ? booked : [...cars]).slice(0, max)
+  const wanted = categoryId === null ? [...cars] : cars.filter((c) => c.categoryId === categoryId)
+  return wanted.slice(0, max)
+}
+
+/**
+ * The cars on the booking ("Choose your ride") map: those within SHOW_WITHIN_M of the pickup, nearest first, and only the category
+ * being booked (see chooseCars), so an auto being booked shows autos and a category with none near shows none.
+ */
+export function carsForBooking(drivers: readonly NearbyCar[], pickup: [number, number], categoryId: number | null): NearbyCar[] {
+  const near = drivers
+    .map((d) => ({ d, m: metresBetween(pickup, [d.lat, d.lng]) }))
+    .filter((x) => x.m <= SHOW_WITHIN_M)
+    .sort((a, b) => a.m - b.m)
+    .map((x) => x.d)
+  return chooseCars(near, categoryId)
 }
 
 export type CarEvent = { id: string; lat: number; lng: number; heading?: number; categoryId?: number }
