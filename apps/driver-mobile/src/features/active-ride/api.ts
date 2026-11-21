@@ -1,3 +1,4 @@
+import { trail } from '@/services/location/trailBuffer'
 import { camelizeKeys, decodePolyline, track, type RideDetail } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import type { SpeedLimitCity } from './speedAlert'
@@ -62,6 +63,8 @@ export async function triggerMaskedCall(rideId: string): Promise<void> {
 
 export async function submitStartOtp(rideId: string, otp: string): Promise<void> {
   await api.post(`/api/v1/rides/${rideId}/start-otp`, { otp })
+  // The trip is under way: from here every GPS fix is also saved on the phone and uploaded in batches (see trailBuffer.ts).
+  void trail.start(rideId)
 }
 
 // end-otp's body is snake_case (actual_distance_km etc.) unlike most other
@@ -69,7 +72,11 @@ export async function submitStartOtp(rideId: string, otp: string): Promise<void>
 // `otp` is sent this phase; the actual_* reconciliation fields are optional
 // and specific to round-trip GPS reconciliation, out of this phase's scope.
 export async function submitEndOtp(rideId: string, otp: string): Promise<void> {
+  // The fare is worked out from the trail when the trip ends, so send what the phone saved first. Bounded: with no signal this must
+  // never hold up ending the trip (the server then fills any gap itself).
+  await Promise.race([trail.flush(), new Promise<void>((resolve) => setTimeout(resolve, 4000))])
   await api.post(`/api/v1/rides/${rideId}/end-otp`, { otp })
+  void trail.end()
 }
 
 // Never called anywhere in this app before -- a rider-added mid-trip stop had

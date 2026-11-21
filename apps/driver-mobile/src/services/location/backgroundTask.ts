@@ -4,6 +4,7 @@ import { emitLocationTick, emitHeartbeat } from './locationSync'
 import { useDriverPositionStore } from './driverPositionStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { isAccurateEnough, trackingProfileForRideState } from './locationPolicy'
+import { trail, type TrailFix } from './trailBuffer'
 
 export const LOCATION_TASK_NAME = 'ocar-background-location-spike'
 
@@ -16,6 +17,17 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   void emitHeartbeat().catch(() => {})
   try {
     const { locations } = (data as { locations: Location.LocationObject[] }) ?? { locations: [] }
+    // Android can hand over several fixes at once (after Doze or a frozen app). The live position below is the latest, but the trip's trail
+    // needs every one of them, so all accepted fixes are saved for upload (a no-op unless a trip is under way).
+    const trailFixes: TrailFix[] = locations
+      .filter((l) => isAccurateEnough(l.coords.accuracy))
+      .map((l) => ({
+        lat: l.coords.latitude, lng: l.coords.longitude, recordedAt: new Date(l.timestamp).toISOString(),
+        ...(l.coords.heading != null ? { heading: l.coords.heading } : {}),
+        ...(l.coords.speed != null ? { speed: l.coords.speed } : {}),
+        ...(l.coords.accuracy != null ? { accuracy: l.coords.accuracy } : {}),
+      }))
+    void trail.add(trailFixes).catch(() => {})
     const latest = locations[locations.length - 1]
     if (!latest) return
     if (!isAccurateEnough(latest.coords.accuracy)) return

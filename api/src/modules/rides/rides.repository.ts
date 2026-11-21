@@ -17,6 +17,12 @@ import {
 
 // ── Driver session queries ────────────────────────────────────
 
+// The driver's most recent session (any status): a trail uploaded late still belongs to a session that has since ended.
+export async function getLatestSessionId(driverId: bigint): Promise<bigint | null> {
+  const res = await pool.query<{ id: string }>('SELECT id FROM driver_sessions WHERE driver_id = $1 ORDER BY id DESC LIMIT 1', [driverId])
+  return res.rows[0] ? BigInt(res.rows[0].id) : null
+}
+
 export async function getActiveSession(driverId: bigint): Promise<DriverSession | null> {
   const res = await pool.query<DriverSession>(
     `SELECT ds.*, vc.display_name AS category_name, dc.name AS destination_city_name
