@@ -2334,7 +2334,7 @@ export async function getTrailPoints(rideId: bigint, since: Date, max = 140): Pr
               row_number() OVER (ORDER BY recorded_at) AS rn, count(*) OVER () AS n
          FROM gps_tracks WHERE ride_id = $1 AND recorded_at >= $2
      )
-     SELECT lat, lng FROM t WHERE rn = 1 OR rn = n OR rn % GREATEST(n / $3::int, 1) = 0 ORDER BY rn`,
+     SELECT lat, lng FROM t WHERE rn = 1 OR rn = n OR rn % GREATEST(CEIL(n::numeric / $3::int)::int, 1) = 0 ORDER BY rn`,
     [rideId, since, max],
   )
   return res.rows.map((r) => [Number(r.lat), Number(r.lng)] as [number, number])

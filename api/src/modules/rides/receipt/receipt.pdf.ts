@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit'
+import fs from 'node:fs'
 import path from 'node:path'
 import { money, type ReceiptModel } from './receipt.model'
 
@@ -24,6 +25,10 @@ const C = {
 const PW = 595.28, PH = 841.89, MX = 42, TOP = 40, BOTTOM = 62
 const CW = PW - MX * 2
 const ODIA = /[଀-୿]/
+const ODIA_RUN = /([଀-୿‌‍]+)/
+// Read once: pdfkit parses a font file on every registerFont(path), and a receipt is drawn per request.
+const FONT_BUF: Record<string, Buffer> = Object.fromEntries(Object.entries(FONT).map(([k, p]) => [k, fs.readFileSync(p)]))
+const LOGO_BUF = fs.readFileSync(LOGO)
 
 type Font = keyof typeof FONT
 export function renderReceiptPdf(m: ReceiptModel): Promise<Buffer> {
@@ -33,29 +38,55 @@ export function renderReceiptPdf(m: ReceiptModel): Promise<Buffer> {
     doc.on('data', (c: Buffer) => chunks.push(c))
     doc.on('end', () => resolve(Buffer.concat(chunks)))
     doc.on('error', reject)
-    for (const [k, p] of Object.entries(FONT)) doc.registerFont(k, p)
+    for (const [k, b] of Object.entries(FONT_BUF)) doc.registerFont(k, b)
 
     let y = TOP
     const limit = () => PH - BOTTOM
     const ensure = (h: number) => { if (y + h > limit()) { doc.addPage(); y = TOP; return true } return false }
 
-    // Text with the right font: Odia script falls back to Noto Sans Oriya for the whole string.
+    // Text with the right font. Noto Sans Oriya has no Latin letters and Plus Jakarta has no Odia, so a string mixing both ("Plot 12, ଭୁବନେଶ୍ୱର")
+    // is split into script runs and each run is drawn and measured in its own font.
+    const runsOf = (s: string, base: Font) => s.split(ODIA_RUN).filter(Boolean).map((text) => ({ text, font: (ODIA.test(text) ? 'odia' : base) as Font }))
     const t = (s: string, x: number, yy: number, o: { f?: Font; size?: number; color?: string; width?: number; align?: 'left' | 'right' | 'center'; spacing?: number } = {}) => {
-      const f = ODIA.test(s) ? 'odia' : o.f ?? 'reg'
-      doc.font(f).fontSize(o.size ?? 10).fillColor(o.color ?? C.ink)
-      doc.text(s, x, yy, { width: o.width ?? CW, align: o.align ?? 'left', lineBreak: o.width != null, characterSpacing: o.spacing ?? 0 })
+      const base = o.f ?? 'reg'
+      const size = o.size ?? 10
+      doc.fillColor(o.color ?? C.ink)
+      if (!ODIA.test(s)) {
+        doc.font(base).fontSize(size)
+        doc.text(s, x, yy, { width: o.width ?? CW, align: o.align ?? 'left', lineBreak: o.width != null, characterSpacing: o.spacing ?? 0 })
+        return
+      }
+      const runs = runsOf(s, base)
+      const align = o.align ?? 'left'
+      if (o.width != null && align === 'left') {
+        // wrapping left-aligned text: pdfkit continues the line across font changes
+        runs.forEach((run, i) => {
+          doc.font(run.font).fontSize(size)
+          if (i === 0) doc.text(run.text, x, yy, { width: o.width, continued: runs.length > 1, characterSpacing: o.spacing ?? 0 })
+          else doc.text(run.text, { continued: i < runs.length - 1, characterSpacing: o.spacing ?? 0 })
+        })
+        return
+      }
+      const total = runs.reduce((n, run) => { doc.font(run.font).fontSize(size); return n + doc.widthOfString(run.text) }, 0)
+      let cx = align === 'right' ? x + (o.width ?? CW) - total : align === 'center' ? x + ((o.width ?? CW) - total) / 2 : x
+      for (const run of runs) {
+        doc.font(run.font).fontSize(size)
+        doc.text(run.text, cx, yy, { lineBreak: false })
+        cx += doc.widthOfString(run.text)
+      }
     }
+    // Height of wrapped text: a string with Odia is measured in the Odia font (taller lines), which can only over-reserve.
     const h = (s: string, size: number, width: number, f: Font = 'reg') => { doc.font(ODIA.test(s) ? 'odia' : f).fontSize(size); return doc.heightOfString(s, { width }) }
-    const w = (s: string, size: number, f: Font = 'reg') => { doc.font(ODIA.test(s) ? 'odia' : f).fontSize(size); return doc.widthOfString(s) }
+    const w = (s: string, size: number, f: Font = 'reg') => runsOf(s, f).reduce((n, run) => { doc.font(run.font).fontSize(size); return n + doc.widthOfString(run.text) }, 0)
     const caps = (s: string, x: number, yy: number) => t(s.toUpperCase(), x, yy, { f: 'b', size: 7.5, color: C.label, spacing: 1 })
 
     // ── Masthead
-    doc.image(LOGO, MX, y, { height: 30 })
+    doc.image(LOGO_BUF, MX, y, { height: 30 })
     t(m.kind === 'cancelled' ? 'CANCELLATION RECEIPT' : 'TRIP RECEIPT', MX, y, { f: 'b', size: 7.5, spacing: 1, width: CW, align: 'right' })
     t(`No. ${m.tripNo}`, MX, y + 11, { size: 9, color: C.muted, width: CW, align: 'right' })
     t(m.dateLabel, MX, y + 22, { size: 9, color: C.muted, width: CW, align: 'right' })
     y += 46
-    t(m.kind === 'cancelled' ? 'Your trip was cancelled' : `Thanks for riding${m.firstName ? `, ${m.firstName}` : ''}`, MX, y, { f: 'xb', size: 21 })
+    t(m.kind === 'cancelled' ? 'Your trip was cancelled' : `Thanks for riding${m.firstName ? `, ${m.firstName}` : ''}`, MX, y, { f: 'xb', size: 21, width: CW })
     y += 34
 
     // ── Hero total
@@ -206,7 +237,11 @@ export function renderReceiptPdf(m: ReceiptModel): Promise<Buffer> {
       }
       const ink = o.off ? C.green : o.muted ? C.muted : C.ink
       t(label, MX, y + 5, { f: o.muted ? 'b' : 'sb', size: 10, color: ink, width: CW })
-      if (detail) t(detail, MX + w(label, 10, o.muted ? 'b' : 'sb') + 7, y + 6.5, { size: 8.5, color: C.muted, width: CW - 120 })
+      if (detail) {
+        const dx = MX + w(label, 10, o.muted ? 'b' : 'sb') + 7
+        const room = MX + CW - 70 - dx
+        if (room > 40) t(detail, dx, y + 6.5, { size: 8.5, color: C.muted, width: room })
+      }
       t(`${amount < 0 ? '−' : ''}${money(amount)}`, MX, y + 5, { f: 'sb', size: 10, color: ink, width: CW, align: 'right' })
       if (!o.muted) doc.moveTo(MX, y + rowH - 1).lineTo(MX + CW, y + rowH - 1).lineWidth(0.6).strokeColor(C.hair).stroke()
       y += rowH

@@ -57,6 +57,8 @@ describe('receipt fare rows', () => {
     expect(sum(gap.rows)).toBe(230)
     const crumb = buildFareRows({ ...F.CITY_RIDE, total_final: '217.4' }, [])
     expect(crumb.rows.find((r) => r.label === 'Adjustments')).toBeUndefined()
+    expect(sum(crumb.rows)).toBe(217.4) // the paise went into the largest row, so the page agrees with itself
+    expect(crumb.rows.find((r) => r.label === 'Distance')?.amount).toBe(117.4)
   })
 })
 
@@ -110,6 +112,20 @@ describe('receipt model', () => {
     expect(buildReceipt(F.CITY_RIDE, [], []).timeline[0]?.time).toBe('3:22 pm')
   })
 
+  it('counts the stops that were charged, not just the ones made (a charge stays after a skip)', () => {
+    const stops = [
+      { sequence: 1, address: 'A', status: 'reached', stop_charge_applied: '30' },
+      { sequence: 2, address: 'B', status: 'skipped', stop_charge_applied: '30' },
+    ]
+    const { rows } = buildFareRows({ ...F.CITY_RIDE, stop_fare: '60', total_final: '277' }, stops)
+    expect(rows.find((r) => r.label === 'Extra stops')?.detail).toBe('2 stops')
+  })
+
+  it('drops a stray (0,0) or out-of-range GPS fix so it cannot shrink the route', () => {
+    const t = buildReceipt(F.CITY_RIDE, [], [[0, 0], [20.2, 85.8], [20.3, 85.9], [95, 10], [Number.NaN, 1]]).trail
+    expect(t).toEqual([[20.2, 85.8], [20.3, 85.9]])
+  })
+
   it('keeps the trail only when it has a route to draw', () => {
     expect(buildReceipt(F.CITY_RIDE, [], [[20.2, 85.8]]).trail).toEqual([])
     expect(buildReceipt(F.CITY_RIDE, [], F.trail(10)).trail).toHaveLength(10)
@@ -141,6 +157,13 @@ describe('receipt pdf', () => {
     const many = await renderReceiptPdf(buildReceipt(F.MANY_STOPS_RIDE, F.MANY_STOPS, F.trail()))
     expect(pages(one)).toBe(1)
     expect(pages(many)).toBeGreaterThanOrEqual(2)
+  })
+
+  it('draws an address mixing Latin and Odia in both fonts (neither script falls back to blank boxes)', async () => {
+    const m = buildReceipt({ ...F.CITY_RIDE, user_name: 'ସୁଜଲ Ghosh', origin_address: 'Plot 12, Jayadev Vihar, ଭୁବନେଶ୍ୱର, Odisha 751013' }, [], F.trail())
+    const pdf = (await renderReceiptPdf(m)).toString('latin1')
+    expect(pdf).toMatch(/PlusJakartaSans/)
+    expect(pdf).toMatch(/NotoSansOriya/)
   })
 
   it('renders Odia addresses without throwing', async () => {

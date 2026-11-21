@@ -48,7 +48,7 @@ export interface ReceiptRide {
 }
 
 export interface ReceiptStopRow {
-  sequence: number; address: string | null; arrived_at?: string | null; reached_at?: string | null; wait_charge?: N; status?: string
+  sequence: number; address: string | null; arrived_at?: string | null; reached_at?: string | null; wait_charge?: N; stop_charge_applied?: N; status?: string
   lat?: N; lng?: N
 }
 
@@ -142,7 +142,9 @@ export function buildFareRows(r: ReceiptRide, stops: ReceiptStopRow[]): { rows: 
   const surge = num(r.surge_multiplier)
   const grace = r.overtimeGraceMin
   const stopWait = r2(stops.reduce((s, st) => s + num(st.wait_charge), 0))
-  const extraStops = stops.filter((s) => s.status !== 'skipped').length
+  // Stops that were charged (a stop charge already added stays after a skip), else the stops that were made.
+  const charged = stops.filter((s) => num(s.stop_charge_applied) > 0).length
+  const extraStops = charged > 0 ? charged : stops.filter((s) => s.status !== 'skipped').length
   const rental = rentalRows(r)
 
   const cands: FareRow[] = [
@@ -160,11 +162,15 @@ export function buildFareRows(r: ReceiptRide, stops: ReceiptStopRow[]): { rows: 
     { key: 'stopwait', label: 'Waiting at stops', amount: stopWait },
     { key: 'pickupWait', label: 'Waiting at pickup', ...(num(r.pickup_wait_min) > 0 && { detail: `${Math.round(num(r.pickup_wait_min))} min${r.pickup_free_wait_min != null ? `, after ${num(r.pickup_free_wait_min)} free minutes` : ''}` }), amount: num(r.pickup_wait_charge) },
   ]
-  let rows = [...(rental ?? []), ...cands].filter((c) => c.amount > 0)
-  const gap = r2(gross - rows.reduce((s, c) => s + c.amount, 0))
-  // Sub-rupee differences are rounding, not something to show a rider as a line.
+  let rows = [...(rental ?? []), ...cands].filter((c) => c.amount > 0).map((x) => ({ ...x, amount: r2(x.amount) }))
+  // The rows must add up to the total printed. A gap of a rupee or more is shown as its own "Adjustments" row; anything smaller
+  // is rounding and is folded into the largest row so the page never disagrees with itself by a few paise.
+  const gap = r2(gross - rows.reduce((n, c) => n + c.amount, 0))
   if (Math.abs(gap) >= 1) rows.push({ key: 'adjust', label: 'Adjustments', amount: gap })
-  rows = rows.map((x) => ({ ...x, amount: r2(x.amount) }))
+  else if (gap !== 0 && rows.length > 0) {
+    const big = rows.reduce((m, c, i) => (c.amount > rows[m]!.amount ? i : m), 0)
+    rows = rows.map((c, i) => (i === big ? { ...c, amount: r2(c.amount + gap) } : c))
+  }
   return { rows, gross, discount, payable: r2(gross - discount) }
 }
 
@@ -184,6 +190,8 @@ export function buildReceipt(
   now: Date = new Date(),
 ): ReceiptModel {
   const cancelled = r.status === 'cancelled' || r.status === 'no_drivers'
+  // A stray (0,0) or out-of-range fix would stretch the route panel across the Atlantic and shrink the real trip to a dot.
+  const cleanTrail = trail.filter(([la, ln]) => Number.isFinite(la) && Number.isFinite(ln) && Math.abs(la) <= 90 && Math.abs(ln) <= 180 && !(la === 0 && ln === 0))
   const channel = r.payment_channel ?? 'cash'
   const when = r.completed_at ?? r.cancelled_at ?? r.requested_at ?? null
   const tripNo = `#${String(r.id)}`
@@ -295,7 +303,7 @@ export function buildReceipt(
     offer: built.discount,
     sumLabel: cancelled ? 'Total charged' : paidWord,
     driver,
-    trail: trail.length >= 2 ? trail : [],
+    trail: cleanTrail.length >= 2 ? cleanTrail : [],
     pins,
   }
 }
