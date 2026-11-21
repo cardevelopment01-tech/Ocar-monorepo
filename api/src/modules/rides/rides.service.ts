@@ -1272,6 +1272,23 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
   }
 }
 
+// When the driver marks arrived, line up one check for the moment the free waiting minutes would end (see the processor: the real
+// clock starts when the driver's position reaches the pickup, so it re-checks before it sends). No push for a ride booked before
+// waiting charges, with no free window, or where waiting costs nothing after it. Never blocks marking arrived.
+async function schedulePickupWaitNudge(rideId: bigint): Promise<void> {
+  try {
+    const terms = await repo.getPickupWaitTerms(rideId)
+    if (!terms || terms.freeMin <= 0 || terms.perMin <= 0) return
+    await queues[QUEUE_NAMES.SCHEDULER].add(
+      'pickup_wait_nudge',
+      { rideId: rideId.toString(), attempt: 0 },
+      { delay: terms.freeMin * 60_000, jobId: `pickup-wait-${rideId}-0`, removeOnComplete: true, removeOnFail: 100 },
+    )
+  } catch (err) {
+    log.error({ err, rideId }, 'pickup wait nudge scheduling failed')
+  }
+}
+
 export async function markArrived(driverId: bigint, rideId: bigint) {
   const ride = await repo.getRideCoreForDriverAction(rideId, driverId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
@@ -1299,6 +1316,8 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
       actor:      'driver',
       actorId:    driverId,
     })
+    // Only the tap that wins the CAS schedules it, so a double tap or retry never queues a second push.
+    await schedulePickupWaitNudge(rideId)
   } else {
     // Lost the CAS. If the ride is already driver_arrived this is a RETRY (double tap, or a first attempt whose
     // Redis write / response never landed). A plain 409 would strand a ride whose PIN was never delivered, but
