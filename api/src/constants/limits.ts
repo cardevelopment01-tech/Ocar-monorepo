@@ -226,3 +226,7 @@ export const BROADCAST_PUSH_ATTEMPTS = 3
 export const BROADCAST_PUSH_RETRY_PAUSE_MS = 2000
 // A broadcast job is tried this many times (a retry only notifies people not yet notified).
 export const BROADCAST_JOB_ATTEMPTS = 3
+
+// Waiting at the pickup counts only from the moment the driver is really there: the later of their "arrived" tap and the first
+// recorded position within this distance of the pickup, so tapping "arrived" from far away cannot start the meter.
+export const PICKUP_WAIT_RADIUS_METRES = 150

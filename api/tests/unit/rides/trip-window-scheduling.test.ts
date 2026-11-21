@@ -24,6 +24,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   updateRideStatusCAS: vi.fn().mockResolvedValue({ id: 1n }),
   logStatusHistory:   vi.fn().mockResolvedValue(undefined),
   getTripWindowInputs: vi.fn(),
+  getPickupWaitTerms: vi.fn().mockResolvedValue(null),
 }))
 vi.mock('@/modules/payments/payments.service', () => ({
   createPaymentRecord: vi.fn(), deductCommission: vi.fn(), creditCashback: vi.fn(),

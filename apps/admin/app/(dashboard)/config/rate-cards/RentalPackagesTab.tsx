@@ -25,6 +25,9 @@ function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackag
     extra_per_min: pkg.extra_per_min,
     stop_charge:      pkg.stop_charge,
     cancellation_fee: pkg.cancellation_fee,
+    // Blank = this package uses the rate card's waiting terms.
+    pickup_free_wait_min: pkg.pickup_free_wait_min != null ? String(pkg.pickup_free_wait_min) : '',
+    pickup_wait_per_min:  pkg.pickup_wait_per_min ?? '',
   })
 
   useEffect(() => {
@@ -36,6 +39,8 @@ function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackag
         display_order: String(pkg.display_order),
         package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min,
         stop_charge: pkg.stop_charge, cancellation_fee: pkg.cancellation_fee,
+        pickup_free_wait_min: pkg.pickup_free_wait_min != null ? String(pkg.pickup_free_wait_min) : '',
+        pickup_wait_per_min:  pkg.pickup_wait_per_min ?? '',
       })
       setError('')
     }
@@ -54,6 +59,9 @@ function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackag
         extra_per_min: parseFloat(form.extra_per_min),
         stop_charge:      parseFloat(form.stop_charge),
         cancellation_fee: parseFloat(form.cancellation_fee),
+        // Blank clears the override so the package follows the rate card again.
+        pickup_free_wait_min: form.pickup_free_wait_min === '' ? null : parseInt(form.pickup_free_wait_min, 10),
+        pickup_wait_per_min:  form.pickup_wait_per_min === '' ? null : parseFloat(form.pickup_wait_per_min),
       })
       setOpen(false); onUpdated()
     } catch (err: unknown) {
@@ -142,6 +150,19 @@ function EditRentalPackageDialog({ pkg, cities, onUpdated }: { pkg: RentalPackag
                 <p className="text-xs text-text-muted mt-1">was {numFmt(pkg.cancellation_fee)}</p>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Free wait at pickup (min)</label>
+                <input type="number" step="1" min="0" max="120" value={form.pickup_free_wait_min}
+                  onChange={e => setForm(f => ({ ...f, pickup_free_wait_min: e.target.value }))} className={inputCls} placeholder="Rate card" />
+              </div>
+              <div>
+                <label className={labelCls}>Waiting charge (₹ / min)</label>
+                <input type="number" step="0.01" min="0" value={form.pickup_wait_per_min}
+                  onChange={e => setForm(f => ({ ...f, pickup_wait_per_min: e.target.value }))} className={inputCls} placeholder="Rate card" />
+              </div>
+            </div>
+            <p className="text-xs text-text-muted -mt-2">Blank = use the rental rate card&rsquo;s (3 free minutes, ₹3 a minute unless changed there). Set a value to give this package its own. Rides already booked keep the terms they were booked with.</p>
             {error && <p className="text-xs text-danger font-semibold">{error}</p>}
             <div className="flex gap-3 pt-2">
               <Dialog.Close asChild>
@@ -175,6 +196,7 @@ function CreateRentalPackageDialog({
     city_id: defaultCityId !== null ? String(defaultCityId) : '',
     category_id: '', duration_minutes: '', km_limit: '', display_order: '',
     package_fare: '', extra_per_km: '', extra_per_min: '0', stop_charge: '', cancellation_fee: '',
+    pickup_free_wait_min: '', pickup_wait_per_min: '',
   })
 
   useEffect(() => {
@@ -182,7 +204,7 @@ function CreateRentalPackageDialog({
       setForm({
         city_id: defaultCityId !== null ? String(defaultCityId) : '',
         category_id: '', duration_minutes: '', km_limit: '', display_order: '', package_fare: '', extra_per_km: '', extra_per_min: '0',
-        stop_charge: '', cancellation_fee: '',
+        stop_charge: '', cancellation_fee: '', pickup_free_wait_min: '', pickup_wait_per_min: '',
       })
       setError('')
     }
@@ -201,6 +223,9 @@ function CreateRentalPackageDialog({
         extra_per_min:     parseFloat(form.extra_per_min),
         stop_charge:       parseFloat(form.stop_charge),
         cancellation_fee:  parseFloat(form.cancellation_fee),
+        // Blank = follow the rental rate card's waiting terms.
+        ...(form.pickup_free_wait_min !== '' ? { pickup_free_wait_min: parseInt(form.pickup_free_wait_min, 10) } : {}),
+        ...(form.pickup_wait_per_min !== '' ? { pickup_wait_per_min: parseFloat(form.pickup_wait_per_min) } : {}),
         ...(form.display_order ? { display_order: parseInt(form.display_order, 10) } : {}),
       })
       setOpen(false); onCreated()
@@ -299,6 +324,19 @@ function CreateRentalPackageDialog({
                 
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Free wait at pickup (min)</label>
+                <input type="number" step="1" min="0" max="120" value={form.pickup_free_wait_min}
+                  onChange={e => setForm(f => ({ ...f, pickup_free_wait_min: e.target.value }))} className={inputCls} placeholder="Rate card" />
+              </div>
+              <div>
+                <label className={labelCls}>Waiting charge (₹ / min)</label>
+                <input type="number" step="0.01" min="0" value={form.pickup_wait_per_min}
+                  onChange={e => setForm(f => ({ ...f, pickup_wait_per_min: e.target.value }))} className={inputCls} placeholder="Rate card" />
+              </div>
+            </div>
+            <p className="text-xs text-text-muted -mt-2">Blank = use the rental rate card’s waiting terms (3 free minutes, ₹3 a minute unless changed there).</p>
             {error && <p className="text-xs text-danger font-semibold">{error}</p>}
             <div className="flex gap-3 pt-2">
               <Dialog.Close asChild>
@@ -325,6 +363,8 @@ function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
   const [form, setForm] = useState({
     package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min,
     stop_charge: pkg.stop_charge, cancellation_fee: pkg.cancellation_fee,
+    pickup_free_wait_min: pkg.pickup_free_wait_min != null ? String(pkg.pickup_free_wait_min) : '',
+    pickup_wait_per_min:  pkg.pickup_wait_per_min ?? '',
   })
 
   useEffect(() => {
@@ -332,6 +372,8 @@ function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
       setForm({
         package_fare: pkg.package_fare, extra_per_km: pkg.extra_per_km, extra_per_min: pkg.extra_per_min,
         stop_charge: pkg.stop_charge, cancellation_fee: pkg.cancellation_fee,
+        pickup_free_wait_min: pkg.pickup_free_wait_min != null ? String(pkg.pickup_free_wait_min) : '',
+        pickup_wait_per_min:  pkg.pickup_wait_per_min ?? '',
       })
       setError('')
     }
@@ -351,6 +393,9 @@ function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
         extra_per_min: parseFloat(form.extra_per_min),
         stop_charge: parseFloat(form.stop_charge),
         cancellation_fee: parseFloat(form.cancellation_fee),
+        // Blank = follow the rental rate card's waiting terms.
+        ...(form.pickup_free_wait_min !== '' ? { pickup_free_wait_min: parseInt(form.pickup_free_wait_min, 10) } : {}),
+        ...(form.pickup_wait_per_min !== '' ? { pickup_wait_per_min: parseFloat(form.pickup_wait_per_min) } : {}),
       })
       setOpen(false); onCreated()
     } catch (err: unknown) {
@@ -409,6 +454,19 @@ function AddOverrideDialog({ pkg, cityId, cityName, onCreated }: {
                 <p className="text-xs text-text-muted mt-1">global is {numFmt(pkg.cancellation_fee)}</p>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Free wait at pickup (min)</label>
+                <input type="number" step="1" min="0" max="120" value={form.pickup_free_wait_min}
+                  onChange={e => setForm(f => ({ ...f, pickup_free_wait_min: e.target.value }))} className={inputCls} placeholder="Rate card" />
+              </div>
+              <div>
+                <label className={labelCls}>Waiting charge (₹ / min)</label>
+                <input type="number" step="0.01" min="0" value={form.pickup_wait_per_min}
+                  onChange={e => setForm(f => ({ ...f, pickup_wait_per_min: e.target.value }))} className={inputCls} placeholder="Rate card" />
+              </div>
+            </div>
+            <p className="text-xs text-text-muted -mt-2">Blank = use the rental rate card’s waiting terms. Pre-filled with this package’s global values.</p>
             {error && <p className="text-xs text-danger font-semibold">{error}</p>}
             <div className="flex gap-3 pt-2">
               <Dialog.Close asChild>

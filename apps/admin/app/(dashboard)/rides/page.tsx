@@ -546,7 +546,7 @@ function RidesPageContent() {
               )}
             </div>
 
-            {detail && [detail.base_fare, detail.distance_fare, detail.time_fare, detail.stop_fare, detail.hour_surcharge, detail.waiting_fare, detail.overage_fare, detail.surge_fare, detail.overtimeFare != null ? String(detail.overtimeFare) : null, detail.refund_amount].some(v => v && parseFloat(v) > 0) && (
+            {detail && [detail.base_fare, detail.distance_fare, detail.time_fare, detail.stop_fare, detail.hour_surcharge, detail.waiting_fare, detail.overage_fare, detail.surge_fare, detail.overtimeFare != null ? String(detail.overtimeFare) : null, detail.pickup_wait_charge, detail.refund_amount].some(v => v && parseFloat(v) > 0) && (
               <Section title="Fare breakdown">
                 {(
                   [
@@ -557,6 +557,8 @@ function RidesPageContent() {
                     ['Surge', detail.surge_fare, detail.surge_multiplier && parseFloat(detail.surge_multiplier) > 1 ? `×${detail.surge_multiplier}` : ''],
                     // After surge: overtime is not surged.
                     ['Extra time', detail.overtimeFare != null ? String(detail.overtimeFare) : null],
+                    // Not surged. The suffix shows the minutes waited against the free minutes the ride was booked with.
+                    ['Waiting at pickup', detail.pickup_wait_charge ?? null, detail.pickup_wait_min ? `(${Math.round(parseFloat(detail.pickup_wait_min))} min${detail.pickup_free_wait_min != null ? `, ${detail.pickup_free_wait_min} free` : ''})` : ''],
                   ] as [string, string | null, string?][]
                 ).filter(([, v]) => v && parseFloat(v) > 0).map(([label, v, suffix]) => (
                   <div key={label} className="flex justify-between items-center">

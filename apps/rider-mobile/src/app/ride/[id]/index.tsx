@@ -4,7 +4,7 @@ import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Button, ErrorState, SOSButton, Skeleton, TripClock, useTripWindow, font, h, shadow, spacing, getApiErrorMessage, getFreshFix, getLastKnownFix, track } from '@ocar/mobile-shared'
+import { Button, ErrorState, PickupWaitClock, SOSButton, Skeleton, TripClock, usePickupWait, useTripWindow, font, h, shadow, spacing, getApiErrorMessage, getFreshFix, getLastKnownFix, track } from '@ocar/mobile-shared'
 import { api, serverNow } from '@/services/api'
 import { triggerSos } from '@/features/safety/api'
 import { useLocationStore } from '@/store/useLocationStore'
@@ -65,6 +65,15 @@ const SHEET_ENTRANCE_DURATION_MS = 400
 function RideTripClock({ ride }: { ride: NonNullable<ReturnType<typeof useRideTracking>['ride']> }) {
   const tripClock = useTripWindow(ride, { now: serverNow, audience: 'rider' })
   return tripClock.copy ? <TripClock copy={tripClock.copy} stateKey={tripClock.state.kind} /> : null
+}
+
+// The free-waiting countdown (then extra waiting) once the driver is really at the pickup. Null copy = nothing to show: the driver is
+// not there yet, or the ride was booked before waiting charges. Its own component for the same reason as the clock above: it ticks every
+// second and must not re-render the map and sheet. It asks the server again every 15 s while the driver has tapped arrived but the
+// clock has not started.
+function RidePickupWaitClock({ ride, onRefresh }: { ride: NonNullable<ReturnType<typeof useRideTracking>['ride']>; onRefresh: () => void }) {
+  const wait = usePickupWait(ride, { now: serverNow, audience: 'rider', onNeedRefresh: onRefresh })
+  return wait.copy ? <PickupWaitClock copy={wait.copy} stateKey={wait.state.kind} /> : null
 }
 
 export default function RideTrackingScreen() {
@@ -419,6 +428,7 @@ export default function RideTrackingScreen() {
           ) : null}
 
           {isInProgress ? <RideTripClock ride={ride} /> : null}
+          {ride.status === 'driver_arrived' ? <RidePickupWaitClock ride={ride} onRefresh={retry} /> : null}
 
           {isSearching ? (
             <View style={styles.searchingBlock}>

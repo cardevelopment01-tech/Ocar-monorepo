@@ -131,6 +131,20 @@ trail = the estimate stands. Gaps in the trail (`measureTrailKm`): pings up to `
 time. `total_estimated` follows stops added or skipped mid-ride (`repriceOneWayRoute`), so the band is measured against an honest
 estimate. Round trips and rentals have their own settlement; do not route them through this.
 
+### Waiting at the pickup (every ride type)
+The driver's wait is charged after a free window: `max(0, minutes waited - free minutes) x rate`, to the whole rupee (`pickupWaitCharge` in
+`lib/fare.ts`). The defaults, 3 free minutes and 3 rupees a minute, live on the rate card (`rate_cards.pickup_free_wait_min` /
+`pickup_wait_per_min`, versioned and city-scoped like `stop_charge`; both create paths must carry them forward). A rental package may override
+either (`rental_packages.pickup_*`, NULL = use the rate card). Both are pinned on the ride's `fare_snapshots` at booking, so an admin edit never
+reprices a ride in flight; NULL pinned terms (a ride booked before migration 148) are never charged.
+The wait runs from the driver's arrival to the start OTP, but the clock starts at the LATER of the "arrived" tap and the first position recorded
+within `PICKUP_WAIT_RADIUS_METRES` of the pickup (`getPickupWaitStartedAt`), so tapping "arrived" from far away starts nothing; no position at the
+pickup = no charge. The minutes and charge are recorded at start OTP (`recordPickupWaitAtStart`) and added to the final fare at the end of
+`verifyEndOTP` for every ride type, outside the one-way +/-25% band. Admin force-complete does not add it.
+The apps count the free minutes from `pickup_wait_started_at` (sent while status is `driver_arrived`, `withPickupWait`) on the server-corrected clock:
+a countdown, then extra waiting counting up. They never show a running rupee amount; the charge appears once, on the receipt. One push tells the
+rider when the free minutes end (`pickup_wait_nudge` job set by `markArrived`; it re-checks the clock before sending).
+
 ### PayU collections
 Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`
 (browser) and `POST /payments/webhook/payu`: response hash → `verify_payment` (`unmappedstatus == 'captured'`,

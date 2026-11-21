@@ -34,6 +34,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   updateRideStatusCAS:      vi.fn(),
   logStatusHistory:         vi.fn(),
   getStopWaitTotal:         vi.fn().mockResolvedValue(0),
+  getPickupWaitTerms: vi.fn().mockResolvedValue(null), getPickupWaitMinutes: vi.fn(), recordPickupWait: vi.fn(), getPickupWaitCharge: vi.fn().mockResolvedValue(0),
   getGpsTrackedDistanceKm:  vi.fn().mockResolvedValue(null),
   flagRideForReview:        vi.fn().mockResolvedValue(undefined),
 }))

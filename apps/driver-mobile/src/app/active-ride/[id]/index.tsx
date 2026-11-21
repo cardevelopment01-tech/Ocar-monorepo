@@ -3,7 +3,8 @@ import { Alert, BackHandler, Pressable, StyleSheet, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { CancelSheet, ErrorState, SOSButton, Skeleton, TripClock, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { CancelSheet, ErrorState, PickupWaitClock, SOSButton, Skeleton, TripClock, usePickupWait, colors, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { serverNow } from '@/services/api'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useActiveRide } from '@/features/active-ride/useActiveRide'
@@ -128,6 +129,11 @@ export default function ActiveRideScreen() {
     && haversineMetres([s.position.lat, s.position.lng], [ride.originLat, ride.originLng]) <= AT_PICKUP_M)
   // Booked-time clock for hourly round trips (null copy = no window: one-way, rental, legacy pricing).
   const tripClock = useTripWindow(ride)
+  // The free-minutes countdown (then extra waiting) once the driver is at the pickup. Asks the server again every 15 s while the
+  // timer has not started, because it starts when the driver's position reaches the pickup, not when "arrived" is tapped.
+  // `status` is the live stage (it moves the moment "arrived" is confirmed); the fetched ride's own status only catches up on the next
+  // fetch, which would leave the card missing right after the tap. The hook reads plain fields, so a fresh object each render is fine.
+  const pickupClock = usePickupWait(ride ? { ...ride, status } : null, { now: serverNow, audience: 'driver', onNeedRefresh: refresh })
 
   if (loading) {
     return (
@@ -381,9 +387,11 @@ export default function ActiveRideScreen() {
           primary={primary}
           stageKey={stageKey}
           clock={
-            (status === 'in_progress' || isReturning) && tripClock.copy
-              ? <TripClock copy={tripClock.copy} stateKey={tripClock.state.kind} />
-              : null
+            status === 'driver_arrived' && pickupClock.copy
+              ? <PickupWaitClock copy={pickupClock.copy} stateKey={pickupClock.state.kind} />
+              : (status === 'in_progress' || isReturning) && tripClock.copy
+                ? <TripClock copy={tripClock.copy} stateKey={tripClock.state.kind} />
+                : null
           }
         >
           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}

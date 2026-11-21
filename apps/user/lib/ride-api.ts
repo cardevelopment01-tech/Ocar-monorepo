@@ -85,6 +85,13 @@ export type RideDetail = {
   overtimeGraceMin?: number | null
   overtimeMin?: number | null
   overtimeFare?: number | null
+  // Waiting at the pickup: minutes waited, the free minutes booked with, and the charge (numeric strings from the API).
+  pickup_wait_min?: string | null
+  pickup_free_wait_min?: number | null
+  pickup_wait_charge?: string | null
+  // While the driver is at the pickup: when the wait clock started (absent/null until they are really there) and its rate.
+  pickup_wait_started_at?: string | null
+  pickup_wait_per_min?: string | null
   waiting_fare?: string | null
   base_fare: string | null
   distance_fare: string | null
