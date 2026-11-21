@@ -2294,7 +2294,7 @@ export async function getTollForRide(rideId: bigint): Promise<{ total: number; d
          JOIN rides r ON r.id = $1
         WHERE ST_Intersects(z.boundary, r.origin) OR ST_Intersects(z.boundary, r.destination)
            OR EXISTS (SELECT 1 FROM gps_tracks g
-                       WHERE g.ride_id = $1 AND g.recorded_at >= COALESCE(r.started_at, r.requested_at)
+                       WHERE g.ride_id = $1 AND r.started_at IS NOT NULL AND g.recorded_at >= r.started_at
                          AND ST_Intersects(z.boundary, g.location))
      )
      SELECT COALESCE(sum(amount), 0)::text AS total,
