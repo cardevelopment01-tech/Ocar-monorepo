@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import Animated, { Easing, FadeIn, FadeInDown, ReduceMotion, ZoomIn, useReducedMotion } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -14,6 +14,7 @@ import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { fetchRouteLeg } from '@/features/ride-tracking/api'
 import type { RideDetailExtra } from '@/features/ride-tracking/types'
 import { RatingSection } from './RatingSection'
+import { shareReceipt } from './receiptFile'
 import { useReturnCabSaving } from './ReturnCabPanels'
 import { cancellationFeeOf, endedHeadline } from './endedHeadline'
 import {
@@ -112,6 +113,17 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
   const hasDriver = completed && ride.driverId != null
   // Only label a fee that exists: a free cancellation has no fare to caption.
   const fareCaption = !completed && showFare ? 'Cancellation fee' : null
+
+  const [receiptBusy, setReceiptBusy] = useState(false)
+  // The receipt is a PDF the server draws; it opens the share sheet. A free cancellation has none (no fee, no receipt).
+  const hasReceipt = completed || showFare
+  const getReceipt = async () => {
+    if (receiptBusy) return
+    setReceiptBusy(true)
+    try { await shareReceipt(String(ride.id)) }
+    catch { Alert.alert('Could not get the receipt', 'Please check your connection and try again.') }
+    finally { setReceiptBusy(false) }
+  }
 
   const emailSupport = (subject: string) =>
     void Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Ride #${ride.id} - ${subject}`)}`)
@@ -226,10 +238,10 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
             ) : null}
             <View style={styles.ticketFoot}>
               <Text style={styles.rideId} selectable>Trip ID #{ride.id}</Text>
-              {completed ? (
-                <Pressable onPress={() => emailSupport('receipt')} accessibilityRole="link" accessibilityLabel="Email a receipt request" hitSlop={8} style={styles.receiptLink}>
-                  <Feather name="download" size={15} color={h.tealText} />
-                  <Text style={styles.receiptLinkText}>Get receipt</Text>
+              {hasReceipt ? (
+                <Pressable onPress={() => void getReceipt()} disabled={receiptBusy} accessibilityRole="button" accessibilityLabel="Get the receipt for this trip" accessibilityState={{ busy: receiptBusy }} hitSlop={8} style={styles.receiptLink}>
+                  {receiptBusy ? <ActivityIndicator size="small" color={h.tealText} /> : <Feather name="download" size={15} color={h.tealText} />}
+                  <Text style={styles.receiptLinkText}>{receiptBusy ? 'Preparing…' : 'Get receipt'}</Text>
                 </Pressable>
               ) : null}
             </View>
