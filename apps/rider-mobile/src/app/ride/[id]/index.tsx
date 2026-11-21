@@ -525,6 +525,7 @@ export default function RideTrackingScreen() {
         visible={addStopOpen}
         originLat={ride.originLat}
         originLng={ride.originLng}
+        cityOnly={ride.rideType === 'rental' || ride.tripMode === 'city'}
         onClose={() => setAddStopOpen(false)}
         onSelect={handleAddStop}
       />

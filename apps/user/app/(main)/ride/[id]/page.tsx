@@ -1266,6 +1266,8 @@ export default function RidePage() {
         onClose={() => setAddStopOpen(false)}
         onSelect={handleAddStop}
         title="Add a stop"
+        {...(ride ? { originLat: ride.origin_lat, originLng: ride.origin_lng } : {})}
+        cityOnly={ride?.ride_type === 'rental' || ride?.trip_mode === 'city'}
       />
 
       <EditPickupSheet

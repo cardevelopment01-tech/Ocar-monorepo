@@ -39,11 +39,14 @@ export async function fetchAutocomplete(
   q: string,
   lat: number | undefined,
   lng: number | undefined,
-  config?: AxiosRequestConfig
+  config?: AxiosRequestConfig,
+  withinCity = false,
 ): Promise<GeoAutocompleteResult[]> {
   const params: Record<string, string> = { q }
   if (lat !== undefined) params['lat'] = String(lat)
   if (lng !== undefined) params['lng'] = String(lng)
+  // Only places inside the city that contains (lat, lng) -- for trips that must stay in the city.
+  if (withinCity) params['within'] = 'city'
   const res = await api.get<GeoAutocompleteResult[]>('/api/v1/geo/autocomplete', { ...config, params })
   return camelizeKeys<GeoAutocompleteResult[]>(res.data)
 }
