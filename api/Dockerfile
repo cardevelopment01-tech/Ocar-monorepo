@@ -48,6 +48,8 @@ ENV NODE_ENV=production
 COPY --from=prod-deps /deploy/node_modules ./node_modules
 COPY --from=builder /app/api/dist ./dist
 COPY api/entrypoint.sh ./entrypoint.sh
+# Fonts and logo the invoice PDF draws with: package-invoice.pdf.ts resolves them as <app root>/assets, from src/ and from dist/ alike.
+COPY api/assets ./assets
 
 EXPOSE 4000
 

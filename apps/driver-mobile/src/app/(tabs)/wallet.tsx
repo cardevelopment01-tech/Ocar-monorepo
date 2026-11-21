@@ -11,6 +11,7 @@ import { createTopupOrder, createPackageOrder } from '@/features/payments/api'
 import { PaymentStatus } from '@/features/payments/PaymentStatus'
 import { AddMoneyCard } from '@/features/payments/AddMoneyCard'
 import { PackageWalletView } from '@/features/payments/PackageWalletView'
+import { InvoicesCard } from '@/features/payments/InvoicesCard'
 
 // Fallback when the in-app payment is unavailable (kill switch off, SDK failed to start):
 // the web portal's wallet/package page in a Custom Tab -- never an embedded WebView.
@@ -88,7 +89,7 @@ export default function WalletScreen() {
           <Text style={styles.subtitle}>{packageMode ? 'Ride package' : 'Compliance deposit'}</Text>
         </View>
         {!loading ? (
-          <Pressable onPress={() => void load()} style={styles.refreshBtn} accessibilityLabel="Refresh wallet">
+          <Pressable onPress={() => { void load(); setPaidTick((n) => n + 1) }} style={styles.refreshBtn} accessibilityLabel="Refresh wallet">
             <Feather name="refresh-cw" size={15} color={colors.ink600} />
           </Pressable>
         ) : null}
@@ -166,6 +167,8 @@ export default function WalletScreen() {
                 ))
               )}
             </View>
+
+            <InvoicesCard refreshKey={paidTick} />
           </>
         )}
       </ScrollView>

@@ -727,6 +727,12 @@ export async function deleteDriver(
       "DELETE FROM driver_wallet_ledger WHERE wallet_id IN (SELECT id FROM driver_wallets WHERE driver_id = $1) OR driver_id = $1",
       [driverId],
     );
+    // GST tax invoices must be kept for 72 months (CGST Act s.36): a driver who has been issued one is not purged. Checked first, so the
+    // whole purge rolls back instead of leaving a half-deleted driver.
+    const invoiced = await client.query("SELECT 1 FROM driver_invoices WHERE driver_id = $1 LIMIT 1", [driverId]);
+    if ((invoiced.rowCount ?? 0) > 0) {
+      throw Object.assign(new Error("This driver has GST tax invoices, which must be kept for 72 months, so the account cannot be purged. Suspend it instead."), { httpStatus: 409 });
+    }
     await client.query(
       "DELETE FROM driver_package_ledger WHERE wallet_id IN (SELECT id FROM driver_package_wallets WHERE driver_id = $1) OR driver_id = $1",
       [driverId],

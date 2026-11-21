@@ -50,6 +50,11 @@ export default function OverviewTab({ ctx }: { ctx: ReportCtx }) {
         delta: toBand(relativeDelta(t.commission ?? 0, p?.commission), 'higherIsBetter'),
         spark: d.series.map(s => s.commission ?? 0), go: ctx.isFinance ? () => ctx.goTab('finance') : undefined,
       },
+      {
+        key: 'subscription', title: 'Plan sales', raw: t.subscription_revenue ?? 0, fmt: inrCompact, hint: 'ex GST',
+        delta: toBand(relativeDelta(t.subscription_revenue ?? 0, p?.subscription_revenue), 'higherIsBetter'),
+        spark: d.series.map(() => 0), go: undefined,
+      },
     ] : []),
     {
       key: 'completed', title: 'Completed rides', raw: t.completed_rides, fmt: int,

@@ -131,7 +131,25 @@ works it out (the apps just render what the API sends). Every purchase is its ow
 (`drawLots`; lots already past expiry but not yet swept are still drawn on so a ride under way is not penalised), and the payments sweep (`expireDueLots`, every 5 minutes) lapses what is left of a lot after its
 days as an `expiry` ledger entry (no refund). `driver_package_wallets.balance` stays the single number the dispatch gate reads and equals the live lots plus any never-expiring credit (balances from before
 migration 151 and admin credits are in no lot). A purchase made while overdrawn starts its lot with what is left after the overdraft. A new table holding driver data must be added to the admin driver-delete block.
-Open with the client/CA: GST invoices to drivers (not built), whether Ocar has Section 9(5) exposure on ride fares, and the GST treatment of lapsed credit.
+Open with the client/CA: whether Ocar has Section 9(5) exposure on ride fares, the GST treatment of lapsed credit, and the SAC code (see below).
+
+**GST tax invoices to drivers** (migration 152, table `driver_invoices`, `package-invoice.ts` + `commission-invoice.ts` pure rules, `package-invoice.service.ts`, `package-invoice.pdf.ts`). Two kinds share the table, the supplier/recipient/state logic, the PDF and the driver list.
+**Package invoices:** every completed purchase that recorded a GST amount gets one invoice, issued by `creditPackageBalance`
+after the credit commits (it can never undo the credit; a failure is logged and retried by the replayed confirmation or when the driver opens their invoice list). One gap-free series per financial year, `PK/2627/000001`
+(Rule 46: at most 16 characters, unique per FY); the number comes from `invoice_counters` in the same transaction as the invoice row, so a duplicate or failed attempt rolls it back. Everything printed is copied onto the row at issue time.
+Place of supply is the driver's state on their profile (else their operating city's state); same state as the supplier is CGST + SGST at half the rate each (an odd paisa goes to CGST), another state is IGST, and with no state on record
+it is the supplier's state (IGST Act s.12(2)). **No invoice is issued until the super admin sets `gst_supplier_gstin`, `gst_supplier_legal_name` and `gst_supplier_address`** under System config (`gst_supplier_state_code` defaults to 21,
+`gst_invoice_sac` to 998319): a missing/invalid GSTIN is logged and skipped, and the invoices are issued late, dated the day they are issued, the first time the driver opens their list. **The SAC is unconfirmed: sources disagree
+(9983 / 998319 / 997331; a Karnataka ruling on a ride-hailing subscription used 9985), so the CA must confirm it before the first real invoice.** The driver app opens a PDF through a five-minute HMAC-signed link (`.../invoices/:id/link`
+then `.../invoices/:id/pdf?t=`), so no native module or download code is needed. Finance admins export every invoice for a period as `GET /admin/analytics/export/gst-invoices.csv` (the GSTR-1 columns). Invoices are kept for 72 months:
+purging a driver who has one is refused.
+**Commission invoices (`kind = 'commission'`, series `CM`, `CM/2627/000001`):** the commission cut from a driver's wallet on every ride **already includes the GST** (the client's rule), so a driver gets ONE consolidated invoice per period for everything cut
+in it, with the tax backed out of the period total (`taxFromInclusive`: ₹30 at 18% is 25.42 taxable + 4.58 GST; worked on the total, never summed from per-ride rounded amounts) and the rides listed as a paginated annexure. It is built from the wallet ledger's
+`commission_debit` rows (what was actually taken, not `payments.commission_amount`), so a changed `commission_percent` or a frozen/zero-commission ride never produces an invoice for money that wasn't cut. The scheduler job `issue_commission_invoices` runs
+daily at 02:30 IST and invoices every period that has ended and has no invoice yet for that driver (looks back 3 periods, so a missed night or the first deploy heals itself); a driver is never invoiced twice for a period (unique on driver + period start,
+and the number is rolled back on a lost race). Periods are IST: `commission_invoice_period` = `monthly` (previous calendar month, the default) or `weekly` (Mon to Sun), rate in `commission_gst_percent` (18), SAC in `gst_commission_sac`. The same supplier
+settings gate it. `refund_credit` ledger rows tied to a ride in an invoiced period log a warning: nothing reverses a commission today, so seeing one means a manual adjustment that may need a credit note.
+Not built: credit notes (a refund, cancelled purchase or reversed commission needs one), e-invoicing (not required under the turnover threshold, confirm with the CA), and a QR code. The driver web portal does not list invoices yet.
 
 ### PayU collections
 Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`

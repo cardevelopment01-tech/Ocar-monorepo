@@ -15,6 +15,13 @@ import {
   STRUCTURAL_CACHE_TTL_SECONDS,
 } from '@/constants/limits'
 
+// A package driver's credit that can actually be spent: the wallet balance minus credit whose 365 days are already up but that the
+// 5-minute expiry sweep has not lapsed yet. Without this a driver whose plan just ended keeps getting offers until the next sweep.
+// Alias `dpw` is driver_package_wallets in every query this is used in.
+const PACKAGE_USABLE_CREDIT_SQL = `(COALESCE(dpw.balance, 0) - COALESCE((
+  SELECT SUM(l.remaining) FROM package_credit_lots l
+   WHERE l.driver_id = dpw.driver_id AND l.expired_at IS NULL AND l.remaining > 0 AND l.expires_at <= now()), 0))`
+
 // ── Driver session queries ────────────────────────────────────
 
 export async function getActiveSession(driverId: bigint): Promise<DriverSession | null> {
@@ -220,7 +227,7 @@ export async function findNearbyDrivers(params: {
        AND (
          (dc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
          OR
-         (dc.billing_mode = 'package' AND COALESCE(dpw.balance, 0) > 0 AND NOT COALESCE(dpw.is_frozen, false))
+         (dc.billing_mode = 'package' AND ${PACKAGE_USABLE_CREDIT_SQL} > 0 AND NOT COALESCE(dpw.is_frozen, false))
        )
        AND ST_DWithin(
          dls.location,
@@ -315,7 +322,7 @@ export async function findReturnCabDrivers(params: {
        AND (
          (dc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $6 AND NOT COALESCE(dw.is_frozen, false))
          OR
-         (dc.billing_mode = 'package' AND COALESCE(dpw.balance, 0) > 0 AND NOT COALESCE(dpw.is_frozen, false))
+         (dc.billing_mode = 'package' AND ${PACKAGE_USABLE_CREDIT_SQL} > 0 AND NOT COALESCE(dpw.is_frozen, false))
        )
        -- Pickup: within match_radius_metres (3km) of the driver's return-trip
        -- START point, not the corridor line — a pickup near the destination end
@@ -1613,7 +1620,7 @@ export async function getAssignCandidates(params: {
        COALESCE(
          (dc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $5 AND NOT COALESCE(dw.is_frozen, false))
          OR
-         (dc.billing_mode = 'package' AND COALESCE(dpw.balance, 0) > 0 AND NOT COALESCE(dpw.is_frozen, false)),
+         (dc.billing_mode = 'package' AND ${PACKAGE_USABLE_CREDIT_SQL} > 0 AND NOT COALESCE(dpw.is_frozen, false)),
          false
        ) AS wallet_ok,
        CASE WHEN dls.location IS NOT NULL THEN

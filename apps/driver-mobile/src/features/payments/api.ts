@@ -88,6 +88,35 @@ export type PackageLedgerEntry = {
   created_at: string
 }
 
+/**
+ * A GST tax invoice: one for a ride-credit plan purchase, or one consolidated commission invoice for a period (then `period_start` /
+ * `period_end` are IST dates 'YYYY-MM-DD' and `ride_count` is how many rides it covers). Amounts are rupees.
+ */
+export type PackageInvoiceRow = {
+  id: string
+  kind: 'package' | 'commission'
+  period_start: string | null
+  period_end: string | null
+  ride_count: number | null
+  invoice_no: string
+  issued_at: string
+  description: string
+  taxable_value: number
+  gst_total: number
+  total: number
+}
+
+export async function fetchPackageInvoices(): Promise<PackageInvoiceRow[]> {
+  const res = await api.get('/api/v1/payments/packages/invoices')
+  return res.data as PackageInvoiceRow[]
+}
+
+/** A five-minute link that opens the invoice PDF in a browser tab. */
+export async function fetchPackageInvoiceLink(id: string): Promise<string> {
+  const res = await api.get(`/api/v1/payments/packages/invoices/${id}/link`)
+  return (res.data as { url: string }).url
+}
+
 export async function fetchPackageLedger(): Promise<PackageLedgerEntry[]> {
   const res = await api.get('/api/v1/payments/packages/ledger')
   return res.data as PackageLedgerEntry[]

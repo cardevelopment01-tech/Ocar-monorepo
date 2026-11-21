@@ -55,21 +55,27 @@ async function cached<T>(endpoint: string, p: ParsedRange, roleClass: RoleClass,
 }
 
 // ── Money stripping for ops_admin (CEO E5): fields are removed, never zeroed ──
-function stripTotalsMoney<T extends { gross_bookings?: number; commission?: number }>(t: T): T {
+function stripTotalsMoney<T extends { gross_bookings?: number; commission?: number; subscription_revenue?: number }>(t: T): T {
   const copy = { ...t }
   delete copy.gross_bookings
   delete copy.commission
+  delete copy.subscription_revenue
   return copy
 }
 
 export async function getKpis(p: ParsedRange, roleClass: RoleClass): Promise<KpisResponse> {
   return cached('kpis', p, roleClass, async () => {
-    const [totals, previous_totals, series, previous_series] = await Promise.all([
+    const [kpi, previousKpi, series, previous_series, subscription, previousSubscription] = await Promise.all([
       repo.getKpiTotals(p.range, p.filters),
       p.previous ? repo.getKpiTotals(p.previous, p.filters) : Promise.resolve(null),
       repo.getDailySeries(p.range, p.filters),
       p.previous ? repo.getDailySeries(p.previous, p.filters) : Promise.resolve(null),
+      repo.getSubscriptionRevenue(p.range, p.filters),
+      p.previous ? repo.getSubscriptionRevenue(p.previous, p.filters) : Promise.resolve(null),
     ])
+    // Ride-credit plan sales sit beside commission: in a package city the platform earns no commission, this is its revenue.
+    const totals = { ...kpi, subscription_revenue: subscription }
+    const previous_totals = previousKpi ? { ...previousKpi, subscription_revenue: previousSubscription ?? 0 } : null
     const hide = roleClass === 'ops'
     const cleanSeries = (s: typeof series) =>
       hide ? s.map(({ gross: _g, commission: _c, ...rest }) => rest) : s

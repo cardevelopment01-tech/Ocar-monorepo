@@ -5,6 +5,7 @@ import * as repo from './packages.repository'
 import { getConfigValue } from '@/lib/system-config'
 import { allocateFare, lotExpiry, packagePricing, vehicleGroupOf, type LotRow } from './package-money'
 import type { PackageTierView, DriverPackageWallet } from './packages.types'
+import { issuePackageInvoiceSafely } from './package-invoice.service'
 import { payuConfigured, newTxnId, buildPayuForm, customerFor, PAYU_RETURN_PATH, packageProductInfo, type PayuForm } from '@/lib/payu'
 
 async function writeLedgerEntry(
@@ -101,6 +102,17 @@ export async function consumePackageBalance(
       return
     }
 
+    // A ride is charged once. Every settlement path claims the ride first, but this keeps a retry or a legacy path from ever taking
+    // the same fare twice (checked under the wallet row lock, so two concurrent settles cannot both pass).
+    const already = await client.query(
+      `SELECT 1 FROM driver_package_ledger WHERE wallet_id = $1 AND ride_id = $2 AND entry_type = 'ride_consumption' LIMIT 1`,
+      [wallet.id, rideId]
+    )
+    if ((already.rowCount ?? 0) > 0) {
+      if (owns) await client.query('ROLLBACK')
+      return
+    }
+
     const currentBalance = parseFloat(wallet.balance)
     const newBalance = Math.round((currentBalance - fareAmount) * 100) / 100
 
@@ -128,8 +140,20 @@ export async function consumePackageBalance(
   }
 }
 
-// Credits a package purchase onto the driver's balance (additive top-up).
+// Credits a package purchase onto the driver's balance (additive top-up), then gives the driver their GST tax invoice for it.
+// The invoice comes after the credit has committed and can never undo it; a replayed confirmation re-attempts it, which is how an
+// invoice that failed the first time (or waited for Ocar's GSTIN to be set) gets issued.
 export async function creditPackageBalance(
+  driverId: bigint,
+  thresholdValue: number,
+  referenceId: string,
+  opts: { orderId?: string; validityDays?: number } = {}
+): Promise<void> {
+  await creditPackageBalanceOnly(driverId, thresholdValue, referenceId, opts)
+  if (opts.orderId) await issuePackageInvoiceSafely(opts.orderId)
+}
+
+async function creditPackageBalanceOnly(
   driverId: bigint,
   thresholdValue: number,
   referenceId: string,

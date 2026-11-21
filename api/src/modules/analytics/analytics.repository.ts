@@ -43,6 +43,27 @@ export async function getKpiTotals(range: TimeRange, filters?: KpiFilters): Prom
   return parseKpiTotals(rows[0])
 }
 
+/**
+ * What Ocar earned from selling ride-credit plans in the range: the plan price of each completed purchase, by when it was paid.
+ * GST is excluded (it is collected for the government, not revenue) and so is the extra ride value the plan carries. The city filter
+ * is the driver's city; the vehicle-category filter does not apply to a purchase.
+ */
+export async function getSubscriptionRevenue(range: TimeRange, filters?: KpiFilters): Promise<number> {
+  const params: unknown[] = [...bounds(range)]
+  let cityFilter = ''
+  if (filters?.cityIds && filters.cityIds.length > 0) {
+    params.push(filters.cityIds)
+    cityFilter = `AND d.city_id = ANY($3::bigint[])`
+  }
+  const rows = await analyticsQuery<QueryResultRow>(
+    `SELECT COALESCE(SUM(COALESCE(o.price_amount, o.amount)), 0) AS revenue
+       FROM package_purchase_orders o JOIN drivers d ON d.id = o.driver_id
+      WHERE o.status = 'completed' AND o.completed_at >= $1 AND o.completed_at < $2 ${cityFilter}`,
+    params
+  )
+  return num(rows[0]?.['revenue'])
+}
+
 // One point per IST day: money and completed rides by completed_at, the requested cohort by requested_at.
 export async function getDailySeries(range: TimeRange, filters?: KpiFilters): Promise<DailyPoint[]> {
   const f = ridesFilterSql(filters, 3)

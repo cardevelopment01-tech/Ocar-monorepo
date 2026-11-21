@@ -13,6 +13,9 @@ import type { PayuOutcome } from './payments.service'
 import { logger } from '@/lib/logger'
 import * as packagesService from '@/modules/packages/packages.service'
 import * as packagesRepo from '@/modules/packages/packages.repository'
+import * as invoices from '@/modules/packages/package-invoice.service'
+import { verifyInvoiceLink } from '@/modules/packages/package-invoice'
+import { renderPackageInvoicePdf } from '@/modules/packages/package-invoice.pdf'
 
 const router: IRouter = Router()
 const log = logger.child({ module: 'payments-routes' })
@@ -125,6 +128,42 @@ router.get('/packages/wallet', authenticate(), requireDriver(), async (req, res,
 router.get('/packages/ledger', authenticate(), requireDriver(), async (req, res, next) => {
   try {
     res.json(await packagesRepo.listLedgerForDriver(req.driver!.id, 30))
+  } catch (err) { next(err) }
+})
+
+// Driver: GST tax invoices for their ride-credit purchases
+router.get('/packages/invoices', authenticate(), requireDriver(), async (req, res, next) => {
+  try {
+    res.json(await invoices.listInvoicesForDriver(req.driver!.id))
+  } catch (err) { next(err) }
+})
+
+// Driver: a five-minute link that opens one invoice PDF in a browser tab (a tab cannot send the app's login header)
+router.get('/packages/invoices/:id/link', authenticate(), requireDriver(), async (req, res, next) => {
+  try {
+    const id = req.params['id']!
+    if (!/^\d+$/.test(id)) { res.status(404).json({ error: 'Invoice not found', code: 'NOT_FOUND' }); return }
+    const inv = await invoices.getInvoiceForDriver(id, req.driver!.id)
+    if (!inv) { res.status(404).json({ error: 'Invoice not found', code: 'NOT_FOUND' }); return }
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.json({ url: invoices.invoiceDownloadUrl(inv.id, req.driver!.id) })
+  } catch (err) { next(err) }
+})
+
+// The PDF itself. No login header: the signed, expiring link from /link is the credential, and it is bound to one invoice and one driver.
+router.get('/packages/invoices/:id/pdf', async (req, res, next) => {
+  try {
+    const id = req.params['id']!
+    const token = typeof req.query['t'] === 'string' ? req.query['t'] : ''
+    const ok = /^\d+$/.test(id) ? verifyInvoiceLink(token, config.JWT_ACCESS_SECRET, Math.floor(Date.now() / 1000)) : null
+    if (!ok || ok.invoiceId !== id) { res.status(404).json({ error: 'Link expired or invalid', code: 'NOT_FOUND' }); return }
+    const inv = await invoices.getInvoiceForDriver(id, BigInt(ok.driverId))
+    if (!inv) { res.status(404).json({ error: 'Invoice not found', code: 'NOT_FOUND' }); return }
+    const pdf = await renderPackageInvoicePdf(inv)
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `inline; filename="ocar-invoice-${inv.invoice_no.replace(/\//g, '-')}.pdf"`)
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.send(pdf)
   } catch (err) { next(err) }
 })
 
