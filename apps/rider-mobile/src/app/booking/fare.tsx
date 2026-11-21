@@ -285,6 +285,7 @@ export default function BookingFareScreen() {
             routePoints={routePoints}
             fill
             refreshSignal={refreshSignal}
+            categoryId={effectiveSelected}
             onNearbyDriversChange={(polled) => setDriversPolled(polled)}
             onDrivers={setNearbyDrivers}
           />
