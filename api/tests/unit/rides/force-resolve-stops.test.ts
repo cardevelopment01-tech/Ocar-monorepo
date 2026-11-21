@@ -11,6 +11,9 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   getRideCoreById:  vi.fn(),
   getStopWaitTotal: vi.fn(async () => 12.5),
   getPickupWaitCharge: vi.fn(async () => 0),
+  getTollForRide: vi.fn(async () => ({ total: 0, detail: [] as Array<{ zone: string; amount: number }>, trailOnly: false })),
+  recordToll: vi.fn(async () => undefined),
+  flagRideForReview: vi.fn(async () => undefined),
   markStopStatus:   vi.fn(async () => ({ sequence: 1, status: 'reached', reached_at: null })),
 }))
 vi.mock('@/websocket/socket.server', () => ({
@@ -76,5 +79,41 @@ describe('stuck-ride stop handling', () => {
   it('lets the driver resolve a stop during the return leg', async () => {
     vi.mocked(repo.getRideCoreById).mockResolvedValue(ride('returning', 'round_trip'))
     await expect(markStopStatus(DRIVER_ID, RIDE_ID, 1, 'reached')).resolves.toMatchObject({ success: true })
+  })
+
+  it('force-complete adds an airport toll the trip entered, together with the pickup wait, and records it', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(ride('in_progress'))
+    vi.mocked(repo.getPickupWaitCharge).mockResolvedValueOnce(18)
+    vi.mocked(repo.getTollForRide).mockResolvedValueOnce({ total: 40, detail: [{ zone: 'Biju Patnaik Airport', amount: 40 }], trailOnly: false })
+    await forceResolveRide(RIDE_ID, 'completed', 'admin', undefined, BigInt(1))
+
+    expect(repo.recordToll).toHaveBeenCalledWith(RIDE_ID, 40, [{ zone: 'Biju Patnaik Airport', amount: 40 }])
+    const fare = pool.query.mock.calls.find((c: unknown[]) => (c[0] as string).includes('UPDATE fare_snapshots'))
+    expect(fare?.[1]).toEqual([RIDE_ID, 12.5, 58]) // stop wait, then pickup wait 18 + toll 40
+  })
+
+  it('a toll earned by the GPS trail alone is charged and flagged for ops; a failing flag never drops it', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(ride('in_progress'))
+    vi.mocked(repo.getTollForRide).mockResolvedValueOnce({ total: 40, detail: [{ zone: 'Biju Patnaik Airport', amount: 40 }], trailOnly: true })
+    vi.mocked(repo.flagRideForReview).mockRejectedValueOnce(new Error('db blip'))
+    await forceResolveRide(RIDE_ID, 'completed', 'admin', undefined, BigInt(1))
+    expect(repo.flagRideForReview).toHaveBeenCalledWith(RIDE_ID, expect.stringContaining('Biju Patnaik Airport'))
+    const fare = pool.query.mock.calls.find((c: unknown[]) => (c[0] as string).includes('UPDATE fare_snapshots'))
+    expect(fare?.[1]).toEqual([RIDE_ID, 12.5, 40])
+  })
+
+  it('a toll lookup that fails charges nothing and never fails the completion', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(ride('in_progress'))
+    vi.mocked(repo.getTollForRide).mockRejectedValueOnce(new Error('db blip'))
+    await expect(forceResolveRide(RIDE_ID, 'completed', 'admin', undefined, BigInt(1))).resolves.toBeDefined()
+    const fare = pool.query.mock.calls.find((c: unknown[]) => (c[0] as string).includes('UPDATE fare_snapshots'))
+    expect(fare?.[1]).toEqual([RIDE_ID, 12.5, 0])
+    expect(repo.recordToll).not.toHaveBeenCalled()
+  })
+
+  it('a ride with no toll records nothing', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(ride('in_progress'))
+    await forceResolveRide(RIDE_ID, 'completed', 'admin', undefined, BigInt(1))
+    expect(repo.recordToll).not.toHaveBeenCalled()
   })
 })
