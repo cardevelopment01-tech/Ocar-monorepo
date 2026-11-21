@@ -148,6 +148,14 @@ router.post('/sessions/location', authenticate(), onlyDriver, async (req, res, n
   } catch (err) { next(err) }
 })
 
+router.post('/:id/track', authenticate(), onlyDriver, async (req, res, next) => {
+  try {
+    const rideId = BigInt(req.params['id']!)
+    const result = await service.recordTrailBatch(req.driver!.id, rideId, (req.body as { fixes?: unknown } | undefined)?.fixes)
+    res.json({ success: true, ...result })
+  } catch (err) { next(err) }
+})
+
 router.post('/sessions/heartbeat', authenticate(), onlyDriver, async (req, res, next) => {
   try {
     const raw = (req.body as { sessionId?: unknown } | undefined)?.sessionId
