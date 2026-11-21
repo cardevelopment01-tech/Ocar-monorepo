@@ -1,0 +1,18 @@
+{
+  "startedAt": "2026-10-01T06:00:00.000Z",
+  "freeMin": 3,
+  "inputs": [
+    { "name": "not at the pickup: no clock", "status": "accepted", "sec": 10, "expected": { "kind": "none" } },
+    { "name": "trip started: no clock", "status": "in_progress", "sec": 10, "expected": { "kind": "none" } },
+    { "name": "booked before waiting charges: no clock", "freeMin": null, "sec": 10, "expected": { "kind": "none" } },
+    { "name": "arrived tap but the clock has not started", "startedAt": null, "sec": 10, "expected": { "kind": "pending" } },
+    { "name": "a bad start time is pending, not a crash", "startedAt": "not a date", "sec": 10, "expected": { "kind": "pending" } },
+    { "name": "first instant", "sec": 0, "expected": { "kind": "free", "msLeft": 180000 } },
+    { "name": "mid countdown", "sec": 139, "expected": { "kind": "free", "msLeft": 41000 } },
+    { "name": "exactly the end of the free minutes is still free", "sec": 180, "expected": { "kind": "free", "msLeft": 0 } },
+    { "name": "one second into charging", "sec": 181, "expected": { "kind": "charging", "overMs": 1000 } },
+    { "name": "well into charging", "sec": 260, "expected": { "kind": "charging", "overMs": 80000 } },
+    { "name": "phone clock a little behind the start never goes negative", "sec": -5, "expected": { "kind": "free", "msLeft": 185000 } },
+    { "name": "zero free minutes charges from the first second", "freeMin": 0, "sec": 1, "expected": { "kind": "charging", "overMs": 1000 } }
+  ]
+}

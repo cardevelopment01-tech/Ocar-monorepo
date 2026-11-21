@@ -118,7 +118,7 @@ router.get('/me/active', authenticate(), onlyDriver, async (req, res, next) => {
     const ride = await repo.getActiveRideForDriver(driverId, includeUnsettledCash)
     if (!ride) { res.status(404).json({ error: 'No active ride' }); return }
     const stops = await repo.getRideStops(BigInt(ride.id))
-    res.json({ ...withTripWindow(service.maskRideContacts(ride, 'driver')), stops })
+    res.json({ ...(await service.withPickupWait(withTripWindow(service.maskRideContacts(ride, 'driver')))), stops })
   } catch (err) { next(err) }
 })
 
@@ -264,7 +264,7 @@ router.get('/:id', authenticate(), async (req, res, next) => {
     }
 
     const viewer = req.admin ? 'admin' : isRider ? 'user' : 'driver'
-    const maskedRide = withTripWindow(service.maskRideContacts(ride, viewer))
+    const maskedRide = await service.withPickupWait(withTripWindow(service.maskRideContacts(ride, viewer)))
     res.json({ ...maskedRide, stops, driver_photo: driverPhoto, startOtp: startOtp ?? undefined, endOtp: endOtp ?? undefined })
   } catch (err) { next(err) }
 })

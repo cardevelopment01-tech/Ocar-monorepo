@@ -804,7 +804,7 @@ const RIDE_SELECT_SQL = `SELECT
        fs.overage_km, fs.overage_min, fs.rental_extra_per_km, fs.rental_extra_per_min, fs.rental_duration_minutes,
        fs.pricing_version, fs.waiting_fare, fs.overtime_min, fs.overtime_fare,
        -- Waiting at the pickup: minutes waited, the free minutes the ride was booked with, and the charge (0 when within the free window).
-       fs.pickup_wait_min, fs.pickup_free_wait_min, fs.pickup_wait_charge,
+       fs.pickup_wait_min, fs.pickup_free_wait_min, fs.pickup_wait_per_min, fs.pickup_wait_charge,
        hrc.hour_rate  AS round_trip_hour_rate,
        rc.reason      AS cancellation_reason,
        rc.reason_code AS cancellation_reason_code,
@@ -2246,4 +2246,22 @@ export async function recordPickupWait(rideId: bigint, minutes: number, charge: 
 export async function getPickupWaitCharge(rideId: bigint): Promise<number> {
   const res = await pool.query<{ c: string }>('SELECT pickup_wait_charge::text AS c FROM fare_snapshots WHERE ride_id = $1', [rideId])
   return parseFloat(res.rows[0]?.c ?? '0')
+}
+
+/**
+ * When the wait at the pickup started: the later of the driver's "arrived" tap and the first position recorded within `radiusM` of
+ * the pickup (same rule as getPickupWaitMinutes). Null while no position has been recorded that close: the clock has not started.
+ */
+export async function getPickupWaitStartedAt(
+  rideId: bigint, arrivedAt: Date, pickupLat: number, pickupLng: number, radiusM: number,
+): Promise<string | null> {
+  const res = await pool.query<{ started_at: Date | null }>(
+    `SELECT CASE WHEN count(*) = 0 THEN NULL ELSE GREATEST($2::timestamptz, MIN(recorded_at)) END AS started_at
+     FROM gps_tracks
+     WHERE ride_id = $1
+       AND ST_DWithin(location, ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography, $5)`,
+    [rideId, arrivedAt, pickupLat, pickupLng, radiusM],
+  )
+  const at = res.rows[0]?.started_at
+  return at ? new Date(at).toISOString() : null
 }

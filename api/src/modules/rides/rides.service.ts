@@ -621,6 +621,27 @@ export function publicDriverRef(driverId: string): string {
   return crypto.createHmac('sha256', config.JWT_REFRESH_SECRET).update(`nearby-driver:${driverId}`).digest('hex').slice(0, 12)
 }
 
+/**
+ * While the driver is at the pickup, tell the apps when the wait clock started (so both phones count the same free minutes from the
+ * same server instant). Absent until the driver has really reached the pickup: an "arrived" tap from far away starts nothing.
+ * Never fails the ride fetch.
+ */
+export async function withPickupWait<T extends {
+  id?: unknown; status?: string; driver_arrived_at?: string | Date | null
+  origin_lat?: number | null; origin_lng?: number | null; pickup_free_wait_min?: number | null
+}>(ride: T): Promise<T & { pickup_wait_started_at?: string | null }> {
+  if (ride.status !== 'driver_arrived' || ride.pickup_free_wait_min == null || !ride.driver_arrived_at
+    || ride.origin_lat == null || ride.origin_lng == null) return ride
+  try {
+    const startedAt = await repo.getPickupWaitStartedAt(
+      BigInt(ride.id as string | number | bigint), new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+    return { ...ride, pickup_wait_started_at: startedAt }
+  } catch (err) {
+    log.warn({ err }, 'pickup wait start not added to the ride')
+    return ride
+  }
+}
+
 export function maskRideContacts<T extends {
   user_phone?: string | null
   rider_phone?: string | null

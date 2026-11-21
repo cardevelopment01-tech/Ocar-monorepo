@@ -88,6 +88,9 @@ export type RideDetail = {
   pickupWaitMin?: string | null
   pickupFreeWaitMin?: number | null
   pickupWaitCharge?: string | null
+  // While the driver is at the pickup: when the wait clock started (absent/null until they are really there) and the rate it runs at.
+  pickupWaitStartedAt?: string | null
+  pickupWaitPerMin?: string | null
   // Booked-hours charge (pre-surge) for hourly round trips; numeric string like the other fare parts.
   waitingFare?: string | null
   returnAt: string | null
