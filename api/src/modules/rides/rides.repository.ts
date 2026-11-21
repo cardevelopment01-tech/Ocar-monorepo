@@ -440,7 +440,7 @@ export async function insertFareSnapshot(client: PoolClient, p: FareSnapshotInpu
        pricing_version, waiting_fare, discount_amount,
        rental_km_limit, rental_duration_minutes, rental_extra_per_km, rental_extra_per_min,
        rental_stop_charge, rental_cancellation_fee,
-       pickup_free_wait_min, pickup_wait_per_min
+       pickup_free_wait_min, pickup_wait_per_min, toll_terms
      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'estimate',$19,$20,$21,
        -- pin the package terms quoted now; admins edit packages in place (migration 099)
        (SELECT km_limit         FROM rental_packages WHERE id = $3),
@@ -452,7 +452,12 @@ export async function insertFareSnapshot(client: PoolClient, p: FareSnapshotInpu
        (SELECT cancellation_fee FROM rental_packages WHERE id = $3),
        -- waiting at the pickup (migration 148): a rental package may override the rate card's free minutes and rate
        COALESCE((SELECT pickup_free_wait_min FROM rental_packages WHERE id = $3), (SELECT pickup_free_wait_min FROM rate_cards WHERE id = $2)),
-       COALESCE((SELECT pickup_wait_per_min  FROM rental_packages WHERE id = $3), (SELECT pickup_wait_per_min  FROM rate_cards WHERE id = $2)))`,
+       COALESCE((SELECT pickup_wait_per_min  FROM rental_packages WHERE id = $3), (SELECT pickup_wait_per_min  FROM rate_cards WHERE id = $2)),
+       -- airport toll rates in force for this vehicle category (migration 150); NULL when no zone charges this category
+       (SELECT jsonb_agg(jsonb_build_object('zone_id', z.id, 'name', z.name, 'amount', t.amount) ORDER BY z.id)
+          FROM airport_zones z
+          JOIN airport_toll_rates t ON t.zone_id = z.id AND t.category_id = (SELECT category_id FROM rate_cards WHERE id = $2)
+         WHERE z.is_active AND t.amount > 0))`,
     [
       p.rideId, p.rateCardId, p.rentalPackageId, p.rideType, p.isReturnCab, p.surgeEventId, p.surgeMultiplier,
       p.estimatedKm, p.estimatedMin, p.stopCount, p.tripHours,
@@ -805,6 +810,8 @@ const RIDE_SELECT_SQL = `SELECT
        fs.pricing_version, fs.waiting_fare, fs.overtime_min, fs.overtime_fare,
        -- Waiting at the pickup: minutes waited, the free minutes the ride was booked with, and the charge (0 when within the free window).
        fs.pickup_wait_min, fs.pickup_free_wait_min, fs.pickup_wait_per_min, fs.pickup_wait_charge,
+       -- Airport toll charged on this ride (0 when none) and the zones it came from.
+       fs.toll_charge, fs.toll_detail,
        hrc.hour_rate  AS round_trip_hour_rate,
        rc.reason      AS cancellation_reason,
        rc.reason_code AS cancellation_reason_code,
@@ -2264,4 +2271,44 @@ export async function getPickupWaitStartedAt(
   )
   const at = res.rows[0]?.started_at
   return at ? new Date(at).toISOString() : null
+}
+
+// ── Airport toll ──────────────────────────────────────────────
+
+/**
+ * The airport toll owed on this ride: each zone whose rate was pinned at booking, entered at least once. "Entered" is any position
+ * recorded while the trip was under way inside the zone, or the pickup or drop sitting inside it (a short airport trip may record no
+ * ping inside the polygon). Positions before the trip started (the driver's approach) never count. One charge per zone per ride.
+ */
+export async function getTollForRide(rideId: bigint): Promise<{ total: number; detail: Array<{ zone: string; amount: number }> }> {
+  const res = await pool.query<{ total: string; detail: Array<{ zone: string; amount: number }> }>(
+    `WITH terms AS (
+       SELECT (e->>'zone_id')::bigint AS zone_id, e->>'name' AS name, (e->>'amount')::numeric AS amount
+         FROM fare_snapshots fs, jsonb_array_elements(fs.toll_terms) e
+        WHERE fs.ride_id = $1
+     ),
+     hit AS (
+       SELECT t.name, t.amount
+         FROM terms t
+         JOIN airport_zones z ON z.id = t.zone_id
+         JOIN rides r ON r.id = $1
+        WHERE ST_Intersects(z.boundary, r.origin) OR ST_Intersects(z.boundary, r.destination)
+           OR EXISTS (SELECT 1 FROM gps_tracks g
+                       WHERE g.ride_id = $1 AND g.recorded_at >= COALESCE(r.started_at, r.requested_at)
+                         AND ST_Intersects(z.boundary, g.location))
+     )
+     SELECT COALESCE(sum(amount), 0)::text AS total,
+            COALESCE(jsonb_agg(jsonb_build_object('zone', name, 'amount', amount)), '[]'::jsonb) AS detail
+       FROM hit`,
+    [rideId],
+  )
+  const r = res.rows[0]
+  return { total: parseFloat(r?.total ?? '0'), detail: r?.detail ?? [] }
+}
+
+export async function recordToll(rideId: bigint, total: number, detail: Array<{ zone: string; amount: number }>): Promise<void> {
+  await pool.query(
+    'UPDATE fare_snapshots SET toll_charge = $2, toll_detail = $3::jsonb WHERE ride_id = $1',
+    [rideId, total, JSON.stringify(detail)],
+  )
 }

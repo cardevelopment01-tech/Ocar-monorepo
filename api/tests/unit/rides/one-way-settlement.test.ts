@@ -25,7 +25,7 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   getRideById: vi.fn(), getRideForDriverAction: vi.fn(), getRideCoreById: vi.fn(),
   getRideStops: vi.fn().mockResolvedValue([]), updateRideStatus: vi.fn(), updateRideStatusCAS: vi.fn(), logStatusHistory: vi.fn(),
   getStopWaitTotal: vi.fn().mockResolvedValue(0), getStopWaitMinutes: vi.fn().mockResolvedValue(0), getGpsTrailForBilling: vi.fn(),
-  getPickupWaitTerms: vi.fn().mockResolvedValue(null), getPickupWaitMinutes: vi.fn(), recordPickupWait: vi.fn(), getPickupWaitCharge: vi.fn().mockResolvedValue(0),
+  getPickupWaitTerms: vi.fn().mockResolvedValue(null), getPickupWaitMinutes: vi.fn(), recordPickupWait: vi.fn(), getPickupWaitCharge: vi.fn().mockResolvedValue(0), getTollForRide: vi.fn().mockResolvedValue({ total: 0, detail: [] }), recordToll: vi.fn(),
   flagRideForReview: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/modules/payments/payments.service', () => ({

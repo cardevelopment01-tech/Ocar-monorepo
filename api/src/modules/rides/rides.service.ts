@@ -1272,6 +1272,21 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
   }
 }
 
+// The airport toll for a finished ride: any zone whose rate was pinned at booking that the trip entered (see getTollForRide), recorded
+// on the ride and returned so the caller can add it to the final fare. 0 for a ride with no toll terms. The last live pings may still be in
+// this instance's write buffer, so flush them first. Never fails a completion: a lookup error charges nothing and is logged.
+async function settleToll(rideId: bigint): Promise<number> {
+  try {
+    await flushBreadcrumbs().catch(() => undefined)
+    const { total, detail } = await repo.getTollForRide(rideId)
+    if (total > 0) await repo.recordToll(rideId, total, detail)
+    return total
+  } catch (err) {
+    log.error({ err, rideId }, 'airport toll not settled')
+    return 0
+  }
+}
+
 // When the driver marks arrived, line up one check for the moment the free waiting minutes would end (see the processor: the real
 // clock starts when the driver's position reaches the pickup, so it re-checks before it sends). No push for a ride booked before
 // waiting charges, with no free window, or where waiting costs nothing after it. Never blocks marking arrived.
@@ -2625,8 +2640,8 @@ export async function forceResolveRide(
     const driverId = BigInt(ride.driver_id)
     try {
       const wait = ride.ride_type === 'one_way' ? await repo.getStopWaitTotal(rideId) : 0
-      // The wait at the pickup was recorded when the trip started and is owed on every ride type, however the trip ends.
-      const pickupWait = await repo.getPickupWaitCharge(rideId)
+      // The wait at the pickup (recorded when the trip started) and any airport toll are owed on every ride type, however the trip ends.
+      const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId))
       await pool.query(
         `UPDATE fare_snapshots
          SET total_final = round(total_estimated + $2::numeric + $3::numeric, 2),
@@ -3334,9 +3349,9 @@ export async function verifyEndOTP(
     }
   }
 
-  // The wait at the pickup (recorded when the trip started) is its own line on top of whatever was settled above, for every ride
+  // The wait at the pickup (recorded when the trip started) and any airport toll are their own lines on top of whatever was settled above, for every ride
   // type. Single winner: the status CAS above lets only one end-OTP submit reach this point, so it is added exactly once.
-  const pickupWait = await repo.getPickupWaitCharge(rideId)
+  const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId))
   if (pickupWait > 0) {
     const upd = await pool.query<{ total_final: string }>(
       `UPDATE fare_snapshots
