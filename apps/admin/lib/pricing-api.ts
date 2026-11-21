@@ -21,6 +21,9 @@ export interface RateCard {
   stop_charge: string
   /** Flat amount added to every one-way / round-trip fare, before surge; 0 = none. */
   base_fare: string
+  /** Waiting at the pickup: minutes with no charge, then rupees a minute. */
+  pickup_free_wait_min: number
+  pickup_wait_per_min: string
   effective_from: string
   created_at: string
 }
@@ -82,6 +85,9 @@ export const pricingApi = {
     stop_charge?: number
     /** Omit to keep the current version's base fare; 0 removes it. */
     base_fare?: number
+    /** Omit to keep the current version's pickup waiting terms. */
+    pickup_free_wait_min?: number
+    pickup_wait_per_min?: number
     notes?: string
   }) => api.post('/api/v1/admin/pricing/rate-cards', data).then(r => r.data as RateCard),
 
@@ -115,6 +121,9 @@ export interface RentalPackageAdmin {
   /** What a rental is charged for each added stop and for a late cancellation (rupees). */
   stop_charge: string
   cancellation_fee: string
+  /** Waiting at the pickup on this package; null = use the rate card's free minutes / rate. */
+  pickup_free_wait_min: number | null
+  pickup_wait_per_min: string | null
   is_active: boolean
   city_id: number | null
   city_name: string | null
@@ -131,6 +140,8 @@ export const rentalPackageApi = {
     package_fare?: number; extra_per_km?: number; extra_per_min?: number; is_active?: boolean
     duration_minutes?: number; km_limit?: number; display_order?: number; city_id?: number | null
     stop_charge?: number; cancellation_fee?: number
+    /** null clears the override (use the rate card's). */
+    pickup_free_wait_min?: number | null; pickup_wait_per_min?: number | null
   }): Promise<RentalPackageAdmin> =>
     api.patch(`/api/v1/admin/pricing/rental-packages/${id}`, data).then(r => r.data as RentalPackageAdmin),
 
@@ -138,6 +149,7 @@ export const rentalPackageApi = {
     category_id: number; duration_minutes: number; km_limit: number
     package_fare: number; extra_per_km: number; extra_per_min: number
     stop_charge: number; cancellation_fee: number
+    pickup_free_wait_min?: number | null; pickup_wait_per_min?: number | null
     display_order?: number
     city_id?: number | null
   }): Promise<RentalPackageAdmin> =>

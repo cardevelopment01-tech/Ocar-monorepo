@@ -59,13 +59,13 @@ import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowW
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
-import { calculateFare, isHourlyRoundTrip, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
+import { calculateFare, isHourlyRoundTrip, pickupWaitCharge, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
 import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import {
   MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
   RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
   ONE_WAY_FARE_BAND_OVER, ONE_WAY_FARE_BAND_UNDER,
-  GPS_GAP_SECONDS, GPS_GAP_MIN_METRES, GPS_MAX_ROUTED_GAPS, GPS_MAX_SILENT_SHARE,
+  GPS_GAP_SECONDS, GPS_GAP_MIN_METRES, GPS_MAX_ROUTED_GAPS, GPS_MAX_SILENT_SHARE, PICKUP_WAIT_RADIUS_METRES,
   PICKUP_EDIT_RADIUS_METRES,
 } from '@/constants/limits'
 import { logger } from '@/lib/logger'
@@ -619,6 +619,27 @@ export async function updateLocation(driverId: bigint, data: {
 // reversed or enumerated into real driver ids.
 export function publicDriverRef(driverId: string): string {
   return crypto.createHmac('sha256', config.JWT_REFRESH_SECRET).update(`nearby-driver:${driverId}`).digest('hex').slice(0, 12)
+}
+
+/**
+ * While the driver is at the pickup, tell the apps when the wait clock started (so both phones count the same free minutes from the
+ * same server instant). Absent until the driver has really reached the pickup: an "arrived" tap from far away starts nothing.
+ * Never fails the ride fetch.
+ */
+export async function withPickupWait<T extends {
+  id?: unknown; status?: string; driver_arrived_at?: string | Date | null
+  origin_lat?: number | null; origin_lng?: number | null; pickup_free_wait_min?: number | null
+}>(ride: T): Promise<T & { pickup_wait_started_at?: string | null }> {
+  if (ride.status !== 'driver_arrived' || ride.pickup_free_wait_min == null || !ride.driver_arrived_at
+    || ride.origin_lat == null || ride.origin_lng == null) return ride
+  try {
+    const startedAt = await repo.getPickupWaitStartedAt(
+      BigInt(ride.id as string | number | bigint), new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+    return { ...ride, pickup_wait_started_at: startedAt }
+  } catch (err) {
+    log.warn({ err }, 'pickup wait start not added to the ride')
+    return ride
+  }
 }
 
 export function maskRideContacts<T extends {
@@ -1251,6 +1272,23 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
   }
 }
 
+// When the driver marks arrived, line up one check for the moment the free waiting minutes would end (see the processor: the real
+// clock starts when the driver's position reaches the pickup, so it re-checks before it sends). No push for a ride booked before
+// waiting charges, with no free window, or where waiting costs nothing after it. Never blocks marking arrived.
+async function schedulePickupWaitNudge(rideId: bigint): Promise<void> {
+  try {
+    const terms = await repo.getPickupWaitTerms(rideId)
+    if (!terms || terms.freeMin <= 0 || terms.perMin <= 0) return
+    await queues[QUEUE_NAMES.SCHEDULER].add(
+      'pickup_wait_nudge',
+      { rideId: rideId.toString(), attempt: 0 },
+      { delay: terms.freeMin * 60_000, jobId: `pickup-wait-${rideId}-0`, removeOnComplete: true, removeOnFail: 100 },
+    )
+  } catch (err) {
+    log.error({ err, rideId }, 'pickup wait nudge scheduling failed')
+  }
+}
+
 export async function markArrived(driverId: bigint, rideId: bigint) {
   const ride = await repo.getRideCoreForDriverAction(rideId, driverId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
@@ -1278,6 +1316,8 @@ export async function markArrived(driverId: bigint, rideId: bigint) {
       actor:      'driver',
       actorId:    driverId,
     })
+    // Only the tap that wins the CAS schedules it, so a double tap or retry never queues a second push.
+    await schedulePickupWaitNudge(rideId)
   } else {
     // Lost the CAS. If the ride is already driver_arrived this is a RETRY (double tap, or a first attempt whose
     // Redis write / response never landed). A plain 409 would strand a ride whose PIN was never delivered, but
@@ -1349,6 +1389,27 @@ export async function startReturn(driverId: bigint, rideId: bigint) {
   return { success: true }
 }
 
+// The start OTP was just accepted, so the rider's wait at the pickup is over. Records the minutes and the charge for the ones past the
+// free window (terms pinned at booking; none for a ride booked before waiting charges existed). Never blocks the trip from starting.
+async function recordPickupWaitAtStart(
+  rideId: bigint,
+  ride: { driver_arrived_at: string | null; origin_lat: number; origin_lng: number },
+): Promise<void> {
+  try {
+    const terms = await repo.getPickupWaitTerms(rideId)
+    if (!terms || !ride.driver_arrived_at) return
+    await flushBreadcrumbs().catch(() => undefined)
+    const minutes = await repo.getPickupWaitMinutes(rideId, new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+    if (minutes === null) {
+      log.warn({ rideId }, 'no position recorded at the pickup: no waiting charge')
+      return
+    }
+    await repo.recordPickupWait(rideId, minutes, pickupWaitCharge(minutes, terms.freeMin, terms.perMin))
+  } catch (err) {
+    log.error({ err, rideId }, 'pickup wait not recorded')
+  }
+}
+
 export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: string) {
   const ride = await repo.getRideCoreForDriverAction(rideId, driverId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
@@ -1381,6 +1442,7 @@ export async function verifyStartOTP(driverId: bigint, rideId: bigint, otp: stri
     end_otp_hash: endHash,
   })
   if (!started) throw httpError(409, 'Ride is not awaiting start', 'RIDE_NOT_ARRIVED')
+  await recordPickupWaitAtStart(rideId, ride)
 
   if (ride.dest_lat != null && ride.dest_lng != null) {
     void logEtaSnapshot(
@@ -2563,12 +2625,14 @@ export async function forceResolveRide(
     const driverId = BigInt(ride.driver_id)
     try {
       const wait = ride.ride_type === 'one_way' ? await repo.getStopWaitTotal(rideId) : 0
+      // The wait at the pickup was recorded when the trip started and is owed on every ride type, however the trip ends.
+      const pickupWait = await repo.getPickupWaitCharge(rideId)
       await pool.query(
         `UPDATE fare_snapshots
-         SET total_final = round(total_estimated + $2::numeric, 2),
+         SET total_final = round(total_estimated + $2::numeric + $3::numeric, 2),
              status = 'final', finalised_at = now()
          WHERE ride_id = $1`,
-        [rideId, wait]
+        [rideId, wait, pickupWait]
       )
       await finaliseDiscount(pool, rideId)
     } catch (err) {
@@ -3268,6 +3332,23 @@ export async function verifyEndOTP(
       if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
       await finaliseDiscount(pool, rideId)
     }
+  }
+
+  // The wait at the pickup (recorded when the trip started) is its own line on top of whatever was settled above, for every ride
+  // type. Single winner: the status CAS above lets only one end-OTP submit reach this point, so it is added exactly once.
+  const pickupWait = await repo.getPickupWaitCharge(rideId)
+  if (pickupWait > 0) {
+    const upd = await pool.query<{ total_final: string }>(
+      `UPDATE fare_snapshots
+       SET total_final  = round(COALESCE(total_final, total_estimated) + $2::numeric, 2),
+           status       = 'final',
+           finalised_at = COALESCE(finalised_at, now())
+       WHERE ride_id = $1
+       RETURNING total_final`,
+      [rideId, pickupWait]
+    )
+    if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
+    await finaliseDiscount(pool, rideId)
   }
 
   await pool.query(

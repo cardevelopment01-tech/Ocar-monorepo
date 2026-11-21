@@ -439,7 +439,8 @@ export async function insertFareSnapshot(client: PoolClient, p: FareSnapshotInpu
        total_estimated, status,
        pricing_version, waiting_fare, discount_amount,
        rental_km_limit, rental_duration_minutes, rental_extra_per_km, rental_extra_per_min,
-       rental_stop_charge, rental_cancellation_fee
+       rental_stop_charge, rental_cancellation_fee,
+       pickup_free_wait_min, pickup_wait_per_min
      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'estimate',$19,$20,$21,
        -- pin the package terms quoted now; admins edit packages in place (migration 099)
        (SELECT km_limit         FROM rental_packages WHERE id = $3),
@@ -448,7 +449,10 @@ export async function insertFareSnapshot(client: PoolClient, p: FareSnapshotInpu
        (SELECT extra_per_min    FROM rental_packages WHERE id = $3),
        -- the fees a rental is charged live on the package, not on a rate card (migration 136)
        (SELECT stop_charge      FROM rental_packages WHERE id = $3),
-       (SELECT cancellation_fee FROM rental_packages WHERE id = $3))`,
+       (SELECT cancellation_fee FROM rental_packages WHERE id = $3),
+       -- waiting at the pickup (migration 148): a rental package may override the rate card's free minutes and rate
+       COALESCE((SELECT pickup_free_wait_min FROM rental_packages WHERE id = $3), (SELECT pickup_free_wait_min FROM rate_cards WHERE id = $2)),
+       COALESCE((SELECT pickup_wait_per_min  FROM rental_packages WHERE id = $3), (SELECT pickup_wait_per_min  FROM rate_cards WHERE id = $2)))`,
     [
       p.rideId, p.rateCardId, p.rentalPackageId, p.rideType, p.isReturnCab, p.surgeEventId, p.surgeMultiplier,
       p.estimatedKm, p.estimatedMin, p.stopCount, p.tripHours,
@@ -799,6 +803,8 @@ const RIDE_SELECT_SQL = `SELECT
        -- Rental extras, so a client can show package price / extra km / extra time as their own lines.
        fs.overage_km, fs.overage_min, fs.rental_extra_per_km, fs.rental_extra_per_min, fs.rental_duration_minutes,
        fs.pricing_version, fs.waiting_fare, fs.overtime_min, fs.overtime_fare,
+       -- Waiting at the pickup: minutes waited, the free minutes the ride was booked with, and the charge (0 when within the free window).
+       fs.pickup_wait_min, fs.pickup_free_wait_min, fs.pickup_wait_per_min, fs.pickup_wait_charge,
        hrc.hour_rate  AS round_trip_hour_rate,
        rc.reason      AS cancellation_reason,
        rc.reason_code AS cancellation_reason_code,
@@ -2196,4 +2202,66 @@ export async function insertEtaShadow(row: {
     [row.rideId, row.leg, row.kind, Math.round(row.etaSec), row.etaBaseSec == null ? null : Math.round(row.etaBaseSec),
      row.remainingM == null ? null : Math.round(row.remainingM), row.offRouteM == null ? null : Math.round(row.offRouteM)]
   )
+}
+
+// ── Waiting at the pickup ─────────────────────────────────────
+
+/**
+ * Minutes the driver has been at the pickup. The clock starts at the later of their "arrived" tap and the first position recorded
+ * within `radiusM` of the pickup, so tapping "arrived" from far away cannot start it. Null when no position was ever recorded that
+ * close: nobody can say the driver was there, so the caller charges nothing.
+ */
+export async function getPickupWaitMinutes(
+  rideId: bigint, arrivedAt: Date, pickupLat: number, pickupLng: number, radiusM: number,
+): Promise<number | null> {
+  const res = await pool.query<{ minutes: string | null }>(
+    `SELECT CASE WHEN count(*) = 0 THEN NULL
+                 ELSE EXTRACT(EPOCH FROM (now() - GREATEST($2::timestamptz, MIN(recorded_at)))) / 60.0 END::text AS minutes
+     FROM gps_tracks
+     WHERE ride_id = $1
+       AND ST_DWithin(location, ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography, $5)`,
+    [rideId, arrivedAt, pickupLat, pickupLng, radiusM],
+  )
+  const m = res.rows[0]?.minutes
+  return m != null ? Math.max(0, parseFloat(m)) : null
+}
+
+/** The free minutes and rate pinned on the ride at booking; null for a ride booked before waiting charges existed. */
+export async function getPickupWaitTerms(rideId: bigint): Promise<{ freeMin: number; perMin: number } | null> {
+  const res = await pool.query<{ free: number | null; rate: string | null }>(
+    'SELECT pickup_free_wait_min AS free, pickup_wait_per_min AS rate FROM fare_snapshots WHERE ride_id = $1',
+    [rideId],
+  )
+  const r = res.rows[0]
+  return r && r.free != null && r.rate != null ? { freeMin: r.free, perMin: parseFloat(r.rate) } : null
+}
+
+export async function recordPickupWait(rideId: bigint, minutes: number, charge: number): Promise<void> {
+  await pool.query(
+    'UPDATE fare_snapshots SET pickup_wait_min = $2, pickup_wait_charge = $3 WHERE ride_id = $1',
+    [rideId, Math.round(minutes * 100) / 100, charge],
+  )
+}
+
+export async function getPickupWaitCharge(rideId: bigint): Promise<number> {
+  const res = await pool.query<{ c: string }>('SELECT pickup_wait_charge::text AS c FROM fare_snapshots WHERE ride_id = $1', [rideId])
+  return parseFloat(res.rows[0]?.c ?? '0')
+}
+
+/**
+ * When the wait at the pickup started: the later of the driver's "arrived" tap and the first position recorded within `radiusM` of
+ * the pickup (same rule as getPickupWaitMinutes). Null while no position has been recorded that close: the clock has not started.
+ */
+export async function getPickupWaitStartedAt(
+  rideId: bigint, arrivedAt: Date, pickupLat: number, pickupLng: number, radiusM: number,
+): Promise<string | null> {
+  const res = await pool.query<{ started_at: Date | null }>(
+    `SELECT CASE WHEN count(*) = 0 THEN NULL ELSE GREATEST($2::timestamptz, MIN(recorded_at)) END AS started_at
+     FROM gps_tracks
+     WHERE ride_id = $1
+       AND ST_DWithin(location, ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography, $5)`,
+    [rideId, arrivedAt, pickupLat, pickupLng, radiusM],
+  )
+  const at = res.rows[0]?.started_at
+  return at ? new Date(at).toISOString() : null
 }
