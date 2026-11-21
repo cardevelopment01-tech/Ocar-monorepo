@@ -77,6 +77,22 @@ export type PackageWallet = {
   next_expiry?: string | null
 }
 
+export type PackageLedgerEntry = {
+  id: string
+  entry_type: 'topup' | 'ride_consumption' | 'admin_adjustment' | 'expiry'
+  amount: string
+  direction: 'credit' | 'debit'
+  balance_after: string
+  ride_id: string | null
+  note: string | null
+  created_at: string
+}
+
+export async function fetchPackageLedger(): Promise<PackageLedgerEntry[]> {
+  const res = await api.get('/api/v1/payments/packages/ledger')
+  return res.data as PackageLedgerEntry[]
+}
+
 export async function fetchPackageWallet(): Promise<PackageWallet> {
   const res = await api.get('/api/v1/payments/packages/wallet')
   return res.data as PackageWallet

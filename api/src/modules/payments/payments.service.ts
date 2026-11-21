@@ -91,7 +91,7 @@ export async function createPaymentRecord(
   const fareRes = await q.query(
     `SELECT fs.id AS fare_snapshot_id,
             fs.total_final, fs.total_estimated, fs.discount_amount,
-            r.user_id, r.driver_id
+            r.user_id, r.driver_id, r.billing_mode_snapshot
      FROM fare_snapshots fs
      JOIN rides r ON r.id = fs.ride_id
      WHERE fs.ride_id = $1`,
@@ -103,7 +103,9 @@ export async function createPaymentRecord(
 
   const discount = parseFloat(fare.discount_amount ?? '0')
   const amount = payableOf({ total: fare.total_final ?? fare.total_estimated, discount_amount: discount })
-  const commissionPct = await getCommissionPercent()
+  // A ride settled under a driver's prepaid package takes no commission: the package credit is the fee. Recording the percent here would
+  // make reports count revenue the platform never earned.
+  const commissionPct = fare.billing_mode_snapshot === 'package' ? 0 : await getCommissionPercent()
   const commissionAmt = Math.round(amount * commissionPct) / 100
   const driverEarning = Math.round((amount - commissionAmt) * 100) / 100
 

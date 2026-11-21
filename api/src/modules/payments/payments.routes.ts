@@ -121,6 +121,13 @@ router.get('/packages/wallet', authenticate(), requireDriver(), async (req, res,
   } catch (err) { next(err) }
 })
 
+// Driver: recent package ledger (credit added, ride fares used, credit expired)
+router.get('/packages/ledger', authenticate(), requireDriver(), async (req, res, next) => {
+  try {
+    res.json(await packagesRepo.listLedgerForDriver(req.driver!.id, 30))
+  } catch (err) { next(err) }
+})
+
 // Driver: create a package purchase order (or direct credit in dev)
 router.post('/packages/purchase/order', authenticate(), requireDriver(), async (req, res, next) => {
   try {
