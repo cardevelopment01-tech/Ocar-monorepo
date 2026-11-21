@@ -731,6 +731,8 @@ export async function deleteDriver(
       "DELETE FROM driver_package_ledger WHERE wallet_id IN (SELECT id FROM driver_package_wallets WHERE driver_id = $1) OR driver_id = $1",
       [driverId],
     );
+    // credit lots reference the wallet and the purchase order: they go before both
+    await client.query("DELETE FROM package_credit_lots WHERE driver_id = $1", [driverId]);
     await client.query("DELETE FROM settlements WHERE driver_id = $1", [
       driverId,
     ]);
@@ -2969,8 +2971,8 @@ export async function listPackageTiers(): Promise<PackageTier[]> {
 
 async function fetchPackageTiersFromDb(): Promise<PackageTier[]> {
   const res = await pool.query<PackageTier>(
-    `SELECT id, label, price::text, threshold_value::text, is_active, created_at, updated_at
-     FROM package_tiers ORDER BY price ASC`,
+    `SELECT id, label, price::text, threshold_value::text, is_active, vehicle_group, validity_days, created_at, updated_at
+     FROM package_tiers ORDER BY vehicle_group ASC, price ASC`,
   );
   return res.rows;
 }
@@ -2979,13 +2981,15 @@ export async function createPackageTier(data: {
   label: string;
   price: number;
   thresholdValue: number;
+  vehicleGroup: "cab" | "auto";
+  validityDays: number;
   createdBy: bigint;
 }): Promise<PackageTier> {
   const res = await pool.query<PackageTier>(
-    `INSERT INTO package_tiers (label, price, threshold_value, created_by)
-     VALUES ($1,$2,$3,$4)
-     RETURNING id, label, price::text, threshold_value::text, is_active, created_at, updated_at`,
-    [data.label, data.price, data.thresholdValue, data.createdBy],
+    `INSERT INTO package_tiers (label, price, threshold_value, vehicle_group, validity_days, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     RETURNING id, label, price::text, threshold_value::text, is_active, vehicle_group, validity_days, created_at, updated_at`,
+    [data.label, data.price, data.thresholdValue, data.vehicleGroup, data.validityDays, data.createdBy],
   );
   await invalidate(PACKAGE_TIERS_ALL_KEY);
   return res.rows[0]!;
@@ -2998,6 +3002,8 @@ export async function updatePackageTier(
     price?: number;
     thresholdValue?: number;
     isActive?: boolean;
+    vehicleGroup?: "cab" | "auto";
+    validityDays?: number;
   },
 ): Promise<PackageTier | null> {
   const sets: string[] = [];
@@ -3019,11 +3025,19 @@ export async function updatePackageTier(
     sets.push(`is_active = $${p++}`);
     values.push(data.isActive);
   }
+  if (data.vehicleGroup !== undefined) {
+    sets.push(`vehicle_group = $${p++}`);
+    values.push(data.vehicleGroup);
+  }
+  if (data.validityDays !== undefined) {
+    sets.push(`validity_days = $${p++}`);
+    values.push(data.validityDays);
+  }
   if (!sets.length) return null;
   values.push(id);
   const res = await pool.query<PackageTier>(
     `UPDATE package_tiers SET ${sets.join(", ")} WHERE id = $${p}
-     RETURNING id, label, price::text, threshold_value::text, is_active, created_at, updated_at`,
+     RETURNING id, label, price::text, threshold_value::text, is_active, vehicle_group, validity_days, created_at, updated_at`,
     values,
   );
   const row = res.rows[0] ?? null;

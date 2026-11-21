@@ -922,7 +922,8 @@ async function applyRazorpayEvent(
         await packagesService.creditPackageBalance(
           BigInt(claimed.driver_id),
           parseFloat(claimed.threshold_value),
-          eventId
+          eventId,
+          { orderId: claimed.id, validityDays: claimed.validity_days }
         )
       }
     }
@@ -1087,7 +1088,7 @@ export async function settlePayuTxn(txnId: string, auditBody: Record<string, str
     } else if (pkg) {
       const claimed = await packagesRepo.markPurchaseCompletedPayu(pkg.id, paymentId)
       if (claimed) {
-        await packagesService.creditPackageBalance(BigInt(claimed.driver_id), parseFloat(claimed.threshold_value), paymentId)
+        await packagesService.creditPackageBalance(BigInt(claimed.driver_id), parseFloat(claimed.threshold_value), paymentId, { orderId: claimed.id, validityDays: claimed.validity_days })
       } else {
         // Claim already won (replay, or a previous attempt whose credit threw
         // after the claim committed). Re-run the credit with the payment id the
@@ -1095,7 +1096,7 @@ export async function settlePayuTxn(txnId: string, auditBody: Record<string, str
         // if the earlier credit never landed.
         const cur = await packagesRepo.findPurchaseByTxnId(txnId)
         if (cur?.status === 'completed' && cur.gateway_payment_id) {
-          await packagesService.creditPackageBalance(BigInt(cur.driver_id), parseFloat(cur.threshold_value), cur.gateway_payment_id)
+          await packagesService.creditPackageBalance(BigInt(cur.driver_id), parseFloat(cur.threshold_value), cur.gateway_payment_id, { orderId: cur.id, validityDays: cur.validity_days })
         }
       }
     } else if (binding) {

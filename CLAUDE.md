@@ -123,6 +123,16 @@ smallest area → nearest centroid → id, so overlapping boundaries (Bhubaneswa
 Writes go through `admin.repository.ts` (`FOR UPDATE` + millisecond-precision `updated_at`
 compare; 409 `BOUNDARY_CHANGED` on a stale save) — never `geo.repository.updateCity`.
 
+### Driver ride-credit packages (billing_mode = 'package'): GST and expiry
+A plan has a price, a ride value (`threshold_value`), a vehicle group (`cab` or `auto`: a driver is shown only their group's plans, resolved from their primary vehicle category) and `validity_days` (365).
+**GST is added on top of the price** (`system_config.package_gst_percent`, 18): price 40 -> 7.20 GST -> the driver pays 47.20 and gets the full 550 of ride value. `package_purchase_orders.amount` is
+what PayU charges (the total, so the captured-amount check still matches); `price_amount` / `gst_percent` / `gst_amount` record the split and `package-money.ts packagePricing` is the only place that
+works it out (the apps just render what the API sends). Every purchase is its own **credit lot** (`package_credit_lots`, migration 151) with its own expiry: a completed ride draws on the lot that expires first
+(`drawLots`; lots already past expiry but not yet swept are still drawn on so a ride under way is not penalised), and the payments sweep (`expireDueLots`, every 5 minutes) lapses what is left of a lot after its
+days as an `expiry` ledger entry (no refund). `driver_package_wallets.balance` stays the single number the dispatch gate reads and equals the live lots plus any never-expiring credit (balances from before
+migration 151 and admin credits are in no lot). A purchase made while overdrawn starts its lot with what is left after the overdraft. A new table holding driver data must be added to the admin driver-delete block.
+Open with the client/CA: GST invoices to drivers (not built), whether Ocar has Section 9(5) exposure on ride fares, and the GST treatment of lapsed credit.
+
 ### PayU collections
 Collections confirm only via `settlePayuTxn` behind `handlePayuNotification` (payments.service.ts), fed by `POST /payments/payu/return`
 (browser) and `POST /payments/webhook/payu`: response hash → `verify_payment` (`unmappedstatus == 'captured'`,

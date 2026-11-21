@@ -51,9 +51,17 @@ export async function confirmPayment(txnId: string): Promise<ConfirmResult> {
 export type PackageTier = {
   id: string
   label?: string
+  /** The plan price before GST. */
   price: string
+  /** The ride value the driver gets. */
   threshold_value: string
   is_active?: boolean
+  /** GST added on top of the price at purchase, and what is actually charged (the server works these out). */
+  gst_percent?: number
+  gst_amount?: string
+  total_amount?: string
+  /** How long a purchase lasts. */
+  validity_days?: number
 }
 
 export async function fetchPackageTiers(): Promise<PackageTier[]> {
@@ -61,7 +69,15 @@ export async function fetchPackageTiers(): Promise<PackageTier[]> {
   return res.data as PackageTier[]
 }
 
-export async function fetchPackageWallet(): Promise<{ balance: string; is_frozen: boolean }> {
+export type PackageWallet = {
+  balance: string
+  is_frozen: boolean
+  /** Each purchase's remaining ride value and when it expires, soonest first. */
+  lots?: Array<{ remaining: string; expires_at: string }>
+  next_expiry?: string | null
+}
+
+export async function fetchPackageWallet(): Promise<PackageWallet> {
   const res = await api.get('/api/v1/payments/packages/wallet')
-  return res.data as { balance: string; is_frozen: boolean }
+  return res.data as PackageWallet
 }

@@ -108,17 +108,16 @@ router.post('/wallet/driver/topup/verify', authenticate(), requireDriver(), asyn
 })
 
 // Driver: list active package tiers
-router.get('/packages/tiers', authenticate(), requireDriver(), async (_req, res, next) => {
+router.get('/packages/tiers', authenticate(), requireDriver(), async (req, res, next) => {
   try {
-    res.json(await packagesRepo.listActiveTiers())
+    res.json(await packagesService.listTiersForDriver(req.driver!.id))
   } catch (err) { next(err) }
 })
 
 // Driver: get own package wallet
 router.get('/packages/wallet', authenticate(), requireDriver(), async (req, res, next) => {
   try {
-    const wallet = await packagesRepo.getPackageWallet(req.driver!.id)
-    res.json(wallet ?? { balance: '0.00', is_frozen: false })
+    res.json(await packagesService.getWalletView(req.driver!.id))
   } catch (err) { next(err) }
 })
 

@@ -16,6 +16,8 @@ import { notificationsQueue } from '@/jobs/queues'
 import { recordAuditLog } from '@/lib/audit-log'
 import { logger } from '@/lib/logger'
 import { withTripWindow } from '@/lib/trip-window'
+import { packagePricing } from '@/modules/packages/package-money'
+import { getPackageGstPercent } from '@/modules/packages/packages.service'
 import { hasAllRequiredDocsApproved, findDriverById } from '@/modules/drivers/drivers.repository'
 
 export function docLabel(docType: string): string {
@@ -956,20 +958,29 @@ export async function deleteAdminCityBoundary(
 
 // ─── Package tiers / driver package wallet ────────────────────────────────────
 
+/** Each plan with the GST that is added on top at purchase and the total the driver is charged. */
 export async function listPackageTiers() {
-  return repo.listPackageTiers()
+  const [tiers, gstPercent] = await Promise.all([repo.listPackageTiers(), getPackageGstPercent()])
+  return tiers.map((t) => {
+    const p = packagePricing(parseFloat(t.price), gstPercent)
+    return { ...t, gst_percent: p.gstPercent, gst_amount: p.gstAmount.toFixed(2), total_amount: p.total.toFixed(2) }
+  })
 }
 
-export async function createPackageTier(data: { label: string; price: number; thresholdValue: number; createdBy: bigint }) {
+const validValidity = (n: number) => Number.isInteger(n) && n >= 1 && n <= 3650
+
+export async function createPackageTier(data: { label: string; price: number; thresholdValue: number; vehicleGroup: 'cab' | 'auto'; validityDays: number; createdBy: bigint }) {
   if (!data.label) throw createHttpError(AppErrors.VALIDATION_ERROR)
   if (isNaN(data.price) || data.price <= 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
   if (isNaN(data.thresholdValue) || data.thresholdValue <= 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (!validValidity(data.validityDays)) throw createHttpError(AppErrors.VALIDATION_ERROR)
   return repo.createPackageTier(data)
 }
 
-export async function updatePackageTier(id: bigint, data: { label?: string; price?: number; thresholdValue?: number; isActive?: boolean }) {
+export async function updatePackageTier(id: bigint, data: { label?: string; price?: number; thresholdValue?: number; isActive?: boolean; vehicleGroup?: 'cab' | 'auto'; validityDays?: number }) {
   if (data.price !== undefined && (isNaN(data.price) || data.price <= 0)) throw createHttpError(AppErrors.VALIDATION_ERROR)
   if (data.thresholdValue !== undefined && (isNaN(data.thresholdValue) || data.thresholdValue <= 0)) throw createHttpError(AppErrors.VALIDATION_ERROR)
+  if (data.validityDays !== undefined && !validValidity(data.validityDays)) throw createHttpError(AppErrors.VALIDATION_ERROR)
   const updated = await repo.updatePackageTier(id, data)
   if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
   return updated
