@@ -86,7 +86,7 @@ describe('sameShape', () => {
 describe('boundaryWarnings', () => {
   const base: CityBoundaryAnalysis = {
     isValid: true, invalidReason: null, vertexCount: 5, areaKm2: 12,
-    bboxKm: { widthKm: 3, heightKm: 4 }, centroidInside: true, overlaps: [],
+    bboxKm: { widthKm: 3, heightKm: 4 }, centroidInside: true, overlaps: [], change: null,
   }
 
   it('is empty for null, invalid, and clean analyses', () => {

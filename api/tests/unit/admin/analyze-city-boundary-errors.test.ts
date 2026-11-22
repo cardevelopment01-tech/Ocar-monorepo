@@ -50,4 +50,31 @@ describe('analyzeCityBoundary error handling', () => {
     } as never)
     await expect(analyzeCityBoundary(BigInt(7), POLY)).resolves.toMatchObject({ isValid: true, vertexCount: 4, areaKm2: 12.5 })
   })
+
+  it('adds the change versus the saved boundary, with pickup counts from a second query', async () => {
+    const base = { is_valid: true, invalid_reason: null, vertex_count: 4, area_km2: 12.5, bbox_width_km: 3, bbox_height_km: 4, centroid_inside: true, overlaps: [] }
+    vi.mocked(pool.query)
+      .mockResolvedValueOnce({ rows: [{ ...base, added_km2: 2.5, removed_km2: 0.4 }] } as never)
+      .mockResolvedValueOnce({ rows: [{ pickups_added: 9, pickups_removed: 2 }] } as never)
+    const r = await analyzeCityBoundary(BigInt(7), POLY)
+    expect(r.change).toEqual({ addedKm2: 2.5, removedKm2: 0.4, pickupsAdded: 9, pickupsRemoved: 2, windowDays: 30 })
+    expect(vi.mocked(pool.query)).toHaveBeenCalledTimes(2)
+  })
+
+  it('still returns the area change when the pickup count fails, and skips the count when nothing moved', async () => {
+    const base = { is_valid: true, invalid_reason: null, vertex_count: 4, area_km2: 12.5, bbox_width_km: 3, bbox_height_km: 4, centroid_inside: true, overlaps: [] }
+    vi.mocked(pool.query)
+      .mockResolvedValueOnce({ rows: [{ ...base, added_km2: 1, removed_km2: 0 }] } as never)
+      .mockRejectedValueOnce(new Error('statement timeout'))
+    expect((await analyzeCityBoundary(BigInt(7), POLY)).change).toMatchObject({ addedKm2: 1, pickupsAdded: null, pickupsRemoved: null })
+    vi.mocked(pool.query).mockClear()
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: [{ ...base, added_km2: 0, removed_km2: 0 }] } as never)
+    expect((await analyzeCityBoundary(BigInt(7), POLY)).change).toMatchObject({ pickupsAdded: null })
+    expect(vi.mocked(pool.query)).toHaveBeenCalledTimes(1)
+  })
+
+  it('has no change when the city has no saved boundary', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ is_valid: true, invalid_reason: null, vertex_count: 4, area_km2: 1, bbox_width_km: 1, bbox_height_km: 1, centroid_inside: true, overlaps: [], added_km2: null, removed_km2: null }] } as never)
+    expect((await analyzeCityBoundary(BigInt(7), POLY)).change).toBeNull()
+  })
 })

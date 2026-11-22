@@ -16,6 +16,7 @@ export interface CityBoundaryAnalysis {
   bboxKm: { widthKm: number; heightKm: number }
   centroidInside: boolean | null
   overlaps: Array<{ cityId: number; name: string; pctOfNew: number }>
+  change: { addedKm2: number; removedKm2: number; pickupsAdded: number | null; pickupsRemoved: number | null; windowDays: number } | null
 }
 
 export interface CityBoundaryWrite {
