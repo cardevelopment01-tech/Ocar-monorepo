@@ -21,7 +21,7 @@ describe('SMS bypass visibility', () => {
   it('in bypass mode sendSms resolves without calling the vendor and never logs the message body (it carries OTPs)', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
-    await expect(sendSms('+919999999999', 'Your OTP is 123456')).resolves.toBeUndefined()
+    await expect(sendSms('+919999999999', 'Your OTP is 123456')).resolves.toEqual({ skipped: 'no-credentials' })
     expect(fetchSpy).not.toHaveBeenCalled()
     expect(JSON.stringify(log.mock.calls)).not.toContain('123456')
     log.mockRestore()

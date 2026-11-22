@@ -342,6 +342,20 @@ Prod **metrics** are not archived to S3 — they live in Grafana Cloud only
   kernel maximum, which these servers report as effectively unlimited. "Active series
   usage" warns at 70% (early) and 85% of the 15,000 cap.
 
+## A driver or rider says "I never got the OTP"
+
+SMS goes out through BulkSMSPlans (`api/src/providers/sms.provider.ts`). A send is "sent" in our data as soon as the vendor accepts it, so
+a message the vendor accepted but an operator or DLT filter dropped still looks sent. What we keep, per send:
+
+- `notification_logs.provider_response` holds the vendor's reply (code, message and any message id), with anything that echoes the SMS text removed so an OTP is never stored.
+  `failure_reason` holds the vendor's message or "SMS provider returned a non-JSON reply (HTTP n)" for a failed send.
+- One log line per send: `event: "sms.sent"` (accepted) or `"sms.rejected"`, with `phone_tail` (last 4 digits), `template_id`, `http_status`, and the vendor's fields under `provider`.
+  Query them in Athena (`app_logs`, filter `year/month/day` first): `json_extract_scalar(line,'$.event') IN ('sms.sent','sms.rejected')`.
+
+To tell "we never sent it" from "sent, not delivered": find the request (`auth.otp.request`, `phone_tail`), then the `sms.sent` line a moment later, then take the vendor's
+message id from it to the BulkSMSPlans delivery report. No `sms.sent` line and a `notifications job failed` or `sms.rejected` line means we failed (balance, bad template, vendor down).
+`sms.sent` present and nothing on the phone means delivery: check the vendor's delivery report, the DLT template (`BULKSMSPLANS_OTP_TEMPLATE_ID`) and sender ID approval, balance, and the phone's operator.
+
 ## Reports: digest did not arrive / Reports slow
 
 Alert: **Admin daily digest not sent** (Grafana, `admin_digest_runs_total{result="sent"}`). The digest runs
