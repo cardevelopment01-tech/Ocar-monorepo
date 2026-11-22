@@ -380,7 +380,34 @@ export interface AdminRideMessage {
   createdAt: string
 }
 
+export interface AdminRideOffer {
+  id: string
+  driver_id: string
+  driver_name: string | null
+  driver_phone: string
+  status: 'offered' | 'accepted' | 'declined' | 'expired' | 'cancelled'
+  broadcast_round: number
+  offered_at: string
+  acked_at: string | null
+  responded_at: string | null
+  expires_at: string
+  /** Straight-line km from where the driver was when offered to the pickup; null when unknown. */
+  distance_km: number | null
+}
+
+export interface AdminRideTrailPoint { lat: number; lng: number; recorded_at: string }
+
 export type AdminRideDetail = AdminRideItem & AdminRideFareBreakdown & {
+  user_id: string
+  driver_id: string | null
+  category_name: string | null
+  origin_city: string | null
+  destination_city: string | null
+  origin_lat: number | null
+  origin_lng: number | null
+  destination_lat: number | null
+  destination_lng: number | null
+  offers: AdminRideOffer[]
   stops: AdminRideStop[]
   sos_triggered: boolean
   sos_triggered_at: string | null
@@ -420,6 +447,8 @@ export interface AdminRideStats {
   active_count: string
   cancelled_today_count: string
   cash_flagged_count: string
+  /** Flagged-stuck trips + recent cash mismatches + no-driver rides from the last 24 h. */
+  needs_attention_count: string
 }
 
 
@@ -441,7 +470,7 @@ export const adminRideApi = {
     const res = await api.get('/api/v1/admin/rides/stats')
     return res.data as AdminRideStats
   },
-  list: async (params: { status?: string; ride_type?: string; search?: string; cashDiscrepancy?: boolean; dateFrom?: string; dateTo?: string; cityId?: number; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
+  list: async (params: { status?: string; ride_type?: string; search?: string; cashDiscrepancy?: boolean; attention?: boolean; dateFrom?: string; dateTo?: string; cityId?: number; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
     const res = await api.get('/api/v1/admin/rides', { params })
     return res.data as AdminRidesResponse
   },
@@ -453,7 +482,12 @@ export const adminRideApi = {
     const res = await api.get(`/api/v1/admin/rides/${rideId}`)
     return res.data as AdminRideDetail
   },
-  forceResolve: async (rideId: string, action: 'complete' | 'cancel', note?: string): Promise<void> => {
+  trail: async (rideId: string): Promise<AdminRideTrailPoint[]> => {
+    const res = await api.get(`/api/v1/admin/rides/${rideId}/trail`)
+    return (res.data as { points: AdminRideTrailPoint[] }).points
+  },
+  /** note is required by the API (10 to 500 characters): it goes into the ride's status history. */
+  forceResolve: async (rideId: string, action: 'complete' | 'cancel', note: string): Promise<void> => {
     await api.post(`/api/v1/admin/rides/${rideId}/force-resolve`, { action, note })
   },
   getAssignCandidates: async (rideId: string): Promise<AssignCandidate[]> => {
