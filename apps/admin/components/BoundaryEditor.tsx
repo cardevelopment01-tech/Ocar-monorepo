@@ -46,7 +46,7 @@ function addBoundaryFeature(draw: TerraDraw, geojson: CityBoundaryGeoJson): stri
 
 // ── Map layer: Terra Draw (editable) + read-only overlays of other cities ──
 
-function BoundaryMapLayer({
+export function BoundaryMapLayer({
   cityId,
   initialBoundary,
   overlays,

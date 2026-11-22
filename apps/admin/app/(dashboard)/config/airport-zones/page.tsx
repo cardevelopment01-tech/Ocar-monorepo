@@ -5,11 +5,20 @@ import * as Dialog from '@radix-ui/react-dialog'
 import Toggle from '@/components/ui/Toggle'
 import { airportApi, type AirportZone, type AirportChange } from '@/lib/airport-api'
 import { vehicleCategoryApi, type VehicleCategory } from '@/lib/vehicle-api'
-import { parsePastedPolygon } from '@/lib/boundary-utils'
+import PolygonPicker from '@/components/PolygonPicker'
+import type { CityBoundaryGeoJson } from '@/lib/boundary-api'
 import { extractErrorMessage } from '@/lib/http-errors'
 import { inputCls, labelCls } from '../rate-cards/shared'
 
 const rupees = (n: number) => `₹${Number.isInteger(n) ? n : n.toFixed(2)}`
+
+// Where the map opens: the middle of an existing zone, otherwise Bhubaneswar (the first airport).
+const DEFAULT_CENTER = { lat: 20.2444, lng: 85.8178 }
+function centerOf(z: AirportZone | null): { lat: number; lng: number } {
+  const ring = z?.boundary.coordinates[0]
+  if (!ring || ring.length === 0) return DEFAULT_CENTER
+  return { lng: ring.reduce((s, p) => s + p[0]!, 0) / ring.length, lat: ring.reduce((s, p) => s + p[1]!, 0) / ring.length }
+}
 
 function ZoneDialog({ zone, categories, onSaved, trigger }: {
   zone: AirportZone | null; categories: VehicleCategory[]; onSaved: () => void; trigger: React.ReactNode
@@ -18,14 +27,14 @@ function ZoneDialog({ zone, categories, onSaved, trigger }: {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [name, setName] = useState('')
-  const [shape, setShape] = useState('')
+  const [polygon, setPolygon] = useState<CityBoundaryGeoJson | null>(null)
   const [amounts, setAmounts] = useState<Record<string, string>>({})
   const [reason, setReason] = useState('')
 
   useEffect(() => {
     if (!open) return
     setName(zone?.name ?? '')
-    setShape(zone ? JSON.stringify(zone.boundary) : '')
+    setPolygon(zone ? (zone.boundary as CityBoundaryGeoJson) : null)
     setAmounts(Object.fromEntries(categories.map(c => [c.id, String(zone?.rates.find(r => String(r.category_id) === c.id)?.amount ?? '')])))
     setReason(''); setError('')
   }, [open, zone, categories])
@@ -33,8 +42,7 @@ function ZoneDialog({ zone, categories, onSaved, trigger }: {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    const parsed = parsePastedPolygon(shape)
-    if (!parsed.ok) { setError(parsed.error.replace('City boundaries are', 'A zone is')); return }
+    if (!polygon) { setError('Draw the airport outline on the map first: click points around it, then click the first point to finish.'); return }
     const rates: Array<{ category_id: number; amount: number }> = []
     for (const c of categories) {
       const raw = (amounts[c.id] ?? '').trim()
@@ -45,8 +53,8 @@ function ZoneDialog({ zone, categories, onSaved, trigger }: {
     }
     setLoading(true)
     try {
-      if (zone) await airportApi.update(zone.id, { name, boundary: parsed.polygon as AirportZone['boundary'], rates, reason })
-      else await airportApi.create({ name, boundary: parsed.polygon as AirportZone['boundary'], rates, reason })
+      if (zone) await airportApi.update(zone.id, { name, boundary: polygon as AirportZone['boundary'], rates, reason })
+      else await airportApi.create({ name, boundary: polygon as AirportZone['boundary'], rates, reason })
       setOpen(false); onSaved()
     } catch (err: unknown) {
       setError(extractErrorMessage(err, 'Could not save the zone.'))
@@ -58,7 +66,7 @@ function ZoneDialog({ zone, categories, onSaved, trigger }: {
       <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[60] bg-text-primary/40 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[520px] max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-hover p-6 z-[60]">
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[720px] max-h-[90vh] overflow-y-auto bg-surface rounded-2xl shadow-hover p-6 z-[60]">
           <Dialog.Title className="text-lg font-bold text-text-primary mb-1">{zone ? `Edit ${zone.name}` : 'Add an airport zone'}</Dialog.Title>
           <Dialog.Description className="text-xs text-text-muted mb-5">
             A trip that enters this zone (or starts or ends in it) is charged the toll below, once per ride. Rides already booked keep the tolls they were booked with.
@@ -69,10 +77,9 @@ function ZoneDialog({ zone, categories, onSaved, trigger }: {
               <input required value={name} onChange={e => setName(e.target.value)} className={inputCls} placeholder="Biju Patnaik Airport" maxLength={80} />
             </div>
             <div>
-              <label className={labelCls}>Zone outline (GeoJSON polygon) *</label>
-              <textarea required value={shape} onChange={e => setShape(e.target.value)} rows={5}
-                className={`${inputCls} font-mono text-xs`} placeholder='{"type":"Polygon","coordinates":[[[85.808,20.235],[85.828,20.235],[85.828,20.254],[85.808,20.254],[85.808,20.235]]]}' />
-              <p className="text-xs text-text-muted mt-1">Draw the airport on geojson.io and paste the polygon. Longitude first. It is checked for a valid shape and a sensible size (at most 100 km²) when you save.</p>
+              <label className={labelCls}>Zone outline *</label>
+              <PolygonPicker initial={zone ? (zone.boundary as CityBoundaryGeoJson) : null} center={centerOf(zone)} onChange={setPolygon} />
+              <p className="text-xs text-text-muted mt-1">Trace the airport grounds, including the terminal road if it should count. The shape is checked again when you save.</p>
             </div>
             <div>
               <label className={labelCls}>Toll per vehicle type (₹)</label>

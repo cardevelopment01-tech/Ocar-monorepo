@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parsePastedPolygon, sameShape, boundaryWarnings } from '../boundary-utils'
+import { parsePastedPolygon, sameShape, boundaryWarnings, polygonAreaKm2 } from '../boundary-utils'
 import type { CityBoundaryAnalysis, CityBoundaryGeoJson } from '../boundary-api'
 
 const SQUARE: CityBoundaryGeoJson = {
@@ -108,5 +108,26 @@ describe('boundaryWarnings', () => {
       'Overlaps Cuttack (40.5%)',
       "This city's own centroid falls outside the shape",
     ])
+  })
+})
+
+describe('polygonAreaKm2', () => {
+  const box = (lng: number, lat: number, dLng: number, dLat: number): CityBoundaryGeoJson => ({
+    type: 'Polygon', coordinates: [[[lng, lat], [lng + dLng, lat], [lng + dLng, lat + dLat], [lng, lat + dLat], [lng, lat]]],
+  })
+  it('measures a roughly 2 km x 2 km box near Bhubaneswar as about 4 km², whichever way it was drawn', () => {
+    // 0.018 deg of latitude is about 2.0 km; 0.019 deg of longitude at 20.2N is about 2.0 km.
+    const a = polygonAreaKm2(box(85.808, 20.235, 0.019, 0.018))
+    expect(a).toBeGreaterThan(3.8)
+    expect(a).toBeLessThan(4.2)
+    const reversed: CityBoundaryGeoJson = { type: 'Polygon', coordinates: [[...box(85.808, 20.235, 0.019, 0.018).coordinates[0]!].reverse()] }
+    expect(polygonAreaKm2(reversed)).toBeCloseTo(a, 6)
+  })
+  it('is 0 for nothing or a ring too short to be a shape', () => {
+    expect(polygonAreaKm2(null)).toBe(0)
+    expect(polygonAreaKm2({ type: 'Polygon', coordinates: [[[85, 20], [85.1, 20], [85, 20]]] })).toBe(0)
+  })
+  it('flags a city-sized shape as far over the 100 km² zone limit', () => {
+    expect(polygonAreaKm2(box(85.7, 20.2, 0.15, 0.15))).toBeGreaterThan(100)
   })
 })
