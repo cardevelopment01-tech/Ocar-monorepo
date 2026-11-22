@@ -3,9 +3,12 @@ import type { AdminInviteRecord, AdminInviteListItem, CreatedAdminFromInvite } f
 
 // Column list used for anything that leaves this module — token_hash is never
 // selected outside the redemption lookup below.
+// status: a pending invite past its expiry is reported as 'expired' (the row itself is only rewritten if someone tries to use it), so the list,
+// the duplicate check and the accept page all agree.
 const LIST_COLUMNS = `
-  id, email, role, invited_by, status, expires_at,
-  accepted_at, accepted_admin_id, created_at, updated_at
+  id, email, role, invited_by,
+  CASE WHEN status = 'pending' AND expires_at <= now() THEN 'expired' ELSE status END AS status,
+  expires_at, accepted_at, accepted_admin_id, created_at, updated_at
 `
 
 export async function createInvite(params: {
@@ -24,9 +27,15 @@ export async function createInvite(params: {
   return rows[0]!
 }
 
+// Any admin row, including a removed one: admins.email is unique across all of them, so activating would fail either way.
+export async function adminEmailExists(email: string): Promise<boolean> {
+  const rows = await query<{ one: number }>(`SELECT 1 AS one FROM admins WHERE email = $1 LIMIT 1`, [email])
+  return rows.length > 0
+}
+
 export async function findPendingInviteByEmail(email: string): Promise<AdminInviteListItem | null> {
   const rows = await query<AdminInviteListItem>(
-    `SELECT ${LIST_COLUMNS} FROM admin_invites WHERE email = $1 AND status = 'pending' LIMIT 1`,
+    `SELECT ${LIST_COLUMNS} FROM admin_invites WHERE email = $1 AND status = 'pending' AND expires_at > now() LIMIT 1`,
     [email]
   )
   return rows[0] ?? null
@@ -73,7 +82,7 @@ export async function revokePendingInvite(id: bigint): Promise<AdminInviteListIt
 export async function redeemInvite(params: {
   tokenHash: string
   passwordHash: string
-}): Promise<CreatedAdminFromInvite | null> {
+}): Promise<{ admin: CreatedAdminFromInvite; inviteId: string; invitedBy: string } | null> {
   return withTransaction(async client => {
     const existing = await client.query<AdminInviteRecord>(
       `SELECT * FROM admin_invites WHERE token_hash = $1 LIMIT 1 FOR UPDATE`,
@@ -103,6 +112,6 @@ export async function redeemInvite(params: {
       [invite.id, admin.id]
     )
 
-    return admin
+    return { admin, inviteId: invite.id, invitedBy: invite.invited_by }
   })
 }

@@ -693,6 +693,16 @@ Setup (by hand, once per environment; not in Terraform, because the app's S3 set
 
 Each upload gets a new random name and is served with a one-year cache header, so a picture never changes after it is stored. Pictures are never deleted by the app.
 
+## Admin accounts: invites, passwords, audit
+
+Admin -> **Admins** (super admin only). A super admin invites by email and role; the invitee gets a link (valid **48 hours**, usable **once**) and sets a password on `/accept-invite`.
+
+- **Expired invites.** An unanswered invite is shown as **Expired** once its 48 hours pass (the row itself still says `pending` until someone tries the link; every list, the duplicate check and the accept page treat it as expired). The person can simply be invited again, and the row has an "Invite again" button that pre-fills the form. Before this change an expired invite kept blocking new ones until someone revoked it.
+- **Already an admin.** Inviting an address that already has an admin account (any letter case, including a removed one: `admins.email` is unique across all of them) is refused up front with "An admin account with this email already exists". Addresses are trimmed and lower-cased.
+- **Password rule.** At least **12** characters (64 at most), no character-mix rules, no expiry (NIST SP 800-63B-4). A new password is refused if it contains `ocar` or the first part of the person's email (4+ characters), or if it appears in a known data breach. The breach check uses Have I Been Pwned's range API: only the first 5 characters of the password's SHA-1 leave the server, with padding on, and a timeout or outage **lets the password through** (it can never stop an activation). Switch it off with `PASSWORD_BREACH_CHECK=off` on a network with no outbound access. The check only runs for someone holding a live invite, so the public endpoint cannot be used to test passwords. Existing admins are not affected: the login form keeps its old 8-character floor, so nobody is locked out.
+- **Audit log** (Admin -> Audit Log, super admin): `admins.invite_create` (who invited which address as which role), `admins.invite_revoke`, `admins.invite_accept` (the new admin is the actor; records who invited them) and the existing `admins.status_change`. Tokens are never written to the audit log, the database (only a SHA-256 hash) or the server logs.
+- **Still open: mandatory 2FA is switched off.** `api/src/middleware/auth.middleware.ts` has `const mustEnrollTotp = false && ...` (commit 3ce664e4, "temp: hard-disable mandatory TOTP enrollment for dev (revert before ship)"), so super and finance admins can work with a password alone. Re-enable it once the Security page's setup flow has been tested with real accounts, otherwise every such admin is locked out until they enrol.
+
 ## Driver identity verification (selfie + number plate)
 
 Design: `docs/superpowers/specs/2026-11-02-driver-identity-verification-design.md`. Goal: stop one account being driven by

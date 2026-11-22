@@ -2,9 +2,12 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react'
+import { Eye, EyeOff, ArrowRight, AlertCircle, Check } from 'lucide-react'
 import { adminInvitesApi } from '@/lib/admin-invites-api'
 import { cn } from '@/lib/utils'
+
+// Length, not character-mix rules (NIST 800-63B-4). Keep in step with ADMIN_PASSWORD_MIN_LENGTH in api/src/lib/password-policy.ts.
+const MIN_PASSWORD_LENGTH = 12
 
 const INVALID_INVITE_MESSAGE = 'This invite link is invalid, expired, or already used. Ask a super admin to send a new one.'
 
@@ -45,8 +48,8 @@ function AcceptInviteForm() {
     e.preventDefault()
     setError(null)
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.')
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
       return
     }
     if (password !== confirmPassword) {
@@ -111,34 +114,44 @@ function AcceptInviteForm() {
           ) : (
             <form onSubmit={e => void handleSubmit(e)} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-2">
+                <label htmlFor="new-password" className="block text-xs font-semibold text-text-secondary mb-2">
                   New Password
                 </label>
                 <div className="relative">
                   <input
+                    id="new-password"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    placeholder="At least 8 characters"
+                    placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
                     className="w-full px-4 py-3 pr-11 rounded-xl border border-border bg-white text-text-primary placeholder:text-text-muted/60 text-sm outline-none focus:border-primary transition-colors"
                     autoComplete="new-password"
                     autoFocus
                   />
                   <button
                     type="button"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                     onClick={() => setShowPassword(p => !p)}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors cursor-pointer"
                   >
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
+                <p className={cn('mt-2 flex items-center gap-1.5 text-xs', password.length >= MIN_PASSWORD_LENGTH ? 'text-success' : 'text-text-muted')}>
+                  {password.length >= MIN_PASSWORD_LENGTH ? <Check size={12} aria-hidden /> : <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-current opacity-50" />}
+                  {MIN_PASSWORD_LENGTH} or more characters
+                </p>
+                <p className="mt-1 text-xs text-text-muted">
+                  A few random words work well. Avoid &quot;ocar&quot;, your email, and passwords you use elsewhere. We also check it against known data breaches.
+                </p>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-2">
+                <label htmlFor="confirm-password" className="block text-xs font-semibold text-text-secondary mb-2">
                   Confirm Password
                 </label>
                 <input
+                  id="confirm-password"
                   type={showPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}

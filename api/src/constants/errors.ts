@@ -175,6 +175,11 @@ export const AppErrors = {
     message: 'A pending invite already exists for this email',
     httpStatus: 409,
   },
+  ADMIN_ALREADY_EXISTS: {
+    code: 'ADMIN_ALREADY_EXISTS',
+    message: 'An admin account with this email already exists',
+    httpStatus: 409,
+  },
   ADMIN_INVITE_INVALID: {
     code: 'ADMIN_INVITE_INVALID',
     message: 'This invite link is invalid, expired, or already used',

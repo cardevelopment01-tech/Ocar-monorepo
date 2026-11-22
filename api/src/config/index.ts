@@ -98,6 +98,9 @@ const envSchema = z.object({
   // a separate bucket whose broadcasts/ prefix is publicly readable (see docs/OPS_RUNBOOK.md, "Broadcast pictures"). Both empty = picture
   // upload is switched off (the admin can still paste a link).
   BROADCAST_IMAGE_BUCKET: z.string().default(''),
+  // 'on' = a new admin password is also checked against known data breaches (Have I Been Pwned range API; only a 5-character hash prefix
+  // leaves the server, and a network failure lets the password through). 'off' for tests and for networks with no outbound access.
+  PASSWORD_BREACH_CHECK: z.enum(['on', 'off']).default('on'),
   // Public base URL of that bucket, no trailing slash (e.g. https://ocar-prd-public.s3.ap-south-1.amazonaws.com). Empty = the bucket's own S3 URL.
   BROADCAST_IMAGE_BASE_URL: z.string().default(''),
   // AWS SDK v3 does not auto-detect region from EC2 instance metadata the way
