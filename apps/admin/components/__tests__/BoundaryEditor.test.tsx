@@ -57,16 +57,22 @@ const fakeMap = vi.hoisted(() => ({
 vi.mock('@vis.gl/react-google-maps', () => ({
   Map: ({ children }: { children: React.ReactNode }) => <div data-testid="map">{children}</div>,
   useMap: () => fakeMap,
+  useMapsLibrary: () => null,
 }))
 
 const infoWindows = vi.hoisted(() => [] as Array<{ content: unknown }>)
 const polygons = vi.hoisted(() => [] as Array<Record<string, unknown>>)
+const polylines = vi.hoisted(() => [] as Array<Record<string, unknown>>)
 vi.stubGlobal('google', {
   maps: {
     Polygon: class {
       constructor(opts: Record<string, unknown>) { polygons.push(opts) }
       setMap() {}
       addListener() {}
+    },
+    Polyline: class {
+      constructor(opts: Record<string, unknown>) { polylines.push(opts) }
+      setMap() {}
     },
     InfoWindow: class {
       constructor(opts: { content: unknown }) { infoWindows.push(opts) }
@@ -99,7 +105,7 @@ const EDITED: [number, number][] = [[85.8, 19.8], [85.95, 19.8], [85.95, 19.95],
 
 const analysis = (over: Partial<CityBoundaryAnalysis> = {}): CityBoundaryAnalysis => ({
   isValid: true, invalidReason: null, vertexCount: 4, areaKm2: 42.5, bboxKm: { widthKm: 10, heightKm: 10 },
-  centroidInside: true, overlaps: [], ...over,
+  centroidInside: true, overlaps: [], change: null, ...over,
 })
 
 function conflictError(): AxiosError {
@@ -143,6 +149,7 @@ beforeEach(() => {
   td.rejectFeatures = false
   infoWindows.length = 0
   polygons.length = 0
+  polylines.length = 0
   mapDom.projection = true
   mapDom.listeners.length = 0
   mapDom.div = document.createElement('div')
@@ -264,6 +271,45 @@ describe('BoundaryEditor', () => {
       expect(await screen.findByText('Valid')).toBeInTheDocument()
       expect(screen.getByText('42.5 km²')).toBeInTheDocument()
       expect(saveButton()).toBeEnabled()
+    })
+
+    it('shows what saving would change (area and recent pickups) once the shape differs from the saved one', async () => {
+      setup(OWN)
+      boundaryApi.preview.mockResolvedValue(analysis({ change: { addedKm2: 12.34, removedKm2: 0.5, pickupsAdded: 7, pickupsRemoved: 1, windowDays: 30 } }))
+      await openEditor()
+      await drawShape(EDITED)
+      const box = await screen.findByTestId('boundary-impact')
+      expect(box).toHaveTextContent('+12.3 km²')
+      expect(box).toHaveTextContent('−0.5 km²')
+      expect(box).toHaveTextContent('7 ride requests started in the added area and 1 in the removed area')
+      expect(box).toHaveTextContent('no longer be routed as in-city')
+    })
+
+    it('hides the pickup sentence when the count could not be run, and the whole block when nothing moved', async () => {
+      setup(OWN)
+      boundaryApi.preview.mockResolvedValue(analysis({ change: { addedKm2: 2, removedKm2: 0, pickupsAdded: null, pickupsRemoved: null, windowDays: 30 } }))
+      await openEditor()
+      await drawShape(EDITED)
+      const box = await screen.findByTestId('boundary-impact')
+      expect(box).not.toHaveTextContent('ride request')
+      boundaryApi.preview.mockResolvedValue(analysis({ change: { addedKm2: 0, removedKm2: 0, pickupsAdded: null, pickupsRemoved: null, windowDays: 30 } }))
+      await drawShape([[85.8, 19.8], [85.96, 19.8], [85.96, 19.95], [85.8, 19.8]])
+      await waitFor(() => expect(screen.queryByTestId('boundary-impact')).toBeNull())
+    })
+
+    it('draws the saved boundary as a dashed outline and lets the admin turn it off', async () => {
+      setup(OWN)
+      const user = await openEditor()
+      await waitFor(() => expect(polylines.length).toBe(1))
+      await user.click(screen.getByRole('checkbox', { name: /Show saved boundary/ }))
+      expect(polylines.length).toBe(1) // removing the line does not create another
+    })
+
+    it('has no saved outline or toggle for a city without a boundary', async () => {
+      setup(null)
+      await openEditor()
+      expect(polylines.length).toBe(0)
+      expect(screen.queryByRole('checkbox', { name: /Show saved boundary/ })).toBeNull()
     })
 
     it('blocks Save and shows the reason for an invalid shape', async () => {

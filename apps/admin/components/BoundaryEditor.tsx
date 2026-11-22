@@ -11,6 +11,9 @@ import { cityApi, type AdminCity } from '@/lib/city-api'
 import { extractErrorMessage, extractErrorCode } from '@/lib/http-errors'
 import { parsePastedPolygon, sameShape, boundaryWarnings } from '@/lib/boundary-utils'
 import { saveDraft, loadDraft, clearDraft } from '@/lib/boundary-draft'
+import MapPlaceSearch from '@/components/MapPlaceSearch'
+
+const MAP_ID = 'city-boundary-map'
 
 // BoundaryEditor: admin "Edit boundary" dialog. Implements the 9 design
 // decisions from docs/superpowers/specs/2026-09-25-admin-city-boundary-
@@ -53,6 +56,7 @@ export function BoundaryMapLayer({
   onChange,
   onError,
   loadFeatureRef,
+  savedOutline = null,
 }: {
   cityId: number
   initialBoundary: CityBoundaryGeoJson | null
@@ -61,6 +65,8 @@ export function BoundaryMapLayer({
   onError: (message: string) => void
   // Returns an error message, or null on success.
   loadFeatureRef: MutableRefObject<((geojson: CityBoundaryGeoJson) => string | null) | null>
+  // The boundary currently stored, drawn as a dashed line under the edit so the admin can see what moved. null = nothing to show.
+  savedOutline?: CityBoundaryGeoJson | null
 }) {
   const map = useMap()
   const drawRef = useRef<TerraDraw | null>(null)
@@ -224,17 +230,62 @@ export function BoundaryMapLayer({
     return () => { overlayPolysRef.current.forEach(p => p.setMap(null)) }
   }, [map, overlays])
 
+  // Dashed amber line = the saved shape. A transparent polyline carrying repeated dash symbols is Google's way to draw a dashed stroke.
+  useEffect(() => {
+    if (!map || typeof google === 'undefined' || !savedOutline) return
+    const line = new google.maps.Polyline({
+      path: savedOutline.coordinates[0]!.map(([lng, lat]) => ({ lat, lng })),
+      strokeOpacity: 0, clickable: false, zIndex: 0,
+      icons: [{
+        icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#D97706', strokeWeight: 3, scale: 3 },
+        offset: '0', repeat: '14px',
+      }],
+    })
+    line.setMap(map)
+    return () => line.setMap(null)
+  }, [map, savedOutline])
+
   return null
 }
 
 // ── Status strip ────────────────────────────────────────────────────────────
 
+const km2 = (n: number) => (n < 0.1 ? '<0.1' : n.toFixed(1))
+
+// What saving would change for riders, in numbers: area gained/lost and recent pickups inside each.
+function ImpactBlock({ change }: { change: NonNullable<CityBoundaryAnalysis['change']> }) {
+  const { addedKm2, removedKm2, pickupsAdded, pickupsRemoved, windowDays } = change
+  if (addedKm2 < 0.01 && removedKm2 < 0.01) return null
+  return (
+    <div className="border-t border-border-light pt-3 space-y-1.5" data-testid="boundary-impact">
+      <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Effect of saving</span>
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <p className="text-text-muted text-xs">Added to city</p>
+          <p className="font-mono text-success">+{km2(addedKm2)} km²</p>
+        </div>
+        <div>
+          <p className="text-text-muted text-xs">Removed from city</p>
+          <p className="font-mono text-danger">−{km2(removedKm2)} km²</p>
+        </div>
+      </div>
+      {pickupsAdded !== null && pickupsRemoved !== null && (
+        <p className="text-xs text-text-secondary">
+          In the last {windowDays} days, {pickupsAdded} ride request{pickupsAdded === 1 ? '' : 's'} started in the added area and {pickupsRemoved} in the removed area.
+          {pickupsRemoved > 0 ? ' Pickups in the removed area would no longer be routed as in-city.' : ''}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function StatusStrip({
-  hasShape, analysis, previewing,
+  hasShape, analysis, previewing, shapeChanged,
 }: {
   hasShape: boolean
   analysis: CityBoundaryAnalysis | null
   previewing: boolean
+  shapeChanged: boolean
 }) {
   if (!hasShape) {
     return (
@@ -284,6 +335,7 @@ function StatusStrip({
           ))}
         </div>
       )}
+      {shapeChanged && analysis?.isValid && analysis.change && <ImpactBlock change={analysis.change} />}
     </div>
   )
 }
@@ -314,6 +366,7 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
   const [resumable, setResumable] = useState<{ polygon: CityBoundaryGeoJson; stale: boolean; savedAt: number } | null>(null)
   const [closeConfirm, setCloseConfirm] = useState(false)
   const [persistFailed, setPersistFailed] = useState(false)
+  const [showSaved, setShowSaved] = useState(true)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewSeqRef = useRef(0)
@@ -577,6 +630,7 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
               {/* Map — primary, ~70% width */}
               <div className="relative flex-1 md:basis-[70%] min-h-[300px]">
                 <GoogleMap
+                  id={MAP_ID}
                   defaultCenter={{ lat: city.centroid_lat, lng: city.centroid_lng }}
                   defaultZoom={11}
                   mapId={process.env.NEXT_PUBLIC_GOOGLE_MAPS_ID}
@@ -584,8 +638,16 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
                   disableDefaultUI
                   style={{ width: '100%', height: '100%' }}
                 >
-                  <BoundaryMapLayer key={`${city.id}:${updatedAt}`} cityId={city.id} initialBoundary={boundary} overlays={overlays} onChange={handleDrawChange} onError={setError} loadFeatureRef={loadFeatureRef} />
+                  <BoundaryMapLayer key={`${city.id}:${updatedAt}`} cityId={city.id} initialBoundary={boundary} overlays={overlays} onChange={handleDrawChange} onError={setError} loadFeatureRef={loadFeatureRef} savedOutline={showSaved ? boundary : null} />
                 </GoogleMap>
+                <MapPlaceSearch mapId={MAP_ID} placeholder="Search a place on the map" />
+                {boundary && (
+                  <label className="absolute bottom-3 left-3 z-10 inline-flex items-center gap-2 rounded-xl bg-surface shadow-card border border-border px-3 py-1.5 text-xs font-semibold text-text-secondary cursor-pointer">
+                    <input type="checkbox" checked={showSaved} onChange={e => setShowSaved(e.target.checked)} className="accent-primary" />
+                    <span aria-hidden className="inline-block w-5 border-t-2 border-dashed border-amber-600" />
+                    Show saved boundary
+                  </label>
+                )}
               </div>
 
               {/* Status strip + controls — ~30% width */}
@@ -620,7 +682,7 @@ export default function BoundaryEditor({ city }: { city: AdminCity }) {
                   </div>
                 )}
 
-                <StatusStrip hasShape={!!draft} analysis={analysis} previewing={previewing} />
+                <StatusStrip hasShape={!!draft} analysis={analysis} previewing={previewing} shapeChanged={shapeChanged} />
 
                 {/* Secondary — not co-equal with drawing (decision 1). */}
                 {!pasteOpen ? (

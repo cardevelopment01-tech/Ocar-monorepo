@@ -358,6 +358,9 @@ export interface CityBoundaryAnalysis {
   bboxKm: { widthKm: number; heightKm: number }
   centroidInside: boolean | null
   overlaps: Array<{ cityId: number; name: string; pctOfNew: number }>
+  // What saving would change versus the boundary stored today. null when there is no saved boundary to compare with, or the shape is invalid.
+  // pickups* count ride requests in the last windowDays whose pickup point is in the added / removed area (null if that count could not be run).
+  change: { addedKm2: number; removedKm2: number; pickupsAdded: number | null; pickupsRemoved: number | null; windowDays: number } | null
 }
 
 export interface CityBoundaryWrite {

@@ -1882,9 +1882,13 @@ export async function analyzeCityBoundary(
          SELECT ST_SetSRID(ST_GeomFromGeoJSON($2::text), 4326) AS geom
        ),
        city AS (
-         SELECT centroid::geometry AS centroid_geom FROM cities WHERE id = $1
+         SELECT centroid::geometry AS centroid_geom, boundary AS saved_geom FROM cities WHERE id = $1
        )
        SELECT
+         CASE WHEN NOT ST_IsValid(candidate.geom) OR city.saved_geom IS NULL THEN NULL
+              ELSE ST_Area(ST_Difference(candidate.geom, city.saved_geom)::geography) / 1000000.0 END AS added_km2,
+         CASE WHEN NOT ST_IsValid(candidate.geom) OR city.saved_geom IS NULL THEN NULL
+              ELSE ST_Area(ST_Difference(city.saved_geom, candidate.geom)::geography) / 1000000.0 END AS removed_km2,
          ST_IsValid(candidate.geom) AS is_valid,
          CASE WHEN ST_IsValid(candidate.geom) THEN NULL ELSE ST_IsValidReason(candidate.geom) END AS invalid_reason,
          ST_NPoints(candidate.geom) AS vertex_count,
@@ -1921,6 +1925,35 @@ export async function analyzeCityBoundary(
       [cityId, geojsonText],
     );
     const row = res.rows[0];
+    let change: CityBoundaryAnalysis['change'] = null;
+    if (row.added_km2 != null && row.removed_km2 != null) {
+      const addedKm2 = Number(row.added_km2);
+      const removedKm2 = Number(row.removed_km2);
+      let pickupsAdded: number | null = null;
+      let pickupsRemoved: number | null = null;
+      // Only worth a scan of recent rides when the shape really moved; a failure here must not hide the rest of the preview.
+      if (addedKm2 > 0.01 || removedKm2 > 0.01) {
+        try {
+          const cnt = await pool.query(
+            `WITH candidate AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON($2::text), 4326) AS geom),
+                  saved AS (SELECT boundary AS geom FROM cities WHERE id = $1),
+                  zones AS (SELECT ST_Difference(candidate.geom, saved.geom) AS added, ST_Difference(saved.geom, candidate.geom) AS removed FROM candidate, saved)
+             SELECT
+               COUNT(*) FILTER (WHERE ST_Intersects(r.origin::geometry, zones.added))::int AS pickups_added,
+               COUNT(*) FILTER (WHERE ST_Intersects(r.origin::geometry, zones.removed))::int AS pickups_removed
+             FROM rides r, zones
+             WHERE r.requested_at > now() - interval '30 days'
+               AND (ST_Intersects(r.origin::geometry, zones.added) OR ST_Intersects(r.origin::geometry, zones.removed))`,
+            [cityId, geojsonText],
+          );
+          pickupsAdded = Number(cnt.rows[0]?.pickups_added ?? 0);
+          pickupsRemoved = Number(cnt.rows[0]?.pickups_removed ?? 0);
+        } catch (err) {
+          logger.warn({ err, cityId: cityId.toString() }, 'city boundary pickup-impact count failed');
+        }
+      }
+      change = { addedKm2, removedKm2, pickupsAdded, pickupsRemoved, windowDays: 30 };
+    }
     return {
       isValid: row.is_valid as boolean,
       invalidReason: (row.invalid_reason as string | null) ?? null,
@@ -1929,6 +1962,7 @@ export async function analyzeCityBoundary(
       bboxKm: { widthKm: Number(row.bbox_width_km), heightKm: Number(row.bbox_height_km) },
       centroidInside: (row.centroid_inside as boolean | null) ?? null,
       overlaps: row.overlaps as Array<{ cityId: number; name: string; pctOfNew: number }>,
+      change,
     };
   } catch (err) {
     // ST_GeomFromGeoJSON raises SQLSTATE XX000 for GeoJSON it cannot parse (probed
@@ -1948,6 +1982,7 @@ export async function analyzeCityBoundary(
       bboxKm: { widthKm: 0, heightKm: 0 },
       centroidInside: null,
       overlaps: [],
+      change: null,
     };
   }
 }

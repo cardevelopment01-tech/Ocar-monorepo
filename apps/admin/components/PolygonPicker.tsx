@@ -1,46 +1,16 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { Map as GoogleMap, useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
-import { RotateCcw, Search } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Map as GoogleMap, useMap } from '@vis.gl/react-google-maps'
+import { RotateCcw } from 'lucide-react'
 import { BoundaryMapLayer } from '@/components/BoundaryEditor'
+import MapPlaceSearch from '@/components/MapPlaceSearch'
 import type { CityBoundaryGeoJson } from '@/lib/boundary-api'
 import { parsePastedPolygon, polygonAreaKm2 } from '@/lib/boundary-utils'
 
 const MAP_ID = 'polygon-picker-map'
 // The server refuses a zone larger than this (see the API's airport zone rules); shown here so the admin sees it while drawing.
 export const MAX_ZONE_KM2 = 100
-
-// Jump the map to a searched place (e.g. "Biju Patnaik International Airport") so the admin does not have to pan there by hand.
-function PlaceSearch() {
-  const map = useMap(MAP_ID)
-  const places = useMapsLibrary('places')
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (!map || !places || !inputRef.current) return
-    const ac = new places.Autocomplete(inputRef.current, { fields: ['geometry'], componentRestrictions: { country: 'in' } })
-    const listener = ac.addListener('place_changed', () => {
-      const g = ac.getPlace().geometry
-      if (!g) return
-      if (g.viewport) map.fitBounds(g.viewport)
-      else if (g.location) { map.setCenter(g.location); map.setZoom(16) }
-    })
-    return () => listener.remove()
-  }, [map, places])
-
-  return (
-    <div className="absolute top-3 left-3 right-3 sm:right-auto sm:w-72 z-10">
-      <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-        <input ref={inputRef} type="text" aria-label="Search for a place on the map" placeholder="Search the airport on the map"
-          // Enter must pick a suggestion, not submit the zone form behind the map.
-          onKeyDown={e => { if (e.key === 'Enter') e.preventDefault() }}
-          className="w-full border border-border rounded-xl pl-9 pr-3 py-2 text-sm text-text-primary bg-surface shadow-card focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-text-muted" />
-      </div>
-    </div>
-  )
-}
 
 /** Draw a single outline on a map: click points around the area, click the first point to finish, drag points to adjust.
  * Replaces pasting GeoJSON; the paste box stays behind a small link for anyone who already has a shape. */
@@ -86,7 +56,7 @@ export default function PolygonPicker({ initial, center, onChange }: {
           gestureHandling="greedy" disableDefaultUI style={{ width: '100%', height: '100%' }}>
           <BoundaryMapLayer key={mapKey} cityId={0} initialBoundary={start} overlays={[]} onChange={handleChange} onError={setMapError} loadFeatureRef={loadFeatureRef} />
         </GoogleMap>
-        <PlaceSearch />
+        <MapPlaceSearch mapId={MAP_ID} placeholder="Search the airport on the map" />
       </div>
 
       <div className="flex items-center justify-between gap-3 text-xs" role="status" aria-live="polite">
