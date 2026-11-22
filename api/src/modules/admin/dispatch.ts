@@ -2,6 +2,8 @@ import { Router, IRouter, Request, Response, NextFunction } from 'express'
 import { requireAdmin } from '@/middleware/role.middleware'
 import { httpError } from '@/lib/errors'
 import * as repo from './dispatch.repository'
+import { readPolicy, savePolicy } from './advance-policy.admin'
+import { adminCancelRide, rescheduleAdvanceRide } from '@/modules/rides/advance.service'
 
 // Dispatch desk API (read-only). Assigning a driver stays on POST /admin/rides/:id/assign.
 
@@ -46,6 +48,46 @@ router.get('/queue', READ, async (req: Request, res: Response, next: NextFunctio
     const { rows, total, totalCapped } = await repo.listDispatchQueue(f)
     const page = Math.floor(f.offset / f.limit) + 1
     res.json({ rides: rows, pagination: { total, total_capped: totalCapped, page, limit: f.limit, pages: Math.max(1, Math.ceil(total / f.limit)) } })
+  } catch (err) { next(err) }
+})
+
+// ── Policy: the rules for advance bookings (late-cancel fee, reschedule limit, how long to keep searching) ──
+router.get('/policy', READ, async (_req: Request, res: Response, next: NextFunction) => {
+  try { res.json(await readPolicy()) } catch (err) { next(err) }
+})
+
+// Money and rider promises: super admin only, with a reason that goes into the audit log.
+router.put('/policy', requireAdmin('super_admin'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = req.body as { changes?: unknown; reason?: unknown }
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
+    if (reason.length < 3 || reason.length > 300) throw httpError(422, 'Give a reason for this change (3 to 300 characters)', 'VALIDATION_ERROR')
+    res.json({ policy: await savePolicy(body.changes as never, reason, req.admin!.id, req.ip ?? null) })
+  } catch (err) { next(err) }
+})
+
+// ── Actions on one ride (ops and super admin). The reason is required and is kept in the ride's history and the audit log. ──
+const ACT = requireAdmin('super_admin', 'ops_admin')
+
+function reasonOf(v: unknown): string {
+  const r = typeof v === 'string' ? v.trim() : ''
+  if (r.length < 10 || r.length > 300) throw httpError(422, 'Give a reason, 10 to 300 characters', 'VALIDATION_ERROR')
+  return r
+}
+
+router.post('/rides/:id/cancel', ACT, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await adminCancelRide(BigInt(req.params['id']!), req.admin!.id, reasonOf((req.body as { reason?: unknown }).reason), req.ip ?? null)
+    res.json({ success: true })
+  } catch (err) { next(err) }
+})
+
+router.post('/rides/:id/reschedule', ACT, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = req.body as { scheduledFor?: unknown; reason?: unknown }
+    if (typeof body.scheduledFor !== 'string') throw httpError(422, 'scheduledFor is required', 'VALIDATION_ERROR')
+    const out = await rescheduleAdvanceRide(BigInt(req.params['id']!), body.scheduledFor, { type: 'admin', adminId: req.admin!.id, reason: reasonOf(body.reason), ip: req.ip ?? null })
+    res.json(out)
   } catch (err) { next(err) }
 })
 

@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const api = vi.hoisted(() => ({ getById: vi.fn(), getAssignCandidates: vi.fn(), assignDriver: vi.fn() }))
 vi.mock('@/lib/admin-api', () => ({ adminRideApi: api }))
+const dApi = vi.hoisted(() => ({ cancelRide: vi.fn(), rescheduleRide: vi.fn() }))
+vi.mock('@/lib/dispatch-api', () => ({ dispatchApi: dApi }))
 vi.mock('next/link', () => ({ default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a> }))
 
 import DispatchPanel from '../DispatchPanel'
+import { toIstInput } from '@/lib/ist'
 
 const inMinutes = (m: number) => new Date(Date.now() + m * 60_000).toISOString()
 
@@ -25,8 +28,9 @@ function setup(d = detail(), cands = [cand()], canAssign = true) {
   api.getAssignCandidates.mockResolvedValue(cands)
   api.assignDriver.mockResolvedValue(undefined)
   const onAssigned = vi.fn()
-  render(<DispatchPanel rideId="77" canAssign={canAssign} onClose={() => {}} onAssigned={onAssigned} />)
-  return { onAssigned, user: userEvent.setup() }
+  const onChanged = vi.fn()
+  render(<DispatchPanel rideId="77" canAssign={canAssign} onClose={() => {}} onAssigned={onAssigned} onChanged={onChanged} />)
+  return { onAssigned, onChanged, user: userEvent.setup() }
 }
 
 beforeEach(() => { vi.clearAllMocks() })
@@ -113,5 +117,90 @@ describe('DispatchPanel', () => {
     setup(detail({ status: 'accepted' }))
     expect(await screen.findByText(/can no longer be assigned/)).toBeInTheDocument()
     expect(within(document.body).queryByRole('radiogroup')).toBeNull()
+  })
+})
+
+describe('DispatchPanel: support actions on a ride', () => {
+  const REASON = 'Rider called: flight cancelled'
+
+  it('offers Change time and Cancel ride for an advance booking, to a role that can act', async () => {
+    setup()
+    expect(await screen.findByRole('button', { name: 'Change time' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel ride' })).toBeInTheDocument()
+  })
+
+  it('offers only Cancel ride (no time to change) once the ride is in dispatch', async () => {
+    setup(detail({ status: 'no_drivers', scheduled_for: null, dispatch_at: inMinutes(-30) }))
+    await screen.findByText('Ravi Das')
+    expect(screen.getByRole('button', { name: 'Cancel ride' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Change time' })).toBeNull()
+  })
+
+  it('offers neither to a role that cannot act', async () => {
+    setup(detail(), [cand()], false)
+    await screen.findByText('Anita Rout')
+    expect(screen.queryByRole('button', { name: 'Cancel ride' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Change time' })).toBeNull()
+  })
+
+  it('offers neither for a ride a driver already has', async () => {
+    setup(detail({ status: 'accepted' }))
+    await screen.findByText(/can no longer be assigned/)
+    expect(screen.queryByRole('button', { name: 'Cancel ride' })).toBeNull()
+  })
+
+  it('cancels only with a reason of at least 10 characters, then tells the desk', async () => {
+    dApi.cancelRide.mockResolvedValue(undefined)
+    const { user, onChanged } = setup()
+    await user.click(await screen.findByRole('button', { name: 'Cancel ride' }))
+    const dialog = await screen.findByRole('dialog')
+    const confirm = within(dialog).getByRole('button', { name: 'Cancel ride' })
+    expect(confirm).toBeDisabled()
+    await user.type(within(dialog).getByRole('textbox'), 'too short')
+    expect(confirm).toBeDisabled()
+    await user.clear(within(dialog).getByRole('textbox'))
+    await user.type(within(dialog).getByRole('textbox'), REASON)
+    await user.click(confirm)
+    expect(dApi.cancelRide).toHaveBeenCalledWith('77', REASON)
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith('Ride #77 cancelled'))
+  })
+
+  it('shows why a cancel failed instead of closing silently', async () => {
+    dApi.cancelRide.mockRejectedValue(new Error('x'))
+    const { user, onChanged } = setup()
+    await user.click(await screen.findByRole('button', { name: 'Cancel ride' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), REASON)
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel ride' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Could not cancel this ride/)
+    expect(onChanged).not.toHaveBeenCalled()
+  })
+
+  it('changes the time: India time in, an ISO instant out, with the reason', async () => {
+    dApi.rescheduleRide.mockResolvedValue(undefined)
+    const { user, onChanged } = setup()
+    await user.click(await screen.findByRole('button', { name: 'Change time' }))
+    const dialog = await screen.findByRole('dialog')
+    const target = new Date(Date.now() + 3 * 86_400_000)
+    target.setSeconds(0, 0)
+    fireEvent.change(within(dialog).getByLabelText(/New pickup time/), { target: { value: toIstInput(target) } })
+    await user.type(within(dialog).getByLabelText(/Reason/), REASON)
+    await user.click(within(dialog).getByRole('button', { name: 'Change time' }))
+    expect(dApi.rescheduleRide).toHaveBeenCalledWith('77', target.toISOString(), REASON)
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith('Ride #77 moved to the new time'))
+  })
+
+  it('refuses a time under an hour away or more than a week away, before asking the server', async () => {
+    const { user } = setup()
+    await user.click(await screen.findByRole('button', { name: 'Change time' }))
+    const dialog = await screen.findByRole('dialog')
+    const box = within(dialog).getByLabelText(/New pickup time/)
+    await user.type(within(dialog).getByLabelText(/Reason/), REASON)
+    fireEvent.change(box, { target: { value: toIstInput(new Date(Date.now() + 20 * 60_000)) } })
+    expect(within(dialog).getByRole('status')).toHaveTextContent(/at least 60 minutes/)
+    expect(within(dialog).getByRole('button', { name: 'Change time' })).toBeDisabled()
+    fireEvent.change(box, { target: { value: toIstInput(new Date(Date.now() + 9 * 86_400_000)) } })
+    expect(within(dialog).getByRole('status')).toHaveTextContent(/at most 7 days/)
+    expect(dApi.rescheduleRide).not.toHaveBeenCalled()
   })
 })

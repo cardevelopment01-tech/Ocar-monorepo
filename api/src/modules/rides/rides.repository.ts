@@ -1069,6 +1069,9 @@ export interface AdvanceMeta {
   claimed_at: string | null
   reminder_24h_sent_at: string | null
   reminder_1h_sent_at: string | null
+  reschedule_count: number
+  search_until: string | null
+  search_alerted_at: string | null
   rate_card_id_at_booking: string | null
   created_at: string
   updated_at: string
@@ -1094,6 +1097,17 @@ export async function getAdvanceMeta(rideId: bigint): Promise<AdvanceMeta | null
     [rideId]
   )
   return res.rows[0] ?? null
+}
+
+/** The quoted fare of a ride, and whether it is an advance booking: what the late-cancel fee is worked out from. */
+export async function getAdvanceFeeContext(rideId: bigint): Promise<{ fare: number; isAdvance: boolean }> {
+  const res = await pool.query<{ fare: string | null; is_advance: boolean }>(
+    `SELECT fs.total_estimated::text AS fare, EXISTS (SELECT 1 FROM ride_advance_meta m WHERE m.ride_id = r.id) AS is_advance
+       FROM rides r LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id WHERE r.id = $1`,
+    [rideId],
+  )
+  const row = res.rows[0]
+  return { fare: row?.fare != null ? parseFloat(row.fare) : 0, isAdvance: row?.is_advance ?? false }
 }
 
 export async function setAdvanceMetaJobId(rideId: bigint, jobId: string) {
@@ -1246,7 +1260,9 @@ export async function findStaleRequestedRides(minutes: number): Promise<{ id: st
   const res = await pool.query<{ id: string }>(
     `SELECT id FROM rides
      WHERE status = 'requested'
-       AND updated_at < now() - ($1 || ' minutes')::interval`,
+       AND updated_at < now() - ($1 || ' minutes')::interval
+       -- an advance booking deliberately still searching (advance.service keepSearchingAdvance) is not stale
+       AND NOT EXISTS (SELECT 1 FROM ride_advance_meta m WHERE m.ride_id = rides.id AND m.search_until > now())`,
     [minutes]
   )
   return res.rows
@@ -1260,7 +1276,8 @@ export async function findStuckDispatchRides(seconds: number): Promise<{ id: str
     `SELECT r.id::text FROM rides r
      WHERE r.status = 'requested' AND r.dispatch_variant >= 1
        AND r.updated_at < now() - ($1 || ' seconds')::interval
-       AND NOT EXISTS (SELECT 1 FROM ride_assignments ra WHERE ra.ride_id = r.id AND ra.status = 'offered' AND ra.expires_at > now())`,
+       AND NOT EXISTS (SELECT 1 FROM ride_assignments ra WHERE ra.ride_id = r.id AND ra.status = 'offered' AND ra.expires_at > now())
+       AND NOT EXISTS (SELECT 1 FROM ride_advance_meta m WHERE m.ride_id = r.id AND m.search_until > now())`,
     [seconds]
   )
   return res.rows

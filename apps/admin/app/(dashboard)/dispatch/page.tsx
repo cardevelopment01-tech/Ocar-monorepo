@@ -4,6 +4,7 @@ import { useSearchParams, usePathname, useRouter } from 'next/navigation'
 import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, Headset, MapPin, RefreshCw, SearchX } from 'lucide-react'
 import SuccessToast from '@/components/ui/SuccessToast'
 import DispatchPanel from '@/components/dispatch/DispatchPanel'
+import DispatchPolicy from '@/components/dispatch/DispatchPolicy'
 import { dispatchApi, type DispatchLane, type DispatchRow, type DispatchSummary } from '@/lib/dispatch-api'
 import { dispatchState, relativeTo, type DispatchTone } from '@/lib/dispatch-model'
 import { cityApi, type AdminCity } from '@/lib/city-api'
@@ -47,6 +48,8 @@ function DispatchContent() {
   const pathname = usePathname()
   const { admin } = useAdminAuth()
   const canAssign = admin?.role === 'super_admin' || admin?.role === 'ops_admin'
+  const isSuper = admin?.role === 'super_admin'
+  const [view, setView] = useState<'queue' | 'policy'>(sp.get('tab') === 'policy' ? 'policy' : 'queue')
   const now = useNow(15_000)
 
   const [lane, setLane] = useState<DispatchLane>(sp.get('lane') === 'needs_driver' ? 'needs_driver' : 'scheduled')
@@ -94,18 +97,19 @@ function DispatchContent() {
   const refresh = useCallback(() => { void load(true); loadSummary() }, [load, loadSummary])
   // Live: every 30 s while the tab is visible and the assign panel is closed (a refresh must not move rows under a driver search).
   useEffect(() => {
-    if (!live || panelId) return
+    if (!live || panelId || view !== 'queue') return
     const tick = () => { if (document.visibilityState === 'visible') refresh() }
     const id = setInterval(tick, LIVE_REFRESH_MS)
     document.addEventListener('visibilitychange', tick)
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick) }
-  }, [live, panelId, refresh])
+  }, [live, panelId, view, refresh])
 
   // The address bar follows the view (first run skipped so an arriving ?ride= is not stripped).
   const first = useRef(true)
   useEffect(() => {
     if (first.current) { first.current = false; return }
     const p = new URLSearchParams()
+    if (view === 'policy') p.set('tab', 'policy')
     if (lane !== 'scheduled') p.set('lane', lane)
     if (cityId) p.set('city', cityId)
     if (within !== undefined && lane === 'scheduled') p.set('within', String(within))
@@ -113,7 +117,7 @@ function DispatchContent() {
     if (panelId) p.set('ride', panelId)
     const qs = p.toString()
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
-  }, [lane, cityId, within, page, panelId, pathname, router])
+  }, [view, lane, cityId, within, page, panelId, pathname, router])
 
   const pick = (l: DispatchLane, w?: number) => { setLane(l); setWithin(l === 'scheduled' ? w : undefined); setPage(1) }
   const needsNow = summary ? summary.searching_long + summary.no_drivers : null
@@ -128,7 +132,15 @@ function DispatchContent() {
             <p className="text-xs text-text-muted">Advance bookings waiting for their dispatch time, and rides that still need a driver</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-xs text-text-muted">
+        <div role="tablist" aria-label="Dispatch desk view" className="inline-flex rounded-xl bg-surface-2 p-1">
+          {([['queue', 'Queue'], ['policy', 'Policy']] as const).map(([value, label]) => (
+            <button key={value} role="tab" aria-selected={view === value} onClick={() => setView(value)}
+              className={`px-3.5 py-1.5 text-sm font-semibold rounded-lg transition-colors ${view === value ? 'bg-surface shadow-card text-text-primary' : 'text-text-muted hover:text-text-secondary'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {view === 'queue' && <div className="flex items-center gap-3 text-xs text-text-muted basis-full justify-end -mt-2">
           {refreshedAt && <span>Updated {fmtIstClock(refreshedAt)} IST</span>}
           <label className="inline-flex items-center gap-1.5 cursor-pointer select-none text-text-secondary font-medium">
             <input type="checkbox" checked={live} onChange={e => setLive(e.target.checked)} className="accent-primary" />Live
@@ -136,8 +148,12 @@ function DispatchContent() {
           <button onClick={refresh} aria-label="Refresh now" title="Refresh now" className="p-1.5 rounded-lg border border-border text-text-secondary hover:bg-surface-2 transition-colors">
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
-        </div>
+        </div>}
       </div>
+
+      {view === 'policy' ? (
+        <div className="admin-card"><DispatchPolicy canEdit={isSuper} /></div>
+      ) : (<>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Tile label="Needs a driver now" value={needsNow} hint="Searching too long, or none found" tone="danger" icon={AlertTriangle}
@@ -246,9 +262,11 @@ function DispatchContent() {
           </div>
         )}
       </div>
+      </>)}
 
       <DispatchPanel rideId={panelId} canAssign={canAssign} onClose={() => setPanelId(null)}
-        onAssigned={msg => { setPanelId(null); setToast(msg); refresh() }} />
+        onAssigned={msg => { setPanelId(null); setToast(msg); refresh() }}
+        onChanged={msg => { setPanelId(null); setToast(msg); refresh() }} />
       <SuccessToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   )

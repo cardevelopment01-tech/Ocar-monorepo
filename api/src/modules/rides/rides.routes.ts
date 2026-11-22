@@ -8,6 +8,7 @@ import { getPresignedUrl } from '@/lib/storage'
 import { withTripWindow } from '@/lib/trip-window'
 import { requireSupportedApp } from '@/modules/app-version/app-version.routes'
 import * as service from './rides.service'
+import { rescheduleAdvanceRide } from './advance.service'
 import * as repo from './rides.repository'
 import * as paymentsService from '@/modules/payments/payments.service'
 import { returnCabAvailability } from './return-cab-availability'
@@ -315,6 +316,22 @@ router.post('/:id/cancel', authenticate(), onlyUser, async (req, res, next) => {
     const { reasonCode, reason } = req.body as { reasonCode?: string; reason?: string }
     const result = await service.cancelRide(userId, BigInt(req.params['id']!), reasonCode, reason)
     res.json(result)
+  } catch (err) { next(err) }
+})
+
+// What cancelling would cost right now (0 = free), so the app can say so before the rider confirms.
+router.get('/:id/cancel-preview', authenticate(), onlyUser, async (req, res, next) => {
+  try {
+    res.json(await service.getCancelPreview(req.user!.id, BigInt(req.params['id']!)))
+  } catch (err) { next(err) }
+})
+
+// Change the pickup time of an advance booking that has not started dispatch.
+router.patch('/:id/schedule', authenticate(), onlyUser, canBook, async (req, res, next) => {
+  try {
+    const { scheduledFor } = req.body as { scheduledFor?: unknown }
+    if (typeof scheduledFor !== 'string') { res.status(422).json({ error: 'scheduledFor is required', code: 'VALIDATION_ERROR' }); return }
+    res.json(await rescheduleAdvanceRide(BigInt(req.params['id']!), scheduledFor, { type: 'user', userId: req.user!.id }))
   } catch (err) { next(err) }
 })
 

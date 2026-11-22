@@ -3,6 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, ChevronDown, Loader2, MapPin, Search, Zap, Send } from 'lucide-react'
 import SlideOver from '@/components/ui/SlideOver'
+import ReasonDialog from '@/components/ui/ReasonDialog'
+import RescheduleDialog from './RescheduleDialog'
+import { dispatchApi } from '@/lib/dispatch-api'
 import RideOffers, { offerSummary } from '@/components/rides/RideOffers'
 import { adminRideApi, type AdminRideDetail, type AssignCandidate } from '@/lib/admin-api'
 import { extractErrorMessage } from '@/lib/http-errors'
@@ -23,12 +26,14 @@ function whyNot(c: AssignCandidate): string {
   return c.city_billing_mode === 'package' ? 'Package balance empty' : 'Below minimum balance'
 }
 
-export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned }: {
+export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, onChanged }: {
   rideId: string | null
   /** Only ops and super admins can assign; everyone else sees the ride and its history. */
   canAssign: boolean
   onClose: () => void
   onAssigned: (message: string) => void
+  /** The ride's time was changed or the ride was cancelled by support. */
+  onChanged: (message: string) => void
 }) {
   const now = useNow(15_000)
   const [detail, setDetail] = useState<AdminRideDetail | null>(null)
@@ -44,10 +49,13 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned }
   const [assignError, setAssignError] = useState<{ id: string; message: string } | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const seq = useRef(0)
+  const [action, setAction] = useState<'cancel' | 'reschedule' | null>(null)
+  const [acting, setActing] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   // New ride: reset everything and load its detail (rider, route, history).
   useEffect(() => {
-    setDetail(null); setDetailError(false); setQ(''); setDebouncedQ(''); setCands([]); setConfirmId(null); setAssignError(null); setMode('ask'); setShowHistory(false)
+    setDetail(null); setDetailError(false); setQ(''); setDebouncedQ(''); setCands([]); setConfirmId(null); setAssignError(null); setMode('ask'); setShowHistory(false); setAction(null); setActionError('')
     if (!rideId) return
     let cancelled = false
     adminRideApi.getById(rideId).then(d => { if (!cancelled) { setDetail(d); setShowHistory(d.offers?.length > 0 && d.status !== 'scheduled') } }).catch(() => { if (!cancelled) setDetailError(true) })
@@ -119,9 +127,21 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned }
               {[detail.category_name, detail.origin_city].filter(Boolean).join(' · ')}
               {detail.scheduled_for ? ` · Pickup ${fmtIst(detail.scheduled_for)} (${relativeTo(detail.scheduled_for, now)})` : ` · Booked ${fmtIst(detail.requested_at)}`}
             </p>
-            <Link href={`/rides?ride=${detail.id}`} className="text-xs font-semibold text-primary hover:underline inline-block">Open full ride details</Link>
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              <Link href={`/rides?ride=${detail.id}`} className="text-xs font-semibold text-primary hover:underline mr-auto">Open full ride details</Link>
+              {canAssign && detail.status === 'scheduled' && (
+                <button type="button" onClick={() => { setActionError(''); setAction('reschedule') }}
+                  className="px-3 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface transition-colors">Change time</button>
+              )}
+              {canAssign && ['scheduled', 'requested', 'no_drivers'].includes(detail.status) && (
+                <button type="button" onClick={() => { setActionError(''); setAction('cancel') }}
+                  className="px-3 py-1.5 text-xs font-semibold text-danger border border-danger/30 rounded-lg hover:bg-danger-light transition-colors">Cancel ride</button>
+              )}
+            </div>
           </div>
         )}
+
+        {actionError && action === null && <p role="alert" className="text-xs text-danger font-semibold">{actionError}</p>}
 
         {warning && (
           <div role="note" className="rounded-xl border border-warning/40 bg-warning-light px-3 py-2.5 text-xs text-text-primary flex gap-2">
@@ -221,6 +241,38 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned }
         {detail && !assignable && <p className="text-sm text-text-muted">This ride is {detail.status.replace(/_/g, ' ')}, so it can no longer be assigned.</p>}
         {detail && assignable && !canAssign && <p className="text-sm text-text-muted">Your role can see the queue but not assign drivers. Ask an ops admin.</p>}
       </div>
+
+      {/* Support actions on the rider's behalf. Both need a reason; both tell the rider. */}
+      <ReasonDialog
+        open={action === 'cancel'}
+        title={`Cancel ride #${rideId ?? ''}?`}
+        description="The rider is told Ocar support cancelled it and that they have not been charged. Any offer they used is given back. This cannot be undone."
+        confirmLabel="Cancel ride"
+        variant="danger"
+        loading={acting}
+        onCancel={() => setAction(null)}
+        onConfirm={async reason => {
+          if (!rideId) return
+          setActing(true); setActionError('')
+          try { await dispatchApi.cancelRide(rideId, reason.trim()); setAction(null); onChanged(`Ride #${rideId} cancelled`) }
+          catch (err) { setAction(null); setActionError(extractErrorMessage(err, 'Could not cancel this ride. It may have changed: close and reopen it.')) }
+          finally { setActing(false) }
+        }}
+      />
+      <RescheduleDialog
+        open={action === 'reschedule'}
+        current={detail?.scheduled_for ?? null}
+        loading={acting}
+        error={action === 'reschedule' ? actionError : ''}
+        onCancel={() => setAction(null)}
+        onConfirm={async (iso, reason) => {
+          if (!rideId) return
+          setActing(true); setActionError('')
+          try { await dispatchApi.rescheduleRide(rideId, iso, reason); setAction(null); onChanged(`Ride #${rideId} moved to the new time`) }
+          catch (err) { setActionError(extractErrorMessage(err, 'Could not change the time. Close and reopen the ride and try again.')) }
+          finally { setActing(false) }
+        }}
+      />
     </SlideOver>
   )
 }
