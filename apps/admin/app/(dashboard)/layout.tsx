@@ -15,6 +15,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   '/overview':              { title: 'Dashboard',     subtitle: 'Platform health at a glance' },
   '/live-map':              { title: 'Live Map',       subtitle: 'Real-time driver & ride tracking' },
   '/rides':                 { title: 'Rides',          subtitle: 'All ride activity' },
+  '/dispatch':              { title: 'Dispatch',       subtitle: 'Advance bookings and rides waiting on a driver' },
   '/drivers':               { title: 'Drivers',        subtitle: 'Driver management & approvals' },
   '/users':                 { title: 'Users',          subtitle: 'Rider accounts' },
   '/disputes':              { title: 'Disputes',       subtitle: 'Unresolved issues requiring action' },

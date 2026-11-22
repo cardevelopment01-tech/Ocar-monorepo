@@ -1635,7 +1635,20 @@ export async function getAssignCandidates(params: {
   rideLng: number
   categoryIds: bigint[]
   minWalletBalance: number
+  /** Name or phone fragment, matched server-side across every driver in the city (the list is capped, so a client-side filter cannot find the rest). */
+  search?: string
+  /** Only drivers with a live session. Offline drivers cannot be assigned anyway, so the picker skips them unless someone searches for one. */
+  onlineOnly?: boolean
+  /** Exactly one driver: how assigning finds its target, whatever their rank by distance. */
+  driverId?: bigint
+  limit?: number
 }): Promise<AssignCandidate[]> {
+  const values: unknown[] = [params.cityId, params.rideLat, params.rideLng, params.categoryIds, params.minWalletBalance]
+  let extra = ''
+  if (params.driverId !== undefined) { values.push(params.driverId); extra += ` AND d.id = $${values.length}` }
+  if (params.onlineOnly) extra += ` AND ds.id IS NOT NULL`
+  if (params.search) { values.push(`%${params.search}%`); extra += ` AND (d.full_name ILIKE $${values.length} OR d.phone ILIKE $${values.length})` }
+  const limit = Math.min(Math.max(params.limit ?? 50, 1), 50)
   const res = await pool.query<Omit<AssignCandidate, 'eligible'>>(
     `SELECT
        d.id::text AS driver_id,
@@ -1666,12 +1679,11 @@ export async function getAssignCandidates(params: {
      LEFT JOIN vehicle_categories vc ON vc.id = ds.category_id
      LEFT JOIN driver_wallets dw ON dw.driver_id = d.id
      LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = d.id
-     WHERE d.city_id = $1 AND d.status = 'active'
+     WHERE d.city_id = $1 AND d.status = 'active'${extra}
      ORDER BY distance_metres ASC NULLS LAST, d.full_name ASC
-     -- Fixed cap (not parameterized like findNearbyDrivers' maxDrivers) — this is
-     -- an admin-only picker list, not a per-call-tunable matching algorithm.
-     LIMIT 50`,
-    [params.cityId, params.rideLat, params.rideLng, params.categoryIds, params.minWalletBalance]
+     -- Capped at 50: this is an admin-only picker list, not a per-call-tunable matching algorithm.
+     LIMIT ${limit}`,
+    values
   )
   return res.rows.map(r => ({ ...r, eligible: r.is_online && r.category_ok && r.wallet_ok }))
 }

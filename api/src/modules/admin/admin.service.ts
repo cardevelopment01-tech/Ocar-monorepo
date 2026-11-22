@@ -713,8 +713,11 @@ export async function forceResolveAdminRide(
   return resolveStuckRide(rideId, outcome, 'admin', note, adminId)
 }
 
-export async function getRideAssignCandidates(rideId: bigint) {
-  return getAssignCandidatesForRide(rideId)
+export async function getRideAssignCandidates(
+  rideId: bigint,
+  opts: { search?: string; onlineOnly?: boolean; limit?: number } = {},
+) {
+  return getAssignCandidatesForRide(rideId, opts)
 }
 
 export async function assignDriverToRide(
