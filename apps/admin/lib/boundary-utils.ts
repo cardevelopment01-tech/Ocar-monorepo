@@ -67,3 +67,19 @@ export function boundaryWarnings(a: CityBoundaryAnalysis | null): string[] {
   if (a.centroidInside === false) out.push("This city's own centroid falls outside the shape")
   return out
 }
+
+/** Approximate area of a polygon's outer ring in km² (spherical, same formula Google's computeArea uses).
+ * Display only: the server's PostGIS figure stays the authority on whether a shape is accepted. */
+export function polygonAreaKm2(p: CityBoundaryGeoJson | null): number {
+  const ring = p?.coordinates[0]
+  if (!ring || ring.length < 4) return 0
+  const R = 6371.0088
+  const rad = Math.PI / 180
+  let sum = 0
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [lng1, lat1] = ring[i]!
+    const [lng2, lat2] = ring[i + 1]!
+    sum += (lng2 - lng1) * rad * (2 + Math.sin(lat1 * rad) + Math.sin(lat2 * rad))
+  }
+  return Math.abs((sum * R * R) / 2)
+}
