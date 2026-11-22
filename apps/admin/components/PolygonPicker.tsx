@@ -57,6 +57,7 @@ export default function PolygonPicker({ initial, center, onChange }: {
   const [pasteText, setPasteText] = useState('')
   const [pasteError, setPasteError] = useState('')
   const loadFeatureRef = useRef<((geojson: CityBoundaryGeoJson) => string | null) | null>(null)
+  const map = useMap(MAP_ID)
 
   const handleChange = (p: CityBoundaryGeoJson | null) => { setValue(p); onChange(p) }
   const area = polygonAreaKm2(value)
@@ -69,6 +70,12 @@ export default function PolygonPicker({ initial, center, onChange }: {
     if (!r.ok) { setPasteError(r.error.replace('City boundaries are', 'A zone is')); return }
     const err = loadFeatureRef.current?.(r.polygon) ?? null
     if (err) { setPasteError(err); return }
+    // A pasted shape can be anywhere: bring the map to it, otherwise it looks like nothing happened.
+    if (map && typeof google !== 'undefined') {
+      const bounds = new google.maps.LatLngBounds()
+      for (const [lng, lat] of r.polygon.coordinates[0]!) bounds.extend({ lat, lng })
+      map.fitBounds(bounds, 40)
+    }
     setPasteError(''); setPasteOpen(false); setPasteText('')
   }
 
