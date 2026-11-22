@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import crypto from 'crypto'
 
 const repo = vi.hoisted(() => ({
-  adminEmailExists: vi.fn(), findPendingInviteByEmail: vi.fn(), createInvite: vi.fn(), revokePendingInvite: vi.fn(),
+  adminEmailExists: vi.fn(), findAdminEmailById: vi.fn(), findPendingInviteByEmail: vi.fn(), createInvite: vi.fn(), revokePendingInvite: vi.fn(),
   findByTokenHash: vi.fn(), redeemInvite: vi.fn(), listInvites: vi.fn(),
 }))
 const queueAdd = vi.hoisted(() => vi.fn())
@@ -31,6 +31,7 @@ describe('createInvite', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     repo.adminEmailExists.mockResolvedValue(false)
+    repo.findAdminEmailById.mockResolvedValue('inviter@ocar.test')
     repo.findPendingInviteByEmail.mockResolvedValue(null)
     repo.createInvite.mockResolvedValue(invite)
   })
@@ -50,6 +51,17 @@ describe('createInvite', () => {
     expect(repo.findPendingInviteByEmail).toHaveBeenCalledWith('new@ocar.test')
     expect(repo.createInvite.mock.calls[0]![0]).toMatchObject({ email: 'new@ocar.test' })
     expect(queueAdd.mock.calls[0]![1]).toMatchObject({ email: 'new@ocar.test' })
+  })
+
+  it('tells the email who invited them and as what, so it can be recognised as genuine; an inviter that cannot be found leaves that out', async () => {
+    await createInvite(params)
+    expect(repo.findAdminEmailById).toHaveBeenCalledWith(7n)
+    expect(queueAdd.mock.calls[0]![1]).toMatchObject({ email: 'new@ocar.test', role: 'ops_admin', inviterEmail: 'inviter@ocar.test' })
+    queueAdd.mockClear()
+    repo.findAdminEmailById.mockResolvedValue(null)
+    await createInvite(params)
+    expect(queueAdd.mock.calls[0]![1]).not.toHaveProperty('inviterEmail')
+    expect(queueAdd.mock.calls[0]![1]).toMatchObject({ role: 'ops_admin' })
   })
 
   it('refuses a second live invite for the same email', async () => {

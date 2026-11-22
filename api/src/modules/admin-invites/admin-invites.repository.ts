@@ -33,6 +33,11 @@ export async function adminEmailExists(email: string): Promise<boolean> {
   return rows.length > 0
 }
 
+export async function findAdminEmailById(id: bigint): Promise<string | null> {
+  const rows = await query<{ email: string }>(`SELECT email FROM admins WHERE id = $1`, [id.toString()])
+  return rows[0]?.email ?? null
+}
+
 export async function findPendingInviteByEmail(email: string): Promise<AdminInviteListItem | null> {
   const rows = await query<AdminInviteListItem>(
     `SELECT ${LIST_COLUMNS} FROM admin_invites WHERE email = $1 AND status = 'pending' AND expires_at > now() LIMIT 1`,

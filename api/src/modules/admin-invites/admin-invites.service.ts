@@ -7,9 +7,10 @@ import { checkNewPassword } from '@/lib/password-policy'
 import { notificationsQueue } from '@/jobs/queues'
 import type { AdminRole } from '@/constants/enums'
 import * as repo from './admin-invites.repository'
+import { INVITE_TTL_HOURS, type AdminInviteEmailJob } from './admin-invite-email'
 import type { AdminInviteListItem, CreatedAdminFromInvite } from './admin-invites.types'
 
-const INVITE_TTL_MS = 48 * 60 * 60 * 1000
+const INVITE_TTL_MS = INVITE_TTL_HOURS * 60 * 60 * 1000
 
 function generateInviteToken(): string {
   return crypto.randomBytes(32).toString('hex')
@@ -44,13 +45,18 @@ export async function createInvite(params: {
     expiresAt,
   })
 
+  // The email names who invited them and as what: without that an invitation looks like phishing. Their own address is the one reply goes to.
+  const inviterEmail = await repo.findAdminEmailById(params.invitedBy)
+  const job: AdminInviteEmailJob = {
+    email,
+    rawToken,
+    expiresAt: expiresAt.toISOString(),
+    role: params.role,
+    ...(inviterEmail ? { inviterEmail } : {}),
+  }
   await notificationsQueue.add(
     'admin_invite_email',
-    {
-      email,
-      rawToken,
-      expiresAt: expiresAt.toISOString(),
-    },
+    job,
     { attempts: 3, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: true, removeOnFail: 50 }
   )
 

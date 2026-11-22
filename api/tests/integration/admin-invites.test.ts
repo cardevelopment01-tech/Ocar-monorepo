@@ -26,7 +26,7 @@ const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex'
 let superToken: string
 let opsToken: string
 let superId: string
-const emailJobs: Array<{ email: string; rawToken: string }> = []
+const emailJobs: Array<{ email: string; rawToken: string; role?: string; inviterEmail?: string; expiresAt?: string }> = []
 
 const api = (token: string) => ({
   get: (url: string) => request(app).get(url).set('Authorization', `Bearer ${token}`),
@@ -52,7 +52,7 @@ beforeAll(async () => {
   superToken = s.accessToken
   superId = String((await pool.query<{ id: string }>('SELECT id FROM admins WHERE email = $1', [SUPER])).rows[0]!.id)
   opsToken = (await loginAdmin(app, OPS)).accessToken
-  vi.spyOn(notificationsQueue, 'add').mockImplementation((async (_name: string, data: { email: string; rawToken: string }) => {
+  vi.spyOn(notificationsQueue, 'add').mockImplementation((async (_name: string, data: { email: string; rawToken: string; role?: string; inviterEmail?: string; expiresAt?: string }) => {
     emailJobs.push(data)
     return {} as never
   }) as never)
@@ -79,6 +79,8 @@ describe('inviting', () => {
 
     const job = lastJob()
     expect(job.email).toBe(NEW)
+    expect(job).toMatchObject({ role: 'ops_admin', inviterEmail: SUPER }) // what the email needs to say who invited them, as what
+    expect(new Date(job.expiresAt!).getTime() - Date.now()).toBeGreaterThan(47 * 3600_000)
     const row = (await pool.query<{ token_hash: string }>('SELECT token_hash FROM admin_invites WHERE id = $1', [res.body.invite.id])).rows[0]!
     expect(row.token_hash).toBe(sha256(job.rawToken))
     expect(JSON.stringify(row)).not.toContain(job.rawToken)
