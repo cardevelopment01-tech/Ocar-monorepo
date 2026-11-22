@@ -66,6 +66,12 @@ router.get('/me/upcoming', authenticate(), onlyUser, async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// What the rider is told before booking an advance ride: when driver search starts, how often the time can be changed, and the
+// late-cancel fee if an admin has turned it on. Read-only, from the admin's policy.
+router.get('/advance-policy', authenticate(), onlyUser, async (_req, res, next) => {
+  try { res.json(await service.getAdvanceTerms()) } catch (err) { next(err) }
+})
+
 // ── Driver earnings summary ───────────────────────────────────
 
 const VALID_PERIODS = new Set(['today', 'week', 'month'])

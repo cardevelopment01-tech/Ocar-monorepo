@@ -17,7 +17,7 @@ const policy = vi.hoisted(() => ({ value: { lateCancelEnabled: true, lateCancelW
 vi.mock('@/lib/advance-policy', async (orig) => ({ ...(await orig<object>()), getAdvancePolicy: async () => policy.value }))
 
 import * as repo from '@/modules/rides/rides.repository'
-import { cancelRide, getCancelPreview } from '@/modules/rides/rides.service'
+import { cancelRide, getCancelPreview, getAdvanceTerms } from '@/modules/rides/rides.service'
 
 const USER = 42n, DRIVER = 7n, RIDE = 101n
 const inMinutes = (m: number) => new Date(Date.now() + m * 60_000).toISOString()
@@ -118,5 +118,18 @@ describe('getCancelPreview', () => {
   it('says a ride that can no longer be cancelled cannot be', async () => {
     vi.mocked(repo.getRideCoreById).mockResolvedValue(ride({ status: 'in_progress' }) as never)
     expect(await getCancelPreview(USER, RIDE)).toMatchObject({ canCancel: false, fee: 0 })
+  })
+})
+
+describe('getAdvanceTerms', () => {
+  it('gives the booking sheet the lead time, limits and the fee rule when it is on', async () => {
+    expect(await getAdvanceTerms()).toEqual({
+      searchLeadMin: 15, minAheadMin: 60, maxAheadDays: 7, rescheduleMax: 3,
+      lateCancel: { windowMin: 60, mode: 'percent', percent: 10, cap: 100, flat: 50 },
+    })
+  })
+  it('says there is no fee (null) while the policy is off', async () => {
+    policy.value = { ...policy.value, lateCancelEnabled: false }
+    expect((await getAdvanceTerms()).lateCancel).toBeNull()
   })
 })

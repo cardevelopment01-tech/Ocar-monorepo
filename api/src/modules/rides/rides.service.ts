@@ -2290,6 +2290,18 @@ async function lateCancelQuote(ride: RideCore): Promise<{ amount: number; freeUn
   return { amount: r.amount, freeUntil: r.freeUntil, windowMin: policy.lateCancelWindowMin }
 }
 
+/** The advance-booking terms shown to a rider before they book (search lead time, change limit, late-cancel fee if on). */
+export async function getAdvanceTerms() {
+  const policy = await getAdvancePolicy()
+  return {
+    searchLeadMin: ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES,
+    minAheadMin: MIN_ADVANCE_BOOKING_MINUTES,
+    maxAheadDays: MAX_ADVANCE_BOOKING_DAYS,
+    rescheduleMax: policy.rescheduleMax,
+    lateCancel: lateCancelSummary(policy),
+  }
+}
+
 /**
  * What cancelling would cost this rider right now, for the confirm sheet: the exact amount (0 = free), when the free period ends, and why.
  * Read-only; the cancel itself recomputes, so a stale preview can never under-charge.
