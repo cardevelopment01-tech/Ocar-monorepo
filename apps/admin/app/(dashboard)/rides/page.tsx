@@ -694,7 +694,8 @@ function RidesPageContent() {
               )}
             </div>
 
-            {detail && (
+            {/* offers is absent until the API that sends it is deployed: the web side may go out first. */}
+            {detail && detail.offers && (
               <Section title={`Dispatch history (${detail.offers.length})`} defaultOpen={!selected.driver_name || ['requested', 'no_drivers', 'scheduled'].includes(selected.status)}>
                 <p className="sr-only">{offerSummary(detail.offers)}</p>
                 <RideOffers offers={detail.offers} />
