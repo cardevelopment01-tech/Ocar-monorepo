@@ -68,14 +68,18 @@ export async function sendSms(phone: string, message: string, templateId?: strin
   })
   // The vendor has answered with an HTML error page before (21 Nov 2026); say so instead of "Unexpected token '<'".
   const raw = await res.text()
-  let json: { code?: number; message?: string }
-  try { json = JSON.parse(raw) as { code?: number; message?: string } }
+  let json: { code?: number; message?: string; data?: unknown }
+  try { json = JSON.parse(raw) as { code?: number; message?: string; data?: unknown } }
   catch { throw new Error(`SMS provider returned a non-JSON reply (HTTP ${res.status})`) }
 
   const fields = pickProviderFields(json, message)
   const logBase = { event: 'sms.sent', phone_tail: stripped.slice(-4), http_status: res.status, template_id: templateId ?? null, provider: fields }
   if (!res.ok || json.code !== 200) {
-    logger.warn({ ...logBase, event: 'sms.rejected' }, 'sms rejected by provider')
+    // Checked against the live endpoint: a missing or invalid field comes back as HTTP 200 with code 500 and the per-field reasons in a
+    // nested "data" object ("Validation Error." alone does not say which field), and bad credentials as HTTP 403 "Access Denied!".
+    const data = json.data === undefined ? '' : JSON.stringify(json.data)
+    const detail = data !== '' && data.length <= 300 && !data.includes(message) ? data : undefined
+    logger.warn({ ...logBase, event: 'sms.rejected', ...(detail !== undefined ? { provider_detail: detail } : {}) }, 'sms rejected by provider')
     throw new Error(json.message ?? 'SMS send failed')
   }
   logger.info(logBase, 'sms accepted by provider')

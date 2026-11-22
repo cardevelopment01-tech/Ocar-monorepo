@@ -58,6 +58,30 @@ describe('sendSms', () => {
     await expect(sendSms('+918093630642', 'hi')).rejects.toThrow('Insufficient balance')
     expect(logs.warn.mock.calls[0]![0]).toMatchObject({ event: 'sms.rejected', provider: { code: 405 } })
   })
+
+  // The two replies below are copied from the live endpoint (probed with deliberately fake credentials on 2026-11-22).
+  it('logs which field failed when the vendor answers a validation error (HTTP 200, code 500, nested data)', async () => {
+    const reply = { code: 500, message: 'Validation Error.', data: { api_id: ['The api id field is required.'] } }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify(reply) }))
+    await expect(sendSms('+918093630642', 'hi')).rejects.toThrow('Validation Error.')
+    expect(logs.warn.mock.calls[0]![0]).toMatchObject({
+      event: 'sms.rejected', http_status: 200, provider: { code: 500, message: 'Validation Error.' },
+      provider_detail: '{"api_id":["The api id field is required."]}',
+    })
+  })
+
+  it('treats bad credentials (HTTP 403, code 500 "Access Denied!") as a rejection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403, text: async () => JSON.stringify({ code: 500, message: 'Access Denied!' }) }))
+    await expect(sendSms('+918093630642', 'hi')).rejects.toThrow('Access Denied!')
+    expect(logs.warn.mock.calls[0]![0]).toMatchObject({ event: 'sms.rejected', http_status: 403 })
+    expect(logs.warn.mock.calls[0]![0]).not.toHaveProperty('provider_detail')
+  })
+
+  it('never logs vendor detail that echoes the message text', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify({ code: 500, message: 'bad', data: { message: ['Your OTP is 123456'] } }) }))
+    await expect(sendSms('+918093630642', 'Your OTP is 123456')).rejects.toThrow('bad')
+    expect(JSON.stringify(logs.warn.mock.calls[0]![0])).not.toContain('123456')
+  })
 })
 
 describe('pickProviderFields', () => {
