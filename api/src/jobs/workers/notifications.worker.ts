@@ -30,8 +30,8 @@ export const notificationsWorker = new Worker(
         const { body: message } = await renderTemplate('driver_submitted_for_review', 'sms', {
           driverName: data.driverName, driverPhone: data.driverPhone, submittedAt: data.submittedAt,
         })
-        if (config.ADMIN_PHONE) await sendSms(config.ADMIN_PHONE, message)
-        await notifService.markSent(logId)
+        const sms = config.ADMIN_PHONE ? await sendSms(config.ADMIN_PHONE, message) : undefined
+        await notifService.markSent(logId, sms)
       } catch (err) {
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
         throw err
@@ -65,8 +65,8 @@ export const notificationsWorker = new Worker(
         const { body: message } = await renderTemplate('document_rejected', 'sms', {
           doc_name: data.docName, rejection_count: data.rejectionCount,
         })
-        await sendSms(data.driverPhone, message)
-        await notifService.markSent(logId)
+        const sms = await sendSms(data.driverPhone, message)
+        await notifService.markSent(logId, sms)
       } catch (err) {
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
         throw err
@@ -105,8 +105,8 @@ export const notificationsWorker = new Worker(
         // start/end OTPs tell the rider to share the code with their driver,
         // which this template's "do not share" text would contradict.
         const templateId = slug === 'otp_auth' ? (config.BULKSMSPLANS_OTP_TEMPLATE_ID || undefined) : undefined
-        await sendSms(data.phone, message, templateId)
-        await notifService.markSent(logId)
+        const sms = await sendSms(data.phone, message, templateId)
+        await notifService.markSent(logId, sms)
       } catch (err) {
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
         throw err
@@ -177,8 +177,8 @@ export const notificationsWorker = new Worker(
                 if (body === null) {
                   body = (await renderTemplate('sos_contact', 'sms', { riderName, lat: String(data.lat), lng: String(data.lng) })).body
                 }
-                await sendSms(c.phone, body)
-                await notifService.markSent(logId)
+                const sms = await sendSms(c.phone, body)
+                await notifService.markSent(logId, sms)
               } catch (err) {
                 await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
                 log.error({ err }, 'sos_contact SMS failed')
@@ -204,8 +204,8 @@ export const notificationsWorker = new Worker(
             userPhone: data.userPhone, rideId: data.rideId,
             lat: String(data.lat), lng: String(data.lng), triggeredAt: data.triggeredAt,
           })
-          await sendSms(config.ADMIN_PHONE, message)
-          await notifService.markSent(logId)
+          const sms = await sendSms(config.ADMIN_PHONE, message)
+          await notifService.markSent(logId, sms)
         } catch (err) {
           await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
           throw err
@@ -232,8 +232,8 @@ export const notificationsWorker = new Worker(
         const { body: message } = await renderTemplate('ride_accepted', 'sms', {
           driverName,
         })
-        await sendSms(data.userPhone, message)
-        await notifService.markSent(logId)
+        const sms = await sendSms(data.userPhone, message)
+        await notifService.markSent(logId, sms)
       } catch (err) {
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
         throw err
@@ -272,8 +272,8 @@ export const notificationsWorker = new Worker(
         const fare = fareRes.rows[0] ? Math.round(parseFloat(fareRes.rows[0].amount)) : null
         fareStr = fare != null && fare > 0 ? ` Total fare: ₹${fare}.` : ''
         const { body: message } = await renderTemplate('ride_completed', 'sms', { fareStr })
-        await sendSms(data.userPhone, message)
-        await notifService.markSent(logId)
+        const sms = await sendSms(data.userPhone, message)
+        await notifService.markSent(logId, sms)
       } catch (err) {
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
         throw err

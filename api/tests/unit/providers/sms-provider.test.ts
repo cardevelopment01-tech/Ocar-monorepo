@@ -9,7 +9,7 @@ const { sendSms } = await import('@/providers/sms.provider')
 describe('sendSms number normalisation', () => {
   const fetchMock = vi.fn()
   beforeEach(() => {
-    fetchMock.mockReset().mockResolvedValue({ ok: true, json: async () => ({ code: 200 }) })
+    fetchMock.mockReset().mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify({ code: 200 }) })
     vi.stubGlobal('fetch', fetchMock)
   })
   afterEach(() => { vi.unstubAllGlobals() })
@@ -30,7 +30,7 @@ describe('sendSms number normalisation', () => {
   })
 
   it('throws when the vendor rejects the send', async () => {
-    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ code: 400, message: 'bad' }) })
+    fetchMock.mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify({ code: 400, message: 'bad' }) })
     await expect(sendSms('9876543210', 'hi')).rejects.toThrow('bad')
   })
 })

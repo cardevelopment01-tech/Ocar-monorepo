@@ -58,7 +58,7 @@ describe('sos_alert worker', () => {
     h.sendSms.mockResolvedValue(undefined)
     await h.processor!(job(1))
     expect(h.notifService.notifyAllAdmins).not.toHaveBeenCalled()
-    expect(h.notifService.markSent).toHaveBeenCalledWith(1)
+    expect(h.notifService.markSent).toHaveBeenCalledWith(1, undefined)
   })
 
   it('records a failure, not "sent", when ADMIN_PHONE is not configured', async () => {

@@ -50,8 +50,8 @@ async function textContact(userId: bigint, riderName: string | null, phone: stri
   try {
     logId = await notifService.logNotification({ jobName: 'trip_share', recipientPhone: phone, payload: { userId: userId.toString() } })
     const { body } = await renderTemplate('trip_share', 'sms', { riderName: dltVariable(riderName ?? 'Your contact'), trackToken: token })
-    await sendSms(phone, body)
-    await notifService.markSent(logId)
+    const sms = await sendSms(phone, body)
+    await notifService.markSent(logId, sms)
     return 'sent'
   } catch (err) {
     log.warn({ err }, 'trip share SMS not sent')
