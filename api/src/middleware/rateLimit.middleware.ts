@@ -160,6 +160,13 @@ export function makeAuthLimiters(skip: () => boolean = skipInTest) {
     },
   })
 
+  // Risky actions on other admins (role change, removal, 2FA reset, sign-out) re-ask for the acting admin's password. Throttled per ADMIN, not
+  // per address: a stolen session must not be able to guess the password at speed. Failed attempts only (a wrong password, or a refused action).
+  const adminStepUpLimiter = authLimiterFor(skip, 'admin-stepup', {
+    windowMs: 15 * 60_000, max: 10, failuresOnly: true,
+    key: (req) => `admin:${req.admin?.id ?? req.ip ?? 'unknown'}`,
+  })
+
   // Public admin-invite endpoints (no session exists yet): the link's token is 256 bits so guessing is impractical, but a public endpoint
   // that answers valid/invalid should still be throttled. Failed attempts only, per IP: a person opening their link a few times is never
   // slowed down, a script trying tokens or passwords is.
@@ -169,9 +176,9 @@ export function makeAuthLimiters(skip: () => boolean = skipInTest) {
   // Token refresh: 60 per minute per IP. The refresh token is a 256-bit secret, so this is not guess-resistance; it only
   // bounds a runaway client. Wide enough that every phone behind one NAT can refresh together after a deploy.
   const refreshLimiter = authLimiterFor(skip, 'refresh', { windowMs: 60_000, max: 60 })
-  return { otpLimiter, adminLoginIpLimiter, adminLoginAccountLimiter, adminTotpIpLimiter, adminTotpAccountLimiter, inviteVerifyLimiter, inviteRedeemLimiter, refreshLimiter }
+  return { otpLimiter, adminLoginIpLimiter, adminLoginAccountLimiter, adminTotpIpLimiter, adminTotpAccountLimiter, adminStepUpLimiter, inviteVerifyLimiter, inviteRedeemLimiter, refreshLimiter }
 }
-export const { otpLimiter, adminLoginIpLimiter, adminLoginAccountLimiter, adminTotpIpLimiter, adminTotpAccountLimiter, inviteVerifyLimiter, inviteRedeemLimiter, refreshLimiter } = makeAuthLimiters()
+export const { otpLimiter, adminLoginIpLimiter, adminLoginAccountLimiter, adminTotpIpLimiter, adminTotpAccountLimiter, adminStepUpLimiter, inviteVerifyLimiter, inviteRedeemLimiter, refreshLimiter } = makeAuthLimiters()
 
 // Google-backed geo endpoints (autocomplete, place, reverse, route): each call can cost real money, so they are
 // throttled per principal well below the general 600/min. Autocomplete fires per keystroke, hence not tiny.

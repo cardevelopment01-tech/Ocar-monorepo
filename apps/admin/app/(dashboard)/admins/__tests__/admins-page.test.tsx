@@ -4,7 +4,7 @@ import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AdminAccount, AdminInvite } from '@/lib/admin-invites-api'
 
-const accounts = vi.hoisted(() => ({ list: vi.fn(), setStatus: vi.fn() }))
+const accounts = vi.hoisted(() => ({ list: vi.fn(), setStatus: vi.fn(), changeRole: vi.fn(), resetTwoFactor: vi.fn(), signOut: vi.fn(), remove: vi.fn() }))
 const invites = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), revoke: vi.fn(), resend: vi.fn() }))
 vi.mock('@/lib/admin-invites-api', () => ({ adminAccountsApi: accounts, adminInvitesApi: invites }))
 vi.mock('@/lib/auth-context', () => ({ useAdminAuth: () => ({ admin: { id: '1' } }) }))
@@ -18,7 +18,7 @@ import AdminsPage from '../page'
 // errors and had no feedback on any action; seam=the API client is replaced; no_claim=real requests.
 
 const account = (over: Partial<AdminAccount> = {}): AdminAccount => ({
-  id: '2', code: 'ADM000002', email: 'ops@ocar.test', role: 'ops_admin', admin_status: 'active', created_at: '2026-11-01T00:00:00.000Z', ...over,
+  id: '2', code: 'ADM000002', email: 'ops@ocar.test', role: 'ops_admin', admin_status: 'active', totp_enabled: true, last_login_at: null, created_at: '2026-11-01T00:00:00.000Z', ...over,
 })
 const invite = (over: Partial<AdminInvite> = {}): AdminInvite => ({
   id: '11', email: 'new@ocar.test', role: 'support_admin', invited_by: '1', status: 'pending', expires_at: '2026-11-25T00:00:00.000Z',
@@ -308,6 +308,60 @@ describe('Admins page', () => {
       } finally {
         vi.useRealTimers()
       }
+    })
+  })
+
+  describe('managing another admin', () => {
+    const open = async (user: ReturnType<typeof userEvent.setup>, name: string) => {
+      render(<AdminsPage />)
+      await screen.findByText('ops@ocar.test')
+      await user.click(screen.getByRole('button', { name }))
+    }
+
+    it('offers the four actions for others but none for yourself, and Reset 2FA only when they have 2FA', async () => {
+      accounts.list.mockResolvedValue([account({ id: '1', email: 'me@ocar.test', role: 'super_admin' }), account({ totp_enabled: false })])
+      render(<AdminsPage />)
+      await screen.findByText('ops@ocar.test')
+      expect(screen.getByRole('button', { name: 'Change role of ops@ocar.test' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Sign out ops@ocar.test everywhere' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Remove ops@ocar.test' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Reset 2FA for ops@ocar.test' })).toBeNull()
+      expect(screen.queryByRole('button', { name: /me@ocar.test/ })).toBeNull()
+    })
+
+    it('a wrong password keeps the dialog open with the server message, and nothing changes in the list', async () => {
+      const user = userEvent.setup()
+      accounts.changeRole.mockRejectedValue(httpError(403, 'That password is not right'))
+      await open(user, 'Change role of ops@ocar.test')
+      await user.type(screen.getByLabelText(/Your password/), 'nope')
+      await user.click(screen.getByRole('button', { name: 'Change role' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('That password is not right')
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(accounts.changeRole).toHaveBeenCalledWith('2', 'support_admin', 'nope')
+    })
+
+    it('changing the role updates the row and confirms', async () => {
+      const user = userEvent.setup()
+      accounts.changeRole.mockResolvedValue(account({ role: 'support_admin' }))
+      await open(user, 'Change role of ops@ocar.test')
+      await user.type(screen.getByLabelText(/Your password/), 'Admin@1234')
+      await user.click(screen.getByRole('button', { name: 'Change role' }))
+      expect(await screen.findByText('ops@ocar.test is now Support Admin')).toBeInTheDocument()
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    it('removing needs the email typed exactly and a password, then drops the row', async () => {
+      const user = userEvent.setup()
+      accounts.remove.mockResolvedValue(undefined)
+      await open(user, 'Remove ops@ocar.test')
+      const submit = screen.getByRole('button', { name: 'Remove admin' })
+      await user.type(screen.getByLabelText(/Your password/), 'Admin@1234')
+      expect(submit).toBeDisabled() // email not typed yet
+      await user.type(screen.getByLabelText(/^Type .* to confirm/), 'ops@ocar.test')
+      expect(submit).toBeEnabled()
+      await user.click(submit)
+      await waitFor(() => expect(screen.queryByText('ops@ocar.test')).toBeNull())
+      expect(accounts.remove).toHaveBeenCalledWith('2', 'Admin@1234', 'ops@ocar.test')
     })
   })
 })

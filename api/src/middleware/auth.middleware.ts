@@ -2,6 +2,7 @@ import { RequestHandler } from 'express'
 import { verifyAccessToken } from '@/lib/jwt'
 import { AppErrors } from '@/constants/errors'
 import { PrincipalRole, AdminRole } from '@/constants/enums'
+import { adminPrincipalKey } from '@/constants/redis-keys'
 import { getJSON, setWithTTL, client as redis } from '@/db/redis'
 import { withTimeout } from '@/lib/with-timeout'
 import { logger } from '@/lib/logger'
@@ -31,6 +32,8 @@ type CachedAdmin = {
   role: AdminRole
   is_active: boolean
   totp_enabled: boolean
+  /** Epoch ms. A token issued before this is refused ("sign out everywhere", removal). Absent in copies cached before this existed. */
+  sessions_valid_from?: number | null
 }
 
 // Legacy tokens (no sid) and a missing Redis key both pass: fail open on infra loss.
@@ -123,7 +126,7 @@ export function authenticate(): RequestHandler {
         }
         req.driver = { id: BigInt(driver.id), code: driver.code, role: 'driver', status: driver.status }
       } else if (payload.role === PrincipalRole.ADMIN) {
-        const cacheKey = `auth:admin:${id}`
+        const cacheKey = adminPrincipalKey(id)
         let admin = await getJSON<CachedAdmin>(cacheKey)
         if (!admin) {
           const dbAdmin = await findAdminById(id)
@@ -140,10 +143,13 @@ export function authenticate(): RequestHandler {
             role: dbAdmin.role,
             is_active: dbAdmin.is_active,
             totp_enabled: dbAdmin.totp_enabled,
+            sessions_valid_from: dbAdmin.sessions_valid_from ? new Date(dbAdmin.sessions_valid_from).getTime() : null,
           }
           await setWithTTL(cacheKey, JSON.stringify(admin), PRINCIPAL_CACHE_TTL_SEC).catch(cacheWriteFailed)
         }
-        if (!admin.is_active) {
+        // iat is whole seconds: a token issued in the same second as the cut-off counts as issued before it. A person cannot sign in again that
+        // fast after being signed out, so the rare false refusal is accepted.
+        if (!admin.is_active || (admin.sessions_valid_from != null && payload.iat * 1000 < admin.sessions_valid_from)) {
           res.status(401).json({
             error: AppErrors.AUTH_TOKEN_INVALID.message,
             code: AppErrors.AUTH_TOKEN_INVALID.code,

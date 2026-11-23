@@ -7,8 +7,12 @@ export interface AdminAccount {
   email: string
   role: AdminRole
   admin_status: 'active' | 'suspended'
+  totp_enabled: boolean
+  last_login_at: string | null
   created_at: string
 }
+
+export type AdminLifecycleAction = 'role' | 'reset2fa' | 'signOut' | 'remove'
 
 export const adminAccountsApi = {
   list: async (): Promise<AdminAccount[]> => {
@@ -20,6 +24,14 @@ export const adminAccountsApi = {
     const { data } = await api.patch<{ admin: AdminAccount }>(`/api/v1/admin/admins/${id}/status`, { status })
     return data.admin
   },
+
+  // Risky actions re-ask for the acting admin's own password; the server checks it and answers 403 (not 401) when it is wrong.
+  changeRole: async (id: string, role: AdminRole, password: string): Promise<AdminAccount> =>
+    (await api.patch<{ admin: AdminAccount }>(`/api/v1/admin/admins/${id}/role`, { role, password })).data.admin,
+  resetTwoFactor: async (id: string, password: string): Promise<AdminAccount> =>
+    (await api.post<{ admin: AdminAccount }>(`/api/v1/admin/admins/${id}/reset-2fa`, { password })).data.admin,
+  signOut: async (id: string, password: string): Promise<void> => { await api.post(`/api/v1/admin/admins/${id}/sign-out`, { password }) },
+  remove: async (id: string, password: string, confirmEmail: string): Promise<void> => { await api.delete(`/api/v1/admin/admins/${id}`, { data: { password, confirmEmail } }) },
 }
 
 export type InviteStatus = 'pending' | 'accepted' | 'expired' | 'revoked'

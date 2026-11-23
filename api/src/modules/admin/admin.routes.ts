@@ -1,7 +1,11 @@
 import { Router, IRouter } from 'express'
 import { authenticate } from '@/middleware/auth.middleware'
 import { requireAdmin } from '@/middleware/role.middleware'
+import { validate } from '@/middleware/validate.middleware'
+import { adminStepUpLimiter } from '@/middleware/rateLimit.middleware'
 import * as controller from './admin.controller'
+import * as lifecycle from './admin-lifecycle.controller'
+import { changeRoleSchema, removeAdminSchema, stepUpSchema } from './admin-lifecycle.controller'
 import multer from 'multer'
 import airportZones from './airport-zones'
 import dispatch from './dispatch'
@@ -27,6 +31,11 @@ router.get('/stats', controller.getAdminStats)
 // ─── Admin accounts ───────────────────────────────────────────────────────────
 router.get('/admins', requireAdmin('super_admin'), controller.getAdminAccounts)
 router.patch('/admins/:id/status', requireAdmin('super_admin'), controller.patchAdminStatus)
+// Risky actions on another admin: super admin only, their own password again (wrong ones are throttled), and never on themselves.
+router.patch('/admins/:id/role', requireAdmin('super_admin'), adminStepUpLimiter, validate(changeRoleSchema), lifecycle.patchRole)
+router.delete('/admins/:id', requireAdmin('super_admin'), adminStepUpLimiter, validate(removeAdminSchema), lifecycle.deleteAdmin)
+router.post('/admins/:id/reset-2fa', requireAdmin('super_admin'), adminStepUpLimiter, validate(stepUpSchema), lifecycle.postResetTwoFactor)
+router.post('/admins/:id/sign-out', requireAdmin('super_admin'), adminStepUpLimiter, validate(stepUpSchema), lifecycle.postSignOut)
 
 // ─── Live map ─────────────────────────────────────────────────────────────────
 router.get('/sessions/active', controller.getAdminActiveSessions)
