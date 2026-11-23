@@ -42,7 +42,9 @@ const MIN_LINE_M = 12
 const FAR_FROM_YOU_M = 200
 // Edit pickup (after booking): mirrors api/src/constants/limits.ts PICKUP_EDIT_RADIUS_METRES. UX only -- the server re-checks it.
 const PICKUP_EDIT_RADIUS_METRES = 150
-const EDIT_DELTA = 0.0045 // ~500 m across: the whole circle fits with room to spare
+const EDIT_DELTA = 0.0070 // wide enough that the whole 150 m circle stays clear of the hint pill and the card even with the pin on its edge
+// The 150 m limit drawn in the brand teal: the blue is reserved for "you" (the dot, its accuracy ring, the dotted line), so the two never read as one thing.
+const EDIT_LIMIT_FILL = 'rgba(14,143,163,0.06)'
 const PIN_W = 30
 const PIN_H = 40
 
@@ -170,8 +172,10 @@ export default function MapPickerScreen() {
   const metresFromYou = youAt ? haversineMetres([liveCenter.lat, liveCenter.lng], youAt) : null
 
   function recenter() {
-    if (!youAt) return
-    mapRef.current?.animateToRegion({ latitude: youAt[0], longitude: youAt[1], latitudeDelta: pickupDelta(locAccuracy), longitudeDelta: pickupDelta(locAccuracy) }, 350)
+    const to = editOrigin ?? youAt // editing: the middle of the circle. Going to the rider would just be pulled back to its edge.
+    if (!to) return
+    const d = editOrigin ? EDIT_DELTA : pickupDelta(locAccuracy)
+    mapRef.current?.animateToRegion({ latitude: to[0], longitude: to[1], latitudeDelta: d, longitudeDelta: d }, 350)
   }
 
   async function confirm() {
@@ -199,14 +203,14 @@ export default function MapPickerScreen() {
   }
 
   const coordsOnly = looksLikeCoords(address)
-  const far = metresFromYou !== null && metresFromYou > FAR_FROM_YOU_M
+  const far = !isEdit && metresFromYou !== null && metresFromYou > FAR_FROM_YOU_M
   const chipText = metresFromYou === null ? null : metresFromYou < 30 ? 'At your location' : `${fmtMetres(metresFromYou)} from you`
 
   return (
     <View style={styles.container}>
       <MapView
         ref={mapRef}
-        style={StyleSheet.absoluteFill}
+        style={[StyleSheet.absoluteFill, isEdit && cardH > 0 ? { bottom: cardH } : null]}
         initialRegion={{ latitude: centerLat, longitude: centerLng, latitudeDelta: delta, longitudeDelta: delta }}
         loadingEnabled
         {...OCAR_MAP_PROPS}
@@ -219,7 +223,7 @@ export default function MapPickerScreen() {
         ) : null}
         {/* How far off the GPS fix could be: the rider can see the real spot may sit anywhere inside the ring. */}
         {editOrigin ? (
-          <Circle center={{ latitude: editOrigin[0], longitude: editOrigin[1] }} radius={PICKUP_EDIT_RADIUS_METRES} strokeColor={YOU} strokeWidth={2} fillColor={YOU_FILL} />
+          <Circle center={{ latitude: editOrigin[0], longitude: editOrigin[1] }} radius={PICKUP_EDIT_RADIUS_METRES} strokeColor={colors.primary} strokeWidth={2} fillColor={EDIT_LIMIT_FILL} />
         ) : null}
         {isPickup && youAt && locAccuracy !== null && locAccuracy > 15 ? (
           <Circle center={{ latitude: youAt[0], longitude: youAt[1] }} radius={Math.min(locAccuracy, 300)} strokeColor={YOU_RING} strokeWidth={1} fillColor={YOU_FILL} />
@@ -248,11 +252,13 @@ export default function MapPickerScreen() {
       </MapView>
 
       {/* Screen-fixed pin -- the map moves underneath it, not the other way round. The tip sits on the map centre. */}
-      <View style={styles.centerPin} pointerEvents="none">
-        <Animated.View style={[styles.ground, groundStyle]} />
-        <Animated.View style={[styles.pinBox, pinStyle]}>
-          <PinGlyph variant={isPickup ? 'pickup' : 'drop'} width={PIN_W} height={PIN_H} />
-        </Animated.View>
+      <View style={[StyleSheet.absoluteFill, isEdit && cardH > 0 ? { bottom: cardH } : null]} pointerEvents="none">
+        <View style={styles.centerPin}>
+          <Animated.View style={[styles.ground, groundStyle]} />
+          <Animated.View style={[styles.pinBox, pinStyle]}>
+            <PinGlyph variant={isPickup ? 'pickup' : 'drop'} width={PIN_W} height={PIN_H} />
+          </Animated.View>
+        </View>
       </View>
 
       <Pressable
@@ -265,20 +271,16 @@ export default function MapPickerScreen() {
         <Feather name="arrow-left" size={20} color={colors.ink900} />
       </Pressable>
 
-      {isPickup && !touched ? (
-        <View style={[styles.hint, { top: insets.top + spacing.md }]} pointerEvents="none">
-          <Text style={styles.hintText} numberOfLines={1}>{isEdit ? 'Move the map within the circle' : "Move the map to where you'll wait"}</Text>
-        </View>
-      ) : null}
-
-      {atBoundary ? (
-        <View style={[styles.hint, { top: insets.top + spacing.md + CONTROL + spacing.sm }]} pointerEvents="none">
-          <Text style={styles.hintText} numberOfLines={1}>Pickup can only move within the circle</Text>
+      {isPickup && (isEdit || !touched) ? (
+        <View style={[styles.hint, { top: insets.top + spacing.md }]} pointerEvents="none" accessibilityLiveRegion="polite">
+          <Text style={styles.hintText} numberOfLines={1}>
+            {isEdit ? (atBoundary ? `Within ${PICKUP_EDIT_RADIUS_METRES} m of your pickup` : 'Move the map within the circle') : "Move the map to where you'll wait"}
+          </Text>
         </View>
       ) : null}
 
       {/* Floating readout and recenter, sitting just above the card whatever its height. */}
-      {cardH > 0 && youAt ? (
+      {cardH > 0 && (youAt || editOrigin) ? (
         <View style={[styles.floatRow, { bottom: cardH + spacing.md }]} pointerEvents="box-none">
           {isPickup && chipText ? (
             <View style={[styles.chip, far ? styles.chipFar : null]} accessibilityLiveRegion="polite">
@@ -286,7 +288,7 @@ export default function MapPickerScreen() {
               <Text style={styles.chipText}>{chipText}</Text>
             </View>
           ) : <View />}
-          <Pressable onPress={recenter} style={styles.fab} hitSlop={8} accessibilityRole="button" accessibilityLabel="Centre on my location">
+          <Pressable onPress={recenter} style={styles.fab} hitSlop={8} accessibilityRole="button" accessibilityLabel={editOrigin ? 'Centre on the booked pickup' : 'Centre on my location'}>
             <Feather name="crosshair" size={20} color={colors.primary} />
           </Pressable>
         </View>
@@ -294,7 +296,7 @@ export default function MapPickerScreen() {
 
       <View style={[styles.card, { paddingBottom: insets.bottom + spacing.md }]} onLayout={(e) => setCardH(e.nativeEvent.layout.height)}>
         <View style={styles.group}>
-          <Text style={styles.cardLabel}>{isPickup ? 'Pickup point' : 'Destination'}</Text>
+          <Text style={styles.cardLabel}>{isEdit ? 'Edit pickup' : isPickup ? 'Pickup point' : 'Destination'}</Text>
           <View style={styles.addressRow}>
             <View style={styles.addressIcon}>
               {resolving ? <ActivityIndicator size="small" color={colors.primary} /> : <Feather name="map-pin" size={18} color={colors.primary} />}
@@ -311,11 +313,11 @@ export default function MapPickerScreen() {
           {saveError ? <Text style={[styles.cardSub, { color: colors.error }]}>{saveError}</Text> : null}
         </View>
         <Button
-          label={isPickup ? 'Confirm pickup' : 'Confirm location'}
+          label={isEdit ? 'Update pickup' : isPickup ? 'Confirm pickup' : 'Confirm location'}
           onPress={confirm}
           loading={saving}
           disabled={resolving || !address || saving}
-          accessibilityLabel={isPickup ? 'Confirm this pickup point' : 'Confirm this location'}
+          accessibilityLabel={isEdit ? 'Update the pickup point of your ride' : isPickup ? 'Confirm this pickup point' : 'Confirm this location'}
         />
       </View>
     </View>
