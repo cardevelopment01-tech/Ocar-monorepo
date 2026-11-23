@@ -19,6 +19,11 @@ export const SNAPSHOT_TTL_MS = 20_000
 export const LIVE_FRESH_MS = 5_000
 /** The rider's map frames and shows cars within this distance of the pickup, which the server's cells always cover. */
 export const SHOW_WITHIN_M = 3_000
+/**
+ * The booking map draws the category being booked as far out as the card's ETA counts it: the server's own nearby radius (8 km). A
+ * shorter limit put "6 min away" on the card (a car about 3 km out) with no car on the map. Ride tracking keeps SHOW_WITHIN_M.
+ */
+export const BOOKING_SHOW_WITHIN_M = 8_000
 /** At most this many cars are drawn: the request goes to a handful of drivers, and a swarm of icons says more than is true. */
 export const MAX_SHOWN = 8
 
@@ -46,13 +51,14 @@ export function chooseCars(cars: readonly NearbyCar[], categoryId: number | null
 }
 
 /**
- * The cars on the booking ("Choose your ride") map: those within SHOW_WITHIN_M of the pickup, nearest first, and only the category
- * being booked (see chooseCars), so an auto being booked shows autos and a category with none near shows none.
+ * The cars on the booking ("Choose your ride") map: those within BOOKING_SHOW_WITHIN_M of the pickup, nearest first, and only the
+ * category being booked (see chooseCars), so an auto being booked shows autos and a category with none near shows none. The first
+ * one is the car the card's ETA is for.
  */
 export function carsForBooking(drivers: readonly NearbyCar[], pickup: [number, number], categoryId: number | null): NearbyCar[] {
   const near = drivers
     .map((d) => ({ d, m: metresBetween(pickup, [d.lat, d.lng]) }))
-    .filter((x) => x.m <= SHOW_WITHIN_M)
+    .filter((x) => x.m <= BOOKING_SHOW_WITHIN_M)
     .sort((a, b) => a.m - b.m)
     .map((x) => x.d)
   return chooseCars(near, categoryId)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIVE_FRESH_MS, LIVE_TTL_MS, MAX_SHOWN, SNAPSHOT_TTL_MS, applyLive, applySnapshot, carsForBooking, carsNear, chooseCars, expireCars, liveIsFlowing, parseCarEvent, sameCars, showWithinMetres, type LiveCars } from './liveCars'
+import { BOOKING_SHOW_WITHIN_M, LIVE_FRESH_MS, LIVE_TTL_MS, MAX_SHOWN, SNAPSHOT_TTL_MS, applyLive, applySnapshot, carsForBooking, carsNear, chooseCars, expireCars, liveIsFlowing, parseCarEvent, sameCars, showWithinMetres, type LiveCars } from './liveCars'
 
 // Value: protects=the cars on a searching rider's map are the freshest word on each driver: live positions win, the REST
 // snapshot fills in and takes over when the push is not arriving, silent cars drop out, and a hostile or malformed socket
@@ -133,15 +133,23 @@ describe('chooseCars (only the category being booked)', () => {
 describe('carsForBooking (the booking map: only the category being booked, near the pickup, nearest first)', () => {
   const at = (id: string, categoryId: number, northM: number) => ({ driverId: id, lat: P[0] + northM * DEG_PER_M, lng: P[1], categoryId })
   const fleet = [at('auto1', 6, 400), at('hatch1', 1, 200), at('sedan1', 2, 300), at('auto2', 6, 100), at('suv1', 3, 500), at('autoFar', 6, 5_000)]
-  it('an auto being booked shows only autos, nearest first, and not one beyond the show radius', () => {
-    expect(carsForBooking(fleet, P, 6).map((c) => c.driverId)).toEqual(['auto2', 'auto1'])
+  it('an auto being booked shows only autos, nearest first, and not one beyond the booking range', () => {
+    expect(carsForBooking([...fleet, at('autoVeryFar', 6, 9_000)], P, 6).map((c) => c.driverId)).toEqual(['auto2', 'auto1', 'autoFar'])
+  })
+  it('shows a car as far out as the card quotes its ETA: a 6 minute auto (about 3 km) is on the map, not cut off at 3 km', () => {
+    expect(BOOKING_SHOW_WITHIN_M).toBe(8_000)
+    expect(carsForBooking([at('auto3km', 6, 3_100)], P, 6).map((c) => c.driverId)).toEqual(['auto3km'])
+    expect(carsForBooking([at('auto8km', 6, 7_900), at('auto9km', 6, 8_100)], P, 6).map((c) => c.driverId)).toEqual(['auto8km'])
+  })
+  it('the first car is the nearest of the category: the one its ETA is for', () => {
+    expect(carsForBooking(fleet, P, 6)[0]?.driverId).toBe('auto2')
   })
   it('a hatchback being booked shows only hatchbacks; a category with none near shows none', () => {
     expect(carsForBooking(fleet, P, 1).map((c) => c.driverId)).toEqual(['hatch1'])
     expect(carsForBooking(fleet, P, 5)).toEqual([])
   })
   it('with no category chosen yet, every near car shows, so the map is not blank while the list loads', () => {
-    expect(carsForBooking(fleet, P, null).map((c) => c.driverId)).toEqual(['auto2', 'hatch1', 'sedan1', 'auto1', 'suv1'])
+    expect(carsForBooking(fleet, P, null).map((c) => c.driverId)).toEqual(['auto2', 'hatch1', 'sedan1', 'auto1', 'suv1', 'autoFar'])
   })
 })
 

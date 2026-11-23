@@ -114,7 +114,7 @@ export default function BookingFareScreen() {
       const inCat = nearbyDrivers.filter((d) => d.categoryId === cat.id)
       if (inCat.length === 0) { result[cat.id] = { count: 0, etaMin: -1 }; continue }
       const nearest = Math.min(...inCat.map((d) => haversineKm(pickup.lat, pickup.lng, d.lat, d.lng)))
-      result[cat.id] = { count: inCat.length, etaMin: etaMinFromKm(nearest) }
+      result[cat.id] = { count: inCat.length, etaMin: etaMinFromKm(nearest), km: nearest }
     }
     return result
   }, [nearbyDrivers, visibleCategories, pickup])
