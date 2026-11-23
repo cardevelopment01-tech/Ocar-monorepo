@@ -4,27 +4,34 @@ import { logger } from '@/lib/logger'
 
 const log = logger.child({ module: 'safety-sweeps' })
 
-const SOS_STALE_MINUTES = 5
+// The response chain for an alert nobody has acknowledged (the sweep runs every 30 s):
+//   at once      every admin is paged by the trigger itself (notifications worker)
+//   after 1 min  a reminder to whoever is on call (everyone if nobody is)
+//   after 3 min  everyone, once more
+// Each step is recorded on the alert (escalation_level) so it fires once, not every tick.
+const REMINDER_AFTER_SECONDS = 60
+const EVERYONE_AFTER_SECONDS = 180
 
-// §03.4: SOS alerts triggered but never acknowledged for 5+ minutes get pushed
-// to every admin (in-app + push + socket via notifyAllAdmins) — a durable
-// escalation that doesn't depend on an admin socket being connected at trigger
-// time. escalated_at makes it fire once, not every tick.
 export async function sweepStaleSosAlerts(): Promise<void> {
-  const stale = await repo.getStaleSosAlerts(SOS_STALE_MINUTES)
-  for (const alert of stale) {
-    try {
-      await notifyAllAdmins({
-        type: 'sos_unacknowledged',
-        title: 'SOS alert unacknowledged for 5+ minutes',
-        body: `Ride ${alert.ride_id} — SOS triggered ${new Date(alert.created_at).toISOString()}`,
-        rideId: BigInt(alert.ride_id),
-      })
-      await repo.markSosEscalated(BigInt(alert.id))
-    } catch (err) {
-      // One bad alert must not abort the rest of the sweep; the next tick retries
-      // it (escalated_at still NULL).
-      log.error({ err, alertId: alert.id }, 'failed to escalate stale SOS alert')
+  // Highest step first: an alert the sweep missed for minutes gets the one page it needs now, not a reminder and an escalation together.
+  for (const [level, afterSeconds] of [[2, EVERYONE_AFTER_SECONDS], [1, REMINDER_AFTER_SECONDS]] as const) {
+    const stale = await repo.getUnackedSosAlerts(level, afterSeconds)
+    for (const alert of stale) {
+      try {
+        const waited = Math.max(1, Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60_000))
+        const onCall = level === 1 ? (await repo.getOnCallAdmins()).map(a => BigInt(a.id)) : []
+        await notifyAllAdmins({
+          type: 'sos_unacknowledged',
+          title: level === 1 ? 'SOS alert still unacknowledged' : 'SOS alert unacknowledged: all admins',
+          body: `Ride ${alert.ride_id}: nobody has picked up this SOS for ${waited} min`,
+          rideId: BigInt(alert.ride_id),
+          ...(onCall.length > 0 ? { adminIds: onCall } : {}),
+        })
+        await repo.markSosEscalated(BigInt(alert.id), level)
+      } catch (err) {
+        // One bad alert must not abort the rest of the sweep; the next tick retries it (level not yet recorded).
+        log.error({ err, alertId: alert.id, level }, 'failed to escalate stale SOS alert')
+      }
     }
   }
 }

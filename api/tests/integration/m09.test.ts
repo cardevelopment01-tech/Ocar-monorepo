@@ -254,6 +254,26 @@ describe('M09 — Safety', () => {
       expect(rows).toHaveLength(1)
       expect(rows[0]?.severity).toBe('high')
       expect(rows[0]?.status).toBe('triggered')
+
+      // The reminder steps, in the real database: a fresh alert is not due, an old one is, and a recorded step does not repeat.
+      const { getUnackedSosAlerts, markSosEscalated } = await import('@/modules/safety/safety.repository')
+      const id = res.body.id as string
+      const due = async (level: number, secs: number) => (await getUnackedSosAlerts(level, secs)).some(a => a.id === id)
+      expect(await due(1, 60)).toBe(false)
+      await pool.query(`UPDATE sos_alerts SET created_at = now() - interval '90 seconds' WHERE id = $1`, [id])
+      expect(await due(1, 60)).toBe(true)
+      expect(await due(2, 180)).toBe(false)
+      await markSosEscalated(BigInt(id), 1)
+      expect(await due(1, 60)).toBe(false)
+      await pool.query(`UPDATE sos_alerts SET created_at = now() - interval '4 minutes' WHERE id = $1`, [id])
+      expect(await due(2, 180)).toBe(true)
+      await markSosEscalated(BigInt(id), 2)
+      expect(await due(2, 180)).toBe(false)
+      const { rows: esc } = await pool.query('SELECT escalation_level, escalated_at FROM sos_alerts WHERE id = $1', [id])
+      expect(esc[0]?.escalation_level).toBe(2)
+      expect(esc[0]?.escalated_at).not.toBeNull()
+      await markSosEscalated(BigInt(id), 1) // never steps back
+      expect((await pool.query('SELECT escalation_level FROM sos_alerts WHERE id = $1', [id])).rows[0]?.escalation_level).toBe(2)
     })
 
     it('TC-M09-005: SOS acknowledged updates status', async () => {
@@ -289,6 +309,17 @@ describe('M09 — Safety', () => {
       expect(pressAgain.body.id).toBe(alertId)
       const { rows: perRide } = await pool.query('SELECT count(*)::int AS n FROM sos_alerts WHERE ride_id = $1', [rideId])
       expect(perRide[0]?.n).toBe(1)
+
+      // On-call duty: an admin sets only their own status, and the list shows who is on call.
+      const noFlag = await request(app).put('/api/v1/admin/safety/sos/on-call').set('Authorization', `Bearer ${admin.accessToken}`).send({ onCall: 'yes' })
+      expect(noFlag.status).toBe(422)
+      const on = await request(app).put('/api/v1/admin/safety/sos/on-call').set('Authorization', `Bearer ${admin.accessToken}`).send({ onCall: true })
+      expect(on.status, JSON.stringify(on.body)).toBe(200)
+      expect(on.body.me).toBe(true)
+      expect(on.body.admins.map((a: { email: string }) => a.email)).toContain(SOS_ADMIN_EMAIL)
+      const off = await request(app).put('/api/v1/admin/safety/sos/on-call').set('Authorization', `Bearer ${admin.accessToken}`).send({ onCall: false })
+      expect(off.body.me).toBe(false)
+      expect((await request(app).get('/api/v1/admin/safety/sos/on-call').set('Authorization', `Bearer ${admin.accessToken}`)).body.admins.map((a: { email: string }) => a.email)).not.toContain(SOS_ADMIN_EMAIL)
 
       // The detail view: the alert, the ride and who is in it, the trail and earlier alerts, on one read.
       const det = await request(app).get(`/api/v1/admin/safety/sos/${alertId}`).set('Authorization', `Bearer ${admin.accessToken}`)
