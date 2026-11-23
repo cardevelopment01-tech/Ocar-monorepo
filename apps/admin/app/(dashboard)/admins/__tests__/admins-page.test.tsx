@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { AdminAccount, AdminInvite } from '@/lib/admin-invites-api'
 
 const accounts = vi.hoisted(() => ({ list: vi.fn(), setStatus: vi.fn() }))
-const invites = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), revoke: vi.fn() }))
+const invites = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), revoke: vi.fn(), resend: vi.fn() }))
 vi.mock('@/lib/admin-invites-api', () => ({ adminAccountsApi: accounts, adminInvitesApi: invites }))
 vi.mock('@/lib/auth-context', () => ({ useAdminAuth: () => ({ admin: { id: '1' } }) }))
 
@@ -22,8 +22,10 @@ const account = (over: Partial<AdminAccount> = {}): AdminAccount => ({
 })
 const invite = (over: Partial<AdminInvite> = {}): AdminInvite => ({
   id: '11', email: 'new@ocar.test', role: 'support_admin', invited_by: '1', status: 'pending', expires_at: '2026-11-25T00:00:00.000Z',
-  accepted_at: null, accepted_admin_id: null, created_at: '2026-11-23T00:00:00.000Z', updated_at: '2026-11-23T00:00:00.000Z', ...over,
+  accepted_at: null, accepted_admin_id: null, email_status: 'sent', email_error: null, created_at: '2026-11-23T00:00:00.000Z', updated_at: '2026-11-23T00:00:00.000Z', ...over,
 })
+const LINK = 'https://admin.ocar.example/accept-invite?token=abc123def456'
+const issued = (over: Partial<AdminInvite> = {}) => ({ invite: invite(over), link: LINK })
 const httpError = (status: number, error?: string) => ({ isAxiosError: true, response: { status, data: error ? { error } : {} } })
 
 describe('Admins page', () => {
@@ -65,26 +67,26 @@ describe('Admins page', () => {
     expect(accounts.list).toHaveBeenCalledTimes(2)
   })
 
-  describe('an invite nobody answered', () => {
-    beforeEach(() => invites.list.mockResolvedValue([invite({ status: 'expired' }), invite({ id: '12', email: 'gone@ocar.test', status: 'revoked' })]))
+  describe('an invite nobody answered, and a revoked one', () => {
+    beforeEach(() => invites.list.mockResolvedValue([invite({ status: 'expired' }), invite({ id: '12', email: 'gone@ocar.test', status: 'revoked', role: 'finance_admin' })]))
 
-    it('is labelled expired, has no revoke button, and can be sent again in one click with the same person and role', async () => {
+    it('are labelled, an expired one offers Resend (not Revoke), and a revoked one can be invited again in one click with the same person and role', async () => {
       const user = userEvent.setup()
-      invites.create.mockResolvedValue(invite({ id: '13', status: 'pending' }))
+      invites.create.mockResolvedValue(issued({ id: '13', email: 'gone@ocar.test', role: 'finance_admin', status: 'pending', email_status: 'queued' }))
       render(<AdminsPage />)
 
       expect(await screen.findByText('Expired')).toBeInTheDocument()
       expect(screen.getByText('Revoked')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /Revoke the invite/ })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Resend the invite to new@ocar.test' })).toBeInTheDocument()
 
-      await user.click(screen.getByRole('button', { name: 'Invite new@ocar.test again' }))
-      expect(screen.getByLabelText('Email address')).toHaveValue('new@ocar.test')
-      expect(screen.getByLabelText('Role')).toHaveValue('support_admin')
+      await user.click(screen.getByRole('button', { name: 'Invite gone@ocar.test again' }))
+      expect(screen.getByLabelText('Email address')).toHaveValue('gone@ocar.test')
+      expect(screen.getByLabelText('Role')).toHaveValue('finance_admin')
 
       await user.click(screen.getByRole('button', { name: /Send Invite/ }))
-      await waitFor(() => expect(invites.create).toHaveBeenCalledWith({ email: 'new@ocar.test', role: 'support_admin' }))
-      expect(await screen.findByText('Invite sent to new@ocar.test')).toBeInTheDocument()
-      expect(screen.getAllByText('new@ocar.test').length).toBeGreaterThanOrEqual(2) // the new live invite is on top of the old expired row
+      await waitFor(() => expect(invites.create).toHaveBeenCalledWith({ email: 'gone@ocar.test', role: 'finance_admin' }))
+      expect(await screen.findByText(/We are emailing gone@ocar.test/)).toBeInTheDocument()
     })
   })
 
@@ -97,7 +99,7 @@ describe('Admins page', () => {
 
     it('sends the address in lower case with the chosen role', async () => {
       const user = userEvent.setup()
-      invites.create.mockResolvedValue(invite({ id: '14', email: 'sam@ocar.test', role: 'finance_admin' }))
+      invites.create.mockResolvedValue(issued({ id: '14', email: 'sam@ocar.test', role: 'finance_admin' }))
       await open(user)
       await user.type(screen.getByLabelText('Email address'), ' Sam@OCAR.test')
       await user.selectOptions(screen.getByLabelText('Role'), 'finance_admin')
@@ -179,6 +181,133 @@ describe('Admins page', () => {
 
       await user.click(await screen.findByRole('button', { name: 'Dismiss this message' }))
       expect(screen.queryByText(/The server hit a problem/)).toBeNull()
+    })
+  })
+
+  describe('the invite link after sending (the only time it can be copied)', () => {
+    const open = async (user: ReturnType<typeof userEvent.setup>) => {
+      render(<AdminsPage />)
+      await screen.findByText('ops@ocar.test')
+      await user.click(screen.getByRole('button', { name: /Invite Admin/ }))
+      await user.type(screen.getByLabelText('Email address'), 'sam@ocar.test')
+    }
+    it('stays open after sending, shows the link and copies it on one click', async () => {
+      const user = userEvent.setup()
+      invites.create.mockResolvedValue(issued({ id: '20', email: 'sam@ocar.test', email_status: 'queued' }))
+      await open(user)
+      await user.click(screen.getByRole('button', { name: /Send Invite/ }))
+      expect(await screen.findByText('Invite sent')).toBeInTheDocument()
+      expect(screen.getByLabelText('Invite link')).toHaveValue(LINK)
+      expect(screen.getByText(/We are emailing sam@ocar.test/)).toBeInTheDocument()
+      expect(screen.queryByLabelText('Email address')).toBeNull() // the form is gone
+
+      await user.click(screen.getByRole('button', { name: 'Copy link' }))
+      expect(await navigator.clipboard.readText()).toBe(LINK) // what really landed on the clipboard
+      expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
+      expect(screen.getByText(/shown only now/)).toBeInTheDocument()
+    })
+
+    it('says plainly when the email could not be sent, and still offers the link', async () => {
+      const user = userEvent.setup()
+      invites.create.mockResolvedValue(issued({ id: '21', email: 'sam@ocar.test', email_status: 'failed', email_error: 'The email could not be queued (the job queue is unavailable).' }))
+      await open(user)
+      await user.click(screen.getByRole('button', { name: /Send Invite/ }))
+      expect(await screen.findByText(/The email to sam@ocar.test could not be sent/)).toBeInTheDocument()
+      expect(screen.getByLabelText('Invite link')).toHaveValue(LINK)
+    })
+
+    it('if the browser will not copy, the link is selected and the person is told to press Ctrl+C (nothing fails silently)', async () => {
+      const user = userEvent.setup()
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(async () => { throw new Error('denied') }) } })
+      invites.create.mockResolvedValue(issued({ id: '22', email: 'sam@ocar.test' }))
+      await open(user)
+      await user.click(screen.getByRole('button', { name: /Send Invite/ }))
+      await user.click(await screen.findByRole('button', { name: 'Copy link' }))
+      expect(await screen.findByText(/Could not copy automatically/)).toBeInTheDocument()
+    })
+
+    it('Done closes the panel, and the link is gone: opening it again shows a fresh form, not the old link', async () => {
+      const user = userEvent.setup()
+      invites.create.mockResolvedValue(issued({ id: '23', email: 'sam@ocar.test' }))
+      await open(user)
+      await user.click(screen.getByRole('button', { name: /Send Invite/ }))
+      await user.click(await screen.findByRole('button', { name: 'Done' }))
+      await user.click(screen.getByRole('button', { name: /Invite Admin/ }))
+      expect(await screen.findByLabelText('Email address')).toHaveValue('')
+      expect(screen.queryByLabelText('Invite link')).toBeNull()
+    })
+  })
+
+  describe('resending', () => {
+    beforeEach(() => {
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(async () => undefined) } })
+    })
+
+    it('asks first (the old link stops working), then shows the new link, updates the row and says it was resent', async () => {
+      const user = userEvent.setup()
+      invites.resend.mockResolvedValue(issued({ email_status: 'queued' }))
+      render(<AdminsPage />)
+      await user.click(await screen.findByRole('button', { name: 'Resend the invite to new@ocar.test' }))
+      expect(await screen.findByText(/the old link stops working/)).toBeInTheDocument()
+      expect(invites.resend).not.toHaveBeenCalled()
+      await user.click(screen.getByRole('button', { name: 'Resend' }))
+      await waitFor(() => expect(invites.resend).toHaveBeenCalledWith('11'))
+      expect(await screen.findByText('Invite resent')).toBeInTheDocument()
+      expect(screen.getByLabelText('Invite link')).toHaveValue(LINK)
+    })
+
+    it('a lapsed invite can be resent too, but a revoked one only offers "invite again"', async () => {
+      invites.list.mockResolvedValue([invite({ status: 'expired' }), invite({ id: '12', email: 'gone@ocar.test', status: 'revoked' })])
+      render(<AdminsPage />)
+      expect(await screen.findByRole('button', { name: 'Resend the invite to new@ocar.test' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Resend the invite to gone@ocar.test' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Invite gone@ocar.test again' })).toBeInTheDocument()
+    })
+
+    it("the server's wait message (\"Wait 42 seconds before resending\") is shown as written, not as a generic throttle", async () => {
+      const user = userEvent.setup()
+      invites.resend.mockRejectedValue({ isAxiosError: true, response: { status: 429, data: { error: 'Wait 42 seconds before resending', code: 'ADMIN_INVITE_RESEND_TOO_SOON' } } })
+      render(<AdminsPage />)
+      await user.click(await screen.findByRole('button', { name: 'Resend the invite to new@ocar.test' }))
+      await user.click(await screen.findByRole('button', { name: 'Resend' }))
+      expect(await screen.findByText('Wait 42 seconds before resending')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Invite link')).toBeNull()
+    })
+  })
+
+  describe('did the email go out', () => {
+    it('a failed email is shown on the row with the mail server\'s reason; "sent" and "sending" are quiet', async () => {
+      invites.list.mockResolvedValue([
+        invite({ id: '31', email: 'bad@ocar.test', email_status: 'failed', email_error: '535 5.7.8 Username and Password not accepted' }),
+        invite({ id: '32', email: 'fine@ocar.test', email_status: 'sent' }),
+        invite({ id: '33', email: 'old@ocar.test', email_status: 'unknown' }),
+      ])
+      render(<AdminsPage />)
+      expect(await screen.findByText(/Email failed: 535 5.7.8 Username and Password not accepted/)).toBeInTheDocument()
+      expect(screen.getByText('Email sent')).toBeInTheDocument()
+      expect(screen.getAllByRole('status')).toHaveLength(1) // only the failure is announced
+      expect(screen.queryByText(/Email failed.*old@/)).toBeNull() // an invite sent before tracking says nothing
+    })
+
+    it('an old accepted or revoked invite shows no email state at all', async () => {
+      invites.list.mockResolvedValue([invite({ status: 'accepted', email_status: 'failed', email_error: 'x' }), invite({ id: '12', email: 'r@ocar.test', status: 'revoked', email_status: 'sent' })])
+      render(<AdminsPage />)
+      await screen.findByText('r@ocar.test')
+      expect(screen.queryByText(/Email failed|Email sent|Sending email/)).toBeNull()
+    })
+
+    it('"Sending email…" turns into the result without a reload (the page looks again by itself)', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        invites.list.mockResolvedValueOnce([invite({ email_status: 'queued' })]).mockResolvedValue([invite({ email_status: 'failed', email_error: 'connection timed out' })])
+        render(<AdminsPage />)
+        expect(await screen.findByText('Sending email…')).toBeInTheDocument()
+        await act(async () => { await vi.advanceTimersByTimeAsync(3500) })
+        expect(await screen.findByText(/Email failed: connection timed out/)).toBeInTheDocument()
+        expect(screen.queryByText('Sending email…')).toBeNull()
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 })
