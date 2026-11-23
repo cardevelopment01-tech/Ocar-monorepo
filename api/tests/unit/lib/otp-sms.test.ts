@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { chooseLoginOtpSms, type OtpSmsConfig } from '@/lib/otp-sms'
 
@@ -34,7 +36,10 @@ describe('chooseLoginOtpSms', () => {
   })
 
   it('the rendered auto-read message is under the 140 byte limit and ends with the hash on its own line', () => {
-    const body = `<#> 123456 is your OTP for OD CAR RENTALS PRIVATE LIMITED. Do not share it with anyone. Valid for 10 minutes.\nRiderHash+/1`
+    // The real wording, read from the migration that inserts it, with a full-length code and hash.
+    const sql = readFileSync(join(__dirname, '../../../src/db/migrations/160_otp_auth_retriever_template.sql'), 'utf8')
+    const template = /E'(<#>[^']*)'/.exec(sql)![1]!.replace('\\n', '\n')
+    const body = template.replace('{{otp}}', '123456').replace('{{appHash}}', 'RiderHash+/1')
     expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(140)
     expect(body.split('\n').at(-1)).toBe('RiderHash+/1')
   })

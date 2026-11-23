@@ -6,6 +6,7 @@ export interface OtpRetriever {
   start(): Promise<boolean>
   stop(): void
   addListener(event: 'onSms', cb: (e: { message: string }) => void): { remove(): void }
+  addListener(event: 'onTimeout', cb: () => void): { remove(): void }
 }
 
 /**
@@ -17,37 +18,39 @@ export interface OtpRetriever {
 export function useOtpAutoRead(retriever: OtpRetriever | null | undefined, onCode: (code: string) => void, length = 6) {
   const [detected, setDetected] = useState(false)
   const [listening, setListening] = useState(false)
-  const subRef = useRef<{ remove(): void } | null>(null)
+  const subRef = useRef<{ remove(): void }[]>([])
   const onCodeRef = useRef(onCode)
   onCodeRef.current = onCode
 
   const disarm = useCallback(() => {
-    subRef.current?.remove()
-    subRef.current = null
+    subRef.current.forEach((x) => x.remove())
+    subRef.current = []
     setListening(false)
     try { retriever?.stop() } catch { /* nothing to stop */ }
   }, [retriever])
 
   const arm = useCallback(async (): Promise<boolean> => {
     if (!retriever) return false
-    subRef.current?.remove()
-    subRef.current = null
+    subRef.current.forEach((x) => x.remove())
+    subRef.current = []
     setDetected(false)
     try {
-      subRef.current = retriever.addListener('onSms', (e) => {
+      subRef.current = [retriever.addListener('onSms', (e) => {
         const code = parseOtp(e.message, length)
-        if (!code) return
+        if (!code) { setListening(false); return } // the session ended on a message we cannot read
         setDetected(true)
         setListening(false)
         onCodeRef.current(code)
-      })
+      }),
+      // Google ends the session after 5 minutes (or on an unexpected message): stop claiming we are reading.
+      retriever.addListener('onTimeout', () => setListening(false))]
       const ok = await retriever.start()
       setListening(ok)
-      if (!ok) { subRef.current.remove(); subRef.current = null }
+      if (!ok) { subRef.current.forEach((x) => x.remove()); subRef.current = [] }
       return ok
     } catch {
-      subRef.current?.remove()
-      subRef.current = null
+      subRef.current.forEach((x) => x.remove())
+      subRef.current = []
       return false
     }
   }, [retriever, length])

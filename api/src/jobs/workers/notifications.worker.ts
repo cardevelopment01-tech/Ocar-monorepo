@@ -104,9 +104,19 @@ export const notificationsWorker = new Worker(
       const logId = await notifService.logNotification(lp)
       try {
         // A login OTP is the original wording, or the Android auto-read layout for an app that asked for it (lib/otp-sms.ts).
-        const login = data.type === 'auth' ? chooseLoginOtpSms(data.otp, data.role, data.autoRead, config) : null
-        const slug = login ? login.slug : data.type === 'trip_start' ? 'otp_trip_start' : 'otp_trip_end'
-        const { body: message } = await renderTemplate(slug, 'sms', login ? login.context : { otp: data.otp })
+        let login = data.type === 'auth' ? chooseLoginOtpSms(data.otp, data.role, data.autoRead, config) : null
+        let slug = login ? login.slug : data.type === 'trip_start' ? 'otp_trip_start' : 'otp_trip_end'
+        let message: string
+        try {
+          ;({ body: message } = await renderTemplate(slug, 'sms', login ? login.context : { otp: data.otp }))
+        } catch (err) {
+          // The auto-read template row missing or switched off must never cost someone their login code: send the original wording.
+          if (!login || login.slug === 'otp_auth') throw err
+          log.warn({ err }, 'otp_auth_retriever template unavailable, sending the original wording')
+          login = chooseLoginOtpSms(data.otp, data.role, false, config)
+          slug = login.slug
+          ;({ body: message } = await renderTemplate(slug, 'sms', login.context))
+        }
         // DLT templates are approved for login OTP wording only — ride
         // start/end OTPs tell the rider to share the code with their driver,
         // which a login template's "do not share" text would contradict.

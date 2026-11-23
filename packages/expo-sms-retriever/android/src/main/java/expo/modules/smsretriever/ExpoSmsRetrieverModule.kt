@@ -71,7 +71,7 @@ class ExpoSmsRetrieverModule : Module() {
               val message = extras.getString(SmsRetriever.EXTRA_SMS_MESSAGE)
               if (message != null) sendEvent("onSms", Bundle().apply { putString("message", message) })
             }
-            CommonStatusCodes.TIMEOUT -> sendEvent("onTimeout", Bundle())
+            else -> sendEvent("onTimeout", Bundle()) // timeout or any other end: the session is over either way
           }
           stopReceiver()
         }
