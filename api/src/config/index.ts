@@ -117,16 +117,18 @@ const envSchema = z.object({
   // SES_FROM_EMAIL empty = dev bypass (logs instead of sending), same pattern as BULKSMSPLANS_API_ID.
   SES_REGION: z.string().default('ap-south-1'),
   SES_FROM_EMAIL: z.string().default(''),
-  // Which service sends email. 'ses' = Amazon SES (above). 'smtp' = any SMTP server, meant for Google Workspace's SMTP relay
-  // (smtp-relay.gmail.com), which the organisation already pays for and which has no sandbox to be approved out of.
+  // Which service sends email. 'ses' = Amazon SES (above). 'smtp' = any SMTP server, meant for Google Workspace (smtp.gmail.com, signing in
+  // with a mailbox and an app password), which the organisation already pays for and which has no sandbox to be approved out of.
   EMAIL_PROVIDER: z.enum(['ses', 'smtp']).default('ses'),
   // The sender, e.g. "Ocar Admin <no-reply@your-domain>". With Google it must be an address in your Workspace domain. Falls back to
   // SES_FROM_EMAIL so an existing SES setup keeps working unchanged.
   EMAIL_FROM: z.string().default(''),
-  SMTP_HOST: z.string().default('smtp-relay.gmail.com'),
+  // smtp.gmail.com takes a sign-in from any address. The separate relay (smtp-relay.gmail.com) only talks to registered server IPs, and
+  // refused a test connection with "421 4.7.0 Try again later" at the first greeting.
+  SMTP_HOST: z.string().default('smtp.gmail.com'),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
-  // The Workspace mailbox that signs in (with an app password if it uses 2-step verification). Both empty = no sign-in, which is what
-  // an IP-allowlisted relay uses.
+  // The Workspace mailbox that signs in, with an APP PASSWORD (Google no longer accepts the normal password for SMTP). Both empty = no
+  // sign-in, which is what an IP-registered relay uses.
   SMTP_USER: z.string().default(''),
   SMTP_PASS: z.string().default(''),
   // 'starttls' (port 587, upgraded to TLS before anything is sent) or 'ssl' (port 465). 'none' sends in the clear: local testing only.

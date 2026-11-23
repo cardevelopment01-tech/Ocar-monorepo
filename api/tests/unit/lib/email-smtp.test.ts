@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const cfg = vi.hoisted(() => ({
   EMAIL_PROVIDER: 'smtp', EMAIL_FROM: 'Ocar Admin <no-reply@ocar.example>', SES_FROM_EMAIL: '', SES_REGION: 'ap-south-1',
-  SMTP_HOST: 'smtp-relay.gmail.com', SMTP_PORT: 587, SMTP_USER: 'no-reply@ocar.example', SMTP_PASS: 'app-password-123', SMTP_SECURITY: 'starttls',
+  SMTP_HOST: 'smtp.gmail.com', SMTP_PORT: 587, SMTP_USER: 'no-reply@ocar.example', SMTP_PASS: 'app-password-123', SMTP_SECURITY: 'starttls',
   NODE_ENV: 'production', ALLOW_DEV_EMAIL: 'false', S3_ACCESS_KEY: '', S3_SECRET_KEY: '',
 }))
 const mail = vi.hoisted(() => ({ createTransport: vi.fn(), sendMail: vi.fn() }))
@@ -29,7 +29,7 @@ describe('sendEmail over SMTP', () => {
     mail.createTransport.mockReturnValue({ sendMail: mail.sendMail })
     mail.sendMail.mockResolvedValue({ messageId: 'x' })
     Object.assign(cfg, {
-      EMAIL_PROVIDER: 'smtp', EMAIL_FROM: 'Ocar Admin <no-reply@ocar.example>', SES_FROM_EMAIL: '', SMTP_HOST: 'smtp-relay.gmail.com', SMTP_PORT: 587,
+      EMAIL_PROVIDER: 'smtp', EMAIL_FROM: 'Ocar Admin <no-reply@ocar.example>', SES_FROM_EMAIL: '', SMTP_HOST: 'smtp.gmail.com', SMTP_PORT: 587,
       SMTP_USER: 'no-reply@ocar.example', SMTP_PASS: 'app-password-123', SMTP_SECURITY: 'starttls', NODE_ENV: 'production', ALLOW_DEV_EMAIL: 'false',
     })
     log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
@@ -54,7 +54,7 @@ describe('sendEmail over SMTP', () => {
     await sendEmail('a@x.test', 's', 't')
     expect(mail.createTransport).toHaveBeenCalledTimes(1)
     expect(mail.createTransport.mock.calls[0]![0]).toMatchObject({
-      host: 'smtp-relay.gmail.com', port: 587, secure: false, requireTLS: true, ignoreTLS: false,
+      host: 'smtp.gmail.com', port: 587, secure: false, requireTLS: true, ignoreTLS: false,
       auth: { user: 'no-reply@ocar.example', pass: 'app-password-123' },
     })
   })

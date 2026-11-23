@@ -11,9 +11,9 @@ const prod = { ...process.env, NODE_ENV: 'production', PAYU_KEY: 'k', PAYU_SALT:
 const ok = (over: Record<string, string>) => envSchemaChecked.safeParse({ ...prod, ...over })
 
 describe('email settings', () => {
-  it('defaults: Amazon SES, Google relay host, port 587 with STARTTLS, no sign-in, no sender', () => {
+  it('defaults: Amazon SES, Gmail server, port 587 with STARTTLS, no sign-in, no sender', () => {
     const d = ok({}).data!
-    expect(d).toMatchObject({ EMAIL_PROVIDER: 'ses', EMAIL_FROM: '', SMTP_HOST: 'smtp-relay.gmail.com', SMTP_PORT: 587, SMTP_USER: '', SMTP_PASS: '', SMTP_SECURITY: 'starttls' })
+    expect(d).toMatchObject({ EMAIL_PROVIDER: 'ses', EMAIL_FROM: '', SMTP_HOST: 'smtp.gmail.com', SMTP_PORT: 587, SMTP_USER: '', SMTP_PASS: '', SMTP_SECURITY: 'starttls' })
   })
 
   it('accepts a complete Google Workspace setup', () => {
@@ -22,7 +22,7 @@ describe('email settings', () => {
     expect(r.data!.SMTP_PORT).toBe(587)
   })
 
-  it('accepts an IP-allowlisted relay (no sign-in at all), and port 465 with ssl', () => {
+  it('accepts a relay that identifies servers by address (no sign-in at all), and port 465 with ssl', () => {
     expect(ok({ EMAIL_PROVIDER: 'smtp' }).success).toBe(true)
     expect(ok({ EMAIL_PROVIDER: 'smtp', SMTP_PORT: '465', SMTP_SECURITY: 'ssl' }).data!.SMTP_PORT).toBe(465)
   })
