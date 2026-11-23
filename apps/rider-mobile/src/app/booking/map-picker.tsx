@@ -10,7 +10,9 @@ import { goBack } from '@/lib/goBack'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { Button, colors, radii, spacing, typography, fonts, haversineMetres, track } from '@ocar/mobile-shared'
-import { fetchReverseGeocode } from '@/features/booking/api'
+import { fetchReverseGeocode, resolveBookingError } from '@/features/booking/api'
+import { updatePickup } from '@/features/ride-tracking/api'
+import { clampToRadius } from '@/features/ride-tracking/clampToRadius'
 import { useBookingDraftStore } from '@/features/booking/store'
 import { useLocationStore, useLocationTracking } from '@/store/useLocationStore'
 import { useRecentSearchesStore } from '@/store/useRecentSearchesStore'
@@ -38,6 +40,9 @@ const looksLikeCoords = (a: string) => /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.tes
 const MIN_LINE_M = 12
 // Beyond this the pin is probably on the wrong street: say so instead of letting it through silently.
 const FAR_FROM_YOU_M = 200
+// Edit pickup (after booking): mirrors api/src/constants/limits.ts PICKUP_EDIT_RADIUS_METRES. UX only -- the server re-checks it.
+const PICKUP_EDIT_RADIUS_METRES = 150
+const EDIT_DELTA = 0.0045 // ~500 m across: the whole circle fits with room to spare
 const PIN_W = 30
 const PIN_H = 40
 
@@ -49,8 +54,14 @@ const PIN_H = 40
 export default function MapPickerScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const { field } = useLocalSearchParams<{ field: Field }>()
-  const isPickup = field === 'pickup'
+  const { field, editRide, lat: editLat, lng: editLng, address: editAddress, driver } = useLocalSearchParams<{
+    field: Field; editRide?: string; lat?: string; lng?: string; address?: string; driver?: string
+  }>()
+  // Edit pickup on a booked ride reuses this screen: same map, pin, dot and card, limited to a circle around the booked pickup.
+  const isEdit = !!editRide
+  const isPickup = isEdit || field === 'pickup'
+  const editOrigin: [number, number] | null =
+    isEdit && editLat && editLng && Number.isFinite(Number(editLat)) && Number.isFinite(Number(editLng)) ? [Number(editLat), Number(editLng)] : null
 
   const pickup = useBookingDraftStore((s) => s.pickup)
   const drop = useBookingDraftStore((s) => s.drop)
@@ -63,18 +74,18 @@ export default function MapPickerScreen() {
   const locAddress = useLocationStore((s) => s.address)
   const locAccuracy = useLocationStore((s) => s.accuracy)
 
-  const existing = isPickup ? pickup : drop
+  const existing = editOrigin ? { address: editAddress ?? '', lat: editOrigin[0], lng: editOrigin[1] } : isPickup ? pickup : drop
   // The other end of the trip, already confirmed -- shown as a static marker
   // alongside the drag pin so the rider can see both source and destination
   // while positioning this one, instead of just the one point being edited.
-  const otherPlace = isPickup ? drop : pickup
+  const otherPlace = isEdit ? null : isPickup ? drop : pickup
   const fallback = pickup ?? (locLat !== null ? { address: locAddress, lat: locLat, lng: locLng! } : null)
   const initial = existing ?? fallback
   const centerLat = initial?.lat ?? 20.2961
   const centerLng = initial?.lng ?? 85.8245
   // Start close for a pickup, but not when the fix is so rough (over ~200 m) that the real spot could be off the tight view.
   const tightZoom = isPickup && !(locAccuracy !== null && locAccuracy > 200)
-  const delta = tightZoom ? pickupDelta(locAccuracy) : DROP_DELTA
+  const delta = editOrigin ? EDIT_DELTA : tightZoom ? pickupDelta(locAccuracy) : DROP_DELTA
 
   const [address, setAddress] = useState(initial?.address ?? '')
   const [resolving, setResolving] = useState(false)
@@ -84,6 +95,9 @@ export default function MapPickerScreen() {
   const [cardH, setCardH] = useState(0)
   // The hint has done its job once the rider starts moving the map.
   const [touched, setTouched] = useState(false)
+  const [atBoundary, setAtBoundary] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // A slow earlier lookup must not overwrite the address of a newer pin position.
   const geocodeSeq = useRef(0)
@@ -128,18 +142,29 @@ export default function MapPickerScreen() {
   const handleRegionChangeComplete = useCallback((region: Region) => {
     if (settleTimer.current) clearTimeout(settleTimer.current)
     putPinDown()
-    setCoords({ lat: region.latitude, lng: region.longitude })
-    setLiveCenter({ lat: region.latitude, lng: region.longitude })
+    let lat = region.latitude
+    let lng = region.longitude
+    if (editOrigin && haversineMetres(editOrigin, [lat, lng]) > PICKUP_EDIT_RADIUS_METRES) {
+      // Past the edge: slide the map back so the pin sits just inside the circle the server accepts.
+      const c = clampToRadius(editOrigin, [lat, lng], PICKUP_EDIT_RADIUS_METRES - 2)
+      lat = c[0]
+      lng = c[1]
+      mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, latitudeDelta: region.latitudeDelta, longitudeDelta: region.longitudeDelta }, 200)
+      setAtBoundary(true)
+      setTimeout(() => setAtBoundary(false), 2000)
+    }
+    setCoords({ lat, lng })
+    setLiveCenter({ lat, lng })
     setResolving(true)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     const seq = ++geocodeSeq.current
     debounceRef.current = setTimeout(() => {
-      fetchReverseGeocode(region.latitude, region.longitude)
+      fetchReverseGeocode(lat, lng)
         .then((d) => { if (seq === geocodeSeq.current) setAddress(d.address) })
         .catch(() => { if (seq === geocodeSeq.current) setAddress('Unknown location') })
         .finally(() => { if (seq === geocodeSeq.current) setResolving(false) })
     }, 500)
-  }, [putPinDown])
+  }, [putPinDown, editOrigin?.[0], editOrigin?.[1]]) // eslint-disable-line react-hooks/exhaustive-deps -- editOrigin is rebuilt each render; its two numbers are the real inputs
 
   const youAt: [number, number] | null = locLat !== null && locLng !== null ? [locLat, locLng] : null
   const metresFromYou = youAt ? haversineMetres([liveCenter.lat, liveCenter.lng], youAt) : null
@@ -149,8 +174,20 @@ export default function MapPickerScreen() {
     mapRef.current?.animateToRegion({ latitude: youAt[0], longitude: youAt[1], latitudeDelta: pickupDelta(locAccuracy), longitudeDelta: pickupDelta(locAccuracy) }, 350)
   }
 
-  function confirm() {
+  async function confirm() {
     const place = { address: address || 'Selected location', lat: coords.lat, lng: coords.lng }
+    if (isEdit && editRide) {
+      setSaving(true)
+      setSaveError(null)
+      try {
+        await updatePickup(editRide, { lat: place.lat, lng: place.lng, address: place.address })
+        router.navigate(`/ride/${editRide}?pickupUpdated=1`)
+      } catch (err) {
+        setSaveError(resolveBookingError(err))
+        setSaving(false)
+      }
+      return
+    }
     if (isPickup) {
       confirmPickup(place)
       track('pickup_confirmed', { moved_from_you_m: metresFromYou === null ? null : Math.round(metresFromYou), accuracy_m: locAccuracy === null ? null : Math.round(locAccuracy) })
@@ -181,6 +218,9 @@ export default function MapPickerScreen() {
           <LocationPin position={[otherPlace.lat, otherPlace.lng]} variant={isPickup ? 'drop' : 'pickup'} />
         ) : null}
         {/* How far off the GPS fix could be: the rider can see the real spot may sit anywhere inside the ring. */}
+        {editOrigin ? (
+          <Circle center={{ latitude: editOrigin[0], longitude: editOrigin[1] }} radius={PICKUP_EDIT_RADIUS_METRES} strokeColor={YOU} strokeWidth={2} fillColor={YOU_FILL} />
+        ) : null}
         {isPickup && youAt && locAccuracy !== null && locAccuracy > 15 ? (
           <Circle center={{ latitude: youAt[0], longitude: youAt[1] }} radius={Math.min(locAccuracy, 300)} strokeColor={YOU_RING} strokeWidth={1} fillColor={YOU_FILL} />
         ) : null}
@@ -227,7 +267,13 @@ export default function MapPickerScreen() {
 
       {isPickup && !touched ? (
         <View style={[styles.hint, { top: insets.top + spacing.md }]} pointerEvents="none">
-          <Text style={styles.hintText} numberOfLines={1}>Move the map to where you'll wait</Text>
+          <Text style={styles.hintText} numberOfLines={1}>{isEdit ? 'Move the map within the circle' : "Move the map to where you'll wait"}</Text>
+        </View>
+      ) : null}
+
+      {atBoundary ? (
+        <View style={[styles.hint, { top: insets.top + spacing.md + CONTROL + spacing.sm }]} pointerEvents="none">
+          <Text style={styles.hintText} numberOfLines={1}>Pickup can only move within the circle</Text>
         </View>
       ) : null}
 
@@ -261,11 +307,14 @@ export default function MapPickerScreen() {
             </View>
           </View>
           {isPickup ? <Text style={styles.cardSub}>Stand on the side of the road you want the driver to stop.</Text> : null}
+          {isEdit && driver === '1' ? <Text style={styles.cardSub}>Your driver will be notified of the update.</Text> : null}
+          {saveError ? <Text style={[styles.cardSub, { color: colors.error }]}>{saveError}</Text> : null}
         </View>
         <Button
           label={isPickup ? 'Confirm pickup' : 'Confirm location'}
           onPress={confirm}
-          disabled={resolving || !address}
+          loading={saving}
+          disabled={resolving || !address || saving}
           accessibilityLabel={isPickup ? 'Confirm this pickup point' : 'Confirm this location'}
         />
       </View>

@@ -8,7 +8,6 @@ import { Button, ErrorState, PickupWaitClock, SOSButton, Skeleton, TripClock, us
 import { api, serverNow } from '@/services/api'
 import { triggerSos } from '@/features/safety/api'
 import { useLocationStore } from '@/store/useLocationStore'
-import { useLiveLocation } from '@/features/home/useLiveLocation'
 import { SearchingBar } from '@/features/ride-tracking/components/SearchingBar'
 import { TripDetailsRow } from '@/features/ride-tracking/components/TripDetailsRow'
 import { stopsFull } from '@/features/ride-tracking/stopLimit'
@@ -22,7 +21,6 @@ import { apiErrorCode, fetchAdvanceTerms, fetchCancelPreview, rescheduleRide } f
 import { cancelCopy, FALLBACK_TERMS, rescheduleErrorMessage, searchStartsAt, type AdvanceTerms } from '@/features/advance/advanceModel'
 import { formatPickupTime } from '@/lib/formatPickupTime'
 import { AddStopSheet } from '@/features/ride-tracking/components/AddStopSheet'
-import { EditPickupSheet } from '@/features/ride-tracking/components/EditPickupSheet'
 import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { NextStopRow } from '@/features/ride-tracking/components/NextStopRow'
 import { TripDetailsCard } from '@/features/ride-tracking/components/TripDetailsCard'
@@ -35,13 +33,12 @@ import { TripSummary } from '@/features/trip-summary/TripSummary'
 import { ReconnectBanner } from '@/features/ride-tracking/components/ReconnectBanner'
 import { DriverCancelledBanner } from '@/features/ride-tracking/components/DriverCancelledBanner'
 import { useRideTracking } from '@/features/ride-tracking/useRideTracking'
-import { cancelRide, addStop, skipStop, updatePickup, type StopInput } from '@/features/ride-tracking/api'
+import { cancelRide, addStop, skipStop, type StopInput } from '@/features/ride-tracking/api'
 import { ASSIGNED_STATUSES, IN_PROGRESS_STATUSES, SEARCHING_STATUSES } from '@/features/ride-tracking/types'
 import { useNearbyDrivers } from '@/features/booking/useNearbyDrivers'
 import { useVehicleKinds } from '@/features/booking/useVehicleKinds'
 import { showWithinMetres } from '@/features/booking/liveCars'
 import type { StatusKey } from '@/features/ride-tracking/statusConfig'
-import { resolveBookingError } from '@/features/booking/api'
 import { PickupUpdatedToast } from '@/features/ride-tracking/components/Toasts'
 import { canShareRide } from '@/features/trip-share/model'
 import { useTripShare } from '@/features/trip-share/useTripShare'
@@ -82,7 +79,7 @@ function RidePickupWaitClock({ ride, onRefresh }: { ride: NonNullable<ReturnType
 }
 
 export default function RideTrackingScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, pickupUpdated } = useLocalSearchParams<{ id: string; pickupUpdated?: string }>()
   const rideId = id ?? ''
   const router = useRouter()
   const insets = useSafeAreaInsets()
@@ -117,7 +114,6 @@ export default function RideTrackingScreen() {
 
   const storeLat = useLocationStore((s) => s.lat)
   const storeLng = useLocationStore((s) => s.lng)
-  const locationGranted = useLocationStore((s) => s.permission === 'granted')
   // The rider's own position is only needed by "Edit pickup" (distance to the pin) and SOS, so no
   // GPS/compass watch runs for the whole trip: the watcher starts only while the edit sheet is open
   // (no compass), and SOS takes a one-off fix when it fires. A continuous watch plus a compass
@@ -140,10 +136,6 @@ export default function RideTrackingScreen() {
   const [sosSignal, setSosSignal] = useState(0)
   const [manageOpen, setManageOpen] = useState(false)
   const [addStopError, setAddStopError] = useState<string | null>(null)
-  const [editPickupOpen, setEditPickupOpen] = useState(false)
-  const live = useLiveLocation(locationGranted && editPickupOpen, { heading: false }).coords
-  const [pickupUpdating, setPickupUpdating] = useState(false)
-  const [pickupError, setPickupError] = useState<string | null>(null)
   const [pickupToast, setPickupToast] = useState(false)
   // Collapsed by default, as in the approved design: the sheet stays calm and the details open in place from one row.
   const [detailsExpanded, setDetailsExpanded] = useState(false)
@@ -264,21 +256,23 @@ export default function RideTrackingScreen() {
     ])
   }
 
-  async function handleUpdatePickup(pickup: { lat: number; lng: number; address: string | null }) {
-    setPickupUpdating(true)
-    setPickupError(null)
-    try {
-      await updatePickup(rideId, pickup)
-      setEditPickupOpen(false)
-      setPickupToast(true)
-      setTimeout(() => setPickupToast(false), 2600)
-      retry()
-    } catch (err) {
-      setPickupError(resolveBookingError(err))
-    } finally {
-      setPickupUpdating(false)
-    }
+  // Edit pickup is the confirm-pickup screen in edit mode; it comes back here with ?pickupUpdated=1 once the server accepted the move.
+  function openEditPickup() {
+    if (!ride) return
+    router.push({
+      pathname: '/booking/map-picker',
+      params: { field: 'pickup', editRide: rideId, lat: String(ride.originLat), lng: String(ride.originLng), address: ride.originAddress ?? '', driver: ride.driverId != null ? '1' : '0' },
+    })
   }
+  useEffect(() => {
+    if (pickupUpdated !== '1') return
+    setPickupToast(true)
+    retry()
+    router.setParams({ pickupUpdated: undefined })
+    const t = setTimeout(() => setPickupToast(false), 2600)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per arrival with the flag
+  }, [pickupUpdated])
 
   // The drive to pickup has no booked distance, so the bar's total is the first distance the ETA reported.
   const [startKm, setStartKm] = useState<number | null>(null)
@@ -497,7 +491,7 @@ export default function RideTrackingScreen() {
                 </Pressable>
               ) : null}
               <Pressable
-                onPress={() => setEditPickupOpen(true)}
+                onPress={() => openEditPickup()}
                 accessibilityRole="button"
                 accessibilityLabel="Edit pickup location"
                 style={styles.editPickupLink}
@@ -548,7 +542,7 @@ export default function RideTrackingScreen() {
               actions={[
                 ...(canAddStop ? [{ key: 'stop', label: 'Add stop', icon: 'plus-circle' as const, onPress: () => setAddStopOpen(true) }] : []),
                 ...(canShare ? [{ key: 'share', label: 'Share live trip', icon: 'share' as const, onPress: () => setShareOpen(true) }] : []),
-                ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', icon: 'map-pin' as const, onPress: () => setEditPickupOpen(true) }] : []),
+                ...(canEditPickup ? [{ key: 'pickup', label: 'Edit pickup', icon: 'map-pin' as const, onPress: () => openEditPickup() }] : []),
               ]}
               cancel={canCancel ? {
                 note: ride.status === 'driver_arrived'
@@ -601,18 +595,6 @@ export default function RideTrackingScreen() {
         cityOnly={ride.rideType === 'rental' || ride.tripMode === 'city'}
         onClose={() => setAddStopOpen(false)}
         onSelect={handleAddStop}
-      />
-      <EditPickupSheet
-        visible={editPickupOpen}
-        originLat={ride.originLat}
-        originLng={ride.originLng}
-        originAddress={ride.originAddress}
-        userPos={live ? [live.lat, live.lng] : null} // live-only: a saved fix would draw a stale rider marker and distance
-        driverAssigned={ride.driverId != null}
-        confirming={pickupUpdating}
-        error={pickupError}
-        onClose={() => setEditPickupOpen(false)}
-        onConfirm={handleUpdatePickup}
       />
     </View>
   )
