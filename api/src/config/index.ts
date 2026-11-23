@@ -167,6 +167,10 @@ const envSchema = z.object({
   // can read the link). Real production must leave it unset.
   ALLOW_DEV_EMAIL: z.enum(['true', 'false']).default('false'),
 
+  // Real SMS and masked calls cost money. Outside production (development, test, a scratch server pointed at an old queue) they are never
+  // sent unless this is 'true', even when vendor credentials are present. Production ignores it.
+  ALLOW_REAL_SMS: z.enum(['true', 'false']).default('false'),
+
   // Logging — 'info' in prod keeps GPS-ping-path debug logs compiled out;
   // bump to 'debug' locally when tracing socket/queue correlation.
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),

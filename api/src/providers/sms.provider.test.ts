@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-vi.mock('@/config', () => ({ config: { BULKSMSPLANS_API_ID: 'id', BULKSMSPLANS_API_PASSWORD: 'pw', BULKSMSPLANS_SENDER_ID: 'OCAR' } }))
+vi.mock('@/config', () => ({ config: { BULKSMSPLANS_API_ID: 'id', BULKSMSPLANS_API_PASSWORD: 'pw', BULKSMSPLANS_SENDER_ID: 'OCAR', NODE_ENV: 'production', ALLOW_REAL_SMS: 'false' } }))
 const logs = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn() }))
 vi.mock('@/lib/logger', () => ({ logger: logs }))
 
-import { isSyntheticPhone, pickProviderFields, sendSms } from './sms.provider'
+import { config } from '@/config'
+import { isRealSendingAllowed, isSyntheticPhone, pickProviderFields, sendSms } from './sms.provider'
 
 afterEach(() => { vi.unstubAllGlobals(); logs.info.mockClear(); logs.warn.mockClear() })
 
@@ -19,6 +20,33 @@ describe('isSyntheticPhone', () => {
     for (const p of ['+918093630642', '+919876543210', '+919999050001', '+918888000401', '+919990000001', '9999000000']) {
       expect(isSyntheticPhone(p)).toBe(false)
     }
+  })
+})
+
+describe('the not-production lock (a scratch server with real credentials must not spend money)', () => {
+  const cfg = config as unknown as { NODE_ENV: string; ALLOW_REAL_SMS: string }
+  afterEach(() => { cfg.NODE_ENV = 'production'; cfg.ALLOW_REAL_SMS = 'false' })
+
+  it('outside production nothing is sent, even with credentials, and the provider is never called', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    for (const env of ['development', 'test', 'staging']) {
+      cfg.NODE_ENV = env
+      expect(isRealSendingAllowed()).toBe(false)
+      expect(await sendSms('+918093630642', 'hi')).toEqual({ skipped: 'not-production' })
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('ALLOW_REAL_SMS=true is the deliberate opt-in outside production; production needs nothing', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ code: 200, message: 'ok' }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    cfg.NODE_ENV = 'development'; cfg.ALLOW_REAL_SMS = 'true'
+    expect(isRealSendingAllowed()).toBe(true)
+    await sendSms('+918093630642', 'hi')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    cfg.NODE_ENV = 'production'; cfg.ALLOW_REAL_SMS = 'false'
+    expect(isRealSendingAllowed()).toBe(true)
   })
 })
 

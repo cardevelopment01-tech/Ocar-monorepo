@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const cfg = vi.hoisted(() => ({
-  BULKSMSPLANS_API_ID: '', BULKSMSPLANS_API_PASSWORD: '', BULKSMSPLANS_SENDER_ID: 'S',
+  BULKSMSPLANS_API_ID: '', BULKSMSPLANS_API_PASSWORD: '', BULKSMSPLANS_SENDER_ID: 'S', NODE_ENV: 'production',
 }))
 vi.mock('@/config', () => ({ config: cfg }))
 
