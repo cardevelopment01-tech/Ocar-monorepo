@@ -380,7 +380,38 @@ export interface AdminRideMessage {
   createdAt: string
 }
 
+export interface AdminRideOffer {
+  id: string
+  driver_id: string
+  driver_name: string | null
+  driver_phone: string
+  status: 'offered' | 'accepted' | 'declined' | 'expired' | 'cancelled'
+  broadcast_round: number
+  offered_at: string
+  acked_at: string | null
+  responded_at: string | null
+  expires_at: string
+  /** Straight-line km from where the driver was when offered to the pickup; null when unknown. */
+  distance_km: number | null
+}
+
+export interface AdminRideTrailPoint { lat: number; lng: number; recorded_at: string }
+
 export type AdminRideDetail = AdminRideItem & AdminRideFareBreakdown & {
+  /** Pickup time of an advance booking; null for an immediate ride. */
+  scheduled_for: string | null
+  /** When the ride is (or was) handed to drivers: pickup minus the dispatch buffer for an advance booking, booking time otherwise. */
+  dispatch_at: string
+  user_id: string
+  driver_id: string | null
+  category_name: string | null
+  origin_city: string | null
+  destination_city: string | null
+  origin_lat: number | null
+  origin_lng: number | null
+  destination_lat: number | null
+  destination_lng: number | null
+  offers: AdminRideOffer[]
   stops: AdminRideStop[]
   sos_triggered: boolean
   sos_triggered_at: string | null
@@ -396,7 +427,23 @@ export type AdminRideDetail = AdminRideItem & AdminRideFareBreakdown & {
   sos_alerts: AdminRideLinkedSos[]
   ratings: AdminRideLinkedRating[]
   messages: AdminRideMessage[]
+  payment_amount: string | null
+  payment_txn_id: string | null
+  payment_captured_at: string | null
+  payment_failed_at: string | null
+  payment_failure_reason: string | null
+  commission_percent: string | null
+  commission_amount: string | null
+  driver_earning: string | null
+  /** Start and end codes: when each was verified and how many wrong tries came first. null if it could not be read. */
+  otp: { trip_start: AdminRideOtp; trip_end: AdminRideOtp } | null
+  /** The driver's last recorded point on this ride; null before a driver is on it. */
+  last_position: AdminRideTrailPoint | null
+  notes: AdminRideNote[]
 }
+
+export interface AdminRideOtp { verified_at: string | null; failed_attempts: number }
+export interface AdminRideNote { id: string; note: string; created_at: string; admin_id: string; admin_name: string | null }
 
 export interface AdminRidesResponse {
   rides: AdminRideItem[]
@@ -420,6 +467,8 @@ export interface AdminRideStats {
   active_count: string
   cancelled_today_count: string
   cash_flagged_count: string
+  /** Flagged-stuck trips + recent cash mismatches + no-driver rides from the last 24 h. */
+  needs_attention_count: string
 }
 
 
@@ -441,7 +490,7 @@ export const adminRideApi = {
     const res = await api.get('/api/v1/admin/rides/stats')
     return res.data as AdminRideStats
   },
-  list: async (params: { status?: string; ride_type?: string; search?: string; cashDiscrepancy?: boolean; dateFrom?: string; dateTo?: string; cityId?: number; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
+  list: async (params: { status?: string; ride_type?: string; search?: string; cashDiscrepancy?: boolean; attention?: boolean; dateFrom?: string; dateTo?: string; cityId?: number; page?: number; limit?: number }): Promise<AdminRidesResponse> => {
     const res = await api.get('/api/v1/admin/rides', { params })
     return res.data as AdminRidesResponse
   },
@@ -453,11 +502,25 @@ export const adminRideApi = {
     const res = await api.get(`/api/v1/admin/rides/${rideId}`)
     return res.data as AdminRideDetail
   },
-  forceResolve: async (rideId: string, action: 'complete' | 'cancel', note?: string): Promise<void> => {
+  trail: async (rideId: string): Promise<AdminRideTrailPoint[]> => {
+    const res = await api.get(`/api/v1/admin/rides/${rideId}/trail`)
+    return (res.data as { points: AdminRideTrailPoint[] }).points
+  },
+  /** Internal note (1 to 2000 characters), visible to admins only and never edited or deleted. */
+  addNote: async (rideId: string, note: string): Promise<{ id: string; note: string; created_at: string; admin_id: string }> => {
+    const res = await api.post(`/api/v1/admin/rides/${rideId}/notes`, { note })
+    return res.data as { id: string; note: string; created_at: string; admin_id: string }
+  },
+  /** note is required by the API (10 to 500 characters): it goes into the ride's status history. */
+  forceResolve: async (rideId: string, action: 'complete' | 'cancel', note: string): Promise<void> => {
     await api.post(`/api/v1/admin/rides/${rideId}/force-resolve`, { action, note })
   },
-  getAssignCandidates: async (rideId: string): Promise<AssignCandidate[]> => {
-    const res = await api.get(`/api/v1/admin/rides/${rideId}/assign-candidates`)
+  /** `q` searches every driver in the city by name or phone; `online` limits the list to drivers with a live session (the only ones that can be assigned). */
+  getAssignCandidates: async (rideId: string, opts: { q?: string; online?: boolean } = {}): Promise<AssignCandidate[]> => {
+    const params: Record<string, string> = {}
+    if (opts.q) params['q'] = opts.q
+    if (opts.online) params['online'] = '1'
+    const res = await api.get(`/api/v1/admin/rides/${rideId}/assign-candidates`, { params })
     return (res.data as { candidates: AssignCandidate[] }).candidates
   },
   assignDriver: async (rideId: string, driverId: string, mode: 'request' | 'force', overrideEligibility?: boolean): Promise<void> => {

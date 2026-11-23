@@ -18,6 +18,7 @@ import { useInterpolatedPosition } from '@/lib/useInterpolatedPosition'
 import { decodePolyline } from '@/lib/polyline'
 import { submitPayuForm, type PayuForm } from '@/lib/payu-checkout'
 import CancelSheet from './CancelSheet'
+import { cancelCopy } from '@/lib/advance-model'
 import SOSButton from '@/components/ui/SOSButton'
 import TripClock from '@/components/ride/TripClock'
 import PickupWaitClock from '@/components/ride/PickupWaitClock'
@@ -237,6 +238,14 @@ export default function RidePage() {
   // The end PIN is released only after the driver taps "Arrived at drop".
   const [dropArrived,    setDropArrived]    = useState(false)
   const [showCancelSheet, setShowCancelSheet] = useState(false)
+  // The exact late-cancel fee for an advance booking, fetched when the sheet opens so it is stated before the rider confirms.
+  const [cancelFeeText, setCancelFeeText] = useState<string | null>(null)
+  useEffect(() => {
+    if (!showCancelSheet) { setCancelFeeText(null); return }
+    let cancelled = false
+    rideApi.cancelPreview(rideId).then(p => { if (!cancelled && p.fee > 0) { const c = cancelCopy(p); setCancelFeeText(`${c.title}. ${c.body}`) } }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [showCancelSheet, rideId])
   const [addStopOpen,    setAddStopOpen]    = useState(false)
   const [sheetExpanded,  setSheetExpanded]  = useState(false)
   const [fareDrift, setFareDrift] = useState<{ previousFare: number; currentFare: number } | null>(null)
@@ -1297,6 +1306,7 @@ export default function RidePage() {
       {showCancelSheet && (
         <CancelSheet
           feeWarning={rideStatus === 'driver_arrived'}
+          feeText={cancelFeeText}
           onClose={() => setShowCancelSheet(false)}
           onConfirm={async (reasonCode, reason) => {
             setCancelling(true)

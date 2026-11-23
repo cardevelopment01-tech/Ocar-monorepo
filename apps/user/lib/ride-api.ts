@@ -1,6 +1,7 @@
 import api from './api'
 import type { PaymentChannel } from './payment-channel'
 import type { PayuForm } from './payu-checkout'
+import { FALLBACK_TERMS, type AdvanceTerms, type CancelPreview } from './advance-model'
 
 export type StopInput = { address: string; lat: number; lng: number }
 
@@ -354,6 +355,21 @@ export const rideApi = {
     const res = await api.patch(`/api/v1/rides/${rideId}/pickup`, pickup)
     return res.data
   },
+
+  /** The advance-booking rules (lead time, limits, late-cancel fee). Falls back to the long-standing defaults if the server is older or unreachable. */
+  advanceTerms: async (): Promise<AdvanceTerms> => {
+    try {
+      const res = await api.get('/api/v1/rides/advance-policy')
+      return { ...FALLBACK_TERMS, ...(res.data as Partial<AdvanceTerms>) }
+    } catch { return FALLBACK_TERMS }
+  },
+
+  /** The exact cost of cancelling this ride right now. */
+  cancelPreview: async (rideId: string): Promise<CancelPreview> => (await api.get(`/api/v1/rides/${rideId}/cancel-preview`)).data as CancelPreview,
+
+  /** Moves the pickup time of a ride that has not started dispatch. Free; the server enforces the per-booking limit. */
+  reschedule: async (rideId: string, scheduledForIso: string): Promise<{ scheduledFor: string; reschedulesLeft: number | null }> =>
+    (await api.patch(`/api/v1/rides/${rideId}/schedule`, { scheduledFor: scheduledForIso })).data,
 
   cancelRide: async (rideId: string, reasonCode?: string, reason?: string): Promise<void> => {
     const body: Record<string, string> = {}

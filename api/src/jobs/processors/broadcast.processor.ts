@@ -14,6 +14,7 @@ import { sendRideRequestPushOnce, notifyRideEvent, type RideRequestPushDetails }
 import type { AckCheckJobData } from './ack-check.processor'
 import { logger } from '@/lib/logger'
 import { getRoute } from '@/modules/geo/geo.service'
+import { keepSearchingAdvance, tellNoDrivers } from '@/modules/rides/advance.service'
 
 const log = logger.child({ module: 'broadcast-processor' })
 
@@ -58,6 +59,8 @@ export interface BroadcastJobData {
   radiusMetres?: number
   returnAt?: string
   tripHours?: number
+  /** Advance bookings only: how many extra sets of rounds have been queued after the first found nobody. */
+  retryCycle?: number
 }
 
 export async function processBroadcast(data: BroadcastJobData): Promise<void> {
@@ -287,6 +290,11 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       return
     }
     if (data.broadcastRound >= 3) {
+      // An advance booking is not given up on 15 minutes before the rider's pickup: search again, until pickup plus the admin's grace.
+      if (await keepSearchingAdvance({ id: ride.id, user_id: ride.user_id, scheduled_for: ride.scheduled_for }, data)) {
+        await recordRound({ ...emptyRound, outcome: 'empty' }, logOn)
+        return
+      }
       // CAS: a driver may have accepted between the status read at the top and now.
       const closed = await repo.updateRideStatusCAS(rideId, 'requested', 'no_drivers')
       if (!closed) return
@@ -303,7 +311,10 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
       // Tell the rider now — otherwise the app keeps showing "Finding your driver" until it is reopened.
       socketEvents.sendRideStatusUpdate(data.rideId, { status: 'no_drivers' })
       const closedRide = await repo.getRideCoreById(rideId)
-      if (closedRide) void notifyRideEvent('ride_no_drivers', BigInt(closedRide.user_id), rideId)
+      if (closedRide) {
+        if (closedRide.scheduled_for) void tellNoDrivers(BigInt(closedRide.user_id), rideId, new Date(closedRide.scheduled_for))
+        else void notifyRideEvent('ride_no_drivers', BigInt(closedRide.user_id), rideId)
+      }
       log.info({ rideId: data.rideId }, 'no drivers available after max broadcast rounds')
       await recordRound({ ...emptyRound, outcome: 'closed' }, logOn)
     }

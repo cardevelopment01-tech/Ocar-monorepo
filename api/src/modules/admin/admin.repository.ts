@@ -2183,14 +2183,29 @@ async function searchIsNarrow(like: string, includePhones: boolean): Promise<boo
 
 export async function getAdminRideStats() {
   // Half-open timestamp ranges (not `requested_at::date = CURRENT_DATE`) so the requested_at index can be used.
+  // "Active" is split in two so each half is covered by a partial index (rides_active_idx: accepted/driver_arrived;
+  // rides_in_progress_idx: in_progress/returning). One combined IN (...) matches neither predicate and walks the table.
+  // "Needs attention" is the same three index-backed sets the list's attention filter uses (see attentionCandidates).
   const res = await pool.query(
     `SELECT
        (SELECT COUNT(*) FROM rides WHERE requested_at >= CURRENT_DATE AND requested_at < CURRENT_DATE + 1)::text AS today_count,
-       (SELECT COUNT(*) FROM rides WHERE status IN ('accepted','driver_arrived','in_progress'))::text AS active_count,
+       ((SELECT COUNT(*) FROM rides WHERE status IN ('accepted','driver_arrived'))
+        + (SELECT COUNT(*) FROM rides WHERE status IN ('in_progress','returning')))::text AS active_count,
        (SELECT COUNT(*) FROM rides WHERE status = 'cancelled' AND requested_at >= CURRENT_DATE AND requested_at < CURRENT_DATE + 1)::text AS cancelled_today_count,
-       (SELECT COUNT(*) FROM rides WHERE cash_discrepancy AND requested_at >= CURRENT_DATE AND requested_at < CURRENT_DATE + 1)::text AS cash_flagged_count`,
+       (SELECT COUNT(*) FROM rides WHERE cash_discrepancy AND requested_at >= CURRENT_DATE AND requested_at < CURRENT_DATE + 1)::text AS cash_flagged_count,
+       (SELECT COUNT(*) FROM (${attentionCandidates("")}) a)::text AS needs_attention_count`,
   );
   return res.rows[0];
+}
+
+// Rides an operator should look at, as three small index-backed sets (never a scan of every ride):
+//   flagged as possibly stuck while on a trip (rides_in_progress_idx), cash collected differs from the fare
+//   (rides_cash_discrepancy_idx), and no driver found in the last 24 h (requested_at index).
+// `extra` is an already-built " AND ..." tail of the list's other filters, applied to each set.
+function attentionCandidates(extra: string): string {
+  return `SELECT r.id, r.requested_at FROM rides r WHERE r.status IN ('in_progress','returning') AND r.review_flagged_at IS NOT NULL${extra}
+     UNION SELECT r.id, r.requested_at FROM rides r WHERE r.cash_discrepancy AND r.requested_at >= now() - interval '7 days'${extra}
+     UNION SELECT r.id, r.requested_at FROM rides r WHERE r.status = 'no_drivers' AND r.requested_at >= now() - interval '24 hours'${extra}`;
 }
 
 export async function listAdminRides(filters: {
@@ -2201,6 +2216,7 @@ export async function listAdminRides(filters: {
   date_from?: string;
   date_to?: string;
   city_id?: number;
+  attention?: boolean;
   limit: number;
   offset: number;
 }) {
@@ -2243,6 +2259,12 @@ export async function listAdminRides(filters: {
     p++;
   }
 
+  // With a search the attention sets are applied as one more filter (the search paths already page by index);
+  // without one they ARE the candidate list (see below).
+  if (filters.attention && filters.search) {
+    conditions.push(`r.id IN (SELECT id FROM (${attentionCandidates("")}) att)`);
+  }
+
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const and = conditions.length ? ` AND ${conditions.join(" AND ")}` : "";
 
@@ -2279,6 +2301,8 @@ export async function listAdminRides(filters: {
       candidates = `SELECT r.id, r.requested_at FROM rides r JOIN users u ON u.id = r.user_id LEFT JOIN drivers d ON d.id = r.driver_id
          WHERE (u.name ILIKE $${likeP} OR u.phone ILIKE $${likeP} OR d.full_name ILIKE $${likeP} OR d.phone ILIKE $${likeP}${idOr})${and}`;
     }
+  } else if (filters.attention) {
+    candidates = attentionCandidates(and);
   } else {
     candidates = `SELECT r.id, r.requested_at FROM rides r ${where}`;
   }
@@ -2302,6 +2326,9 @@ export async function listAdminRides(filters: {
        d.full_name AS driver_name, d.phone AS driver_phone,
        COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
        pay.status AS payment_status, pay.channel AS payment_channel,
+       pay.amount::text AS payment_amount, pay.gateway_txn_id AS payment_txn_id, pay.captured_at AS payment_captured_at,
+       pay.failed_at AS payment_failed_at, pay.failure_reason AS payment_failure_reason,
+       pay.commission_percent::text AS commission_percent, pay.commission_amount::text AS commission_amount, pay.driver_earning::text AS driver_earning,
        rc.reason_code AS cancellation_reason_code, rc.reason AS cancellation_reason, rc.actor AS cancellation_actor
      FROM (
        SELECT id, requested_at FROM (${candidates}) c
@@ -2333,7 +2360,8 @@ export async function listUpcomingScheduledRides() {
      JOIN users u ON u.id = r.user_id
      JOIN ride_advance_meta ram ON ram.ride_id = r.id
      WHERE r.status = 'scheduled'
-     ORDER BY r.scheduled_for ASC`,
+     ORDER BY r.scheduled_for ASC
+     LIMIT 50`,
   );
   return res.rows;
 }
@@ -2347,6 +2375,12 @@ export async function getAdminRideById(rideId: bigint) {
        r.review_flagged_at, r.review_reason,
        r.cash_discrepancy, r.cash_collected_amount::text AS cash_collected_amount,
        r.sos_triggered, r.sos_triggered_at,
+       r.user_id::text AS user_id, r.driver_id::text AS driver_id,
+       r.scheduled_for,
+       COALESCE(r.scheduled_for - (ram.dispatch_buffer_minutes * interval '1 minute'), r.requested_at) AS dispatch_at,
+       vc.display_name AS category_name, oc.name AS origin_city, dc.name AS destination_city,
+       ST_Y(r.origin::geometry) AS origin_lat, ST_X(r.origin::geometry) AS origin_lng,
+       ST_Y(r.destination::geometry) AS destination_lat, ST_X(r.destination::geometry) AS destination_lng,
        u.name AS user_name, u.phone AS user_phone,
        d.full_name AS driver_name, d.phone AS driver_phone,
        dv.number_plate AS vehicle_number_plate, dv.vehicle_name AS vehicle_name, dv.color AS vehicle_color,
@@ -2366,6 +2400,10 @@ export async function getAdminRideById(rideId: bigint) {
      JOIN users u ON u.id = r.user_id
      LEFT JOIN drivers d ON d.id = r.driver_id
      LEFT JOIN driver_vehicles dv ON dv.id = r.vehicle_id
+     LEFT JOIN ride_advance_meta ram ON ram.ride_id = r.id
+     LEFT JOIN vehicle_categories vc ON vc.id = r.category_id
+     LEFT JOIN cities oc ON oc.id = r.origin_city_id
+     LEFT JOIN cities dc ON dc.id = r.destination_city_id
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
      LEFT JOIN rate_cards hrc ON hrc.id = fs.rate_card_id
      LEFT JOIN payments pay ON pay.ride_id = r.id
@@ -2374,6 +2412,97 @@ export async function getAdminRideById(rideId: bigint) {
     [rideId],
   );
   return res.rows[0] ?? null;
+}
+
+// Who the ride was offered to, round by round: answers "why did nobody take it?". ride_assignments_ride_driver_unique
+// (ride_id, driver_id) makes this an index lookup. distance_km is the driver's position when offered, to the pickup.
+export async function getRideOffers(rideId: bigint) {
+  const res = await pool.query(
+    `SELECT a.id::text, a.driver_id::text, d.full_name AS driver_name, d.phone AS driver_phone, a.status, a.broadcast_round,
+            a.offered_at, a.acked_at, a.responded_at, a.expires_at,
+            CASE WHEN a.driver_lat IS NULL OR a.driver_lng IS NULL THEN NULL
+                 ELSE ST_Distance(r.origin, ST_SetSRID(ST_MakePoint(a.driver_lng::float8, a.driver_lat::float8), 4326)::geography) / 1000.0 END AS distance_km
+     FROM ride_assignments a
+     JOIN rides r ON r.id = a.ride_id
+     JOIN drivers d ON d.id = a.driver_id
+     WHERE a.ride_id = $1
+     ORDER BY a.offered_at ASC, a.id ASC
+     LIMIT 200`,
+    [rideId],
+  );
+  return res.rows;
+}
+
+// The driver's recorded route for one ride, thinned to at most `maxPoints` so a long trip does not ship thousands of
+// points to the browser. gps_tracks is partitioned by recorded_at, so the time window (ride start/accept -> end, with
+// slack) is what lets Postgres touch only the partitions that can hold the ride; ride_id alone would scan them all.
+export async function getRideTrail(rideId: bigint, from: Date, to: Date, maxPoints: number) {
+  const res = await pool.query(
+    `WITH pts AS (
+       SELECT ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng, recorded_at,
+              ROW_NUMBER() OVER (ORDER BY recorded_at) AS rn, COUNT(*) OVER () AS n
+       FROM gps_tracks
+       WHERE ride_id = $1 AND recorded_at >= $2 AND recorded_at <= $3
+     )
+     SELECT lat, lng, recorded_at FROM pts
+     WHERE n <= $4 OR rn % CEIL(n::numeric / $4)::int = 1 OR rn = n
+     ORDER BY recorded_at`,
+    [rideId, from, to, maxPoints],
+  );
+  return res.rows as Array<{ lat: number; lng: number; recorded_at: string }>;
+}
+
+// Start/end OTP at a glance: did the code get verified, and how many wrong tries came first. Raw hashes never leave the DB.
+export async function getRideOtpSummary(rideId: bigint) {
+  const res = await pool.query(
+    `SELECT otp_type, COUNT(*) FILTER (WHERE event = 'failed')::int AS failed,
+            MAX(created_at) FILTER (WHERE event = 'verified') AS verified_at
+     FROM ride_otp_events WHERE ride_id = $1 GROUP BY otp_type`,
+    [rideId],
+  );
+  const pick = (t: string) => {
+    const r = res.rows.find((x: { otp_type: string }) => x.otp_type === t) as { failed: number; verified_at: Date | null } | undefined
+    return { verified_at: r?.verified_at ?? null, failed_attempts: r?.failed ?? 0 }
+  }
+  return { trip_start: pick('trip_start'), trip_end: pick('trip_end') }
+}
+
+/** The driver's last recorded point for this ride (inside the time window so only the relevant partitions are read). */
+export async function getRideLastPosition(rideId: bigint, from: Date, to: Date) {
+  const res = await pool.query(
+    `SELECT ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng, recorded_at
+     FROM gps_tracks WHERE ride_id = $1 AND recorded_at >= $2 AND recorded_at <= $3
+     ORDER BY recorded_at DESC LIMIT 1`,
+    [rideId, from, to],
+  );
+  return (res.rows[0] ?? null) as { lat: number; lng: number; recorded_at: string } | null
+}
+
+export async function listRideAdminNotes(rideId: bigint) {
+  const res = await pool.query(
+    `SELECT n.id::text, n.note, n.created_at, n.admin_id::text, COALESCE(a.full_name, a.email::text) AS admin_name
+     FROM ride_admin_notes n JOIN admins a ON a.id = n.admin_id
+     WHERE n.ride_id = $1 ORDER BY n.created_at ASC, n.id ASC LIMIT 200`,
+    [rideId],
+  );
+  return res.rows;
+}
+
+export async function addRideAdminNote(rideId: bigint, adminId: bigint, note: string) {
+  const res = await pool.query(
+    `INSERT INTO ride_admin_notes (ride_id, admin_id, note) VALUES ($1, $2, btrim($3))
+     RETURNING id::text, note, created_at, admin_id::text`,
+    [rideId, adminId, note],
+  );
+  return res.rows[0];
+}
+
+export async function getRideTimes(rideId: bigint) {
+  const res = await pool.query(
+    `SELECT requested_at, accepted_at, started_at, completed_at, cancelled_at FROM rides WHERE id = $1`,
+    [rideId],
+  );
+  return res.rows[0] as { requested_at: Date; accepted_at: Date | null; started_at: Date | null; completed_at: Date | null; cancelled_at: Date | null } | undefined;
 }
 
 export async function getRideStatusHistory(rideId: bigint) {

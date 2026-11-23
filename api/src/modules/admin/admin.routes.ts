@@ -4,6 +4,7 @@ import { requireAdmin } from '@/middleware/role.middleware'
 import * as controller from './admin.controller'
 import multer from 'multer'
 import airportZones from './airport-zones'
+import dispatch from './dispatch'
 import { MAX_ADMIN_UPLOAD_BYTES } from './admin-doc-upload.service'
 
 const docUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ADMIN_UPLOAD_BYTES, files: 1 } })
@@ -16,6 +17,9 @@ router.use(requireAdmin())
 
 // ─── Airport zones and their toll per vehicle type ───────────────────────────
 router.use('/airport-zones', airportZones)
+
+// ─── Dispatch desk: the queue of rides waiting on a driver ───────────────────
+router.use('/dispatch', dispatch)
 
 // ─── Dashboard stats ─────────────────────────────────────────────────────────
 router.get('/stats', controller.getAdminStats)
@@ -119,7 +123,9 @@ router.patch('/safety/disputes/:id/resolve', requireAdmin('super_admin', 'suppor
 router.get('/rides/stats', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideStats)
 router.get('/rides', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRides)
 router.get('/rides/upcoming', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getUpcomingScheduledRides)
+router.get('/rides/:id/trail', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideTrail)
 router.get('/rides/:id', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideById)
+router.post('/rides/:id/notes', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.addRideAdminNote)
 router.post('/rides/:id/force-resolve', requireAdmin('super_admin', 'ops_admin'), controller.forceResolveAdminRide)
 router.get('/rides/:id/assign-candidates', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getRideAssignCandidates)
 router.post('/rides/:id/assign', requireAdmin('super_admin', 'ops_admin'), controller.assignDriverToRide)
