@@ -6,33 +6,52 @@ import * as F from './receipt-fixtures'
 const sum = (rows: Array<{ amount: number }>) => Math.round(rows.reduce((s, r) => s + r.amount, 0) * 100) / 100
 
 describe('receipt fare rows', () => {
-  it('a plain city ride lists only what was charged, and adds up', () => {
+  it('a plain city ride is one Ride fare line, and adds up', () => {
     const { rows, payable } = buildFareRows(F.CITY_RIDE, [])
-    expect(rows.map((r) => r.label)).toEqual(['Base fare', 'Distance', 'Time'])
+    expect(rows).toEqual([{ key: 'ride-fare', label: 'Ride fare', detail: '10.7 km · 27 min', amount: 217 }])
     expect(sum(rows)).toBe(payable)
     expect(payable).toBe(217)
   })
 
-  it('shows surge with its multiplier, the toll with its zone, pickup waiting with its free minutes and waiting at stops, and takes the offer off', () => {
+  it("prd ride 1177: the ride fare comes from the settled total, not the stale quoted components (no -193.26 'Adjustments')", () => {
+    // Quoted for 20.7 km: base 95 + distance 415.04 + time 153 + stops 110 = 773.04 (still on the snapshot). Driven 12.87 km / 31 min,
+    // settled at 620.78 including the 40 toll and 1 pickup wait. Adding the stale components printed 814.04 and an Adjustments row.
+    const ride = {
+      ...F.CITY_RIDE, id: '1177', total_estimated: '773.04', total_final: '620.78', base_fare: '95', distance_fare: '415.04', time_fare: '153', stop_fare: '110',
+      toll_charge: '40', toll_detail: [{ zone: 'Biju Pattanaik International Airport, Bhubaneswar', amount: 40 }],
+      pickup_wait_min: '3.40', pickup_free_wait_min: 3, pickup_wait_charge: '1', actual_km: '12.87', actual_min: '30.91',
+    }
+    const stops = [
+      { sequence: 1, address: 'A', status: 'reached', stop_charge_applied: '55' },
+      { sequence: 2, address: 'B', status: 'reached', stop_charge_applied: '55' },
+    ]
+    const { rows, payable } = buildFareRows(ride, stops)
+    expect(rows.map((r) => [r.label, r.amount])).toEqual([['Ride fare', 580.78], ['Airport toll', 40]])
+    expect(rows[0]?.detail).toBe('12.87 km · 31 min · 2 stops · incl. waiting')
+    expect(rows.find((r) => r.label === 'Adjustments')).toBeUndefined()
+    expect(sum(rows)).toBe(620.78)
+    expect(payable).toBe(620.78)
+    expect(buildReceipt(ride, stops, []).sumLabel).toBe('Total ride fare')
+  })
+
+  it('folds surge, waiting and stops into the Ride fare, lists the toll with its zone below it, and takes the offer off', () => {
     const { rows, gross, discount, payable } = buildFareRows(F.ONE_WAY_FULL, F.ONE_WAY_FULL_STOPS)
-    const by = Object.fromEntries(rows.map((r) => [r.label, r]))
-    expect(by['Surge']?.detail).toBe('1.2×')
-    expect(by['Airport toll']?.detail).toBe('Biju Patnaik Airport')
-    expect(by['Waiting at pickup']?.detail).toBe('5 min, after 3 free minutes')
-    expect(by['Waiting at stops']?.amount).toBe(12)
-    expect(by['Extra stops']?.detail).toBe('1 stop')
+    expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Airport toll'])
+    expect(rows[0]).toMatchObject({ detail: '28.4 km · 55 min · 1 stop · 1.2× surge · incl. waiting', amount: 850.2 })
+    expect(rows[1]).toMatchObject({ detail: 'Biju Patnaik Airport', amount: 40 })
     expect(rows.find((r) => r.label === 'Adjustments')).toBeUndefined()
     expect(sum(rows)).toBe(gross)
     expect(discount).toBe(100)
     expect(payable).toBe(790.2)
   })
 
-  it('a rental reads as package, extra distance and extra time (quantity x rate), not a lump', () => {
+  it('a rental is the Ride fare (with its package in the detail), then toll, extra distance and extra time (quantity x rate) below it', () => {
     const { rows, payable } = buildFareRows(F.RENTAL, F.RENTAL_STOPS)
-    expect(rows[0]).toMatchObject({ label: 'Package price', detail: '4 h · 40 km included', amount: 1100 })
+    expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Airport toll', 'Extra distance', 'Extra time'])
+    expect(rows[0]).toMatchObject({ detail: '4 h · 40 km included · 2 stops · incl. waiting', amount: 1229 })
     expect(rows.find((r) => r.label === 'Extra distance')).toMatchObject({ detail: '12 km × ₹14', amount: 168 })
     expect(rows.find((r) => r.label === 'Extra time')).toMatchObject({ detail: '25 min × ₹2', amount: 50 })
-    expect(rows.find((r) => r.label === 'Base fare')).toBeUndefined()
+    expect(rows.find((r) => r.label === 'Base fare' || r.label === 'Package price')).toBeUndefined()
     expect(sum(rows)).toBe(payable)
   })
 
@@ -41,24 +60,30 @@ describe('receipt fare rows', () => {
     expect(rows.find((r) => r.label === 'Extra distance or time')?.amount).toBe(218)
   })
 
-  it('an hourly round trip shows booked time and overtime after the grace; a per-day round trip shows the driver allowance', () => {
+  it('an hourly round trip keeps booked time inside the Ride fare and shows overtime (after the grace) and the toll below it; a per-day one the extra distance', () => {
     const hourly = buildFareRows(F.ROUND_HOURLY, [])
-    expect(hourly.rows.map((r) => r.label)).toEqual(['Distance', 'Booked time', 'Extra stops', 'Extra time', 'Airport toll'])
-    expect(hourly.rows.find((r) => r.label === 'Extra time')?.detail).toBe('20 min, after 15 free minutes')
+    expect(hourly.rows.map((r) => r.label)).toEqual(['Ride fare', 'Airport toll', 'Extra time'])
+    expect(hourly.rows[0]).toMatchObject({ detail: '142 km · 620 min · 10 hours booked', amount: 3234 })
+    expect(hourly.rows.find((r) => r.label === 'Extra time')).toMatchObject({ detail: '20 min, after 15 free minutes', amount: 100 })
     expect(sum(hourly.rows)).toBe(hourly.payable)
     const daily = buildFareRows(F.ROUND_DAILY, [])
-    expect(daily.rows.map((r) => r.label)).toEqual(['Base fare', 'Driver allowance', 'Distance', 'Extra distance or time', 'Airport toll'])
+    expect(daily.rows.map((r) => [r.label, r.amount])).toEqual([['Ride fare', 5484], ['Airport toll', 220], ['Extra distance or time', 108]])
     expect(sum(daily.rows)).toBe(daily.payable)
   })
 
-  it('an unexplained gap becomes an Adjustments row so the rows always match the total; sub-rupee rounding does not', () => {
-    const gap = buildFareRows({ ...F.CITY_RIDE, total_final: '230' }, [])
-    expect(gap.rows.at(-1)).toMatchObject({ label: 'Adjustments', amount: 13 })
-    expect(sum(gap.rows)).toBe(230)
-    const crumb = buildFareRows({ ...F.CITY_RIDE, total_final: '217.4' }, [])
-    expect(crumb.rows.find((r) => r.label === 'Adjustments')).toBeUndefined()
-    expect(sum(crumb.rows)).toBe(217.4) // the paise went into the largest row, so the page agrees with itself
-    expect(crumb.rows.find((r) => r.label === 'Distance')?.amount).toBe(117.4)
+  it('whatever the settled total is, the Ride fare takes it up, so the rows always match it', () => {
+    for (const total of ['230', '217.4', '150']) {
+      const { rows, payable } = buildFareRows({ ...F.CITY_RIDE, total_final: total }, [])
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ label: 'Ride fare', amount: Number(total) })
+      expect(sum(rows)).toBe(payable)
+    }
+  })
+
+  it('only when the charges listed below exceed the total does an Adjustments row appear, so the rows still match it', () => {
+    const odd = buildFareRows({ ...F.CITY_RIDE, total_final: '30', toll_charge: '40' }, [])
+    expect(odd.rows.map((r) => [r.label, r.amount])).toEqual([['Airport toll', 40], ['Adjustments', -10]])
+    expect(sum(odd.rows)).toBe(30)
   })
 })
 
@@ -75,7 +100,8 @@ describe('receipt model', () => {
     const m = buildReceipt(F.ONE_WAY_FULL, F.ONE_WAY_FULL_STOPS, [])
     expect(m.total).toBe(790.2)
     expect(m.saved).toBe(100)
-    expect(m.sumLabel).toBe('Total paid')
+    expect(m.sumLabel).toBe('Total paid') // with an offer, the closing line is what is paid; "Total ride fare" is the line before the offer
+    expect(buildReceipt(F.CITY_RIDE, [], []).sumLabel).toBe('Total ride fare')
   })
 
   it('a cancellation with a fee is its own receipt: the fee only, the reason, no trip facts', () => {
@@ -118,7 +144,7 @@ describe('receipt model', () => {
       { sequence: 2, address: 'B', status: 'skipped', stop_charge_applied: '30' },
     ]
     const { rows } = buildFareRows({ ...F.CITY_RIDE, stop_fare: '60', total_final: '277' }, stops)
-    expect(rows.find((r) => r.label === 'Extra stops')?.detail).toBe('2 stops')
+    expect(rows[0]?.detail).toBe('10.7 km · 27 min · 2 stops')
   })
 
   it('drops a stray (0,0) or out-of-range GPS fix so it cannot shrink the route', () => {

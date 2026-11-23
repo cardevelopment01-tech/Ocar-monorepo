@@ -147,24 +147,35 @@ export function buildFareRows(r: ReceiptRide, stops: ReceiptStopRow[]): { rows: 
   const extraStops = charged > 0 ? charged : stops.filter((s) => s.status !== 'skipped').length
   const rental = rentalRows(r)
 
-  const cands: FareRow[] = [
-    ...(rental ? [] : [{ key: 'base', label: 'Base fare', amount: num(r.base_fare) }]),
-    { key: 'allowance', label: 'Driver allowance', amount: num(r.hour_surcharge) },
-    { key: 'distance', label: 'Distance', ...(km > 0 && { detail: trimKm(km) }), amount: num(r.distance_fare) },
-    { key: 'time', label: 'Time', ...(min > 0 && { detail: `${min} min` }), amount: num(r.time_fare) },
-    { key: 'booked', label: 'Booked time', ...(num(r.trip_hours) > 0 && { detail: `${num(r.trip_hours)} ${num(r.trip_hours) === 1 ? 'hour' : 'hours'}` }), amount: num(r.waiting_fare) },
-    { key: 'stops', label: 'Extra stops', ...(extraStops > 0 && { detail: `${extraStops} ${extraStops === 1 ? 'stop' : 'stops'}` }), amount: num(r.stop_fare) },
-    ...(rental ? [] : [{ key: 'overage', label: 'Extra distance or time', amount: num(r.overage_fare) }]),
-    { key: 'surge', label: 'Surge', ...(surge > 1 && { detail: `${surge}×` }), amount: num(r.surge_fare) },
-    // After surge: overtime is not surged. Only present once the trip settled with time past the booked window.
-    { key: 'overtime', label: 'Extra time', detail: `${num(r.overtimeMin)} min${grace ? `, after ${grace} free minutes` : ''}`, amount: (r.overtimeMin ?? 0) > 0 ? num(r.overtimeFare) : 0 },
+  // Receipt layout: the trip itself is ONE "Ride fare" line (base fare, distance, time, extra stops, waiting, surge, allowances all
+  // inside it); only what is charged on top of it (airport toll, extra distance, extra time) is listed underneath, each with its
+  // charge. The ride fare is the settled total MINUS those lines, never the sum of the quoted components: settlement reprices a
+  // trip on the distance and time actually driven but leaves the quoted component amounts on the snapshot, so adding those up
+  // printed a stale figure and an unexplained "Adjustments" row.
+  const overtime = (r.overtimeMin ?? 0) > 0 ? num(r.overtimeFare) : 0
+  const below: FareRow[] = [
     { key: 'toll', label: 'Airport toll', ...(r.toll_detail?.length && { detail: r.toll_detail.map((t) => t.zone).join(', ') }), amount: num(r.toll_charge) },
-    { key: 'stopwait', label: 'Waiting at stops', amount: stopWait },
-    { key: 'pickupWait', label: 'Waiting at pickup', ...(num(r.pickup_wait_min) > 0 && { detail: `${Math.round(num(r.pickup_wait_min))} min${r.pickup_free_wait_min != null ? `, after ${num(r.pickup_free_wait_min)} free minutes` : ''}` }), amount: num(r.pickup_wait_charge) },
-  ]
-  let rows = [...(rental ?? []), ...cands].filter((c) => c.amount > 0).map((x) => ({ ...x, amount: r2(x.amount) }))
-  // The rows must add up to the total printed. A gap of a rupee or more is shown as its own "Adjustments" row; anything smaller
-  // is rounding and is folded into the largest row so the page never disagrees with itself by a few paise.
+    ...(rental ? rental.filter((x) => x.key !== 'package') : [{ key: 'overage', label: 'Extra distance or time', amount: num(r.overage_fare) }]),
+    // Overtime is not surged. Only present once the trip settled with time past the booked window.
+    { key: 'overtime', label: 'Extra time', detail: `${num(r.overtimeMin)} min${grace ? `, after ${grace} free minutes` : ''}`, amount: overtime },
+  ].filter((c) => c.amount > 0).map((x) => ({ ...x, amount: r2(x.amount) }))
+
+  const waited = stopWait > 0 || num(r.pickup_wait_charge) > 0
+  const pkgDetail = rental?.find((x) => x.key === 'package')?.detail
+  const hours = num(r.trip_hours)
+  const detail = [
+    pkgDetail ?? '',
+    !rental && km > 0 ? trimKm(km) : '',
+    !rental && min > 0 ? `${min} min` : '',
+    !rental && hours > 0 ? `${hours} ${hours === 1 ? 'hour' : 'hours'} booked` : '',
+    extraStops > 0 ? `${extraStops} ${extraStops === 1 ? 'stop' : 'stops'}` : '',
+    surge > 1 ? `${surge}× surge` : '',
+    waited ? 'incl. waiting' : '',
+  ].filter(Boolean).join(' · ')
+  const rideFare = r2(gross - below.reduce((n, c) => n + c.amount, 0))
+  let rows: FareRow[] = [...(rideFare > 0 ? [{ key: 'ride-fare', label: 'Ride fare', ...(detail ? { detail } : {}), amount: rideFare }] : []), ...below]
+  // The rows must add up to the total printed. Only possible now if the lines below exceed the total: a gap of a rupee or more is
+  // shown as its own "Adjustments" row; anything smaller is rounding, folded into the largest row.
   const gap = r2(gross - rows.reduce((n, c) => n + c.amount, 0))
   if (Math.abs(gap) >= 1) rows.push({ key: 'adjust', label: 'Adjustments', amount: gap })
   else if (gap !== 0 && rows.length > 0) {
@@ -301,7 +312,7 @@ export function buildReceipt(
     timeline, facts, package: pkg,
     rows: built.rows,
     offer: built.discount,
-    sumLabel: cancelled ? 'Total charged' : paidWord,
+    sumLabel: cancelled ? 'Total charged' : built.discount > 0 ? paidWord : 'Total ride fare',
     driver,
     trail: cleanTrail.length >= 2 ? cleanTrail : [],
     pins,
