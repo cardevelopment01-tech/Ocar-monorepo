@@ -257,7 +257,7 @@ export function renderReceiptPdf(m: ReceiptModel): Promise<Buffer> {
     lines.forEach((f) => f())
     if (m.offer > 0) {
       if (ensure(rowH * 2 + 40)) head()
-      draw('Fare before offer', undefined, m.total + m.offer, { muted: true })
+      draw('Total ride fare', undefined, m.total + m.offer, { muted: true })
       draw('Offer', undefined, -m.offer, { off: true })
     }
     if (ensure(36)) head()
