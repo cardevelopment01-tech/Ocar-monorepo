@@ -1,6 +1,7 @@
 export const OTP_LENGTH = 6
 export const RIDE_OTP_LENGTH = 4
-export const OTP_TTL_SECONDS = 300
+// 10 minutes: the approved SMS wording says "Valid for 10 minutes" (DLT template 193042), so a code must really live that long.
+export const OTP_TTL_SECONDS = 600
 export const OTP_MAX_ATTEMPTS = 10
 export const OTP_LOCK_DURATION_MINUTES = 5
 export const OTP_RATE_LIMIT_WINDOW_MINUTES = 5

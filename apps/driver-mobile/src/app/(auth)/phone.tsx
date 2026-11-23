@@ -4,7 +4,8 @@ import { BackHandler, Dimensions, Image, Linking, ScrollView, StyleSheet, View }
 import Animated, { Easing, FadeIn, SlideInLeft, SlideInRight, SlideOutLeft, SlideOutRight } from 'react-native-reanimated'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Button, Input, OtpBoxInput, colors, spacing, typography, mapOtpErrorCode, TERMS_URL, PRIVACY_URL, fonts, Text, track } from '@ocar/mobile-shared'
+import { smsRetriever } from '@ocar/expo-sms-retriever'
+import { Button, Input, OtpBoxInput, OtpStatusLine, otpWaitStatus, useOtpAutoRead, useOtpWaitSeconds, colors, spacing, typography, mapOtpErrorCode, TERMS_URL, PRIVACY_URL, fonts, Text, track } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { setupPushNotifications } from '@/services/notifications'
 import { useAuthStore, type DriverProfile } from '@/store/useAuthStore'
@@ -62,6 +63,12 @@ export default function PhoneScreen() {
   const [verified, setVerified] = useState(false)
   const [error, setError] = useState('')
   const [countdown, setCountdown] = useState(0)
+  // Android SMS auto-read: the phone listens for the one code SMS and fills the boxes (the 6-digit effect below then verifies).
+  // waitKey restarts the "how long has it been" clock on every send, so Resend starts the calm waiting state afresh.
+  const [waitKey, setWaitKey] = useState(0)
+  const autoRead = useOtpAutoRead(smsRetriever, setOtp)
+  const waitSec = useOtpWaitSeconds(step === 'otp' && !verified, waitKey)
+  const waitStatus = otpWaitStatus({ elapsedSec: waitSec, autoReading: autoRead.listening, detected: autoRead.detected, typed: otp.length })
 
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const otpRequestInFlightRef = useRef(false)
@@ -81,6 +88,7 @@ export default function PhoneScreen() {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       setDirection('back')
       setStep('phone')
+      autoRead.disarm()
       return true
     })
     return () => sub.remove()
@@ -104,17 +112,22 @@ export default function PhoneScreen() {
     otpRequestInFlightRef.current = true
     setError('')
     setLoading(true)
+    // Listen BEFORE the SMS can exist; tell the server whether we are, so it only uses the auto-read wording when it can work.
+    const autoReadStarted = await autoRead.arm()
     try {
       const res = await api.post<{ otp?: string }>('/api/v1/auth/otp/request', {
         phone: formatPhone(phone),
         role: 'driver',
         purpose: 'login',
+        autoRead: autoReadStarted,
       })
       if (res.data.otp) setOtp(res.data.otp)
       setDirection('forward')
       setStep('otp')
+      setWaitKey((k) => k + 1)
       startCountdown()
     } catch {
+      autoRead.disarm()
       setError('Check your connection and try again')
     } finally {
       setLoading(false)
@@ -259,7 +272,9 @@ export default function PhoneScreen() {
                   <Text style={styles.error} accessibilityLiveRegion="polite">
                     {error}
                   </Text>
-                ) : null}
+                ) : (
+                  <OtpStatusLine status={waitStatus} />
+                )}
                 <Button label="Verify" onPress={handleOtpSubmit} loading={loading} success={verified} disabled={otp.length !== 6} />
                 <Button
                   label={countdown > 0 ? `Resend in ${countdown}s` : 'Resend OTP'}

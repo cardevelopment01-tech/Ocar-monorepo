@@ -79,6 +79,13 @@ const envSchema = z.object({
   BULKSMSPLANS_IVR_NUMBER: z.string().default(''),
   // DLT-approved template — login OTP only (see notifications.worker.ts otp_sms handler)
   BULKSMSPLANS_OTP_TEMPLATE_ID: z.string().default(''),
+  // Login OTP in the Android auto-read (SMS Retriever) layout: the code first, the app's 11-character hash on the last line
+  // (migration 160, otp_auth_retriever). Used only when this id AND the app's hash below are set and the app asks for it
+  // (autoRead). Empty = every login OTP keeps the template above. The hash comes from the app's SIGNING certificate (for a Play
+  // build: Google's deployment certificate), so the rider and driver apps each have their own; it is never taken from the client.
+  BULKSMSPLANS_OTP_AUTOREAD_TEMPLATE_ID: z.string().default(''),
+  ANDROID_SMS_HASH_RIDER: z.string().regex(/^([A-Za-z0-9+/]{11})?$/, 'must be 11 base64 characters').default(''),
+  ANDROID_SMS_HASH_DRIVER: z.string().regex(/^([A-Za-z0-9+/]{11})?$/, 'must be 11 base64 characters').default(''),
   ADMIN_PHONE: z.string().default(''),
   // Google Play app review: one phone number that always signs in with REVIEW_OTP and is never sent an SMS, so a
   // reviewer without that SIM can log in (Play Console "App access"). It works for the rider and the driver app.
