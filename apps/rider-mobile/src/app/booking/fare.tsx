@@ -10,6 +10,7 @@ import { CategoryCard, type CategoryEta } from '@/features/booking/components/Ca
 import { ReturnCabCard, RETURN_GREEN_INK } from '@/features/booking/components/ReturnCabCard'
 import { ReturnCabWhySheet } from '@/features/booking/components/ReturnCabWhySheet'
 import { etaMinFromKm } from '@/features/booking/eta'
+import { BOOKING_SHOW_WITHIN_M } from '@/features/booking/liveCars'
 import { SelectRideMap } from '@/features/booking/components/SelectRideMap'
 import { useFareEstimates } from '@/features/booking/hooks/useFareEstimates'
 import { useBookingDraftStore } from '@/features/booking/store'
@@ -111,10 +112,11 @@ export default function BookingFareScreen() {
     const result: Record<number, CategoryEta> = {}
     if (!pickup) return result
     for (const cat of visibleCategories) {
-      const inCat = nearbyDrivers.filter((d) => d.categoryId === cat.id)
+      // Only cars the map also draws (BOOKING_SHOW_WITHIN_M), so the ETA can never quote a car that is not on the map.
+      const inCat = nearbyDrivers.filter((d) => d.categoryId === cat.id && haversineKm(pickup.lat, pickup.lng, d.lat, d.lng) * 1000 <= BOOKING_SHOW_WITHIN_M)
       if (inCat.length === 0) { result[cat.id] = { count: 0, etaMin: -1 }; continue }
       const nearest = Math.min(...inCat.map((d) => haversineKm(pickup.lat, pickup.lng, d.lat, d.lng)))
-      result[cat.id] = { count: inCat.length, etaMin: etaMinFromKm(nearest) }
+      result[cat.id] = { count: inCat.length, etaMin: etaMinFromKm(nearest), km: nearest }
     }
     return result
   }, [nearbyDrivers, visibleCategories, pickup])

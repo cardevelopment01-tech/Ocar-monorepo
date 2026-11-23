@@ -6,7 +6,8 @@ import { OCAR_MAP_PROPS, ROUTE } from '@/theme/mapStyle'
 import NearbyCarMarker from '@/features/map/components/NearbyCarMarker'
 import LocationPin from '@/features/map/components/LocationPin'
 import { fetchNearbyDrivers } from '@/features/booking/api'
-import { carsForBooking } from '@/features/booking/liveCars'
+import { carsForBooking, FRAME_CAR_WITHIN_M } from '@/features/booking/liveCars'
+import { metresBetween } from '@/features/ride-tracking/nearbyCars'
 import { useVehicleKinds } from '@/features/booking/useVehicleKinds'
 
 const POLL_MS = 8000
@@ -85,18 +86,6 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickup[0], pickup[1], refreshSignal, focused])
 
-  useEffect(() => {
-    if (!mapReady) return
-    mapRef.current?.fitToCoordinates(
-      [pickup, drop].map(([latitude, longitude]) => ({ latitude, longitude })),
-      // Top padding has to clear the floating header pill (fare.tsx's back
-      // button + breadcrumb, ~40px tall plus the safe-area inset) that sits
-      // on top of the map -- 40px wasn't enough, so the pickup pin (fitted
-      // right at that edge) rendered directly underneath it, invisible.
-      { edgePadding: { top: 110, right: 40, bottom: 40, left: 40 }, animated: true }
-    )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, pickup[0], pickup[1], drop[0], drop[1]])
 
   // The cars to draw: near the pickup, nearest first, only the category being booked (see carsForBooking).
   const shownCars = useMemo(
@@ -104,6 +93,33 @@ export function SelectRideMap({ pickup, drop, routePoints, fill, onNearbyDrivers
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [nearbyDrivers, categoryId, pickup[0], pickup[1]],
   )
+
+  const nearestCar = shownCars[0]
+  const fitKey = useRef('')
+  const carFramed = useRef(false)
+  useEffect(() => {
+    if (!mapReady) return
+    // The nearest car of the booked category is framed too: the card quotes its ETA, so it must be on screen. On a short trip the
+    // pickup and drop alone make a small view and a car 2-3 km out was drawn but off the edge of it. A car further than
+    // FRAME_CAR_WITHIN_M is not chased: zooming out for it would shrink the route to a dot.
+    const frameCar = nearestCar && metresBetween(pickup, [nearestCar.lat, nearestCar.lng]) <= FRAME_CAR_WITHIN_M ? nearestCar : undefined
+    // Fit when the trip or category changes, and once more when its first car appears: never again for that trip, so a car that comes
+    // and goes between polls, or a rider who has panned to look at the route, is not snapped back.
+    const key = `${pickup[0]},${pickup[1]}|${drop[0]},${drop[1]}|${categoryId}`
+    const keyChanged = key !== fitKey.current
+    if (!keyChanged && (carFramed.current || !frameCar)) return
+    fitKey.current = key
+    carFramed.current = frameCar !== undefined
+    mapRef.current?.fitToCoordinates(
+      [pickup, drop, ...(frameCar ? [[frameCar.lat, frameCar.lng] as [number, number]] : [])].map(([latitude, longitude]) => ({ latitude, longitude })),
+      // Top padding has to clear the floating header pill (fare.tsx's back
+      // button + breadcrumb, ~40px tall plus the safe-area inset) that sits
+      // on top of the map -- 40px wasn't enough, so the pickup pin (fitted
+      // right at that edge) rendered directly underneath it, invisible.
+      { edgePadding: { top: 110, right: 40, bottom: 40, left: 40 }, animated: true }
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, pickup[0], pickup[1], drop[0], drop[1], categoryId, nearestCar !== undefined])
 
   // Stable identity: a new array per render re-sent the whole polyline (twice) to the native map.
   const routeCoords = useMemo(
