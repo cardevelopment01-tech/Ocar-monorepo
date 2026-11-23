@@ -117,6 +117,20 @@ const envSchema = z.object({
   // SES_FROM_EMAIL empty = dev bypass (logs instead of sending), same pattern as BULKSMSPLANS_API_ID.
   SES_REGION: z.string().default('ap-south-1'),
   SES_FROM_EMAIL: z.string().default(''),
+  // Which service sends email. 'ses' = Amazon SES (above). 'smtp' = any SMTP server, meant for Google Workspace's SMTP relay
+  // (smtp-relay.gmail.com), which the organisation already pays for and which has no sandbox to be approved out of.
+  EMAIL_PROVIDER: z.enum(['ses', 'smtp']).default('ses'),
+  // The sender, e.g. "Ocar Admin <no-reply@your-domain>". With Google it must be an address in your Workspace domain. Falls back to
+  // SES_FROM_EMAIL so an existing SES setup keeps working unchanged.
+  EMAIL_FROM: z.string().default(''),
+  SMTP_HOST: z.string().default('smtp-relay.gmail.com'),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  // The Workspace mailbox that signs in (with an app password if it uses 2-step verification). Both empty = no sign-in, which is what
+  // an IP-allowlisted relay uses.
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
+  // 'starttls' (port 587, upgraded to TLS before anything is sent) or 'ssl' (port 465). 'none' sends in the clear: local testing only.
+  SMTP_SECURITY: z.enum(['starttls', 'ssl', 'none']).default('starttls'),
 
   // App
   API_PORT: z.coerce.number().default(4000),
@@ -174,6 +188,13 @@ export const envSchemaChecked = envSchema.superRefine((env, ctx) => {
   }
   if (env.REVIEW_OTP !== '' && !/^\d{6}$/.test(env.REVIEW_OTP)) {
     ctx.addIssue({ code: 'custom', path: ['REVIEW_OTP'], message: 'REVIEW_OTP must be 6 digits' })
+  }
+  if (Boolean(env.SMTP_USER) !== Boolean(env.SMTP_PASS)) {
+    ctx.addIssue({ code: 'custom', path: ['SMTP_USER'], message: 'SMTP_USER and SMTP_PASS must be set together (or both left empty for an IP-allowlisted relay)' })
+  }
+  // A password and an invite link must never cross the network unencrypted.
+  if (env.NODE_ENV === 'production' && env.SMTP_SECURITY === 'none') {
+    ctx.addIssue({ code: 'custom', path: ['SMTP_SECURITY'], message: "SMTP_SECURITY=none is for local testing only; use 'starttls' or 'ssl' in production" })
   }
   if (Boolean(env.S3_ACCESS_KEY) !== Boolean(env.S3_SECRET_KEY)) {
     ctx.addIssue({ code: 'custom', path: ['S3_ACCESS_KEY'], message: 'S3_ACCESS_KEY and S3_SECRET_KEY must be set together (or both left empty to use the instance role)' })
