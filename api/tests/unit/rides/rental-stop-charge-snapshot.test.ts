@@ -44,6 +44,26 @@ describe('insertFareSnapshot', () => {
   })
 })
 
+describe('insertFareSnapshot waiting terms for a package rental', () => {
+  it('falls back to the current rental rate card of the package category (city first, then global) when the package sets none', async () => {
+    const client = { query: vi.fn().mockResolvedValue({ rows: [] }) }
+    await insertFareSnapshot(client as never, {
+      rideId: 1n, rateCardId: null, rentalPackageId: 5, rideType: 'rental', isReturnCab: false, surgeEventId: null,
+      surgeMultiplier: 1, estimatedKm: 0, estimatedMin: 0, stopCount: 0, tripHours: 4, baseFare: 500, distanceFare: 0,
+      timeFare: 0, stopFare: 0, hourSurcharge: 0, surgeFare: 0, total: 500, pricingVersion: 1, waitingFare: 0, discountAmount: 0,
+    } as never)
+    const sql = String(client.query.mock.calls[0]![0])
+    for (const col of ['pickup_free_wait_min', 'pickup_wait_per_min']) {
+      // package override first, then the quoted rate card, then the rental rate card for the package's category
+      expect(sql).toMatch(new RegExp(`COALESCE\\(\\(SELECT ${col}\\s+FROM rental_packages WHERE id = \\$3\\), \\(SELECT ${col}\\s+FROM rate_cards WHERE id = \\$2\\), \\(\\s*SELECT rc\\.${col} FROM rate_cards rc`))
+    }
+    expect(sql).toMatch(/rc\.ride_type = 'rental' AND rc\.trip_mode = 'standard' AND rc\.effective_to IS NULL/)
+    expect(sql).toMatch(/rc\.category_id = \(SELECT category_id FROM rental_packages WHERE id = \$3\)/)
+    expect(sql).toMatch(/rc\.city_id = \(SELECT origin_city_id FROM rides WHERE id = \$1\) OR rc\.city_id IS NULL/)
+    expect(sql).toMatch(/ORDER BY rc\.city_id NULLS LAST LIMIT 1/)
+  })
+})
+
 describe('a rental with no rate card (migration 136) still settles and re-quotes', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
