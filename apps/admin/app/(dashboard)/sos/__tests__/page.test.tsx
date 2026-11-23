@@ -100,6 +100,23 @@ describe('SOS page', () => {
     await waitFor(() => expect(api.resolveSos).toHaveBeenCalledWith('7', { status: 'false_alarm', note: 'Called her, pressed by mistake' }))
   })
 
+  it('does not lock the note dialog while a different alert is being acknowledged', async () => {
+    const a = alert({ id: '7', user_name: 'Asha Rider' })
+    const b = alert({ id: '8', user_name: 'Bikash Nayak', created_at: new Date(Date.now() - 2 * 60_000).toISOString() })
+    respond([a, b])
+    let release!: () => void
+    api.acknowledgeSos.mockReturnValue(new Promise(res => { release = () => res(a) }))
+    const user = userEvent.setup()
+    render(<SOSPage />)
+    const acks = await screen.findAllByRole('button', { name: 'Acknowledge' })
+    await user.click(acks[0]!) // alert 7 is in flight
+    const falseAlarms = await screen.findAllByRole('button', { name: /false alarm/i })
+    await user.click(falseAlarms[1]!) // the dialog is for alert 8
+    await user.type(await screen.findByRole('textbox'), 'checked by phone')
+    expect((screen.getByRole('button', { name: 'Dismiss alert' }) as HTMLButtonElement).disabled).toBe(false)
+    release()
+  })
+
   it('a plain resolve needs no note and sends none', async () => {
     respond([alert()])
     api.resolveSos.mockResolvedValue(alert({ status: 'resolved' }))

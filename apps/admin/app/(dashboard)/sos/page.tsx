@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Shield, ShieldAlert, CheckCircle, Clock, AlertTriangle, ExternalLink, Phone, MapPin, MapPinOff, WifiOff, RefreshCw } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
@@ -39,18 +39,24 @@ export default function SOSPage() {
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [toast,      setToast]      = useState<string | null>(null)
 
+  // The poll, the socket and "Show more" can overlap: only the newest request may write, so an older answer arriving late
+  // cannot put back a list from before an acknowledge or shrink the history.
+  const latest = useRef(0)
   const load = useCallback(async () => {
+    const mine = ++latest.current
     try {
       const [open, recent] = await Promise.all([
         safetyApi.getSosAlerts({ status: 'active', limit: 100 }),
         safetyApi.getSosAlerts({ limit: historyLimit }),
       ])
+      if (mine !== latest.current) return
       setActive(open.alerts)
       setHistory(recent.alerts)
       setCounts(recent.counts ?? open.counts ?? EMPTY_COUNTS)
       setLoadFailed(false)
       setLastOk(Date.now())
     } catch {
+      if (mine !== latest.current) return
       setLoadFailed(true)
     } finally {
       setLoaded(true)
@@ -326,7 +332,7 @@ export default function SOSPage() {
       <SosNoteDialog
         open={pending !== null}
         kind={pending?.kind ?? 'resolved'}
-        loading={actingId !== null && pending !== null}
+        loading={pending !== null && actingId === pending.id}
         error={dialogError}
         onCancel={() => setPending(null)}
         onConfirm={note => void resolve(note)}

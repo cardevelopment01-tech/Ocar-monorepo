@@ -158,14 +158,14 @@ export async function markRideSosTriggered(rideId: bigint) {
   )
 }
 
-// Most-recent still-'triggered' alert for this ride created inside the dedup
-// window — used to collapse repeat SOS presses into the existing alert instead
-// of inserting a new row + re-paging admins.
+// Most-recent still-open alert for this ride created inside the dedup window, whether or not an admin has acknowledged it
+// already: a rider hammering the button after "we've got it" must not page everyone a second time. Used to collapse repeat
+// SOS presses into the existing alert instead of inserting a new row + re-paging admins.
 export async function getActiveSosForRide(rideId: bigint, withinSeconds: number) {
   const res = await pool.query(
     `SELECT * FROM sos_alerts
      WHERE ride_id = $1
-       AND status = 'triggered'
+       AND status IN ('triggered', 'acknowledged', 'responding')
        AND created_at >= now() - make_interval(secs => $2)
      ORDER BY created_at DESC
      LIMIT 1`,
@@ -215,7 +215,7 @@ export async function getSosAlerts(opts: {
      LEFT JOIN admins  aa ON aa.id = sa.acknowledged_by
      LEFT JOIN admins  ra ON ra.id = sa.resolved_by
      ${where}
-     ORDER BY sa.created_at DESC
+     ORDER BY sa.created_at ${opts.status === 'active' ? 'ASC' : 'DESC'}
      LIMIT $${lp - 1} OFFSET $${lp}`,
     params
   )

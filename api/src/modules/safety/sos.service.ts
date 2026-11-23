@@ -18,6 +18,13 @@ const SOS_HOURLY_WINDOW_SECONDS = 3600
 // From the moment a driver accepts: a driver heading to pickup, or a rider waiting for one, can need help too.
 const SOS_ELIGIBLE_STATUSES = new Set(['accepted', 'driver_arrived', 'in_progress', 'returning'])
 
+/** Both coordinates, finite and on the globe, and not the 0,0 a phone reports when it has no position; otherwise null. */
+function usableFix(lat: unknown, lng: unknown): { lat: number; lng: number } | null {
+  if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) return null
+  return { lat, lng }
+}
+
 export async function triggerSos(input: TriggerSosInput) {
   const ride = await repo.getRideBasic(input.rideId)
   if (!ride) {
@@ -53,13 +60,17 @@ export async function triggerSos(input: TriggerSosInput) {
     throw httpError(429, 'Too many safety alerts. Contact support directly if this is urgent.', 'SOS_RATE_LIMITED')
   }
 
+  // One place decides what counts as a fix, so the row, the job, the socket event and the log all agree. Bad coordinates never
+  // refuse an emergency: they are simply treated as "no fix".
+  const fix = usableFix(input.lat, input.lng)
+
   const alert = await repo.insertSosAlert({
     ride_id:             input.rideId,
     severity:            input.severity            ?? 'medium',
     triggered_by_user:   input.triggeredByUserId   ?? null,
     triggered_by_driver: input.triggeredByDriverId ?? null,
-    location_lat:        input.lat                 ?? null,
-    location_lng:        input.lng                 ?? null,
+    location_lat:        fix?.lat ?? null,
+    location_lng:        fix?.lng ?? null,
     notes:               input.notes               ?? null,
   })
 
@@ -67,7 +78,7 @@ export async function triggerSos(input: TriggerSosInput) {
 
   // Evidence trail for a safety report: who, which ride, when. Coordinates stay in the sos_alerts row, not in the log.
   log.info(
-    { event: 'sos.triggered', sos_id: String(alert.id), ride_id: String(input.rideId), severity: alert.severity, by_role: principal.role, by_id: String(principal.id), has_location: input.lat != null && input.lng != null },
+    { event: 'sos.triggered', sos_id: String(alert.id), ride_id: String(input.rideId), severity: alert.severity, by_role: principal.role, by_id: String(principal.id), has_location: fix !== null },
     'sos.triggered'
   )
 
@@ -89,8 +100,8 @@ export async function triggerSos(input: TriggerSosInput) {
       userPhone,
       triggeredByRole: principal.role,
       // null = the phone gave no fix. Never 0: a 0,0 map link sends people to the ocean.
-      lat:         input.lat  ?? null,
-      lng:         input.lng  ?? null,
+      lat:         fix?.lat ?? null,
+      lng:         fix?.lng ?? null,
       triggeredAt: new Date().toISOString(),
     },
     { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
@@ -106,7 +117,7 @@ export async function triggerSos(input: TriggerSosInput) {
       triggeredBy: input.triggeredByUserId
         ? { role: 'user',   id: String(input.triggeredByUserId) }
         : { role: 'driver', id: String(input.triggeredByDriverId) },
-      location: input.lat != null && input.lng != null ? { lat: input.lat, lng: input.lng } : null,
+      location: fix,
       notes:    input.notes ?? null,
       createdAt: alert.created_at,
     })

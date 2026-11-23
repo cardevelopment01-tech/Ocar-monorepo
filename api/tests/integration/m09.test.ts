@@ -280,6 +280,16 @@ describe('M09 — Safety', () => {
       expect(rows[0]?.status).toBe('acknowledged')
       expect(String(rows[0]?.acknowledged_by)).toBe(String(admin.adminId))
 
+      // Hammering the button after an admin has acknowledged must not make a second alert (and page everyone again).
+      const pressAgain = await request(app)
+        .post('/api/v1/safety/sos')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ rideId })
+      expect(pressAgain.status, JSON.stringify(pressAgain.body)).toBe(201)
+      expect(pressAgain.body.id).toBe(alertId)
+      const { rows: perRide } = await pool.query('SELECT count(*)::int AS n FROM sos_alerts WHERE ride_id = $1', [rideId])
+      expect(perRide[0]?.n).toBe(1)
+
       // Lifecycle guards: a second acknowledge is a 409 and keeps the first admin's name on the alert.
       const ackAgain = await request(app)
         .patch(`/api/v1/admin/safety/sos/${alertId}/acknowledge`)
@@ -317,6 +327,9 @@ describe('M09 — Safety', () => {
       expect(list.status, JSON.stringify(list.body)).toBe(200)
       expect(list.body.counts).toEqual(expect.objectContaining({ false_alarm: expect.any(Number), triggered: expect.any(Number) }))
       expect((list.body.alerts as { id: string }[]).some(a => a.id === alertId)).toBe(false)
+      // The open-alert queue comes back oldest first, so a limit cuts off the newest, never the one waiting longest.
+      const times = (list.body.alerts as { created_at: string }[]).map(a => new Date(a.created_at).getTime())
+      expect(times).toEqual([...times].sort((a, b) => a - b))
       const bad = await request(app)
         .get('/api/v1/admin/safety/sos?status=bogus')
         .set('Authorization', `Bearer ${admin.accessToken}`)
