@@ -193,7 +193,7 @@ export default function SOSPage() {
                     False Alarm
                   </button>
                   <button
-                    onClick={() => router.push(`/rides?ride=${sos.ride_id}`)}
+                    onClick={() => router.push(`/rides/${sos.ride_id}`)}
                     className="ml-auto flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 transition-colors text-text-secondary"
                   >
                     <ExternalLink size={14} />

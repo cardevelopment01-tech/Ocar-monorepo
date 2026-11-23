@@ -2326,6 +2326,9 @@ export async function listAdminRides(filters: {
        d.full_name AS driver_name, d.phone AS driver_phone,
        COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
        pay.status AS payment_status, pay.channel AS payment_channel,
+       pay.amount::text AS payment_amount, pay.gateway_txn_id AS payment_txn_id, pay.captured_at AS payment_captured_at,
+       pay.failed_at AS payment_failed_at, pay.failure_reason AS payment_failure_reason,
+       pay.commission_percent::text AS commission_percent, pay.commission_amount::text AS commission_amount, pay.driver_earning::text AS driver_earning,
        rc.reason_code AS cancellation_reason_code, rc.reason AS cancellation_reason, rc.actor AS cancellation_actor
      FROM (
        SELECT id, requested_at FROM (${candidates}) c
@@ -2447,6 +2450,51 @@ export async function getRideTrail(rideId: bigint, from: Date, to: Date, maxPoin
     [rideId, from, to, maxPoints],
   );
   return res.rows as Array<{ lat: number; lng: number; recorded_at: string }>;
+}
+
+// Start/end OTP at a glance: did the code get verified, and how many wrong tries came first. Raw hashes never leave the DB.
+export async function getRideOtpSummary(rideId: bigint) {
+  const res = await pool.query(
+    `SELECT otp_type, COUNT(*) FILTER (WHERE event = 'failed')::int AS failed,
+            MAX(created_at) FILTER (WHERE event = 'verified') AS verified_at
+     FROM ride_otp_events WHERE ride_id = $1 GROUP BY otp_type`,
+    [rideId],
+  );
+  const pick = (t: string) => {
+    const r = res.rows.find((x: { otp_type: string }) => x.otp_type === t) as { failed: number; verified_at: Date | null } | undefined
+    return { verified_at: r?.verified_at ?? null, failed_attempts: r?.failed ?? 0 }
+  }
+  return { trip_start: pick('trip_start'), trip_end: pick('trip_end') }
+}
+
+/** The driver's last recorded point for this ride (inside the time window so only the relevant partitions are read). */
+export async function getRideLastPosition(rideId: bigint, from: Date, to: Date) {
+  const res = await pool.query(
+    `SELECT ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng, recorded_at
+     FROM gps_tracks WHERE ride_id = $1 AND recorded_at >= $2 AND recorded_at <= $3
+     ORDER BY recorded_at DESC LIMIT 1`,
+    [rideId, from, to],
+  );
+  return (res.rows[0] ?? null) as { lat: number; lng: number; recorded_at: string } | null
+}
+
+export async function listRideAdminNotes(rideId: bigint) {
+  const res = await pool.query(
+    `SELECT n.id::text, n.note, n.created_at, n.admin_id::text, COALESCE(a.full_name, a.email::text) AS admin_name
+     FROM ride_admin_notes n JOIN admins a ON a.id = n.admin_id
+     WHERE n.ride_id = $1 ORDER BY n.created_at ASC, n.id ASC LIMIT 200`,
+    [rideId],
+  );
+  return res.rows;
+}
+
+export async function addRideAdminNote(rideId: bigint, adminId: bigint, note: string) {
+  const res = await pool.query(
+    `INSERT INTO ride_admin_notes (ride_id, admin_id, note) VALUES ($1, $2, btrim($3))
+     RETURNING id::text, note, created_at, admin_id::text`,
+    [rideId, adminId, note],
+  );
+  return res.rows[0];
 }
 
 export async function getRideTimes(rideId: bigint) {

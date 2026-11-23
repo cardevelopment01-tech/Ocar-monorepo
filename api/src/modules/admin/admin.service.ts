@@ -670,7 +670,8 @@ export async function listUpcomingScheduledRides() {
 export async function getAdminRideById(rideId: bigint) {
   const ride = await repo.getAdminRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
-  const [stops, offers, [statusHistory, linkedSafety, messages]] = await Promise.all([
+  const lastFrom = new Date((ride.started_at ?? ride.accepted_at ?? ride.requested_at).valueOf() - TRAIL_SLACK_MS)
+  const [stops, offers, [statusHistory, linkedSafety, messages], otp, lastPosition, notes] = await Promise.all([
     getRideStops(rideId),
     repo.getRideOffers(rideId).catch(() => []),
     // Enrichment queries: degrade to empty rather than failing the whole ride detail.
@@ -683,10 +684,21 @@ export async function getAdminRideById(rideId: bigint) {
       s.status === 'fulfilled' ? s.value : { disputes: [], sos_alerts: [], ratings: [] },
       m.status === 'fulfilled' ? m.value : [],
     ] as const),
+    repo.getRideOtpSummary(rideId).catch(() => null),
+    // Only meaningful once a driver is on the ride; the time window keeps the GPS query to the right partitions.
+    ride.driver_id ? repo.getRideLastPosition(rideId, lastFrom, new Date()).catch(() => null) : Promise.resolve(null),
+    repo.listRideAdminNotes(rideId).catch(() => []),
   ])
   // bookedUntil / overtimeGraceMin / overtimeRate / overtimeMin / overtimeFare: the same facts the driver and
   // rider clocks use, null for rides with no hourly window.
-  return { ...withTripWindow(ride), stops, offers, status_history: statusHistory, ...linkedSafety, messages }
+  return { ...withTripWindow(ride), stops, offers, status_history: statusHistory, ...linkedSafety, messages, otp, last_position: lastPosition, notes }
+}
+
+export async function addRideAdminNote(rideId: bigint, adminId: bigint, note: string) {
+  const text = note.trim()
+  if (text.length < 1 || text.length > 2000) throw Object.assign(new Error('Note must be 1 to 2000 characters'), { httpStatus: 400 })
+  if (!(await repo.getRideTimes(rideId))) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  return repo.addRideAdminNote(rideId, adminId, text)
 }
 
 const TRAIL_MAX_POINTS = 300
