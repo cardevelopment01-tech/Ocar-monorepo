@@ -16,7 +16,7 @@ vi.mock('@/lib/sos-alarm', () => ({
   soundAlarm: alarm.soundAlarm, notifyDesktop: alarm.notifyDesktop, primeAlarm: vi.fn(), askDesktopPermission: vi.fn(),
   isAlarmMuted: () => false, setAlarmMuted: vi.fn(), desktopPermission: () => 'granted',
 }))
-vi.mock('../SosDetailPanel', () => ({ default: ({ id }: { id: string | null }) => (id ? <div>detail panel for {id}</div> : null) }))
+vi.mock('../SosLivePanel', () => ({ default: ({ id }: { id: string }) => <div>live panel for {id}</div> }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 
 import SOSPage from '../page'
@@ -156,14 +156,12 @@ describe('SOS page', () => {
     expect(alarm.soundAlarm).toHaveBeenCalledTimes(1)
   })
 
-  it('a filter tab asks the server for that status, and Details opens the panel', async () => {
+  it('a filter tab asks the server for that status', async () => {
     respond([alert()])
     const user = userEvent.setup()
     render(<SOSPage />)
     await user.click(await screen.findByRole('tab', { name: 'Resolved' }))
     await waitFor(() => expect(api.getSosAlerts).toHaveBeenCalledWith({ limit: 25, status: 'resolved' }))
-    await user.click(screen.getByRole('button', { name: /details & map/i }))
-    expect(await screen.findByText('detail panel for 7')).toBeTruthy()
   })
 
   it('shows who is on call and lets an admin start and end their own duty', async () => {
@@ -183,5 +181,17 @@ describe('SOS page', () => {
     respond([alert()])
     render(<SOSPage />)
     expect((await screen.findByTestId('on-call-line')).textContent).toContain('Nobody is on call')
+  })
+
+  it('opens the live view of the longest-waiting alert by itself, and switches when another card is chosen', async () => {
+    const older = alert({ id: '7', user_name: 'Asha Rider', created_at: new Date(Date.now() - 9 * 60_000).toISOString() })
+    const newer = alert({ id: '8', user_name: 'Bikash Nayak', created_at: new Date(Date.now() - 2 * 60_000).toISOString() })
+    respond([older, newer])
+    const user = userEvent.setup()
+    render(<SOSPage />)
+    expect(await screen.findByText('live panel for 7')).toBeTruthy()
+    const buttons = await screen.findAllByRole('button', { name: 'Live map' })
+    await user.click(buttons[1]!)
+    expect(await screen.findByText('live panel for 8')).toBeTruthy()
   })
 })
