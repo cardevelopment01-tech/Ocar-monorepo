@@ -68,7 +68,7 @@ import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/mod
 import { insertGpsTracks } from '@/modules/geo/geo.repository'
 import {
   MAX_STOPS_PER_RIDE, STOP_DUPLICATE_RADIUS_METRES, STOP_FREE_WAIT_MINUTES,
-  RENTAL_OVERAGE_GRACE_KM, RENTAL_OVERAGE_GRACE_MIN, RENTAL_MAX_PLAUSIBLE_AVG_KMH,
+  RENTAL_MAX_PLAUSIBLE_AVG_KMH,
   ONE_WAY_FARE_BAND_OVER, ONE_WAY_FARE_BAND_UNDER,
   GPS_GAP_SECONDS, GPS_GAP_MIN_METRES, GPS_MAX_ROUTED_GAPS, GPS_MAX_SILENT_SHARE, PICKUP_WAIT_RADIUS_METRES,
   PICKUP_EDIT_RADIUS_METRES,
@@ -3209,7 +3209,7 @@ export async function verifyEndOTP(
   const hourly = rtSnap != null && ride.started_at != null &&
     isHourlyRoundTrip({ pricing_version: rtSnap.pricing_version, trip_hours: bookedHours, hour_rate: hourlyRate })
 
-  // Rental: package fare + overage beyond the package's km/hours (plus grace), measured
+  // Rental: package fare + overage beyond the package's km/hours, measured
   // from GPS breadcrumbs and server timestamps — not the client-reported actuals, which
   // are optional and unreliable. Time is always billable; km only when GPS is trustworthy.
   let rentalSettled = false
@@ -3227,7 +3227,6 @@ export async function verifyEndOTP(
         surge_multiplier: parseFloat(rental.surge_multiplier),
         gps_km:           gpsDistanceKm,
         elapsed_min:      gpsDurationMin,
-        grace:            { km: RENTAL_OVERAGE_GRACE_KM, min: RENTAL_OVERAGE_GRACE_MIN },
         max_avg_kmh:      RENTAL_MAX_PLAUSIBLE_AVG_KMH,
       })
       // actual_km is the GPS-measured value only — never the client's straight-line
