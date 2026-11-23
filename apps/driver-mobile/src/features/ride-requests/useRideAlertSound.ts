@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { Vibration } from 'react-native'
 import { setAudioModeAsync, useAudioPlayer, type AudioPlayer } from 'expo-audio'
-import { getSpeech } from './speech'
+import { getSpeech, hasVoiceFor } from './speech'
 import rideAlertSoundAsset from '../../../assets/sounds/ride-request.wav'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
-import { buildAnnouncementSegments, estimateSpeechMs, segmentAt, segmentAtTime, SPEECH_LOCALE } from './buildAnnouncement'
+import { buildAnnouncementSegments, SPEECH_LOCALE, SPEECH_RATE } from './buildAnnouncement'
+import { runAnnouncement } from './runAnnouncement'
 import { useAnnouncementStore } from '@/store/useAnnouncementStore'
 import { stopTestAlert } from './testAlert'
 import type { RideRequestPayload } from './types'
@@ -17,6 +18,12 @@ function safePause(player: AudioPlayer) {
   }
 }
 
+// The ring from the top again (after the voice has finished, or was stopped because it was not helping).
+function restartRing(player: AudioPlayer) {
+  player.seekTo(0).catch(() => {})
+  player.play()
+}
+
 // Same asset + same repeating-loop behavior as the web driver app's
 // lib/rideSound.ts (playRideSound/stopRideSound) -- ported to expo-audio
 // instead of reimplemented, per the plan's reuse-ladder correction.
@@ -24,12 +31,6 @@ const RIDE_ALERT_SOUND = rideAlertSoundAsset
 
 // Uber-style pattern: buzz, pause, buzz, repeat -- not a single blip.
 const VIBRATION_PATTERN = [0, 400, 200, 400]
-
-// Ring once, then read the request aloud straight away, then ring again until the request is answered. The ring is paused while
-// speaking so the two never fight over the speaker. One ring is exactly the length of assets/sounds/ride-request.wav (1.0 s: the
-// client's tone, one clean loop of it); an extra pause here only used up the accept window.
-const RING_BEFORE_SPEECH_MS = 1000
-const FALLBACK_AFTER_MS = 1200 // no word positions this long after the voice starts: follow the clock instead
 
 let audioModeSet = false
 
@@ -87,83 +88,25 @@ export function useRideAlertSound(active: boolean, request?: RideRequestPayload 
     }
   }, [active, rideId, player])
 
-  // The voice: once per request, after the first ring.
+  // The voice: once per request, after the first ring (see runAnnouncement for the order of events and its timers).
   useEffect(() => {
     if (!active || !prefsReady || !voiceEnabled || !request) return
     const Speech = getSpeech() // null: no voice on this build; the ring carries on alone
     if (!Speech) return
-    const segments = buildAnnouncementSegments(request, language)
-    const text = segments.map((s) => s.text).join(' ')
-    const announcement = useAnnouncementStore.getState()
-    let cancelled = false
-    let finished = false
-    let spoke = false
-    let sawBoundary = false
-    let watchdog: ReturnType<typeof setTimeout> | undefined
-    let fallback: ReturnType<typeof setTimeout> | undefined
-    let timeline: ReturnType<typeof setInterval> | undefined
-    const stopTimeline = () => {
-      clearTimeout(fallback)
-      clearInterval(timeline)
-      timeline = undefined
-    }
-    const resumeRing = () => {
-      player.seekTo(0).catch(() => {})
-      player.play()
-    }
-    // Runs once however many of onDone / onStopped / onError / the watchdog fire, and never after this effect was torn down.
-    const finish = () => {
-      if (cancelled || finished) return
-      finished = true
-      clearTimeout(watchdog)
-      stopTimeline()
-      announcement.reset()
-      resumeRing()
-    }
-    const timer = setTimeout(() => {
-      if (cancelled) return
-      safePause(player)
-      spoke = true
-      // No TTS engine, a missing language or lost audio focus can mean no callback ever fires: the ring must come back anyway.
-      watchdog = setTimeout(finish, Math.min(9_000, 2_500 + text.length * 70))
-      Speech.speak(text, {
-        language: SPEECH_LOCALE[language],
-        rate: 0.95,
-        onStart: () => {
-          if (cancelled || finished) return
-          announcement.set({ speaking: true, segment: null })
-          // Some Android speech engines never report word positions. If none arrive shortly after the start, follow an even
-          // pace over the estimated duration instead; real positions take over the moment they show up.
-          const startedAt = Date.now()
-          const total = estimateSpeechMs(text)
-          fallback = setTimeout(() => {
-            if (cancelled || finished || sawBoundary || timeline) return
-            timeline = setInterval(() => announcement.set({ segment: segmentAtTime(segments, Date.now() - startedAt, total) }), 250)
-          }, FALLBACK_AFTER_MS)
-        },
-        onBoundary: (ev: { charIndex: number }) => {
-          if (cancelled || finished) return
-          sawBoundary = true
-          stopTimeline()
-          announcement.set({ segment: segmentAt(segments, ev.charIndex) })
-        },
-        onDone: finish,
-        onStopped: finish,
-        onError: finish,
-      })
-    }, RING_BEFORE_SPEECH_MS)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-      clearTimeout(watchdog)
-      stopTimeline()
-      announcement.reset()
-      if (spoke) {
-        Promise.resolve(getSpeech()?.stop()).catch(() => {}) // only what this effect started: other speech is left alone
-        // The voice was switched off or changed while the ring was paused for it: bring the ring back (unless the request ended).
-        if (!finished && activeNow.current) resumeRing()
-      }
-    }
+    // A phone without a Hindi voice would read Devanagari with its English one. Find out now (the voice is only asked to speak after
+    // the first ring), and read the request in English if there is none; an answer that has not come back by then changes nothing.
+    let useEnglish = false
+    if (language === 'hi') void hasVoiceFor('hi', Speech).then((ok) => { if (!ok) useEnglish = true })
+    return runAnnouncement({
+      speech: Speech,
+      build: () => {
+        const lang = useEnglish ? 'en' : language
+        return { segments: buildAnnouncementSegments(request, lang), locale: SPEECH_LOCALE[lang], rate: SPEECH_RATE }
+      },
+      ring: { pause: () => safePause(player), resume: () => restartRing(player) },
+      announcement: useAnnouncementStore.getState(),
+      isActive: () => activeNow.current,
+    })
     // `request` is intentionally keyed by rideId: a new request re-announces, a re-render of the same one does not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, rideId, voiceEnabled, language, prefsReady, player])

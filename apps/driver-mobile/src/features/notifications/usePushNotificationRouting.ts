@@ -6,7 +6,8 @@ import { getMessaging, getInitialNotification, onMessage, onNotificationOpenedAp
 import { markPushOpened, refreshUnreadCount } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/useAuthStore'
-import { resolveTapRoute } from './pushRouting'
+import { useRideRequestStore } from '@/store/useRideRequestStore'
+import { foregroundPresentation, resolveTapRoute } from './pushRouting'
 
 // A cold-start notification tap races the app's own launch-time redirect
 // chain (app/index.tsx's fetchActiveRideForRelaunch -- itself an async
@@ -25,9 +26,10 @@ const HYDRATION_WAIT_TIMEOUT_MS = 5_000
 // Without a handler Expo drops every notification it is asked to present while the app is open.
 Notifications.setNotificationHandler({
   handleNotification: async (n) => {
-    // "Ride request ended" is a silent swap for a ringing push: with the app open the overlay already closed itself.
-    const gone = n.request.content.data?.['type'] === 'ride_request_gone'
-    return { shouldShowBanner: !gone, shouldShowList: !gone, shouldPlaySound: !gone, shouldSetBadge: false }
+    // "Ride request ended" is a silent swap for a ringing push (with the app open the overlay already closed itself), and a push for the
+    // request already on screen must not ring over its voice: see foregroundPresentation.
+    const p = foregroundPresentation(n.request.content.data, useRideRequestStore.getState().pending?.rideId ?? null)
+    return { shouldShowBanner: p.banner, shouldShowList: p.list, shouldPlaySound: p.sound, shouldSetBadge: false }
   },
 })
 

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { buildAnnouncement, buildAnnouncementSegments, estimateSpeechMs, segmentAt, segmentAtTime, shortenAddress } from './buildAnnouncement'
 import type { RideRequestPayload } from './types'
 
-// Value: protects=drivers hear the right ride type, places, distance and fare, short enough to finish inside the accept
-// window, with no house numbers/PIN codes read out; fails_when=a field is dropped, mispronounced as a raw number, or a
+// Value: protects=drivers hear the fare and payment first, then the right ride type, places and distance, short enough to finish
+// inside the accept window, with no house numbers/PIN codes read out; fails_when=a field is dropped, mispronounced as a raw number, or a
 // round trip is announced as one way; why_new=voice announcement; seam=pure function, no TTS engine; no_claim=voice quality.
 const base: RideRequestPayload = {
   rideId: '1', pickup: 'Saheed Nagar, Bhubaneswar, Odisha 751007, India', drop: 'Badambadi, Cuttack, Odisha',
@@ -19,22 +19,36 @@ describe('shortenAddress', () => {
   it('keeps the locality, drops PIN, state-with-PIN and country', () => {
     expect(shortenAddress('Saheed Nagar, Bhubaneswar, Odisha 751007, India')).toBe('Saheed Nagar, Bhubaneswar')
   })
+  it('can keep just the first part (the pickup is in their own city)', () => {
+    expect(shortenAddress('Saheed Nagar, Bhubaneswar, Odisha 751007, India', 1)).toBe('Saheed Nagar')
+  })
   it('drops house/plot numbers and unnamed roads', () => {
     expect(shortenAddress('Plot 12, Unnamed Road, Patia, Bhubaneswar')).toBe('Patia, Bhubaneswar')
     expect(shortenAddress('12/B, Station Road, Puri')).toBe('Station Road, Puri')
   })
   it('returns empty when nothing speakable is left, and trims very long parts', () => {
     expect(shortenAddress('751007, India')).toBe('')
-    expect(shortenAddress('A'.repeat(80)).length).toBeLessThanOrEqual(50)
-    expect(shortenAddress('Very Long Locality Name Nagar, Another Quite Long City Name, Odisha').length).toBeLessThanOrEqual(50)
+    expect(shortenAddress('A'.repeat(80)).length).toBeLessThanOrEqual(32)
+    expect(shortenAddress('Very Long Locality Name Nagar, Another Quite Long City Name, Odisha').length).toBeLessThanOrEqual(32)
   })
 })
 
 describe('buildAnnouncement (English)', () => {
-  it('reads type, category, pickup with distance, drop with length, fare and payment', () => {
+  it('reads the fare and payment first, then the type, the pickup with distance and the drop with length', () => {
     expect(buildAnnouncement(base)).toBe(
-      'New ride request. One way, Sedan. Pickup Saheed Nagar, Bhubaneswar, 1.2 kilometres away. Drop Badambadi, Cuttack, 28 kilometres. Fare 450 rupees. Cash.'
+      'New ride request. Fare 450 rupees, cash. One way. Pickup Saheed Nagar, 1.2 kilometres away. Drop Badambadi, Cuttack, 28 kilometres.'
     )
+  })
+  it('says the fare before anything about the trip, and leaves the vehicle category to the card', () => {
+    const text = buildAnnouncement(base)
+    expect(text.indexOf('Fare')).toBeLessThan(text.indexOf('One way'))
+    expect(text.indexOf('Fare')).toBeLessThan(text.indexOf('Pickup'))
+    expect(text).not.toContain('Sedan')
+  })
+  it('a typical request is short: about 130 characters, about 9 seconds at the speaking rate', () => {
+    const text = buildAnnouncement(base)
+    expect(text.length).toBeLessThan(140)
+    expect(estimateSpeechMs(text)).toBeLessThan(10_000)
   })
   it('metres under a kilometre, singular kilometre, trip length with one decimal under 10 km', () => {
     expect(buildAnnouncement({ ...base, distanceToPickup: 480, tripKm: 7.26 })).toContain('480 metres away')
@@ -42,13 +56,13 @@ describe('buildAnnouncement (English)', () => {
     expect(buildAnnouncement({ ...base, tripKm: 7.26 })).toContain('7.3 kilometres')
   })
   it('round trip with hours and stops, return cab, rental', () => {
-    expect(buildAnnouncement({ ...base, rideType: 'round_trip', tripHours: 8, stopCount: 2 })).toContain('Round trip, Sedan, 8 hours, 2 stops.')
-    expect(buildAnnouncement({ ...base, isReturnCab: true })).toContain('Return cab, Sedan.')
-    expect(buildAnnouncement({ ...base, rideType: 'rental', tripHours: 4 })).toContain('Rental, Sedan, 4 hours.')
+    expect(buildAnnouncement({ ...base, rideType: 'round_trip', tripHours: 8, stopCount: 2 })).toContain('Round trip, 8 hours, 2 stops.')
+    expect(buildAnnouncement({ ...base, isReturnCab: true })).toContain('Return cab.')
+    expect(buildAnnouncement({ ...base, rideType: 'rental', tripHours: 4 })).toContain('Rental, 4 hours.')
   })
   it('skips what it does not know instead of saying "undefined" or "zero"', () => {
     const text = buildAnnouncement({ ...without(base, ['rideCategoryName', 'tripKm', 'paymentChannel']), estimatedFare: 0, distanceToPickup: 0 })
-    expect(text).toBe('New ride request. One way. Pickup Saheed Nagar, Bhubaneswar. Drop Badambadi, Cuttack.')
+    expect(text).toBe('New ride request. One way. Pickup Saheed Nagar. Drop Badambadi, Cuttack.')
     expect(text).not.toMatch(/undefined|NaN|zero|0 rupees/)
   })
   it('falls back when an address has nothing speakable, and never reads a phone number or name', () => {
@@ -56,19 +70,20 @@ describe('buildAnnouncement (English)', () => {
     expect(buildAnnouncement(base)).not.toMatch(/\d{6,}/)
   })
   it('online and wallet payments', () => {
-    expect(buildAnnouncement({ ...base, paymentChannel: 'online' })).toMatch(/Paid online\.$/)
-    expect(buildAnnouncement({ ...base, paymentChannel: 'wallet' })).toMatch(/Wallet\.$/)
+    expect(buildAnnouncement({ ...base, paymentChannel: 'online' })).toContain('Fare 450 rupees, paid online.')
+    expect(buildAnnouncement({ ...base, paymentChannel: 'wallet' })).toContain('Fare 450 rupees, wallet.')
+    expect(buildAnnouncement({ ...without(base, ['estimatedFare']), estimatedFare: 0 })).toContain('Cash.') // no fare: payment alone
   })
-  it('is short enough to finish inside the accept window (a worst-case request under about 250 characters)', () => {
+  it('is short enough to finish inside the accept window (a worst-case request under about 200 characters)', () => {
     const long = buildAnnouncement({ ...base, pickup: 'B'.repeat(60) + ', ' + 'C'.repeat(60), drop: 'D'.repeat(60) + ', ' + 'E'.repeat(60), stopCount: 3, tripHours: 12, rideType: 'round_trip' })
-    expect(long.length).toBeLessThan(260)
+    expect(long.length).toBeLessThan(200)
   })
 })
 
 describe('buildAnnouncement (Hindi)', () => {
   it('translates the frame, keeps the place names', () => {
     expect(buildAnnouncement(base, 'hi')).toBe(
-      'नई राइड रिक्वेस्ट। वन वे, Sedan. पिकअप Saheed Nagar, Bhubaneswar, 1.2 किलोमीटर दूर. ड्रॉप Badambadi, Cuttack, 28 किलोमीटर. किराया 450 रुपये। कैश।'
+      'नई राइड रिक्वेस्ट। किराया 450 रुपये, कैश। वन वे. पिकअप Saheed Nagar, 1.2 किलोमीटर दूर. ड्रॉप Badambadi, Cuttack, 28 किलोमीटर.'
     )
   })
 })
@@ -78,7 +93,7 @@ describe('segments and read-along position', () => {
   const text = buildAnnouncement(base)
 
   it('the segments are the spoken sentence, in order, one per region', () => {
-    expect(segs.map((s) => s.key)).toEqual(['intro', 'type', 'pickup', 'drop', 'fare'])
+    expect(segs.map((s) => s.key)).toEqual(['intro', 'fare', 'type', 'pickup', 'drop'])
     expect(segs.map((s) => s.text).join(' ')).toBe(text)
     expect(buildAnnouncementSegments(base, 'hi').map((s) => s.text).join(' ')).toBe(buildAnnouncement(base, 'hi'))
   })
@@ -92,13 +107,13 @@ describe('segments and read-along position', () => {
     expect(segmentAt(segs, text.indexOf('Drop'))).toBe('drop')
     expect(segmentAt(segs, text.indexOf('Fare'))).toBe('fare')
     expect(segmentAt(segs, text.indexOf('Pickup') - 1)).toBe('type') // the joining space belongs to the part before it
-    expect(segmentAt(segs, text.length - 1)).toBe('fare')
+    expect(segmentAt(segs, text.length - 1)).toBe('drop')
     expect(segmentAt(segs, text.length)).toBeNull()
     expect(segmentAt(segs, -1)).toBeNull()
     expect(segmentAt([], 0)).toBeNull()
   })
   it('segmentAtTime walks the parts in order over the estimated duration, and is null outside it', () => {
-    const rank = ['intro', 'type', 'pickup', 'drop', 'fare']
+    const rank = ['intro', 'fare', 'type', 'pickup', 'drop']
     const order = [0, 0.2, 0.4, 0.6, 0.8, 0.99].map((f) => rank.indexOf(segmentAtTime(segs, f * 8000, 8000)!))
     expect(order[0]).toBe(0)
     expect(order[order.length - 1]).toBe(4)
@@ -107,8 +122,9 @@ describe('segments and read-along position', () => {
     expect(segmentAtTime(segs, -5, 8000)).toBeNull()
     expect(segmentAtTime(segs, 100, 0)).toBeNull()
   })
-  it('estimateSpeechMs grows with the text and stays bounded', () => {
+  it('estimateSpeechMs grows with the text and falls with a faster rate', () => {
     expect(estimateSpeechMs(text)).toBeGreaterThan(estimateSpeechMs('Hi'))
-    expect(estimateSpeechMs('x'.repeat(1000))).toBeLessThan(11_000)
+    expect(estimateSpeechMs(text, 1.2)).toBeLessThan(estimateSpeechMs(text, 0.9))
+    expect(estimateSpeechMs(text)).toBeGreaterThan(6_000) // a typical request is not a two-second blip
   })
 })

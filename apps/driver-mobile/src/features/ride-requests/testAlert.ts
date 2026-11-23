@@ -1,11 +1,11 @@
 import { Alert, Linking, Platform } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio'
-import { getSpeech } from './speech'
+import { getSpeech, hasVoiceFor } from './speech'
 import rideAlertSoundAsset from '../../../assets/sounds/ride-request.wav'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
 import { useRideRequestStore } from '@/store/useRideRequestStore'
-import { buildAnnouncement, SPEECH_LOCALE } from './buildAnnouncement'
+import { buildAnnouncement, SPEECH_LOCALE, SPEECH_RATE } from './buildAnnouncement'
 import type { RideRequestPayload } from './types'
 
 const SAMPLE: RideRequestPayload = {
@@ -30,6 +30,9 @@ export async function playTestAlert(): Promise<void> {
   player.volume = 1
   player.play()
   const { voiceEnabled, language } = useAlertPrefsStore.getState()
+  // Same Hindi fallback as a real request: a phone with no Hindi voice would read the sample with its English one.
+  let useEnglish = false
+  if (language === 'hi' && voiceEnabled) void hasVoiceFor('hi').then((ok) => { if (!ok) useEnglish = true })
   let done = false
   let spoke = false
   const stop = () => {
@@ -48,7 +51,8 @@ export async function playTestAlert(): Promise<void> {
     const Speech = voiceEnabled ? getSpeech() : null
     if (Speech) {
       spoke = true
-      Speech.speak(buildAnnouncement(SAMPLE, language), { language: SPEECH_LOCALE[language], rate: 0.95, onDone: stop, onStopped: stop, onError: stop })
+      const lang = useEnglish ? 'en' : language
+      Speech.speak(buildAnnouncement(SAMPLE, lang), { language: SPEECH_LOCALE[lang], rate: SPEECH_RATE, onDone: stop, onStopped: stop, onError: stop })
     } else stop()
   }, 1300) // one 1.0 s ring plus a short margin
 }

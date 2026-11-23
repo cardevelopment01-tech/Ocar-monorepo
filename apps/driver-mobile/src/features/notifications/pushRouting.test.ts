@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolvePushRoute, resolveTapRoute } from './pushRouting'
+import { foregroundPresentation, resolvePushRoute, resolveTapRoute } from './pushRouting'
 
 describe('resolvePushRoute (driver-mobile)', () => {
   it('returns null for pending ride offers -- handled live by the socket overlay', () => {
@@ -83,5 +83,34 @@ describe('ride_request_gone (the silent replacement for a ride request that is o
   it('goes nowhere on arrival and on tap', () => {
     expect(resolvePushRoute({ type: 'ride_request_gone', rideId: '5' })).toBeNull()
     expect(resolveTapRoute({ type: 'ride_request_gone', rideId: '5' })).toBeNull()
+  })
+})
+
+describe('foregroundPresentation (how a push shows while the app is open)', () => {
+  const SHOWN = { banner: true, list: true, sound: true }
+  const SILENT = { banner: false, list: false, sound: false }
+
+  it('a ride request push for the request already on screen is silent and not shown: the pop-up rings and reads it, the push must not ring over the voice', () => {
+    expect(foregroundPresentation({ type: 'ride_request', rideId: '42' }, '42')).toEqual(SILENT)
+    expect(foregroundPresentation({ type: 'ride_manual_request', rideId: '42' }, '42')).toEqual(SILENT)
+    expect(foregroundPresentation({ type: 'ride_request', rideId: 42 }, '42')).toEqual(SILENT) // an id sent as a number still matches
+  })
+
+  it('a ride request push that is NOT on screen still rings: that is the push doing its job', () => {
+    expect(foregroundPresentation({ type: 'ride_request', rideId: '42' }, null)).toEqual(SHOWN)
+    expect(foregroundPresentation({ type: 'ride_request', rideId: '42' }, '7')).toEqual(SHOWN) // another request is on screen
+    expect(foregroundPresentation({ type: 'ride_request' }, '42')).toEqual(SHOWN) // no ride id: cannot be the one on screen
+  })
+
+  it('every other notification is presented as before, even with a request on screen', () => {
+    expect(foregroundPresentation({ type: 'ride_chat_message', rideId: '42' }, '42')).toEqual(SHOWN)
+    expect(foregroundPresentation({ type: 'stop_added', rideId: '42' }, '42')).toEqual(SHOWN)
+    expect(foregroundPresentation({ type: 'ring_test' }, null)).toEqual(SHOWN)
+    expect(foregroundPresentation(undefined, null)).toEqual(SHOWN)
+  })
+
+  it('"ride request ended" stays the silent swap it was', () => {
+    expect(foregroundPresentation({ type: 'ride_request_gone', rideId: '42' }, null)).toEqual(SILENT)
+    expect(foregroundPresentation({ type: 'ride_request_gone', rideId: '42' }, '42')).toEqual(SILENT)
   })
 })
