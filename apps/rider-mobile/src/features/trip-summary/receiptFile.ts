@@ -23,10 +23,6 @@ async function shareFile(uri: string): Promise<void> {
   await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'Your Ocar receipt' })
 }
 
-export async function shareReceipt(rideId: string): Promise<void> {
-  await shareFile(await fetchReceiptFile(rideId))
-}
-
 // Opens the receipt the way other apps do: in the phone's own PDF viewer, where the rider can save, print or share it.
 // Android hands the file to whichever PDF app is installed (a view request with read permission on a content:// address; a file:// address
 // cannot be shared with another app). If the phone has no PDF app, or the handoff fails, the share sheet is the fallback.
