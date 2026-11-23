@@ -5,10 +5,23 @@ export interface AdminAccount {
   id: string
   code: string
   email: string
+  full_name: string | null
   role: AdminRole
   admin_status: 'active' | 'suspended'
+  totp_enabled: boolean
+  last_login_at: string | null
   created_at: string
 }
+
+/** What the person holding a valid invite link sees before choosing a password. */
+export interface InvitePreview {
+  email: string
+  role: AdminRole
+  full_name: string | null
+  invited_by_name: string | null
+}
+
+export type AdminLifecycleAction = 'role' | 'reset2fa' | 'signOut' | 'remove'
 
 export const adminAccountsApi = {
   list: async (): Promise<AdminAccount[]> => {
@@ -20,21 +33,42 @@ export const adminAccountsApi = {
     const { data } = await api.patch<{ admin: AdminAccount }>(`/api/v1/admin/admins/${id}/status`, { status })
     return data.admin
   },
+
+  // Risky actions re-ask for the acting admin's own password; the server checks it and answers 403 (not 401) when it is wrong.
+  changeRole: async (id: string, role: AdminRole, password: string): Promise<AdminAccount> =>
+    (await api.patch<{ admin: AdminAccount }>(`/api/v1/admin/admins/${id}/role`, { role, password })).data.admin,
+  resetTwoFactor: async (id: string, password: string): Promise<AdminAccount> =>
+    (await api.post<{ admin: AdminAccount }>(`/api/v1/admin/admins/${id}/reset-2fa`, { password })).data.admin,
+  signOut: async (id: string, password: string): Promise<void> => { await api.post(`/api/v1/admin/admins/${id}/sign-out`, { password }) },
+  remove: async (id: string, password: string, confirmEmail: string): Promise<void> => { await api.delete(`/api/v1/admin/admins/${id}`, { data: { password, confirmEmail } }) },
 }
 
 export type InviteStatus = 'pending' | 'accepted' | 'expired' | 'revoked'
 
+/** What happened to the invitation email. 'unknown' = sent before this was tracked. */
+export type InviteEmailStatus = 'unknown' | 'queued' | 'sent' | 'failed'
+
 export interface AdminInvite {
   id: string
   email: string
+  full_name: string | null
   role: AdminRole
   invited_by: string
   status: InviteStatus
   expires_at: string
   accepted_at: string | null
   accepted_admin_id: string | null
+  email_status: InviteEmailStatus
+  /** The mail server's own reason, when email_status is 'failed'. */
+  email_error: string | null
   created_at: string
   updated_at: string
+}
+
+/** A new or resent invite plus its activation link. The link is returned only this once (the server keeps just its hash). */
+export interface IssuedInvite {
+  invite: AdminInvite
+  link: string
 }
 
 export const adminInvitesApi = {
@@ -43,9 +77,15 @@ export const adminInvitesApi = {
     return data.invites
   },
 
-  create: async (params: { email: string; role: AdminRole }): Promise<AdminInvite> => {
-    const { data } = await api.post<{ invite: AdminInvite }>('/api/v1/admin/invites', params)
-    return data.invite
+  create: async (params: { email: string; role: AdminRole; fullName?: string }): Promise<IssuedInvite> => {
+    const { data } = await api.post<IssuedInvite>('/api/v1/admin/invites', params)
+    return data
+  },
+
+  /** A new link (the old one stops working) and the email again. */
+  resend: async (id: string): Promise<IssuedInvite> => {
+    const { data } = await api.post<IssuedInvite>(`/api/v1/admin/invites/${id}/resend`)
+    return data
   },
 
   revoke: async (id: string): Promise<AdminInvite> => {
@@ -55,8 +95,8 @@ export const adminInvitesApi = {
 
   // Public — pre-flight check so accept-invite can show invalid/expired
   // before rendering the password form, instead of only failing on submit.
-  verify: async (token: string): Promise<{ email: string; role: AdminRole }> => {
-    const { data } = await api.get<{ email: string; role: AdminRole }>('/api/v1/admin/invites/verify', { params: { token } })
+  verify: async (token: string): Promise<InvitePreview> => {
+    const { data } = await api.get<InvitePreview>('/api/v1/admin/invites/verify', { params: { token } })
     return data
   },
 

@@ -175,6 +175,31 @@ export const AppErrors = {
     message: 'A pending invite already exists for this email',
     httpStatus: 409,
   },
+  ADMIN_ALREADY_EXISTS: {
+    code: 'ADMIN_ALREADY_EXISTS',
+    message: 'An admin account with this email already exists',
+    httpStatus: 409,
+  },
+  ADMIN_INVITE_NOT_RESENDABLE: {
+    code: 'ADMIN_INVITE_NOT_RESENDABLE',
+    message: 'This invite can no longer be resent. Send a new invite instead',
+    httpStatus: 409,
+  },
+  ADMIN_LAST_SUPER: {
+    code: 'ADMIN_LAST_SUPER',
+    message: 'There must always be at least one active super admin',
+    httpStatus: 409,
+  },
+  ADMIN_STEP_UP_INVALID: {
+    code: 'ADMIN_STEP_UP_INVALID',
+    message: 'That password is not right',
+    httpStatus: 403,
+  },
+  ADMIN_NO_2FA: {
+    code: 'ADMIN_NO_2FA',
+    message: 'This admin has no 2FA set up, so there is nothing to reset',
+    httpStatus: 409,
+  },
   ADMIN_INVITE_INVALID: {
     code: 'ADMIN_INVITE_INVALID',
     message: 'This invite link is invalid, expired, or already used',

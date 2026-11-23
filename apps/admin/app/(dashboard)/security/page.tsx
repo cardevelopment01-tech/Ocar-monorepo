@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { ShieldCheck, ShieldAlert, Copy, Check, Eye, EyeOff, KeyRound } from 'lucide-react'
 import { totpApi } from '@/lib/totp-api'
 
@@ -9,6 +10,8 @@ type ViewState = 'loading' | 'idle' | 'enrolling' | 'showing-codes' | 'enabled'
 export default function SecurityPage() {
   const [view, setView] = useState<ViewState>('loading')
   const [mandatory, setMandatory] = useState(false)
+  // Arrived straight from accepting an invite (?setup=1): welcome them and open the setup without another click.
+  const [welcome, setWelcome] = useState(false)
 
   const [secret, setSecret] = useState('')
   const [qrDataUrl, setQrDataUrl] = useState('')
@@ -26,13 +29,18 @@ export default function SecurityPage() {
   const [disableError, setDisableError] = useState<string | null>(null)
   const [disableSubmitting, setDisableSubmitting] = useState(false)
 
-  const load = async () => {
+  const load = async (autoStart = false) => {
     const status = await totpApi.status()
     setMandatory(status.mandatory)
     setView(status.totpEnabled ? 'enabled' : 'idle')
+    if (autoStart && !status.totpEnabled) await startEnroll().catch(() => undefined) // on failure they stay on the Enable 2FA button
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    const fromInvite = new URLSearchParams(window.location.search).get('setup') === '1'
+    setWelcome(fromInvite)
+    void load(fromInvite)
+  }, [])
 
   const startEnroll = async () => {
     const result = await totpApi.setup()
@@ -108,6 +116,16 @@ export default function SecurityPage() {
 
   return (
     <div className="space-y-6 max-w-xl">
+      {welcome && view !== 'enabled' && view !== 'showing-codes' && (
+        <div className="bg-primary-light text-text-primary text-sm px-4 py-3 rounded-xl flex items-start gap-2">
+          <ShieldCheck size={16} className="flex-shrink-0 mt-0.5 text-primary" />
+          <span className="flex-1">
+            <strong className="font-semibold">Welcome to Ocar admin.</strong> Your account is ready. Add two-factor authentication now to keep it safe.
+            {!mandatory && <> <Link href="/overview" className="underline font-medium">Skip for now</Link></>}
+          </span>
+        </div>
+      )}
+
       {mandatory && view !== 'enabled' && view !== 'showing-codes' && (
         <div className="bg-warning-light text-warning text-sm font-medium px-4 py-3 rounded-xl flex items-start gap-2">
           <ShieldAlert size={16} className="flex-shrink-0 mt-0.5" />

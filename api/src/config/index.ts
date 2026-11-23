@@ -98,6 +98,9 @@ const envSchema = z.object({
   // a separate bucket whose broadcasts/ prefix is publicly readable (see docs/OPS_RUNBOOK.md, "Broadcast pictures"). Both empty = picture
   // upload is switched off (the admin can still paste a link).
   BROADCAST_IMAGE_BUCKET: z.string().default(''),
+  // 'on' = a new admin password is also checked against known data breaches (Have I Been Pwned range API; only a 5-character hash prefix
+  // leaves the server, and a network failure lets the password through). 'off' for tests and for networks with no outbound access.
+  PASSWORD_BREACH_CHECK: z.enum(['on', 'off']).default('on'),
   // Public base URL of that bucket, no trailing slash (e.g. https://ocar-prd-public.s3.ap-south-1.amazonaws.com). Empty = the bucket's own S3 URL.
   BROADCAST_IMAGE_BASE_URL: z.string().default(''),
   // AWS SDK v3 does not auto-detect region from EC2 instance metadata the way
@@ -114,6 +117,22 @@ const envSchema = z.object({
   // SES_FROM_EMAIL empty = dev bypass (logs instead of sending), same pattern as BULKSMSPLANS_API_ID.
   SES_REGION: z.string().default('ap-south-1'),
   SES_FROM_EMAIL: z.string().default(''),
+  // Which service sends email. 'ses' = Amazon SES (above). 'smtp' = any SMTP server, meant for Google Workspace (smtp.gmail.com, signing in
+  // with a mailbox and an app password), which the organisation already pays for and which has no sandbox to be approved out of.
+  EMAIL_PROVIDER: z.enum(['ses', 'smtp']).default('ses'),
+  // The sender, e.g. "Ocar Admin <no-reply@your-domain>". With Google it must be an address in your Workspace domain. Falls back to
+  // SES_FROM_EMAIL so an existing SES setup keeps working unchanged.
+  EMAIL_FROM: z.string().default(''),
+  // smtp.gmail.com takes a sign-in from any address. The separate relay (smtp-relay.gmail.com) only talks to registered server IPs, and
+  // refused a test connection with "421 4.7.0 Try again later" at the first greeting.
+  SMTP_HOST: z.string().default('smtp.gmail.com'),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  // The Workspace mailbox that signs in, with an APP PASSWORD (Google no longer accepts the normal password for SMTP). Both empty = no
+  // sign-in, which is what an IP-registered relay uses.
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
+  // 'starttls' (port 587, upgraded to TLS before anything is sent) or 'ssl' (port 465). 'none' sends in the clear: local testing only.
+  SMTP_SECURITY: z.enum(['starttls', 'ssl', 'none']).default('starttls'),
 
   // App
   API_PORT: z.coerce.number().default(4000),
@@ -143,6 +162,10 @@ const envSchema = z.object({
   // credentials. Setting this to 'true' lets them boot with the dev SMS bypass (messages are not sent, OTPs are not
   // logged). Real production must leave it unset.
   ALLOW_DEV_SMS: z.enum(['true', 'false']).default('false'),
+  // Same idea for email: with SES_FROM_EMAIL empty, a production-mode server FAILS the invite job (so it is never silently "sent" and the
+  // link is never written to the logs). 'true' = a non-production environment that wants the email printed to its log instead (so a tester
+  // can read the link). Real production must leave it unset.
+  ALLOW_DEV_EMAIL: z.enum(['true', 'false']).default('false'),
 
   // Real SMS and masked calls cost money. Outside production (development, test, a scratch server pointed at an old queue) they are never
   // sent unless this is 'true', even when vendor credentials are present. Production ignores it.
@@ -171,6 +194,13 @@ export const envSchemaChecked = envSchema.superRefine((env, ctx) => {
   }
   if (env.REVIEW_OTP !== '' && !/^\d{6}$/.test(env.REVIEW_OTP)) {
     ctx.addIssue({ code: 'custom', path: ['REVIEW_OTP'], message: 'REVIEW_OTP must be 6 digits' })
+  }
+  if (Boolean(env.SMTP_USER) !== Boolean(env.SMTP_PASS)) {
+    ctx.addIssue({ code: 'custom', path: ['SMTP_USER'], message: 'SMTP_USER and SMTP_PASS must be set together (or both left empty for an IP-allowlisted relay)' })
+  }
+  // A password and an invite link must never cross the network unencrypted.
+  if (env.NODE_ENV === 'production' && env.SMTP_SECURITY === 'none') {
+    ctx.addIssue({ code: 'custom', path: ['SMTP_SECURITY'], message: "SMTP_SECURITY=none is for local testing only; use 'starttls' or 'ssl' in production" })
   }
   if (Boolean(env.S3_ACCESS_KEY) !== Boolean(env.S3_SECRET_KEY)) {
     ctx.addIssue({ code: 'custom', path: ['S3_ACCESS_KEY'], message: 'S3_ACCESS_KEY and S3_SECRET_KEY must be set together (or both left empty to use the instance role)' })

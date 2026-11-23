@@ -2,7 +2,8 @@ import { Worker } from 'bullmq'
 import { QUEUE_NAMES, redisConnection } from '@/jobs/queues'
 import { config } from '@/config'
 import { sendSms } from '@/providers/sms.provider'
-import { sendEmail } from '@/lib/email'
+import type { AdminInviteEmailJob } from '@/modules/admin-invites/admin-invite-email'
+import { deliverAdminInviteEmail } from '@/modules/admin-invites/admin-invite-delivery'
 import * as notifService from '@/modules/notifications/notifications.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { dltVariable, shareTokenFromUrl } from '@/modules/ride-shares/share-sms'
@@ -294,15 +295,11 @@ export const notificationsWorker = new Worker(
       }
 
     } else if (job.name === 'admin_invite_email') {
-      const data = job.data as { email: string; rawToken: string; expiresAt: string }
+      const data = job.data as AdminInviteEmailJob
       const lp: LogParams = { jobName: job.name, payload: { email: data.email } }
       const logId = await notifService.logNotification(lp)
       try {
-        const redeemUrl = `${config.ADMIN_APP_URL}/accept-invite?token=${data.rawToken}`
-        const { subject, body } = await renderTemplate('admin_invite', 'email', {
-          redeemUrl, expiresAt: data.expiresAt,
-        })
-        await sendEmail(data.email, subject ?? 'You\'ve been invited to Ocar admin', body)
+        await deliverAdminInviteEmail(data, job.attemptsMade + 1 >= (job.opts.attempts ?? 1))
         await notifService.markSent(logId)
       } catch (err) {
         await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))

@@ -55,7 +55,7 @@ export default function AdminTopBar({
       {/* Title */}
       <div className="flex-1 min-w-0">
         <h1 className="text-md font-bold text-text-primary leading-none">{title}</h1>
-        {subtitle && <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>}
+        {subtitle && <p className="text-xs text-text-muted mt-0.5 truncate">{subtitle}</p>}
       </div>
 
       {actions && <div className="flex items-center gap-2">{actions}</div>}

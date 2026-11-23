@@ -8,6 +8,8 @@ try {
 }
 
 process.env['NODE_ENV'] = 'test'
+// Tests never call the breach-check service; the password-policy tests inject their own fetch.
+process.env['PASSWORD_BREACH_CHECK'] = 'off'
 
 if (process.env['TEST_DATABASE_URL']) {
   process.env['DATABASE_URL'] = process.env['TEST_DATABASE_URL']

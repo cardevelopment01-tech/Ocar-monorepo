@@ -48,6 +48,7 @@ export interface AdminRecord {
   role: AdminRole
   is_active: boolean
   totp_enabled: boolean
+  sessions_valid_from: Date | null
   created_at: Date
   updated_at: Date
 }

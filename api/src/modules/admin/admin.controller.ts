@@ -1274,6 +1274,15 @@ export async function getAdminRideById(
   }
 }
 
+export async function addRideAdminNote(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const note = typeof req.body?.note === 'string' ? req.body.note : ''
+    res.status(201).json(await service.addRideAdminNote(BigInt(req.params["id"]!), req.admin!.id, note))
+  } catch (err) {
+    next(err)
+  }
+}
+
 export async function getAdminRideTrail(
   req: Request,
   res: Response,

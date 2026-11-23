@@ -13,6 +13,12 @@ describe('extractErrorMessage', () => {
     expect(extractErrorMessage(axiosFailure({ error: 'Self-intersection', code: 'VALIDATION_ERROR' }), 'fallback')).toBe('Self-intersection')
   })
 
+  it('a 429 that carries its own message is shown as written; the generic throttle (or a 429 with no message) gets the standard wording', () => {
+    expect(extractErrorMessage(axiosFailure({ error: 'Wait 42 seconds before resending', code: 'ADMIN_INVITE_RESEND_TOO_SOON' }, 429), 'fallback')).toBe('Wait 42 seconds before resending')
+    expect(extractErrorMessage(axiosFailure({ error: 'Too many requests', code: 'RATE_LIMIT_EXCEEDED' }, 429), 'fallback')).toBe('Too many attempts. Wait a moment and try again.')
+    expect(extractErrorMessage(axiosFailure({}, 429), 'fallback')).toBe('Too many attempts. Wait a moment and try again.')
+  })
+
   it('falls back when the response has no error field', () => {
     expect(extractErrorMessage(axiosFailure({}), 'fallback')).toBe('fallback')
   })

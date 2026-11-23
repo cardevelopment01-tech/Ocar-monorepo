@@ -28,6 +28,8 @@ function build() {
   app.post('/otp/verify', l.otpLimiter, ok)
   app.post('/admin/login', l.adminLoginIpLimiter, l.adminLoginAccountLimiter, ok)
   app.post('/admin/totp-verify', l.adminTotpIpLimiter, l.adminTotpAccountLimiter, ok)
+  app.get('/invite/verify', l.inviteVerifyLimiter, (req, res) => { const good = req.query['token'] === 'good'; res.status(good ? 200 : 400).json({ ok: good }) })
+  app.post('/invite/redeem', l.inviteRedeemLimiter, ok)
   app.post('/refresh', l.refreshLimiter, (_req, res) => { res.status(200).json({ ok: true }) })
   app.get('/me', (_req, res) => { res.status(200).json({ ok: true }) }) // no auth limiter: must never 429
   return app
@@ -90,5 +92,30 @@ describe('OTP, refresh and /me', () => {
 
   it('/me is not on any auth limiter, so page loads never lock anyone out', async () => {
     for (let i = 0; i < 100; i++) expect((await request(app).get('/me').set(ip('5.5.5.5'))).status).toBe(200)
+  })
+})
+
+describe('public admin-invite endpoints', () => {
+  it('verify: counts only FAILED lookups per IP (people opening their own link are never slowed), the 21st bad one is throttled', async () => {
+    for (let i = 0; i < 40; i++) {
+      expect((await request(app).get('/invite/verify').set(ip('5.5.5.5')).query({ token: 'good' })).status).toBe(200)
+    }
+    for (let i = 0; i < 20; i++) {
+      expect((await request(app).get('/invite/verify').set(ip('5.5.5.5')).query({ token: `guess${i}` })).status).toBe(400)
+    }
+    const blocked = await request(app).get('/invite/verify').set(ip('5.5.5.5')).query({ token: 'guess-more' })
+    expect(blocked.status).toBe(429)
+    expect(blocked.body.code).toBe('RATE_LIMIT_EXCEEDED')
+    expect((await request(app).get('/invite/verify').set(ip('6.6.6.6')).query({ token: 'good' })).status).toBe(200) // another address is unaffected
+  })
+
+  it('redeem: counts only failed attempts per IP, the 11th is throttled, and a good one is never counted', async () => {
+    for (let i = 0; i < 15; i++) {
+      expect((await request(app).post('/invite/redeem').set(ip('7.7.7.7')).send({ password: 'right' })).status).toBe(200)
+    }
+    for (let i = 0; i < 10; i++) {
+      expect((await request(app).post('/invite/redeem').set(ip('7.7.7.7')).send({ password: 'bad' })).status).toBe(401)
+    }
+    expect((await request(app).post('/invite/redeem').set(ip('7.7.7.7')).send({ password: 'bad' })).status).toBe(429)
   })
 })
