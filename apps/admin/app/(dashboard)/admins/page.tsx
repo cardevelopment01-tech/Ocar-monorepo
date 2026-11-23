@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { UserPlus, X, Send, Ban, ShieldOff, ShieldCheck, RotateCw, AlertCircle, RefreshCw } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { UserPlus, X, Send, Ban, ShieldOff, ShieldCheck, RotateCw, AlertCircle, RefreshCw, Mail, Copy, Check } from 'lucide-react'
 import DataTable from '@/components/ui/DataTable'
 import StatusPill from '@/components/ui/StatusPill'
 import SlideOver from '@/components/ui/SlideOver'
@@ -32,6 +32,90 @@ function RolePill({ role }: { role: AdminRole }) {
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// What the page shows after sending or resending: the one and only time the activation link can be copied (the server keeps just a hash).
+interface Issued { email: string; link: string; kind: 'sent' | 'resent'; emailFailed: boolean }
+
+function IssuedPanel({ issued, onDone }: { issued: Issued; onDone: () => void }) {
+  const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
+  const input = useRef<HTMLInputElement>(null)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(issued.link)
+      setCopied(true)
+      setCopyFailed(false)
+      setTimeout(() => setCopied(false), 2500)
+    } catch {
+      // No clipboard access (an insecure page, or a blocked permission): select the text so Ctrl+C works.
+      setCopyFailed(true)
+      input.current?.select()
+    }
+  }
+  return (
+    <div className="p-6 space-y-5">
+      {issued.emailFailed ? (
+        <div role="alert" className="flex items-start gap-2 rounded-xl bg-danger-light px-4 py-3 text-sm font-medium text-danger">
+          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+          <span>The email to {issued.email} could not be sent. Copy the link below and send it to them yourself.</span>
+        </div>
+      ) : (
+        <div className="flex items-start gap-2 rounded-xl bg-primary-light px-4 py-3 text-sm text-text-primary">
+          <Mail size={16} className="mt-0.5 flex-shrink-0 text-primary" />
+          <span>We are emailing {issued.email}. If it does not arrive, copy the link below and send it to them yourself.</span>
+        </div>
+      )}
+
+      <div>
+        <label htmlFor="invite-link" className="block text-xs font-semibold text-text-secondary mb-1.5">Invite link</label>
+        <div className="flex gap-2">
+          <input
+            id="invite-link" ref={input} readOnly value={issued.link} onFocus={e => e.currentTarget.select()}
+            className="min-w-0 flex-1 px-3 py-2 text-xs border border-border rounded-xl bg-surface-2 text-text-secondary outline-none focus:border-primary"
+          />
+          <button
+            type="button" onClick={() => void copy()}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white bg-primary hover:opacity-90 transition-opacity cursor-pointer"
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+            {copied ? 'Copied' : 'Copy link'}
+          </button>
+        </div>
+        {copyFailed && <p role="alert" className="mt-1.5 text-[11px] text-danger">Could not copy automatically. The link is selected: press Ctrl+C.</p>}
+      </div>
+
+      <ul className="space-y-1.5 text-[12px] text-text-muted">
+        <li>The link works once and for 48 hours.</li>
+        <li>It is shown only now. If you lose it, use Resend: that makes a new link and the old one stops working.</li>
+        <li>Anyone with the link can activate this account, so send it only to {issued.email}.</li>
+      </ul>
+
+      <button
+        type="button" onClick={onDone}
+        className="w-full py-2.5 rounded-xl text-sm font-semibold text-text-secondary border border-border hover:bg-surface-2 transition-colors"
+      >
+        Done
+      </button>
+    </div>
+  )
+}
+
+// What happened to an invite's email. Only a live invite shows it (and a lapsed one only when it failed): an old accepted invite's email is history.
+function EmailState({ invite }: { invite: AdminInvite }) {
+  if (invite.status !== 'pending' && invite.status !== 'expired') return null
+  if (invite.email_status === 'failed') {
+    return (
+      <span role="status" className="mt-0.5 flex items-start gap-1 text-[11px] leading-4 text-danger">
+        <AlertCircle size={11} className="mt-px flex-shrink-0" />
+        <span>Email failed{invite.email_error ? `: ${invite.email_error}` : ''}</span>
+      </span>
+    )
+  }
+  if (invite.status !== 'pending') return null
+  if (invite.email_status === 'queued') return <span className="mt-0.5 block text-[11px] text-text-muted">Sending email…</span>
+  if (invite.email_status === 'sent') return <span className="mt-0.5 block text-[11px] text-text-muted">Email sent</span>
+  return null
 }
 
 const ICON_BUTTON = 'text-text-muted hover:text-danger transition-colors p-1 rounded hover:bg-danger-light cursor-pointer'
@@ -66,6 +150,8 @@ export default function AdminsPage() {
   const [sending, setSending] = useState(false)
 
   const [revokeTarget, setRevokeTarget] = useState<AdminInvite | null>(null)
+  const [resendTarget, setResendTarget] = useState<AdminInvite | null>(null)
+  const [issued, setIssued] = useState<Issued | null>(null)
   const [statusTarget, setStatusTarget] = useState<AdminAccount | null>(null)
 
   const [toast, setToast] = useState<string | null>(null)
@@ -84,16 +170,16 @@ export default function AdminsPage() {
     }
   }
 
-  const loadInvites = async () => {
-    setLoadingInvites(true)
-    setInvitesFailed(false)
+  // quiet: a background refresh that must not flash the loading state or replace the list with an error.
+  const loadInvites = async (quiet = false) => {
+    if (!quiet) { setLoadingInvites(true); setInvitesFailed(false) }
     try {
       setInvites(await adminInvitesApi.list())
     } catch (err: unknown) {
       if ((err as { response?: { status?: number } })?.response?.status === 403) setForbidden(true)
-      else setInvitesFailed(true)
+      else if (!quiet) setInvitesFailed(true)
     } finally {
-      setLoadingInvites(false)
+      if (!quiet) setLoadingInvites(false)
     }
   }
 
@@ -102,11 +188,25 @@ export default function AdminsPage() {
     void loadInvites()
   }, [])
 
+  // An email that is still being sent: look again every few seconds (a handful of times) so "Sending email…" becomes "Email sent" or "Email failed".
+  const sendingEmail = invites.some(i => i.status === 'pending' && i.email_status === 'queued')
+  useEffect(() => {
+    if (!sendingEmail) return
+    let tries = 0
+    const timer = setInterval(() => {
+      tries += 1
+      void loadInvites(true)
+      if (tries >= 10) clearInterval(timer)
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [sendingEmail])
+
   // Opening from an expired or revoked invite pre-fills the same person and role: "invite again" is one click.
   const openInvite = (email = '', role: AdminRole = 'ops_admin') => {
     setInviteEmail(email)
     setInviteRole(role)
     setInviteError(null)
+    setIssued(null)
     setInviting(true)
   }
 
@@ -121,11 +221,11 @@ export default function AdminsPage() {
 
     setSending(true)
     try {
-      const invite = await adminInvitesApi.create({ email: inviteEmail.trim().toLowerCase(), role: inviteRole })
+      const { invite, link } = await adminInvitesApi.create({ email: inviteEmail.trim().toLowerCase(), role: inviteRole })
       // A re-invite leaves the old expired row in the list too; the new one goes on top.
       setInvites(prev => [invite, ...prev])
-      setInviting(false)
-      setToast(`Invite sent to ${invite.email}`)
+      // The panel stays open and shows the link: it cannot be shown again later.
+      setIssued({ email: invite.email, link, kind: 'sent', emailFailed: invite.email_status === 'failed' })
     } catch (err: unknown) {
       // The server's messages are written for admins ("An admin account with this email already exists", ...): show them as they are.
       setInviteError(extractErrorMessage(err, 'Could not send the invite. Please try again.'))
@@ -145,6 +245,21 @@ export default function AdminsPage() {
       setActionError(extractErrorMessage(err, 'Could not revoke the invite. Please try again.'))
     }
   }
+
+  const confirmResend = async () => {
+    if (!resendTarget) return
+    setActionError(null)
+    try {
+      const { invite, link } = await adminInvitesApi.resend(resendTarget.id)
+      setInvites(prev => prev.map(i => (i.id === invite.id ? invite : i)))
+      setIssued({ email: invite.email, link, kind: 'resent', emailFailed: invite.email_status === 'failed' })
+      setInviting(true)
+    } catch (err: unknown) {
+      setActionError(extractErrorMessage(err, 'Could not resend the invite. Please try again.'))
+    }
+  }
+
+  const closePanel = () => { setInviting(false); setIssued(null) }
 
   const confirmStatusChange = async () => {
     if (!statusTarget) return
@@ -180,22 +295,34 @@ export default function AdminsPage() {
   ]
 
   const inviteColumns = [
-    { key: 'email', header: 'Email', render: (i: AdminInvite) => <span className="text-sm font-medium text-text-primary">{i.email}</span> },
+    { key: 'email', header: 'Email', render: (i: AdminInvite) => <div><span className="text-sm font-medium text-text-primary">{i.email}</span><EmailState invite={i} /></div> },
     { key: 'role', header: 'Role', width: '160px', render: (i: AdminInvite) => <RolePill role={i.role} /> },
     { key: 'status', header: 'Status', width: '110px', render: (i: AdminInvite) => <StatusPill status={i.status} /> },
     { key: 'expires_at', header: 'Expires', width: '140px', render: (i: AdminInvite) => <span className="text-xs text-text-muted">{formatDate(i.expires_at)}</span> },
     {
-      key: 'actions', header: '', width: '90px',
-      render: (i: AdminInvite) => i.status === 'pending' ? (
-        <button
-          onClick={() => setRevokeTarget(i)}
-          className={ICON_BUTTON}
-          title="Revoke invite"
-          aria-label={`Revoke the invite for ${i.email}`}
-        >
-          <X size={14} />
-        </button>
-      ) : i.status === 'expired' || i.status === 'revoked' ? (
+      key: 'actions', header: '', width: '100px',
+      render: (i: AdminInvite) => i.status === 'pending' || i.status === 'expired' ? (
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => setResendTarget(i)}
+            className="text-text-muted hover:text-primary transition-colors p-1 rounded hover:bg-surface-2 cursor-pointer"
+            title="Resend invite"
+            aria-label={`Resend the invite to ${i.email}`}
+          >
+            <Mail size={14} />
+          </button>
+          {i.status === 'pending' && (
+            <button
+              onClick={() => setRevokeTarget(i)}
+              className={ICON_BUTTON}
+              title="Revoke invite"
+              aria-label={`Revoke the invite for ${i.email}`}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      ) : i.status === 'revoked' ? (
         <button
           onClick={() => openInvite(i.email, i.role)}
           className="text-text-muted hover:text-primary transition-colors p-1 rounded hover:bg-surface-2 cursor-pointer"
@@ -276,7 +403,10 @@ export default function AdminsPage() {
         )}
       </div>
 
-      <SlideOver isOpen={inviting} onClose={() => setInviting(false)} title="Invite Admin">
+      <SlideOver isOpen={inviting} onClose={closePanel} title={issued ? (issued.kind === 'sent' ? 'Invite sent' : 'Invite resent') : 'Invite Admin'}>
+        {issued ? (
+          <IssuedPanel issued={issued} onDone={closePanel} />
+        ) : (
         <form onSubmit={e => void submitInvite(e)} className="p-6 space-y-5">
           <div>
             <label htmlFor="invite-email" className="block text-xs font-semibold text-text-secondary mb-1.5">Email address</label>
@@ -315,7 +445,7 @@ export default function AdminsPage() {
           <div className="flex gap-2 pt-2">
             <button
               type="button"
-              onClick={() => setInviting(false)}
+              onClick={closePanel}
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-text-secondary border border-border hover:bg-surface-2 transition-colors"
             >
               Cancel
@@ -330,7 +460,18 @@ export default function AdminsPage() {
             </button>
           </div>
         </form>
+        )}
       </SlideOver>
+
+      <ConfirmDialog
+        open={!!resendTarget}
+        onOpenChange={open => { if (!open) setResendTarget(null) }}
+        title="Resend this invite?"
+        description={`${resendTarget?.email ?? ''} gets a new email with a new link, and the old link stops working. The 48 hours start again.`}
+        confirmLabel="Resend"
+        variant="warning"
+        onConfirm={() => void confirmResend()}
+      />
 
       <ConfirmDialog
         open={!!revokeTarget}

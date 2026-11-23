@@ -160,12 +160,18 @@ export function makeAuthLimiters(skip: () => boolean = skipInTest) {
     },
   })
 
+  // Public admin-invite endpoints (no session exists yet): the link's token is 256 bits so guessing is impractical, but a public endpoint
+  // that answers valid/invalid should still be throttled. Failed attempts only, per IP: a person opening their link a few times is never
+  // slowed down, a script trying tokens or passwords is.
+  const inviteVerifyLimiter = authLimiterFor(skip, 'invite-verify', { windowMs: 60_000, max: 20, failuresOnly: true })
+  const inviteRedeemLimiter = authLimiterFor(skip, 'invite-redeem', { windowMs: 60_000, max: 10, failuresOnly: true })
+
   // Token refresh: 60 per minute per IP. The refresh token is a 256-bit secret, so this is not guess-resistance; it only
   // bounds a runaway client. Wide enough that every phone behind one NAT can refresh together after a deploy.
   const refreshLimiter = authLimiterFor(skip, 'refresh', { windowMs: 60_000, max: 60 })
-  return { otpLimiter, adminLoginIpLimiter, adminLoginAccountLimiter, adminTotpIpLimiter, adminTotpAccountLimiter, refreshLimiter }
+  return { otpLimiter, adminLoginIpLimiter, adminLoginAccountLimiter, adminTotpIpLimiter, adminTotpAccountLimiter, inviteVerifyLimiter, inviteRedeemLimiter, refreshLimiter }
 }
-export const { otpLimiter, adminLoginIpLimiter, adminLoginAccountLimiter, adminTotpIpLimiter, adminTotpAccountLimiter, refreshLimiter } = makeAuthLimiters()
+export const { otpLimiter, adminLoginIpLimiter, adminLoginAccountLimiter, adminTotpIpLimiter, adminTotpAccountLimiter, inviteVerifyLimiter, inviteRedeemLimiter, refreshLimiter } = makeAuthLimiters()
 
 // Google-backed geo endpoints (autocomplete, place, reverse, route): each call can cost real money, so they are
 // throttled per principal well below the general 600/min. Autocomplete fires per keystroke, hence not tiny.

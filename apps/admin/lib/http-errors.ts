@@ -11,7 +11,8 @@ export function extractErrorMessage(err: unknown, fallback: string): string {
   if (status >= 500) return 'The server hit a problem. Try again in a moment, and tell engineering if it keeps happening.'
   const field = data?.fields ? (Object.values(data.fields).flat() as string[])[0] : undefined
   if (field) return field
-  if (status === 429) return 'Too many attempts. Wait a moment and try again.'
+  // The generic throttle (RATE_LIMIT_EXCEEDED) is worded here; a 429 that comes with its own message ("Wait 42 seconds before resending") is shown as written.
+  if (status === 429) return data?.error && data.code && data.code !== 'RATE_LIMIT_EXCEEDED' ? data.error : 'Too many attempts. Wait a moment and try again.'
   return data?.error && data.error !== 'Validation failed' ? data.error : fallback
 }
 

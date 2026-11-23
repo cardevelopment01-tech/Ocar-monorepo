@@ -5,7 +5,7 @@ const send = vi.hoisted(() => vi.fn())
 vi.mock('@/config', () => ({ config: cfg }))
 vi.mock('@/lib/email', () => ({ sendEmail: send }))
 
-import { formatIst, renderAdminInviteEmail, sendAdminInviteEmail, INVITE_TTL_HOURS } from '@/modules/admin-invites/admin-invite-email'
+import { formatIst, renderAdminInviteEmail, sendAdminInviteEmail, inviteLink, INVITE_TTL_HOURS } from '@/modules/admin-invites/admin-invite-email'
 
 // Value: protects=the invitation a new admin receives is clear, safe and correct: it says who invited them and as what, shows the expiry in
 // Indian time, carries exactly one working link, is readable in both HTML and plain text, cannot be broken by odd characters in a name or
@@ -198,5 +198,26 @@ describe('sendAdminInviteEmail', () => {
   it('a failure to send reaches the job, so it is retried and marked failed', async () => {
     send.mockRejectedValue(new Error('SES rejected it'))
     await expect(sendAdminInviteEmail(job)).rejects.toThrow('SES rejected it')
+  })
+})
+
+describe('inviteLink (the same address in the email and in "copy link")', () => {
+  beforeEach(() => Object.assign(cfg, { ADMIN_APP_URL: 'https://admin.ocar.example', NODE_ENV: 'production', ALLOW_DEV_EMAIL: 'false' }))
+
+  it('builds the activation link on the site address and encodes the token', () => {
+    expect(inviteLink('abc')).toBe('https://admin.ocar.example/accept-invite?token=abc')
+    expect(inviteLink('a/b+c=')).toBe('https://admin.ocar.example/accept-invite?token=a%2Fb%2Bc%3D')
+  })
+
+  it('refuses to hand out a link that cannot work in production, so no invite is created with one', () => {
+    for (const url of ['http://localhost:3002', 'https://localhost', 'http://admin.ocar.example', '127.0.0.1:3002']) {
+      cfg.ADMIN_APP_URL = url
+      expect(() => inviteLink('abc'), url).toThrow(/ADMIN_APP_URL is not a public https address/)
+    }
+  })
+
+  it('a local link is fine outside production', () => {
+    Object.assign(cfg, { ADMIN_APP_URL: 'http://localhost:3002', NODE_ENV: 'development' })
+    expect(inviteLink('abc')).toBe('http://localhost:3002/accept-invite?token=abc')
   })
 })

@@ -5,6 +5,7 @@ import { createApp } from '@/app'
 import { pool } from '@/db/client'
 import { notificationsQueue } from '@/jobs/queues'
 import { seedAdmin, loginAdmin, cleanupAdmins } from '../helpers/fixtures/safety.fixture'
+import { deliverAdminInviteEmail } from '@/modules/admin-invites/admin-invite-delivery'
 
 // Value: protects=the invite flow end to end on a real database: an invite that nobody answered stops blocking after 48 hours, an existing
 // admin cannot be invited (in any letter case), the token is only ever stored as a hash, a weak password is refused without using the invite
@@ -14,13 +15,15 @@ import { seedAdmin, loginAdmin, cleanupAdmins } from '../helpers/fixtures/safety
 // are replaced (nothing is sent, and the audit calls are captured); no_claim=email delivery, the audit worker.
 
 const audit = vi.hoisted(() => ({ calls: [] as Array<Record<string, unknown>> }))
+const mailer = vi.hoisted(() => ({ send: (async () => undefined) as (...a: unknown[]) => Promise<void> }))
+vi.mock('@/lib/email', () => ({ sendEmail: (...a: unknown[]) => mailer.send(...a) }))
 vi.mock('@/lib/audit-log', () => ({ recordAuditLog: async (p: Record<string, unknown>) => { audit.calls.push(p) } }))
 
 const app = createApp()
 const SUPER = 'inv-super@test.ocar'
 const OPS = 'inv-ops@test.ocar'
 const NEW = 'inv-new@test.ocar'
-const EMAILS = [NEW, 'inv-pw@test.ocar', 'inv-gone@test.ocar']
+const EMAILS = [NEW, 'inv-pw@test.ocar', 'inv-gone@test.ocar', 'inv-rs@test.ocar', 'inv-rs2@test.ocar', 'inv-rs3@test.ocar']
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex')
 
 let superToken: string
@@ -203,5 +206,155 @@ describe('revoking and the audit trail', () => {
     await api(superToken).patch('/api/v1/admin/invites/999999999/revoke') // does not exist
     await request(app).post('/api/v1/admin/invites/redeem').send({ token: 'nope', password: 'a-long-passphrase-77' })
     expect(audit.calls.length).toBe(before)
+  })
+})
+
+describe('the activation link in the response, resending, and whether the email went out (real database)', () => {
+  const RS = 'inv-rs@test.ocar'
+  const post = (url: string, token = superToken) => request(app).post(url).set('Authorization', `Bearer ${token}`).send({})
+  const tokenOf = (link: string) => new URL(link).searchParams.get('token')!
+  const verify = (token: string) => request(app).get('/api/v1/admin/invites/verify').query({ token })
+  const row = async (id: string) => (await pool.query('SELECT status, email_status, email_error, token_hash, expires_at FROM admin_invites WHERE id = $1', [id])).rows[0]
+  const backdate = (id: string, secs = 120) => pool.query(`UPDATE admin_invites SET link_issued_at = now() - make_interval(secs => $2::int) WHERE id = $1`, [id, secs])
+  let id: string
+  let firstLink: string
+
+  it('creating returns the link once (never cached), and it is exactly the token whose hash is stored and emailed', async () => {
+    const res = await invite(RS, 'support_admin')
+    expect(res.status, JSON.stringify(res.body)).toBe(201)
+    expect(res.headers['cache-control']).toMatch(/no-store/)
+    id = res.body.invite.id
+    firstLink = res.body.link
+    expect(firstLink).toMatch(/\/accept-invite\?token=[0-9a-f]{64}$/)
+    expect(tokenOf(firstLink)).toBe(lastJob().rawToken) // the link and the email carry the same token
+    expect((await row(id)).token_hash).toBe(sha256(tokenOf(firstLink)))
+    expect(res.body.invite).toMatchObject({ email_status: 'queued', email_error: null })
+    expect(lastJob().inviteId).toBe(id)
+    // the list never returns a link or a token
+    const listedRows = (await api(superToken).get('/api/v1/admin/invites')).body
+    expect(JSON.stringify(listedRows)).not.toContain(tokenOf(firstLink))
+    expect(listedRows.invites[0]).not.toHaveProperty('link')
+  })
+
+  it('only a super admin can resend (403), and a missing invite is a 404', async () => {
+    expect((await post(`/api/v1/admin/invites/${id}/resend`, opsToken)).status).toBe(403)
+    expect((await post('/api/v1/admin/invites/999999999/resend')).status).toBe(404)
+  })
+
+  it('a resend within a minute of the last send is refused (429) and changes nothing', async () => {
+    const before = (await row(id)).token_hash
+    const res = await post(`/api/v1/admin/invites/${id}/resend`)
+    expect(res.status).toBe(429)
+    expect(res.body.code).toBe('ADMIN_INVITE_RESEND_TOO_SOON')
+    expect(res.body.error).toMatch(/^Wait \d+ seconds before resending$/)
+    expect((await row(id)).token_hash).toBe(before)
+    expect((await verify(tokenOf(firstLink))).status).toBe(200) // the first link still works
+  })
+
+  it('after the minute a resend gives a NEW link: the old one is dead, the new one works, the 48 hours start over', async () => {
+    await backdate(id)
+    await pool.query(`UPDATE admin_invites SET expires_at = now() + interval '1 hour' WHERE id = $1`, [id])
+    const before = emailJobs.length
+    const res = await post(`/api/v1/admin/invites/${id}/resend`)
+    expect(res.status, JSON.stringify(res.body)).toBe(200)
+    expect(res.headers['cache-control']).toMatch(/no-store/)
+    const newLink: string = res.body.link
+    expect(tokenOf(newLink)).not.toBe(tokenOf(firstLink))
+    expect(tokenOf(newLink)).toBe(lastJob().rawToken)
+    expect(emailJobs.length).toBe(before + 1)
+    expect(lastJob()).toMatchObject({ email: RS, role: 'support_admin', inviterEmail: SUPER, inviteId: id })
+
+    expect((await verify(tokenOf(firstLink))).status).toBe(400) // the old link is dead
+    expect((await verify(tokenOf(newLink))).status).toBe(200) // the new one works
+    const r = await row(id)
+    expect(r.token_hash).toBe(sha256(tokenOf(newLink)))
+    expect(new Date(r.expires_at).getTime() - Date.now()).toBeGreaterThan(47 * 3600_000)
+    expect(r).toMatchObject({ status: 'pending', email_status: 'queued', email_error: null })
+    expect((await listed(RS))).toHaveLength(1) // one row per person, not a second invite
+    firstLink = newLink
+  })
+
+  it('two resends at the very same moment: exactly one goes through', async () => {
+    await backdate(id)
+    const results = await Promise.all([post(`/api/v1/admin/invites/${id}/resend`), post(`/api/v1/admin/invites/${id}/resend`)])
+    expect(results.map((r) => r.status).sort()).toEqual([200, 429])
+    firstLink = results.find((r) => r.status === 200)!.body.link
+  })
+
+  it('a lapsed invite (48 hours passed) can be resent and is live again', async () => {
+    await backdate(id)
+    await pool.query(`UPDATE admin_invites SET expires_at = now() - interval '2 hours' WHERE id = $1`, [id])
+    expect((await listed(RS))[0]!.status).toBe('expired')
+    const res = await post(`/api/v1/admin/invites/${id}/resend`)
+    expect(res.status, JSON.stringify(res.body)).toBe(200)
+    expect(res.body.invite.status).toBe('pending')
+    expect((await listed(RS))[0]!.status).toBe('pending')
+    firstLink = res.body.link
+  })
+
+  it('the resend is audited under the person who resent it, with no token in it', async () => {
+    const a = audit.calls.filter((c) => c['action'] === 'admins.invite_resend')
+    expect(a.length).toBeGreaterThanOrEqual(2)
+    expect(a.every((c) => String(c['adminId']) === superId && String(c['targetId']) === id)).toBe(true)
+    expect(JSON.stringify(audit.calls, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))).not.toContain(tokenOf(firstLink))
+  })
+
+  it('a revoked or accepted invite cannot be resent (409), and an existing admin cannot be re-invited this way', async () => {
+    const revoked = await invite('inv-rs2@test.ocar')
+    await api(superToken).patch(`/api/v1/admin/invites/${revoked.body.invite.id}/revoke`)
+    await backdate(revoked.body.invite.id)
+    const r1 = await post(`/api/v1/admin/invites/${revoked.body.invite.id}/resend`)
+    expect(r1.status).toBe(409)
+    expect(r1.body.code).toBe('ADMIN_INVITE_NOT_RESENDABLE')
+
+    const [{ id: acceptedId }] = await listed(NEW) // activated earlier in this file
+    await backdate(acceptedId)
+    expect((await post(`/api/v1/admin/invites/${acceptedId}/resend`)).status).toBe(409)
+
+    const dup = await invite('inv-rs3@test.ocar')
+    await pool.query(`INSERT INTO admins (email, password_hash, role) VALUES ('inv-rs3@test.ocar', 'x', 'ops_admin')`) // joined by another route meanwhile
+    await backdate(dup.body.invite.id)
+    const r3 = await post(`/api/v1/admin/invites/${dup.body.invite.id}/resend`)
+    expect(r3.status).toBe(409)
+    expect(r3.body.code).toBe('ADMIN_ALREADY_EXISTS')
+  })
+
+  describe('did the email go out', () => {
+    const job = () => ({ ...lastJob(), expiresAt: new Date(Date.now() + 3600_000).toISOString() }) as Parameters<typeof deliverAdminInviteEmail>[0]
+    beforeAll(() => { mailer.send = async () => undefined })
+
+    it('a sent email is recorded as sent', async () => {
+      await backdate(id)
+      const res = await post(`/api/v1/admin/invites/${id}/resend`)
+      expect(res.status).toBe(200)
+      expect((await row(id)).email_status).toBe('queued')
+      await deliverAdminInviteEmail(job(), false)
+      expect(await row(id)).toMatchObject({ email_status: 'sent', email_error: null })
+      expect((await listed(RS))[0]).toMatchObject({ email_status: 'sent' })
+    })
+
+    it('a failure on the last attempt is recorded with the mail server\'s own words and shown in the list; earlier attempts are not', async () => {
+      await backdate(id)
+      await post(`/api/v1/admin/invites/${id}/resend`)
+      mailer.send = async () => { throw new Error('535 5.7.8 Username and Password not accepted') }
+      await expect(deliverAdminInviteEmail(job(), false)).rejects.toThrow('535')
+      expect((await row(id)).email_status).toBe('queued') // a retry is still coming: not "failed" yet
+      await expect(deliverAdminInviteEmail(job(), true)).rejects.toThrow('535')
+      expect(await row(id)).toMatchObject({ email_status: 'failed', email_error: '535 5.7.8 Username and Password not accepted' })
+      const shown = (await listed(RS))[0] as unknown as { email_status: string; email_error: string }
+      expect(shown).toMatchObject({ email_status: 'failed', email_error: '535 5.7.8 Username and Password not accepted' })
+    })
+
+    it('a late result for a link that was since REPLACED by a resend never overwrites the new link\'s status', async () => {
+      mailer.send = async () => undefined
+      await backdate(id)
+      const staleJob = job() // the job for the current link...
+      await post(`/api/v1/admin/invites/${id}/resend`) // ...which a resend now replaces
+      expect((await row(id)).email_status).toBe('queued')
+      await deliverAdminInviteEmail(staleJob, false) // the old job finishes late
+      expect((await row(id)).email_status).toBe('queued') // untouched: it belongs to the new link
+      await deliverAdminInviteEmail(job(), false)
+      expect((await row(id)).email_status).toBe('sent')
+    })
   })
 })

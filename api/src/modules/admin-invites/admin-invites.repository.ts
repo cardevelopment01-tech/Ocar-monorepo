@@ -8,7 +8,7 @@ import type { AdminInviteRecord, AdminInviteListItem, CreatedAdminFromInvite } f
 const LIST_COLUMNS = `
   id, email, role, invited_by,
   CASE WHEN status = 'pending' AND expires_at <= now() THEN 'expired' ELSE status END AS status,
-  expires_at, accepted_at, accepted_admin_id, created_at, updated_at
+  expires_at, accepted_at, accepted_admin_id, email_status, email_error, created_at, updated_at
 `
 
 export async function createInvite(params: {
@@ -19,8 +19,8 @@ export async function createInvite(params: {
   expiresAt: Date
 }): Promise<AdminInviteListItem> {
   const rows = await query<AdminInviteListItem>(
-    `INSERT INTO admin_invites (email, role, token_hash, invited_by, expires_at)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO admin_invites (email, role, token_hash, invited_by, expires_at, email_status)
+     VALUES ($1, $2, $3, $4, $5, 'queued')
      RETURNING ${LIST_COLUMNS}`,
     [params.email, params.role, params.tokenHash, params.invitedBy.toString(), params.expiresAt]
   )
@@ -59,6 +59,40 @@ export async function findByTokenHash(tokenHash: string): Promise<AdminInviteLis
 export async function listInvites(): Promise<AdminInviteListItem[]> {
   return query<AdminInviteListItem>(
     `SELECT ${LIST_COLUMNS} FROM admin_invites ORDER BY created_at DESC LIMIT 200`
+  )
+}
+
+// Replaces the link of a live or lapsed invite with a new one (the old link stops working: its hash is gone) and restarts the 48 hours.
+// One statement, so two resends at once cannot both pass the cooldown: the second finds the new link_issued_at.
+export async function reissueInvite(params: { id: bigint; tokenHash: string; expiresAt: Date; cooldownSeconds: number }): Promise<AdminInviteListItem | null> {
+  const rows = await query<AdminInviteListItem>(
+    `UPDATE admin_invites
+        SET token_hash = $2, expires_at = $3, status = 'pending', email_status = 'queued', email_error = NULL,
+            email_updated_at = now(), link_issued_at = now()
+      WHERE id = $1 AND status IN ('pending', 'expired') AND link_issued_at <= now() - make_interval(secs => $4::int)
+      RETURNING ${LIST_COLUMNS}`,
+    [params.id.toString(), params.tokenHash, params.expiresAt, params.cooldownSeconds]
+  )
+  return rows[0] ?? null
+}
+
+// Why a resend was refused, read after the fact: whether the invite can be resent at all, and how many seconds are left on the cooldown.
+export async function resendBlocker(id: bigint, cooldownSeconds: number): Promise<{ resendable: boolean; waitSeconds: number } | null> {
+  const rows = await query<{ resendable: boolean; wait: number }>(
+    `SELECT status IN ('pending', 'expired') AS resendable,
+            GREATEST(0, CEIL(EXTRACT(EPOCH FROM (link_issued_at + make_interval(secs => $2::int) - now()))))::int AS wait
+       FROM admin_invites WHERE id = $1`,
+    [id.toString(), cooldownSeconds]
+  )
+  return rows[0] ? { resendable: rows[0].resendable, waitSeconds: rows[0].wait } : null
+}
+
+// Records what happened to the email for ONE link. Matched on that link's own hash, so a job for a link that has since been replaced by a
+// resend cannot overwrite the status of the new one.
+export async function markInviteEmail(params: { id: bigint; tokenHash: string; status: 'sent' | 'failed'; error?: string }): Promise<void> {
+  await query(
+    `UPDATE admin_invites SET email_status = $3, email_error = $4, email_updated_at = now() WHERE id = $1 AND token_hash = $2`,
+    [params.id.toString(), params.tokenHash, params.status, params.error ? params.error.slice(0, 300) : null]
   )
 }
 

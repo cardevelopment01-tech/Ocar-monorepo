@@ -24,6 +24,9 @@ export const adminAccountsApi = {
 
 export type InviteStatus = 'pending' | 'accepted' | 'expired' | 'revoked'
 
+/** What happened to the invitation email. 'unknown' = sent before this was tracked. */
+export type InviteEmailStatus = 'unknown' | 'queued' | 'sent' | 'failed'
+
 export interface AdminInvite {
   id: string
   email: string
@@ -33,8 +36,17 @@ export interface AdminInvite {
   expires_at: string
   accepted_at: string | null
   accepted_admin_id: string | null
+  email_status: InviteEmailStatus
+  /** The mail server's own reason, when email_status is 'failed'. */
+  email_error: string | null
   created_at: string
   updated_at: string
+}
+
+/** A new or resent invite plus its activation link. The link is returned only this once (the server keeps just its hash). */
+export interface IssuedInvite {
+  invite: AdminInvite
+  link: string
 }
 
 export const adminInvitesApi = {
@@ -43,9 +55,15 @@ export const adminInvitesApi = {
     return data.invites
   },
 
-  create: async (params: { email: string; role: AdminRole }): Promise<AdminInvite> => {
-    const { data } = await api.post<{ invite: AdminInvite }>('/api/v1/admin/invites', params)
-    return data.invite
+  create: async (params: { email: string; role: AdminRole }): Promise<IssuedInvite> => {
+    const { data } = await api.post<IssuedInvite>('/api/v1/admin/invites', params)
+    return data
+  },
+
+  /** A new link (the old one stops working) and the email again. */
+  resend: async (id: string): Promise<IssuedInvite> => {
+    const { data } = await api.post<IssuedInvite>(`/api/v1/admin/invites/${id}/resend`)
+    return data
   },
 
   revoke: async (id: string): Promise<AdminInvite> => {

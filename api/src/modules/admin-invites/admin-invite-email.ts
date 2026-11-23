@@ -16,6 +16,8 @@ export interface AdminInviteEmailJob {
   expiresAt: string
   inviterEmail?: string
   role?: AdminRole
+  /** Which invite this email is for, so the outcome can be recorded on it. */
+  inviteId?: string
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -138,8 +140,11 @@ export function renderAdminInviteEmail(p: { redeemUrl: string; expiresAt: Date; 
   return { subject, text, html }
 }
 
-/** Builds and sends one invitation. Throws (so the job is retried and marked failed) rather than send a link that cannot work. */
-export async function sendAdminInviteEmail(job: AdminInviteEmailJob): Promise<void> {
+/**
+ * The activation link for a token. Used for the email AND for the copy-link the admin sees, so both are always the same address. Throws when
+ * the link could not work (production with no public https ADMIN_APP_URL), rather than hand out a dead link.
+ */
+export function inviteLink(rawToken: string): string {
   // Only the site address is used (https://admin.example.com). A page address pasted into the setting by mistake, such as
   // https://admin.example.com/dispatch?lane=x, would otherwise end up in front of /accept-invite and break every invite link.
   let base = config.ADMIN_APP_URL.trim().replace(/\/+$/, '')
@@ -148,9 +153,13 @@ export async function sendAdminInviteEmail(job: AdminInviteEmailJob): Promise<vo
   if (config.NODE_ENV === 'production' && config.ALLOW_DEV_EMAIL !== 'true' && (!/^https:\/\//i.test(base) || /\/\/(localhost|127\.)/i.test(base))) {
     throw new Error('ADMIN_APP_URL is not a public https address, so the invite link would not work. Set it, then invite again.')
   }
-  const redeemUrl = `${base}/accept-invite?token=${encodeURIComponent(job.rawToken)}`
+  return `${base}/accept-invite?token=${encodeURIComponent(rawToken)}`
+}
+
+/** Builds and sends one invitation. Throws (so the job is retried and marked failed) rather than send a link that cannot work. */
+export async function sendAdminInviteEmail(job: AdminInviteEmailJob): Promise<void> {
   const rendered = renderAdminInviteEmail({
-    redeemUrl,
+    redeemUrl: inviteLink(job.rawToken),
     expiresAt: new Date(job.expiresAt),
     inviterEmail: job.inviterEmail,
     roleLabel: job.role ? (ROLE_LABEL[job.role] ?? job.role) : undefined,
