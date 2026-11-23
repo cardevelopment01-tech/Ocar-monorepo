@@ -70,7 +70,13 @@ export default function DataTable<T extends Record<string, unknown>>({
                 <tr
                   key={i}
                   onClick={() => onRowClick?.(row)}
-                  className={cn(onRowClick && 'cursor-pointer')}
+                  // A clickable row must also be reachable and operable from the keyboard.
+                  tabIndex={onRowClick ? 0 : undefined}
+                  onKeyDown={onRowClick ? e => {
+                    if (e.target !== e.currentTarget) return // keys meant for a button or link inside the row
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row) }
+                  } : undefined}
+                  className={cn(onRowClick && 'cursor-pointer focus-visible:outline-none focus-visible:bg-primary-light')}
                 >
                   {columns.map((col, ci) => (
                     <td key={col.key} className={pinFirstColumn && ci === 0 ? PIN_CLASS : undefined}>

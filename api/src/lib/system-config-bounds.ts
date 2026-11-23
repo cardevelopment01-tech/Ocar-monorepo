@@ -10,6 +10,13 @@ export interface ConfigBounds { min: number; max: number }
 
 const BOUNDS: Record<string, ConfigBounds> = {
   commission_percent:               { min: 0, max: 50 },
+  // Advance bookings (Dispatch desk > Policy); same ranges as lib/advance-policy.ts POLICY_KEYS.
+  advance_late_cancel_window_min:   { min: 0, max: 1_440 },
+  advance_late_cancel_fee_percent:  { min: 0, max: 100 },
+  advance_late_cancel_fee_cap:      { min: 0, max: 5_000 },
+  advance_late_cancel_fee_flat:     { min: 0, max: 5_000 },
+  advance_reschedule_max:           { min: 0, max: 10 },
+  advance_search_grace_min:         { min: 0, max: 60 },
   instant_payout_fee:               { min: 0, max: 1_000 },
   tds_rate_with_pan_pct:            { min: 0, max: 100 },
   tds_rate_without_pan_pct:         { min: 0, max: 100 },

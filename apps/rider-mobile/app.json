@@ -66,6 +66,7 @@
         }
       ],
       "expo-status-bar",
+      "@react-native-community/datetimepicker",
       "expo-secure-store",
       [
         "expo-splash-screen",

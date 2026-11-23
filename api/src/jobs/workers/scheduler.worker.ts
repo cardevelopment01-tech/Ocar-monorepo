@@ -14,6 +14,7 @@ import {
   type PickupWaitNudgeJobData,
 } from '@/jobs/processors/pickup-wait-nudge.processor'
 import { createWorkerLogger } from '@/lib/worker-logger'
+import { sendAdvanceReminders } from '@/modules/rides/advance.service'
 import { findDocsNeedingExpiryNotice } from '@/modules/drivers/drivers.repository'
 import { notifyDocumentExpiring, notifyDocumentExpired } from '@/modules/notifications/notifications.service'
 import { docLabel } from '@/modules/admin/admin.service'
@@ -60,6 +61,8 @@ export const schedulerWorker = new Worker(
       for (const ride of due) {
         await processDispatchScheduled({ rideId: ride.id })
       }
+      // Reminders ride on the same minute sweep; a failure here must never stop dispatch above, so it is isolated.
+      await sendAdvanceReminders().catch((err: unknown) => log.error({ err }, 'advance reminders failed'))
       return
     }
 

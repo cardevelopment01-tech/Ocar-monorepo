@@ -3,6 +3,8 @@ import { useFocusEffect } from 'expo-router'
 import { camelizeKeys, type RideDetail, type RideHistoryItem } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { fetchRide, fetchActiveRideId, cancelRide } from '@/features/ride-tracking/api'
+import { fetchAdvanceTerms, rescheduleRide } from '@/features/advance/api'
+import { FALLBACK_TERMS, type AdvanceTerms } from '@/features/advance/advanceModel'
 import type { HistoryTab, UpcomingRide } from '../types'
 
 // Mirrors web's My Rides page (apps/user/app/(main)/history/page.tsx) exactly:
@@ -31,6 +33,7 @@ export function useRideHistory() {
   const [upcomingLoading, setUpcomingLoading] = useState(true)
   const [upcomingError, setUpcomingError] = useState<string | null>(null)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [terms, setTerms] = useState<AdvanceTerms>(FALLBACK_TERMS)
 
   const [activeRide, setActiveRide] = useState<RideDetail | null>(null)
 
@@ -74,6 +77,7 @@ export function useRideHistory() {
 
   const refreshAll = useCallback(() => {
     lastFetchedAtRef.current = Date.now()
+    void fetchAdvanceTerms().then(setTerms)
     void fetchHistory(1)
     void fetchUpcoming()
     void fetchActive()
@@ -86,6 +90,16 @@ export function useRideHistory() {
       if (Date.now() - lastFetchedAtRef.current >= FOCUS_REFETCH_THROTTLE_MS) refreshAll()
     }, [refreshAll])
   )
+
+  /** Moves a scheduled pickup. Throws on failure so the sheet can show why; on success the list shows the new time in order. */
+  const rescheduleUpcoming = useCallback(async (rideId: string, scheduledForIso: string) => {
+    const out = await rescheduleRide(rideId, scheduledForIso)
+    setUpcoming((prev) => prev
+      .map((r) => (r.id === rideId ? { ...r, scheduledFor: out.scheduledFor } : r))
+      .sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()))
+    void fetchHistory(1)
+    return out
+  }, [fetchHistory])
 
   const cancelUpcoming = useCallback(async (rideId: string) => {
     setCancellingId(rideId)
@@ -104,7 +118,7 @@ export function useRideHistory() {
   return {
     tab, setTab,
     rides, page, pages, total, loading, error, fetchHistory,
-    upcoming, upcomingLoading, upcomingError, fetchUpcoming, cancellingId, cancelUpcoming,
+    upcoming, upcomingLoading, upcomingError, fetchUpcoming, cancellingId, cancelUpcoming, rescheduleUpcoming, terms,
     activeRide,
     refresh: refreshAll,
   }

@@ -1,8 +1,12 @@
+import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import { colors, spacing, typography, fonts, SlideModal } from '@ocar/mobile-shared'
 import { formatPickupTime } from '@/lib/formatPickupTime'
+import { PickupTimeSheet } from '@/features/advance/PickupTimeSheet'
+import { fetchAdvanceTerms } from '@/features/advance/api'
+import { FALLBACK_TERMS, termsLines, type AdvanceTerms } from '@/features/advance/advanceModel'
 
 export type ScheduleSheetProps = {
   visible: boolean
@@ -37,9 +41,14 @@ const OPTIONS: { label: string; date: () => Date }[] = [
 
 export function ScheduleSheet({ visible, onClose, onChange }: ScheduleSheetProps) {
   const insets = useSafeAreaInsets()
+  const [terms, setTerms] = useState<AdvanceTerms>(FALLBACK_TERMS)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  // The terms (when search starts, any late-cancel fee) are read when the sheet opens, so the rider sees today's rules before choosing a time.
+  useEffect(() => { if (visible) void fetchAdvanceTerms().then(setTerms) }, [visible])
 
   return (
-    <SlideModal visible={visible} onRequestClose={onClose}>
+    <>
+    <SlideModal visible={visible && !pickerOpen} onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
         <View style={styles.handle} />
@@ -65,8 +74,27 @@ export function ScheduleSheet({ visible, onClose, onChange }: ScheduleSheetProps
             <Text style={styles.rowText}>{opt.label}</Text>
           </Pressable>
         ))}
+
+        <Pressable onPress={() => setPickerOpen(true)} style={styles.row} accessibilityRole="button" accessibilityLabel="Pick a date and time">
+          <View style={styles.iconWrap}>
+            <Feather name="calendar" size={15} color={colors.primary} />
+          </View>
+          <Text style={styles.rowText}>Pick date and time</Text>
+        </Pressable>
+
+        <Text style={styles.terms}>{termsLines(terms)[0]}</Text>
       </View>
     </SlideModal>
+    <PickupTimeSheet
+      visible={visible && pickerOpen}
+      title="When do you need pickup?"
+      confirmLabel="Schedule pickup"
+      terms={terms}
+      initial={null}
+      onClose={() => setPickerOpen(false)}
+      onConfirm={(iso) => { setPickerOpen(false); onChange(iso); onClose() }}
+    />
+    </>
   )
 }
 
@@ -78,4 +106,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2, paddingVertical: spacing.sm + 4 },
   iconWrap: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySubtle, alignItems: 'center', justifyContent: 'center' },
   rowText: { ...typography.body, color: colors.ink900, fontFamily: fonts.semibold },
+  terms: { ...typography.caption, color: colors.ink600, marginTop: spacing.xs, marginBottom: spacing.xs },
 })
