@@ -5,7 +5,7 @@ import { api } from '@/services/api'
 import { usePushEnableAction } from '@/features/notifications/usePushSetup'
 import { useOverlayGuideStore } from '@/store/useOverlayGuideStore'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
-import { playTestAlert } from '@/features/ride-requests/testAlert'
+import { playTestAlert, playTestBackgroundRing } from '@/features/ride-requests/testAlert'
 import { overlay } from '@/services/overlay'
 
 // Mirrors the Android channels created in services/notifications/index.ts.
@@ -61,9 +61,14 @@ export default function NotificationSettingsScreen() {
         ...(prefs ? [{ label: 'Announcements', description: 'Notices from Ocar', icon: 'volume-2', tone: 'promo' as const, value: prefs.announcements, onChange: (v: boolean) => set('announcements', v) }] : []),
       ]}
       footer={
-        <Pressable onPress={() => { void playTestAlert() }} accessibilityRole="button" accessibilityLabel="Test the ride request ring and voice" style={{ minHeight: 48, borderRadius: 14, backgroundColor: '#0A9FB0', alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Test ring and voice</Text>
-        </Pressable>
+        <>
+          <Pressable onPress={() => { void playTestAlert() }} accessibilityRole="button" accessibilityLabel="Test the ride request ring and voice" style={{ minHeight: 48, borderRadius: 14, backgroundColor: '#0A9FB0', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Test ring and voice</Text>
+          </Pressable>
+          <Pressable onPress={() => { void playTestBackgroundRing() }} accessibilityRole="button" accessibilityLabel="Test how a ride request rings when Ocar is closed" style={{ minHeight: 48, borderRadius: 14, marginTop: 10, borderWidth: 1.5, borderColor: '#0A9FB0', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#0A9FB0', fontWeight: '700', fontSize: 15 }}>Test ring when Ocar is closed</Text>
+          </Pressable>
+        </>
       }
       permission={{ state: push.state, canAskAgain: push.canAskAgain }}
       onEnablePush={() => { void push.enable() }}
