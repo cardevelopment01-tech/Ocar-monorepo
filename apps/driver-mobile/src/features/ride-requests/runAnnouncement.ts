@@ -57,7 +57,6 @@ export function runAnnouncement(o: AnnouncementRun): () => void {
   let finished = false
   let ringPaused = false
   let sawBoundary = false
-  let startTimer: ReturnType<typeof setTimeout> | undefined
   let noStartTimer: ReturnType<typeof setTimeout> | undefined
   let maxTimer: ReturnType<typeof setTimeout> | undefined
   let fallback: ReturnType<typeof setTimeout> | undefined
@@ -100,7 +99,7 @@ export function runAnnouncement(o: AnnouncementRun): () => void {
     finish()
   }
 
-  startTimer = setTimeout(() => {
+  const startTimer = setTimeout(() => {
     if (cancelled) return
     const { segments, locale, rate } = o.build()
     const text = segments.map((s) => s.text).join(' ')
