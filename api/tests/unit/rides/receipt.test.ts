@@ -27,7 +27,7 @@ describe('receipt fare rows', () => {
     ]
     const { rows, payable } = buildFareRows(ride, stops)
     expect(rows.map((r) => [r.label, r.amount])).toEqual([['Ride fare', 580.78], ['Airport toll', 40]])
-    expect(rows[0]?.detail).toBe('12.87 km · 31 min · 2 stops · incl. waiting')
+    expect(rows[0]?.detail).toBe('12.87 km · 31 min · 2 stops · incl. ₹1 waiting')
     expect(rows.find((r) => r.label === 'Adjustments')).toBeUndefined()
     expect(sum(rows)).toBe(620.78)
     expect(payable).toBe(620.78)
@@ -37,7 +37,7 @@ describe('receipt fare rows', () => {
   it('folds surge, waiting and stops into the Ride fare, lists the toll with its zone below it, and takes the offer off', () => {
     const { rows, gross, discount, payable } = buildFareRows(F.ONE_WAY_FULL, F.ONE_WAY_FULL_STOPS)
     expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Airport toll'])
-    expect(rows[0]).toMatchObject({ detail: '28.4 km · 55 min · 1 stop · 1.2× surge · incl. waiting', amount: 850.2 })
+    expect(rows[0]).toMatchObject({ detail: '28.4 km · 55 min · 1 stop · 1.2× surge · incl. ₹27 waiting', amount: 850.2 })
     expect(rows[1]).toMatchObject({ detail: 'Biju Patnaik Airport', amount: 40 })
     expect(rows.find((r) => r.label === 'Adjustments')).toBeUndefined()
     expect(sum(rows)).toBe(gross)
@@ -48,7 +48,7 @@ describe('receipt fare rows', () => {
   it('a rental is the Ride fare (with its package in the detail), then toll, extra distance and extra time (quantity x rate) below it', () => {
     const { rows, payable } = buildFareRows(F.RENTAL, F.RENTAL_STOPS)
     expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Airport toll', 'Extra distance', 'Extra time'])
-    expect(rows[0]).toMatchObject({ detail: '4 h · 40 km included · 2 stops · incl. waiting', amount: 1229 })
+    expect(rows[0]).toMatchObject({ detail: '4 h · 40 km included · 2 stops · incl. ₹69 waiting', amount: 1229 })
     expect(rows.find((r) => r.label === 'Extra distance')).toMatchObject({ detail: '12 km × ₹14', amount: 168 })
     expect(rows.find((r) => r.label === 'Extra time')).toMatchObject({ detail: '25 min × ₹2', amount: 50 })
     expect(rows.find((r) => r.label === 'Base fare' || r.label === 'Package price')).toBeUndefined()
@@ -60,14 +60,15 @@ describe('receipt fare rows', () => {
     expect(rows.find((r) => r.label === 'Extra distance or time')?.amount).toBe(218)
   })
 
-  it('an hourly round trip keeps booked time inside the Ride fare and shows overtime (after the grace) and the toll below it; a per-day one the extra distance', () => {
+  it('an hourly round trip keeps booked time inside the Ride fare and shows overtime (after the grace) and the toll below it; a per-day one keeps its extra distance inside the Ride fare', () => {
     const hourly = buildFareRows(F.ROUND_HOURLY, [])
     expect(hourly.rows.map((r) => r.label)).toEqual(['Ride fare', 'Airport toll', 'Extra time'])
     expect(hourly.rows[0]).toMatchObject({ detail: '142 km · 620 min · 10 hours booked', amount: 3234 })
     expect(hourly.rows.find((r) => r.label === 'Extra time')).toMatchObject({ detail: '20 min, after 15 free minutes', amount: 100 })
     expect(sum(hourly.rows)).toBe(hourly.payable)
     const daily = buildFareRows(F.ROUND_DAILY, [])
-    expect(daily.rows.map((r) => [r.label, r.amount])).toEqual([['Ride fare', 5484], ['Airport toll', 220], ['Extra distance or time', 108]])
+    // its overage_fare is the quoted figure (settlement reprices the total, not that column), so it is not itemised: all of it stays in the Ride fare
+    expect(daily.rows.map((r) => [r.label, r.amount])).toEqual([['Ride fare', 5592], ['Airport toll', 220]])
     expect(sum(daily.rows)).toBe(daily.payable)
   })
 

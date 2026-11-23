@@ -155,12 +155,14 @@ export function buildFareRows(r: ReceiptRide, stops: ReceiptStopRow[]): { rows: 
   const overtime = (r.overtimeMin ?? 0) > 0 ? num(r.overtimeFare) : 0
   const below: FareRow[] = [
     { key: 'toll', label: 'Airport toll', ...(r.toll_detail?.length && { detail: r.toll_detail.map((t) => t.zone).join(', ') }), amount: num(r.toll_charge) },
-    ...(rental ? rental.filter((x) => x.key !== 'package') : [{ key: 'overage', label: 'Extra distance or time', amount: num(r.overage_fare) }]),
+    // Only a rental's extra distance/time is itemised: settleRentalFare writes it at settlement. Any other ride type's overage_fare
+    // is the quoted figure (settlement reprices the total but not that column), so it stays inside the Ride fare.
+    ...(rental ? rental.filter((x) => x.key !== 'package') : []),
     // Overtime is not surged. Only present once the trip settled with time past the booked window.
     { key: 'overtime', label: 'Extra time', detail: `${num(r.overtimeMin)} min${grace ? `, after ${grace} free minutes` : ''}`, amount: overtime },
   ].filter((c) => c.amount > 0).map((x) => ({ ...x, amount: r2(x.amount) }))
 
-  const waited = stopWait > 0 || num(r.pickup_wait_charge) > 0
+  const waited = r2(stopWait + num(r.pickup_wait_charge))
   const pkgDetail = rental?.find((x) => x.key === 'package')?.detail
   const hours = num(r.trip_hours)
   const detail = [
@@ -170,7 +172,7 @@ export function buildFareRows(r: ReceiptRide, stops: ReceiptStopRow[]): { rows: 
     !rental && hours > 0 ? `${hours} ${hours === 1 ? 'hour' : 'hours'} booked` : '',
     extraStops > 0 ? `${extraStops} ${extraStops === 1 ? 'stop' : 'stops'}` : '',
     surge > 1 ? `${surge}× surge` : '',
-    waited ? 'incl. waiting' : '',
+    waited > 0 ? `incl. ${money(waited)} waiting` : '',
   ].filter(Boolean).join(' · ')
   const rideFare = r2(gross - below.reduce((n, c) => n + c.amount, 0))
   let rows: FareRow[] = [...(rideFare > 0 ? [{ key: 'ride-fare', label: 'Ride fare', ...(detail ? { detail } : {}), amount: rideFare }] : []), ...below]
