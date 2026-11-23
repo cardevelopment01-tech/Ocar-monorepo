@@ -22,11 +22,13 @@ const AFTER_REASONS = [
 
 type Props = {
   feeWarning: boolean
+  /** The exact fee and why, from the server (e.g. a late cancellation of an advance booking). Shown at any stage when set. */
+  feeText?: string | null
   onConfirm: (reasonCode: string, reason?: string) => Promise<void>
   onClose: () => void
 }
 
-export default function CancelSheet({ feeWarning, onConfirm, onClose }: Props) {
+export default function CancelSheet({ feeWarning, feeText = null, onConfirm, onClose }: Props) {
   const [selected, setSelected]     = useState<string | null>(null)
   const [otherText, setOtherText]   = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -77,14 +79,14 @@ export default function CancelSheet({ feeWarning, onConfirm, onClose }: Props) {
         </div>
 
         {/* Fee warning */}
-        {feeWarning && (
+        {(feeWarning || feeText) && (
           <div
             className="flex items-start gap-2.5 px-3.5 py-3 rounded-2xl mb-4"
             style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.30)' }}
           >
             <AlertCircle size={15} className="text-yellow-600 mt-0.5 flex-shrink-0" />
             <p className="text-sm text-yellow-800 font-medium leading-snug">
-              A small cancellation fee may apply since your driver has already arrived at your pick up point.
+              {feeText ?? 'A small cancellation fee may apply since your driver has already arrived at your pick up point.'}
             </p>
           </div>
         )}

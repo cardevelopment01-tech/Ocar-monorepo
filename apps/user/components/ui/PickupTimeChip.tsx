@@ -1,10 +1,13 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Clock, ChevronDown, X } from 'lucide-react'
 import { motion } from 'framer-motion'
 import SchedulePickerSheet from './SchedulePickerSheet'
 import { formatPickupTime } from '@/lib/format-pickup-time'
 import { MIN_ADVANCE_MINUTES, MAX_ADVANCE_DAYS } from '@/lib/advance-booking-limits'
+import { rideApi } from '@/lib/ride-api'
+import { FALLBACK_TERMS, termsLines, type AdvanceTerms } from '@/lib/advance-model'
 
 const SPRING = { type: 'spring', stiffness: 340, damping: 30 } as const
 
@@ -23,6 +26,9 @@ interface Props {
 export default function PickupTimeChip({ value, pickerOpen, onOpenPicker, onClosePicker, onChange }: Props) {
   const min = new Date(Date.now() + MIN_ADVANCE_MINUTES * 60_000)
   const max = new Date(Date.now() + MAX_ADVANCE_DAYS * 24 * 60 * 60_000)
+  // The terms (when search starts, any late-cancel fee) are read when the picker opens, so the rider sees today's rules before choosing a time.
+  const [terms, setTerms] = useState<AdvanceTerms>(FALLBACK_TERMS)
+  useEffect(() => { if (pickerOpen) void rideApi.advanceTerms().then(setTerms) }, [pickerOpen])
 
   return (
     <>
@@ -67,6 +73,7 @@ export default function PickupTimeChip({ value, pickerOpen, onOpenPicker, onClos
         max={max}
         onChange={(date) => { onChange(date); onClosePicker() }}
         onClose={onClosePicker}
+        notes={termsLines(terms)}
       />
     </>
   )

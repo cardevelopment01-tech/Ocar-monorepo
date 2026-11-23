@@ -645,13 +645,13 @@ export async function getAdminRideStats() {
 
 export async function listAdminRides(query: {
   status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean
-  date_from?: string; date_to?: string; city_id?: number; page?: number; limit?: number
+  date_from?: string; date_to?: string; city_id?: number; attention?: boolean; page?: number; limit?: number
 }) {
   const limit = Math.min(query.limit ?? 20, 100)
   const page  = Math.max(query.page ?? 1, 1)
   const q: {
     status?: string; ride_type?: string; search?: string; cash_discrepancy?: boolean
-    date_from?: string; date_to?: string; city_id?: number; limit: number; offset: number
+    date_from?: string; date_to?: string; city_id?: number; attention?: boolean; limit: number; offset: number
   } = { limit, offset: (page - 1) * limit }
   if (query.status          !== undefined) q.status           = query.status
   if (query.ride_type       !== undefined) q.ride_type        = query.ride_type
@@ -660,6 +660,7 @@ export async function listAdminRides(query: {
   if (query.date_from       !== undefined) q.date_from        = query.date_from
   if (query.date_to         !== undefined) q.date_to          = query.date_to
   if (query.city_id         !== undefined) q.city_id          = query.city_id
+  if (query.attention) q.attention = true
   const { rows, total, totalCapped } = await repo.listAdminRides(q)
   return { rides: rows, pagination: { total, total_capped: totalCapped, page, limit, pages: Math.ceil(total / limit) } }
 }
@@ -671,8 +672,10 @@ export async function listUpcomingScheduledRides() {
 export async function getAdminRideById(rideId: bigint) {
   const ride = await repo.getAdminRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
-  const [stops, [statusHistory, linkedSafety, messages]] = await Promise.all([
+  const lastFrom = new Date((ride.started_at ?? ride.accepted_at ?? ride.requested_at).valueOf() - TRAIL_SLACK_MS)
+  const [stops, offers, [statusHistory, linkedSafety, messages], otp, lastPosition, notes] = await Promise.all([
     getRideStops(rideId),
+    repo.getRideOffers(rideId).catch(() => []),
     // Enrichment queries: degrade to empty rather than failing the whole ride detail.
     Promise.allSettled([
       repo.getRideStatusHistory(rideId),
@@ -683,10 +686,35 @@ export async function getAdminRideById(rideId: bigint) {
       s.status === 'fulfilled' ? s.value : { disputes: [], sos_alerts: [], ratings: [] },
       m.status === 'fulfilled' ? m.value : [],
     ] as const),
+    repo.getRideOtpSummary(rideId).catch(() => null),
+    // Only meaningful once a driver is on the ride; the time window keeps the GPS query to the right partitions.
+    ride.driver_id ? repo.getRideLastPosition(rideId, lastFrom, new Date()).catch(() => null) : Promise.resolve(null),
+    repo.listRideAdminNotes(rideId).catch(() => []),
   ])
   // bookedUntil / overtimeGraceMin / overtimeRate / overtimeMin / overtimeFare: the same facts the driver and
   // rider clocks use, null for rides with no hourly window.
-  return { ...withTripWindow(ride), stops, status_history: statusHistory, ...linkedSafety, messages }
+  return { ...withTripWindow(ride), stops, offers, status_history: statusHistory, ...linkedSafety, messages, otp, last_position: lastPosition, notes }
+}
+
+export async function addRideAdminNote(rideId: bigint, adminId: bigint, note: string) {
+  const text = note.trim()
+  if (text.length < 1 || text.length > 2000) throw Object.assign(new Error('Note must be 1 to 2000 characters'), { httpStatus: 400 })
+  if (!(await repo.getRideTimes(rideId))) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  return repo.addRideAdminNote(rideId, adminId, text)
+}
+
+const TRAIL_MAX_POINTS = 300
+const TRAIL_SLACK_MS = 15 * 60_000
+
+/** The driver's route for the ride map. Empty before a driver is assigned; the time window keeps the GPS query on the few partitions that can hold it. */
+export async function getAdminRideTrail(rideId: bigint) {
+  const t = await repo.getRideTimes(rideId)
+  if (!t) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  const start = t.started_at ?? t.accepted_at
+  if (!start) return { points: [] }
+  const end = t.completed_at ?? t.cancelled_at ?? new Date()
+  const points = await repo.getRideTrail(rideId, new Date(start.getTime() - TRAIL_SLACK_MS), new Date(end.getTime() + TRAIL_SLACK_MS), TRAIL_MAX_POINTS)
+  return { points }
 }
 
 export async function forceResolveAdminRide(
@@ -699,8 +727,11 @@ export async function forceResolveAdminRide(
   return resolveStuckRide(rideId, outcome, 'admin', note, adminId)
 }
 
-export async function getRideAssignCandidates(rideId: bigint) {
-  return getAssignCandidatesForRide(rideId)
+export async function getRideAssignCandidates(
+  rideId: bigint,
+  opts: { search?: string; onlineOnly?: boolean; limit?: number } = {},
+) {
+  return getAssignCandidatesForRide(rideId, opts)
 }
 
 export async function assignDriverToRide(

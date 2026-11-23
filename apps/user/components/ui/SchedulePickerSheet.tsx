@@ -30,6 +30,10 @@ interface Props {
   max: Date
   onChange: (date: Date | null) => void
   onClose: () => void
+  /** What happens next, in plain words (when search starts, the fare note, any late-cancel fee). Shown above the confirm button. */
+  notes?: string[]
+  /** Changing the time of an existing booking: open straight on the calendar (no "Now" or quick picks) and say so in the heading and button. */
+  reschedule?: boolean
 }
 
 function isSameDate(a: Date, b: Date) {
@@ -79,7 +83,7 @@ const stageVariants = {
   exit: (dir: number) => ({ opacity: 0, x: dir > 0 ? -16 : 16 }),
 }
 
-export default function SchedulePickerSheet({ open, value, min, max, onChange, onClose }: Props) {
+export default function SchedulePickerSheet({ open, value, min, max, onChange, onClose, notes = [], reschedule = false }: Props) {
   const reduce = useReducedMotion()
   const [stage, setStage] = useState<1 | 2>(1)
   const [direction, setDirection] = useState(1)
@@ -91,7 +95,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
   // Resync on the closed→open edge, state otherwise goes stale since the sheet stays mounted.
   useEffect(() => {
     if (open) {
-      setStage(1)
+      setStage(reschedule ? 2 : 1)
       setSelectedDay(dayOnly(value ?? min))
       requestAnimationFrame(() => firstOptionRef.current?.focus())
     }
@@ -280,14 +284,14 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                   {/* Header */}
                   <div className="flex items-center gap-2 px-5 pt-2 pb-3">
                     <button
-                      onClick={goToStage1}
-                      aria-label="Back to quick options"
+                      onClick={reschedule ? onClose : goToStage1}
+                      aria-label={reschedule ? 'Close' : 'Back to quick options'}
                       className="w-11 h-11 -ml-2 rounded-xl flex items-center justify-center transition-opacity active:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                       style={{ background: '#E4F8FA' }}
                     >
-                      <ChevronLeft size={16} style={{ color: '#0A9FB0' }} />
+                      {reschedule ? <X size={16} style={{ color: '#0A9FB0' }} /> : <ChevronLeft size={16} style={{ color: '#0A9FB0' }} />}
                     </button>
-                    <p className="text-[15px] font-bold" style={{ color: '#0F172A' }}>Pickup time</p>
+                    <p className="text-[15px] font-bold" style={{ color: '#0F172A' }}>{reschedule ? 'Change pickup time' : 'Pickup time'}</p>
                   </div>
 
                   {/* Day strip */}
@@ -375,6 +379,17 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                     </div>
                   </div>
 
+                  {notes.length > 0 && (
+                    <ul className="px-5 pb-3 space-y-1.5" aria-label="What happens next">
+                      {notes.map((n, i) => (
+                        <li key={i} className="flex gap-2 text-[12.5px] leading-snug" style={{ color: '#475569' }}>
+                          <span className="mt-[7px] w-1 h-1 rounded-full flex-shrink-0" style={{ background: '#0A9FB0' }} />
+                          <span>{n}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
                   {/* Confirm */}
                   <div className="px-5">
                     <button
@@ -387,7 +402,7 @@ export default function SchedulePickerSheet({ open, value, min, max, onChange, o
                         minHeight: 52,
                       }}
                     >
-                      {selectedSlot ? `Confirm: ${formatPickupTime(selectedSlot)}` : 'Pick a time'}
+                      {selectedSlot ? `${reschedule ? 'Change to' : 'Confirm:'} ${formatPickupTime(selectedSlot)}` : 'Pick a time'}
                     </button>
                   </div>
                 </motion.div>

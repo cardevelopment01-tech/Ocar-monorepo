@@ -5,7 +5,7 @@
 // Full inventory of user-owned push types, verified against every notifyOwner
 // call site in api/src: ride_accepted, driver_arrived, ride_started, ride_completed,
 // ride_cancelled, ride_no_drivers, payment_failed, stop_unreachable, trip_window_*,
-// ride_chat_message.
+// ride_chat_message, advance_* (booked, reminder, rescheduled, searching, no_drivers, cancelled).
 // The screens an admin broadcast can ask a tap to open (BROADCAST_LINKS.rider in the API). A key this app does not know opens the app.
 const BROADCAST_ROUTES: Record<string, string> = {
   home: '/(tabs)/home',
@@ -27,11 +27,21 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
     case 'stop_unreachable':
     case 'trip_window_ending':
     case 'trip_window_ended':
+    // Advance bookings: confirmation, reminders, time changed, still searching, support cancelled. Each opens the ride, where the rider can change or cancel.
+    case 'advance_booked':
+    case 'advance_reminder':
+    case 'advance_rescheduled':
+    case 'advance_searching':
+    case 'advance_cancelled':
       return rideId ? `/ride/${rideId}` : null
 
     // The booking didn't land a driver -- nothing ride-specific to open, back to Home to rebook.
     case 'ride_no_drivers':
       return '/(tabs)/home'
+
+    // An advance booking nobody could take: open the ride, which offers a new time or a fresh booking, rather than a blank Home.
+    case 'advance_no_drivers':
+      return rideId ? `/ride/${rideId}` : '/(tabs)/home'
 
     case 'ride_chat_message':
       return rideId ? `/ride/${rideId}/chat` : null

@@ -34,6 +34,14 @@ export const NOTIFICATION_TYPES = {
   // The free minutes at the pickup ran out: stale after 10 minutes (the driver has either been met or left by then).
   pickup_wait_started: { channelId: 'ride_updates_v1', ttlSeconds: 600, collapse: 'ride_type' },
   stop_unreachable:  { channelId: 'ride_updates_v1', ttlSeconds: 1800, collapse: 'ride_type' },
+  // ── Advance bookings (rider) ──
+  advance_booked:      { channelId: 'ride_updates_v1', ttlSeconds: DAY, collapse: 'ride_type' },
+  // 24 h and 1 h reminders share a slot, so the later one replaces the earlier on the device.
+  advance_reminder:    { channelId: 'ride_updates_v1', ttlSeconds: 2 * HOUR, collapse: 'ride_type' },
+  advance_rescheduled: { channelId: 'ride_updates_v1', ttlSeconds: DAY, collapse: 'ride_type' },
+  advance_searching:   { channelId: 'ride_updates_v1', ttlSeconds: HOUR, collapse: 'ride_status' },
+  advance_no_drivers:  { channelId: 'ride_updates_v1', ttlSeconds: DAY, collapse: 'ride_status' },
+  advance_cancelled:   { channelId: 'ride_updates_v1', ttlSeconds: DAY, collapse: 'ride_status' },
   // ── Ride lifecycle (rider and driver) ──
   ride_cancelled:    { channelId: 'ride_updates_v1', ttlSeconds: HOUR, collapse: 'ride_status' },
   trip_window_ending: { channelId: 'ride_updates_v1', ttlSeconds: 1800, collapse: 'ride_type' },
