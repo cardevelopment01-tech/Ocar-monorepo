@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Map, Car, Truck, Users, User, AlertTriangle, Shield,
   CreditCard, Wallet, RotateCcw, Tag, Settings, ToggleLeft, Package,
   BarChart2, LogOut, MapPin, MessageSquare, Send, UserCog, ScrollText, ShieldCheck,
-  Wrench, Ticket, UserCheck, Plane,
+  Wrench, Ticket, UserCheck, Plane, Headset,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AdminRole } from '@/lib/mock-data'
@@ -41,6 +41,7 @@ const NAV: NavGroup[] = [
     label: 'Operations',
     items: [
       { href: '/rides',    label: 'Rides',      icon: Car,           roles: ['super_admin','ops_admin','support_admin'] },
+      { href: '/dispatch', label: 'Dispatch',   icon: Headset,       roles: ['super_admin','ops_admin','support_admin'] },
       { href: '/drivers',  label: 'Drivers',    icon: Users,         roles: ['super_admin','ops_admin','support_admin'] },
       { href: '/vehicles', label: 'Vehicles',   icon: Truck,         roles: ['super_admin','ops_admin'] },
       { href: '/users',    label: 'Users',      icon: User,          roles: ['super_admin','ops_admin','support_admin'] },

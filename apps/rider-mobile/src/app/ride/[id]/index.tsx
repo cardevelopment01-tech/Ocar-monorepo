@@ -17,6 +17,10 @@ import { MeetAtRow, PinBand } from '@/features/ride-tracking/components/DriverId
 import { RideMapView } from '@/features/ride-tracking/components/RideMapView'
 import { StatusBanner } from '@/features/ride-tracking/components/StatusBanner'
 import { CancelSheet } from '@/features/ride-tracking/components/CancelSheet'
+import { PickupTimeSheet } from '@/features/advance/PickupTimeSheet'
+import { apiErrorCode, fetchAdvanceTerms, fetchCancelPreview, rescheduleRide } from '@/features/advance/api'
+import { cancelCopy, FALLBACK_TERMS, rescheduleErrorMessage, searchStartsAt, type AdvanceTerms } from '@/features/advance/advanceModel'
+import { formatPickupTime } from '@/lib/formatPickupTime'
 import { AddStopSheet } from '@/features/ride-tracking/components/AddStopSheet'
 import { EditPickupSheet } from '@/features/ride-tracking/components/EditPickupSheet'
 import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
@@ -122,6 +126,13 @@ export default function RideTrackingScreen() {
   const cancelInFlightRef = useRef(false)
   const [cancelling, setCancelling] = useState(false)
   const [showCancelSheet, setShowCancelSheet] = useState(false)
+  // Advance bookings: the rules (for the wording), the exact cancel fee, and the change-time sheet.
+  const [terms, setTerms] = useState<AdvanceTerms>(FALLBACK_TERMS)
+  useEffect(() => { void fetchAdvanceTerms().then(setTerms) }, [])
+  const [cancelFeeText, setCancelFeeText] = useState<string | null>(null)
+  const [timeSheetOpen, setTimeSheetOpen] = useState(false)
+  const [timeBusy, setTimeBusy] = useState(false)
+  const [timeError, setTimeError] = useState<string | null>(null)
   const [addStopOpen, setAddStopOpen] = useState(false)
   // Live trip sharing: the links for this trip. Called here (before any early return) so the hook order never changes.
   const [shareOpen, setShareOpen] = useState(false)
@@ -184,6 +195,28 @@ export default function RideTrackingScreen() {
       setCancelling(false)
     } finally {
       cancelInFlightRef.current = false
+    }
+  }
+
+  // Ask the server what cancelling costs now, so a late-cancel fee on an advance booking is stated before the rider confirms.
+  function openCancelSheet() {
+    setCancelFeeText(null)
+    setShowCancelSheet(true)
+    void fetchCancelPreview(rideId).then((p) => {
+      if (p.fee > 0) { const c = cancelCopy(p); setCancelFeeText(`${c.title}. ${c.body}`) }
+    }).catch(() => undefined)
+  }
+
+  async function saveNewTime(iso: string) {
+    setTimeBusy(true); setTimeError(null)
+    try {
+      await rescheduleRide(rideId, iso)
+      setTimeSheetOpen(false)
+      retry()
+    } catch (err) {
+      setTimeError(rescheduleErrorMessage(apiErrorCode(err), getApiErrorMessage(err, "We couldn't change the time. Your booking is unchanged.")))
+    } finally {
+      setTimeBusy(false)
     }
   }
 
@@ -436,9 +469,13 @@ export default function RideTrackingScreen() {
             <View style={styles.searchingBlock}>
               <SearchingBar />
               <Text style={styles.searchingBody}>
-                {ride.status === 'scheduled'
-                  ? "Your pickup is scheduled. We'll start matching you with a nearby driver shortly before it."
-                  : "Hang tight, we're matching you with a nearby driver."}
+                {ride.status === 'scheduled' && ride.scheduledFor
+                  ? `Your pickup is ${formatPickupTime(new Date(ride.scheduledFor))}. We start finding your driver at ${formatPickupTime(searchStartsAt(ride.scheduledFor, terms.searchLeadMin)).replace(/^[^,]+, /, '')}. You can change the time or cancel for free until then.`
+                  : ride.status === 'scheduled'
+                    ? "Your pickup is scheduled. We'll start matching you with a nearby driver shortly before it."
+                    : ride.scheduledFor
+                      ? `We're still looking for a driver for your ${formatPickupTime(new Date(ride.scheduledFor)).replace(/^[^,]+, /, '')} pickup and will keep trying. You can change the time or cancel any time.`
+                      : "Hang tight, we're matching you with a nearby driver."}
               </Text>
               <Pressable
                 onPress={confirmCancelSearch}
@@ -449,6 +486,16 @@ export default function RideTrackingScreen() {
               >
                 <Text style={styles.cancelButtonText}>{cancelling ? 'Cancelling…' : 'Cancel request'}</Text>
               </Pressable>
+              {ride.status === 'scheduled' && ride.scheduledFor ? (
+                <Pressable
+                  onPress={() => { setTimeError(null); setTimeSheetOpen(true) }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Change pickup time"
+                  style={styles.editPickupLink}
+                >
+                  <Text style={styles.editPickupLinkText}>Change time</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 onPress={() => setEditPickupOpen(true)}
                 accessibilityRole="button"
@@ -506,8 +553,10 @@ export default function RideTrackingScreen() {
               cancel={canCancel ? {
                 note: ride.status === 'driver_arrived'
                   ? 'Your driver has arrived, so a small cancellation fee may apply.'
-                  : 'No fee before your driver arrives. A small fee may apply after.',
-                onPress: () => setShowCancelSheet(true),
+                  : ride.scheduledFor && terms.lateCancel
+                    ? 'A cancellation fee may apply close to pickup. You will see the exact amount before you confirm.'
+                    : 'No fee before your driver arrives. A small fee may apply after.',
+                onPress: () => { openCancelSheet() },
               } : null}
             >
               <TripDetailsCard ride={ride} fare={fare} />
@@ -527,9 +576,21 @@ export default function RideTrackingScreen() {
       />
       <ShareTripSheet visible={shareOpen} onClose={() => setShareOpen(false)} share={tripShare} />
       <ManageSharesSheet visible={manageOpen} onClose={() => setManageOpen(false)} share={tripShare} />
+      <PickupTimeSheet
+        visible={timeSheetOpen}
+        title="Change pickup time"
+        confirmLabel="Change time"
+        terms={terms}
+        initial={ride.scheduledFor}
+        error={timeError}
+        busy={timeBusy}
+        onClose={() => { if (!timeBusy) setTimeSheetOpen(false) }}
+        onConfirm={(iso) => void saveNewTime(iso)}
+      />
       <CancelSheet
         visible={showCancelSheet}
         feeWarning={ride.status === 'driver_arrived'}
+        feeText={cancelFeeText}
         onClose={() => setShowCancelSheet(false)}
         onConfirm={handleCancelConfirm}
       />

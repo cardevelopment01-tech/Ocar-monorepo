@@ -7,6 +7,7 @@ import type { BroadcastJobData } from './broadcast.processor'
 import { pool } from '@/db/client'
 import { finaliseDiscount } from '@/modules/offers/settlement'
 import { logger } from '@/lib/logger'
+import { advanceBookingEventsTotal } from '@/observability/metrics'
 
 const FARE_DRIFT_DISCLOSURE_THRESHOLD = 0.10
 
@@ -38,6 +39,7 @@ export async function processDispatchScheduled(data: DispatchScheduledJobData): 
     note:       'Advance booking dispatch buffer reached',
   })
   await repo.updateAdvanceMetaStatus(rideId, 'dispatched')
+  advanceBookingEventsTotal.inc({ event: 'dispatched' })
 
   // Fare is deliberately never locked at booking time (§7 of the advance-booking
   // plan) — recompute against the current rate card / surge now, and disclose the

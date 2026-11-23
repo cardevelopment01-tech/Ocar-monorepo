@@ -1227,6 +1227,7 @@ export async function getAdminRides(
       date_from?: string;
       date_to?: string;
       city_id?: number;
+      attention?: boolean;
       page?: number;
       limit?: number;
     } = {};
@@ -1239,6 +1240,7 @@ export async function getAdminRides(
     if (req.query["dateTo"]) q.date_to = req.query["dateTo"] as string;
     if (req.query["cityId"])
       q.city_id = parseInt(req.query["cityId"] as string, 10);
+    if (req.query["attention"] === "true") q.attention = true;
     if (req.query["page"]) q.page = parseInt(req.query["page"] as string, 10);
     if (req.query["limit"])
       q.limit = parseInt(req.query["limit"] as string, 10);
@@ -1272,6 +1274,27 @@ export async function getAdminRideById(
   }
 }
 
+export async function addRideAdminNote(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const note = typeof req.body?.note === 'string' ? req.body.note : ''
+    res.status(201).json(await service.addRideAdminNote(BigInt(req.params["id"]!), req.admin!.id, note))
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function getAdminRideTrail(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    res.json(await service.getAdminRideTrail(BigInt(req.params["id"]!)));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function forceResolveAdminRide(
   req: Request,
   res: Response,
@@ -1287,6 +1310,16 @@ export async function forceResolveAdminRide(
         .status(400)
         .json({
           error: "action must be complete or cancel",
+          code: "VALIDATION_ERROR",
+        });
+      return;
+    }
+    // A forced outcome moves a live trip's money and state: the history row must say why.
+    if (typeof note !== "string" || note.trim().length < 10 || note.length > 500) {
+      res
+        .status(400)
+        .json({
+          error: "note is required: say why, in 10 to 500 characters",
           code: "VALIDATION_ERROR",
         });
       return;
@@ -1309,9 +1342,18 @@ export async function getRideAssignCandidates(
   next: NextFunction,
 ): Promise<void> {
   try {
+    // No params keeps the original behaviour (every driver in the city, nearest 50). The dispatch desk asks for
+    // online drivers only, or searches by name/phone across all of them.
+    const opts: { search?: string; onlineOnly?: boolean; limit?: number } = {};
+    const q = req.query["q"];
+    if (typeof q === "string" && q.trim() !== "") opts.search = q.trim().slice(0, 60);
+    if (req.query["online"] === "1") opts.onlineOnly = true;
+    const limit = Number(req.query["limit"]);
+    if (Number.isInteger(limit) && limit > 0) opts.limit = limit;
     res.json({
       candidates: await service.getRideAssignCandidates(
         BigInt(req.params["id"]!),
+        opts,
       ),
     });
   } catch (err) {
