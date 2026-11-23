@@ -1,0 +1,21 @@
+diff --git a/android/src/main/java/expo/modules/audio/AudioPlayer.kt b/android/src/main/java/expo/modules/audio/AudioPlayer.kt
+index c76a9fd..2c09079 100644
+--- a/android/src/main/java/expo/modules/audio/AudioPlayer.kt
++++ b/android/src/main/java/expo/modules/audio/AudioPlayer.kt
+@@ -36,7 +36,15 @@ class AudioPlayer(
+ ) : BaseAudioPlayer(
+   player = ExoPlayer.Builder(context)
+     .setLooper(context.mainLooper)
+-    .setAudioAttributes(AudioAttributes.DEFAULT, false)
++    // Ocar patch: play on the ALARM stream (alarm volume) instead of media. This app only uses expo-audio for the driver's ride request
++    // ring, which must be as loud as the push ring (also on the alarm stream) and not follow a media volume the driver keeps low.
++    .setAudioAttributes(
++      AudioAttributes.Builder()
++        .setUsage(C.USAGE_ALARM)
++        .setContentType(C.AUDIO_CONTENT_TYPE_SONIFICATION)
++        .build(),
++      false
++    )
+     .setSeekForwardIncrementMs(SEEK_JUMP_INTERVAL_MS)
+     .setSeekBackIncrementMs(SEEK_JUMP_INTERVAL_MS)
+     .apply {

@@ -48,6 +48,8 @@
       "msgpackr-extract"
     ],
     "patchedDependencies": {
+      "expo-audio@57.0.5": "patches/expo-audio@57.0.5.patch",
+      "expo-speech@57.0.3": "patches/expo-speech@57.0.3.patch",
       "react-native-maps@1.27.2": "patches/react-native-maps@1.27.2.patch"
     }
   }

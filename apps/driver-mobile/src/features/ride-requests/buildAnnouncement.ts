@@ -4,7 +4,12 @@ import type { RideRequestPayload } from './types'
 // Pure (no React Native imports) so every wording rule is tested. Addresses stay as written (TTS reads them in the
 // selected voice); only the frame sentence is translated.
 
-const MAX_ADDRESS_CHARS = 50 // a spoken address longer than this eats the accept window
+const MAX_ADDRESS_CHARS = 32 // a spoken address longer than this eats the accept window
+
+/** How fast the system voice reads. A little above normal: the driver is deciding inside a 20 s window. */
+export const SPEECH_RATE = 1.05
+/** Typical English/Hindi text-to-speech pace at rate 1.0, in characters per second (punctuation pauses included). An estimate, not a measurement. */
+const CHARS_PER_SECOND = 14
 
 export type AnnouncementLang = 'en' | 'hi'
 
@@ -12,7 +17,7 @@ export type AnnouncementLang = 'en' | 'hi'
 export const SPEECH_LOCALE = { en: 'en-IN', hi: 'hi-IN' } as const
 
 /** Locality-level part of an address: drops house/plot numbers, PIN codes, "Unnamed Road", country; at most two parts. */
-export function shortenAddress(address: string): string {
+export function shortenAddress(address: string, maxParts = 2): string {
   const parts = address
     .split(',')
     .map((p) => p.trim())
@@ -22,7 +27,7 @@ export function shortenAddress(address: string): string {
     .filter((p) => !/unnamed road/i.test(p))
     .filter((p) => !/\b\d{6}\b/.test(p)) // "Odisha 751007"
     .filter((p) => !/^(india|odisha|orissa)$/i.test(p))
-  const joined = parts.slice(0, 2).join(', ')
+  const joined = parts.slice(0, maxParts).join(', ')
   if (joined.length <= MAX_ADDRESS_CHARS) return joined
   const cut = joined.slice(0, MAX_ADDRESS_CHARS)
   return (cut.includes(' ') ? cut.slice(0, cut.lastIndexOf(' ')) : cut).replace(/[,\s]+$/, '')
@@ -51,17 +56,16 @@ function typeWords(p: RideRequestPayload, lang: AnnouncementLang): string {
       : p.rideType === 'rental'
         ? hi ? 'रेंटल' : 'Rental'
         : hi ? 'वन वे' : 'One way'
-  const category = p.rideCategoryName ? `, ${p.rideCategoryName}` : ''
   const hours = (p.rideType === 'round_trip' || p.rideType === 'rental') && p.tripHours ? (hi ? `, ${p.tripHours} घंटे` : `, ${p.tripHours} hours`) : ''
   const stops = p.stopCount && p.stopCount > 0 ? (hi ? `, ${p.stopCount} स्टॉप` : `, ${p.stopCount} ${p.stopCount === 1 ? 'stop' : 'stops'}`) : ''
-  return `${kind}${category}${hours}${stops}`
+  return `${kind}${hours}${stops}`
 }
 
 function payment(channel: string | undefined, lang: AnnouncementLang): string {
   const hi = lang === 'hi'
-  if (channel === 'cash') return hi ? 'कैश।' : 'Cash.'
-  if (channel === 'online') return hi ? 'ऑनलाइन पेमेंट।' : 'Paid online.'
-  if (channel === 'wallet') return hi ? 'वॉलेट।' : 'Wallet.'
+  if (channel === 'cash') return hi ? 'कैश' : 'cash'
+  if (channel === 'online') return hi ? 'ऑनलाइन पेमेंट' : 'paid online'
+  if (channel === 'wallet') return hi ? 'वॉलेट' : 'wallet'
   return ''
 }
 
@@ -69,25 +73,30 @@ function payment(channel: string | undefined, lang: AnnouncementLang): string {
 export type SegmentKey = 'intro' | 'type' | 'pickup' | 'drop' | 'fare'
 export type Segment = { key: SegmentKey; text: string }
 
-/** The announcement as ordered parts, one per region of the pop-up. Joined with single spaces they are the spoken text. */
+/**
+ * The announcement as ordered parts, one per region of the pop-up. Joined with single spaces they are the spoken text.
+ * Fare and payment come right after the intro: they are what a driver decides on, so they must be heard first, not last
+ * (the end of a long sentence is also where a late ring or a hurried driver cuts it off). The vehicle category is left out:
+ * requests only reach drivers of that category, and it is on the card.
+ */
 export function buildAnnouncementSegments(p: RideRequestPayload, lang: AnnouncementLang = 'en'): Segment[] {
   const hi = lang === 'hi'
-  const pickup = shortenAddress(p.pickup) || (hi ? 'पिकअप पॉइंट' : 'the pickup point')
+  // The pickup is near the driver, in their own city: the locality is enough. The drop may be another city, so it keeps up to two parts.
+  const pickup = shortenAddress(p.pickup, 1) || (hi ? 'पिकअप पॉइंट' : 'the pickup point')
   const drop = shortenAddress(p.drop)
   const away = Number.isFinite(p.distanceToPickup) && p.distanceToPickup > 0 ? metresOrKm(p.distanceToPickup, lang) : ''
-  const segments: Segment[] = [
-    { key: 'intro', text: hi ? 'नई राइड रिक्वेस्ट।' : 'New ride request.' },
-    { key: 'type', text: `${typeWords(p, lang)}.` },
-    { key: 'pickup', text: hi ? `पिकअप ${pickup}${away ? `, ${away} दूर` : ''}.` : `Pickup ${pickup}${away ? `, ${away} away` : ''}.` },
-  ]
+  const segments: Segment[] = [{ key: 'intro', text: hi ? 'नई राइड रिक्वेस्ट।' : 'New ride request.' }]
+  const fare = p.estimatedFare > 0 ? (hi ? `किराया ${Math.round(p.estimatedFare)} रुपये` : `Fare ${Math.round(p.estimatedFare)} rupees`) : ''
+  const pay = payment(p.paymentChannel, lang)
+  const end = hi ? '।' : '.' // the Hindi sentence ending, as before
+  const fareText = fare ? (pay ? `${fare}, ${pay}${end}` : `${fare}${end}`) : pay ? (hi ? `${pay}${end}` : `${pay.charAt(0).toUpperCase()}${pay.slice(1)}${end}`) : ''
+  if (fareText) segments.push({ key: 'fare', text: fareText })
+  segments.push({ key: 'type', text: `${typeWords(p, lang)}.` })
+  segments.push({ key: 'pickup', text: hi ? `पिकअप ${pickup}${away ? `, ${away} दूर` : ''}.` : `Pickup ${pickup}${away ? `, ${away} away` : ''}.` })
   if (drop) {
     const length = p.tripKm && p.tripKm > 0 ? `, ${tripKm(p.tripKm, lang)}` : ''
     segments.push({ key: 'drop', text: hi ? `ड्रॉप ${drop}${length}.` : `Drop ${drop}${length}.` })
   }
-  const fare = p.estimatedFare > 0 ? (hi ? `किराया ${Math.round(p.estimatedFare)} रुपये।` : `Fare ${Math.round(p.estimatedFare)} rupees.`) : ''
-  const pay = payment(p.paymentChannel, lang)
-  const fareText = [fare, pay].filter(Boolean).join(' ')
-  if (fareText) segments.push({ key: 'fare', text: fareText })
   return segments
 }
 
@@ -124,7 +133,7 @@ export function segmentAtTime(segments: Segment[], elapsedMs: number, totalMs: n
   return segmentAt(segments, Math.floor((elapsedMs / totalMs) * length))
 }
 
-/** A generous estimate of how long the sentence takes to say, in ms (same shape as the ring-resume safety timer). */
-export function estimateSpeechMs(text: string, rate = 0.95): number {
-  return (Math.min(9_000, 2_500 + text.length * 70) / Math.max(0.5, rate)) * 0.9
+/** An estimate of how long the sentence takes to say, in ms: only used to pace the read-along when the engine reports no word positions. */
+export function estimateSpeechMs(text: string, rate = SPEECH_RATE): number {
+  return Math.round((text.length / CHARS_PER_SECOND / Math.max(0.5, rate)) * 1000)
 }

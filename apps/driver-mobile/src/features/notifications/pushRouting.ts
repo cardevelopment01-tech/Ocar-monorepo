@@ -104,3 +104,21 @@ export function resolveTapRoute(data: Record<string, string> | undefined): strin
   if (type === 'ride_request' || type === 'ride_manual_request' || type === 'ride_request_gone') return null
   return resolvePushRoute(data) ?? (type ? '/notifications' : null)
 }
+
+/**
+ * How a notification is presented while the app is open. A ride request that arrives as a push for the request whose pop-up is already
+ * on screen (the socket delivered it first; the push is the late fallback after an unacknowledged 4 s) must be silent and bannerless: the
+ * pop-up already rings and reads it aloud, and the push's 22 s alarm ring would play over that voice. Not shown at all rather than listed,
+ * so no stale "New ride request" is left in the tray. A request that is NOT on screen still rings: that is the push doing its job.
+ * `ride_request_gone` is the silent swap for a ringing push that is over.
+ */
+export function foregroundPresentation(
+  data: Record<string, unknown> | undefined,
+  pendingRideId: string | null,
+): { banner: boolean; list: boolean; sound: boolean } {
+  const type = data?.['type']
+  if (type === 'ride_request_gone') return { banner: false, list: false, sound: false }
+  const isRequest = type === 'ride_request' || type === 'ride_manual_request'
+  if (isRequest && pendingRideId != null && String(data?.['rideId']) === pendingRideId) return { banner: false, list: false, sound: false }
+  return { banner: true, list: true, sound: true }
+}

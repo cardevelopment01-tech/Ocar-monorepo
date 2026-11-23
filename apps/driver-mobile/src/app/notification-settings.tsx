@@ -1,11 +1,12 @@
-import { Pressable, Text } from 'react-native'
+import { Alert, Pressable, Text } from 'react-native'
 import { useRouter } from 'expo-router'
 import { NotificationSettings, useNotificationPreferences } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { usePushEnableAction } from '@/features/notifications/usePushSetup'
 import { useOverlayGuideStore } from '@/store/useOverlayGuideStore'
 import { useAlertPrefsStore } from '@/store/useAlertPrefsStore'
-import { playTestAlert } from '@/features/ride-requests/testAlert'
+import { playTestAlert, playTestBackgroundRing } from '@/features/ride-requests/testAlert'
+import { hasVoiceFor } from '@/features/ride-requests/speech'
 import { overlay } from '@/services/overlay'
 
 // Mirrors the Android channels created in services/notifications/index.ts.
@@ -16,6 +17,17 @@ const TOPICS = [
   { name: 'Announcements', description: 'Notices from Ocar, if you have not switched them off.', icon: 'volume-2', tone: 'promo' as const },
   { name: 'Account alerts', description: 'Document reviews and expiry, wallet balance, warnings and suspensions.', icon: 'shield', tone: 'account' as const },
 ]
+
+// Turning Hindi on for a phone that has no Hindi voice: say so now, and what happens meanwhile, instead of leaving the driver with a
+// voice that reads Hindi in an English accent or says nothing. Requests are read in English until the voice is installed.
+async function warnIfNoHindiVoice(): Promise<void> {
+  if (await hasVoiceFor('hi')) return
+  Alert.alert(
+    'Hindi voice not installed',
+    'This phone has no Hindi text-to-speech voice, so new requests will be read out in English. To hear Hindi, install it in your phone settings under Text-to-speech (Google Text-to-speech, language Hindi).',
+    [{ text: 'OK' }],
+  )
+}
 
 export default function NotificationSettingsScreen() {
   const router = useRouter()
@@ -50,7 +62,7 @@ export default function NotificationSettingsScreen() {
   // Always shown (they are on this phone, not on the server), ahead of the server-side category switches.
   const voiceSwitches = [
     { label: 'Read out new requests', description: 'Speaks the ride type, pickup, drop, distance and fare after the first ring.', icon: 'volume-2', tone: 'ride' as const, value: voiceEnabled, onChange: setVoiceEnabled },
-    { label: 'Announce in Hindi', description: 'Off = English.', icon: 'globe', tone: 'ride' as const, value: language === 'hi', onChange: (v: boolean) => setLanguage(v ? 'hi' : 'en') },
+    { label: 'Announce in Hindi', description: 'Off = English.', icon: 'globe', tone: 'ride' as const, value: language === 'hi', onChange: (v: boolean) => { setLanguage(v ? 'hi' : 'en'); if (v) void warnIfNoHindiVoice() } },
   ]
   return (
     <NotificationSettings
@@ -61,9 +73,14 @@ export default function NotificationSettingsScreen() {
         ...(prefs ? [{ label: 'Announcements', description: 'Notices from Ocar', icon: 'volume-2', tone: 'promo' as const, value: prefs.announcements, onChange: (v: boolean) => set('announcements', v) }] : []),
       ]}
       footer={
-        <Pressable onPress={() => { void playTestAlert() }} accessibilityRole="button" accessibilityLabel="Test the ride request ring and voice" style={{ minHeight: 48, borderRadius: 14, backgroundColor: '#0A9FB0', alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Test ring and voice</Text>
-        </Pressable>
+        <>
+          <Pressable onPress={() => { void playTestAlert() }} accessibilityRole="button" accessibilityLabel="Test the ride request ring and voice" style={{ minHeight: 48, borderRadius: 14, backgroundColor: '#0A9FB0', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Test ring and voice</Text>
+          </Pressable>
+          <Pressable onPress={() => { void playTestBackgroundRing() }} accessibilityRole="button" accessibilityLabel="Test the ride request ring on the alarm volume" style={{ minHeight: 48, borderRadius: 14, marginTop: 10, borderWidth: 1.5, borderColor: '#0A9FB0', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#0A9FB0', fontWeight: '700', fontSize: 15 }}>Test loud ring (alarm volume)</Text>
+          </Pressable>
+        </>
       }
       permission={{ state: push.state, canAskAgain: push.canAskAgain }}
       onEnablePush={() => { void push.enable() }}

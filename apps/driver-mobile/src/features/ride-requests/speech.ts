@@ -27,3 +27,22 @@ export function warmUpSpeech(speech: Pick<SpeechModule, 'getAvailableVoicesAsync
     // no voice on this build
   }
 }
+
+/**
+ * Whether the phone has a voice for the language. A phone without Hindi speaks Devanagari text with its default (English) voice, which is
+ * unintelligible or silent: callers use this to fall back to English. Unknown counts as yes (no speech module, no answer, an empty list
+ * while the engine is still starting): never downgrade the driver's choice on a guess.
+ */
+export async function hasVoiceFor(
+  lang: 'en' | 'hi',
+  speech: Pick<SpeechModule, 'getAvailableVoicesAsync'> | null = getSpeech(),
+): Promise<boolean> {
+  if (!speech) return true
+  try {
+    const voices = await speech.getAvailableVoicesAsync()
+    if (!voices || voices.length === 0) return true
+    return voices.some((v) => String(v.language ?? '').toLowerCase().startsWith(lang))
+  } catch {
+    return true
+  }
+}

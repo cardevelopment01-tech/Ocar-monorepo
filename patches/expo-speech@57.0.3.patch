@@ -1,0 +1,26 @@
+diff --git a/android/src/main/java/expo/modules/speech/SpeechModule.kt b/android/src/main/java/expo/modules/speech/SpeechModule.kt
+index ed8d2a7..fff6ddf 100644
+--- a/android/src/main/java/expo/modules/speech/SpeechModule.kt
++++ b/android/src/main/java/expo/modules/speech/SpeechModule.kt
+@@ -1,5 +1,6 @@
+ package expo.modules.speech
+ 
++import android.media.AudioAttributes
+ import android.os.Bundle
+ import android.speech.tts.TextToSpeech
+ import android.speech.tts.UtteranceProgressListener
+@@ -151,6 +152,14 @@ class SpeechModule : Module() {
+         // synchronize because in some cases this runs on another thread and _textToSpeech is null
+         synchronized(this@SpeechModule) {
+           ttsState = TtsState.READY
++          // Ocar patch: speak on the ALARM stream (alarm volume) instead of media, so the ride request announcement is as loud as the ring
++          // (the driver app's ring also plays on the alarm stream) and does not follow a media volume the driver keeps low.
++          _textToSpeech!!.setAudioAttributes(
++            AudioAttributes.Builder()
++              .setUsage(AudioAttributes.USAGE_ALARM)
++              .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
++              .build()
++          )
+           _textToSpeech!!.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+ 
+             override fun onStart(utteranceId: String) {
