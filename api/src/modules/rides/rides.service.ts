@@ -25,6 +25,10 @@ import { driverFare } from '@/modules/offers/driver-fare'
 import { normalizeCode, reserveRedemption } from '@/modules/offers/offers.repository'
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
+import { expireRideRequests } from '@/modules/rides/request-expiry'
+import { tellBooked, tellNoDrivers, keepSearchingAdvance, broadcastDataFor } from '@/modules/rides/advance.service'
+import { getAdvancePolicy, lateCancelFee, lateCancelSummary } from '@/lib/advance-policy'
+import { advanceBookingEventsTotal } from '@/observability/metrics'
 import { enqueueBreadcrumb, flushBreadcrumbs } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
 import { publishNearbyCar } from '@/websocket/nearby-bus'
@@ -55,7 +59,7 @@ import {
   getDriverWallet,
   getMinWalletBalance,
 } from '@/modules/payments/payments.service'
-import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowWalletBalance, notifyRideEvent, sendRideRequestGonePush, type RideRequestGoneReason } from '@/modules/notifications/notifications.service'
+import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowWalletBalance, notifyRideEvent } from '@/modules/notifications/notifications.service'
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
@@ -1132,10 +1136,13 @@ export async function createBooking(userId: bigint, data: BookingRequest) {
       { delay, attempts: 3, removeOnComplete: true }
     )
     if (job.id) await repo.setAdvanceMetaJobId(BigInt(ride.id), job.id)
+    void tellBooked(userId, BigInt(ride.id), scheduledForDate, ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES)
+    const lateCancel = lateCancelSummary(await getAdvancePolicy().catch(() => ({ lateCancelEnabled: false }) as never))
 
     return {
       rideId:          ride.id.toString(),
       status:          'scheduled',
+      lateCancel,
       scheduledFor:    data.scheduledFor,
       estimatedFare:   fareEstimate.breakdown.total,
       surgeMultiplier: fareEstimate.surge_multiplier,
@@ -1220,17 +1227,6 @@ async function promoteNextRoundIfIdle(rideId: bigint): Promise<void> {
   // The earliest round still waiting on its timer (not "last round that wrote rows": a round that found nobody writes none).
   for (const job of jobs) {
     if (job && await job.isDelayed()) { await job.promote(); return }
-  }
-}
-
-/** A ride request is over for these drivers: end it on their open apps (socket) and silence the push on their locked phones. */
-function expireRideRequests(driverIds: Iterable<string>, rideId: bigint, reason: RideRequestGoneReason): void {
-  const ids = [...driverIds]
-  for (const id of ids) socketEvents.sendRequestExpired(id, rideId.toString())
-  if (ids.length > 0) {
-    void sendRideRequestGonePush(rideId.toString(), ids, reason).catch((err: unknown) => {
-      log.error({ err, rideId }, 'ride-request gone push failed')
-    })
   }
 }
 
@@ -2209,8 +2205,10 @@ async function chargeCancellationFee(
   ride: RideCore,
   userId: bigint,
   rideId: bigint,
+  /** A fee already worked out (the advance-booking late-cancel fee); without it the rate card's fee is read. */
+  amountOverride?: number,
 ): Promise<number> {
-  const feeAmount = await readCancellationFee(
+  const feeAmount = amountOverride ?? await readCancellationFee(
     client,
     BigInt(ride.category_id),
     ride.ride_type,
@@ -2280,6 +2278,58 @@ async function chargeCancellationFee(
   return feeAmount
 }
 
+/** What a late cancellation of this advance booking would cost right now under the admin's policy. Zero for anything that is not one. */
+async function lateCancelQuote(ride: RideCore): Promise<{ amount: number; freeUntil: Date | null; windowMin: number }> {
+  // An ordinary ride has no scheduled time: skip the policy lookup entirely.
+  if (!ride.scheduled_for) return { amount: 0, freeUntil: null, windowMin: 0 }
+  const policy = await getAdvancePolicy()
+  if (!policy.lateCancelEnabled) return { amount: 0, freeUntil: null, windowMin: policy.lateCancelWindowMin }
+  const ctx = await repo.getAdvanceFeeContext(BigInt(ride.id))
+  if (!ctx.isAdvance) return { amount: 0, freeUntil: null, windowMin: policy.lateCancelWindowMin }
+  const r = lateCancelFee(policy, { fare: ctx.fare, scheduledFor: new Date(ride.scheduled_for), now: new Date(), driverAccepted: ride.status === 'accepted' })
+  return { amount: r.amount, freeUntil: r.freeUntil, windowMin: policy.lateCancelWindowMin }
+}
+
+/** The advance-booking terms shown to a rider before they book (search lead time, change limit, late-cancel fee if on). */
+export async function getAdvanceTerms() {
+  const policy = await getAdvancePolicy()
+  return {
+    searchLeadMin: ADVANCE_BOOKING_DISPATCH_BUFFER_MINUTES,
+    minAheadMin: MIN_ADVANCE_BOOKING_MINUTES,
+    maxAheadDays: MAX_ADVANCE_BOOKING_DAYS,
+    rescheduleMax: policy.rescheduleMax,
+    lateCancel: lateCancelSummary(policy),
+  }
+}
+
+/**
+ * What cancelling would cost this rider right now, for the confirm sheet: the exact amount (0 = free), when the free period ends, and why.
+ * Read-only; the cancel itself recomputes, so a stale preview can never under-charge.
+ */
+export async function getCancelPreview(userId: bigint, rideId: bigint) {
+  const ride = await repo.getRideCoreById(rideId)
+  if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
+  if (BigInt(ride.user_id) !== userId) throw Object.assign(new Error('Forbidden'), { httpStatus: 403 })
+  const canCancel = CANCELLABLE_BY_USER.has(ride.status)
+  const stage = cancelStageFor(ride.status)
+  let amount = 0
+  let reason: 'none' | 'late_cancel' | 'arrived' = 'none'
+  let freeUntil: Date | null = null
+  let windowMin: number | null = null
+  if (canCancel && stage === 'after_arrival') {
+    const client = await pool.connect()
+    try {
+      amount = await readCancellationFee(client, BigInt(ride.category_id), ride.ride_type, ride.origin_city_id != null ? BigInt(ride.origin_city_id) : null, rideId, ride.trip_mode === 'city' ? 'city' : 'standard')
+    } finally { client.release() }
+    if (amount > 0) reason = 'arrived'
+  } else if (canCancel) {
+    const q = await lateCancelQuote(ride)
+    amount = q.amount; freeUntil = q.freeUntil; windowMin = q.freeUntil ? q.windowMin : null
+    if (amount > 0) reason = 'late_cancel'
+  }
+  return { canCancel, status: ride.status, fee: amount, reason, freeUntil: freeUntil?.toISOString() ?? null, windowMin }
+}
+
 export async function cancelRide(
   userId: bigint,
   rideId: bigint,
@@ -2294,7 +2344,11 @@ export async function cancelRide(
   }
 
   const stage = cancelStageFor(ride.status)
-  const feeApplicable = stage === 'after_arrival'
+  // After arrival the rate card's cancellation fee applies (as always). Before that, an advance booking cancelled close to pickup after
+  // a driver accepted may carry the admin-set late-cancel fee; it is off unless an admin turned it on.
+  let lateFee = 0
+  if (stage === 'after_acceptance') lateFee = (await lateCancelQuote(ride)).amount
+  const feeApplicable = stage === 'after_arrival' || lateFee > 0
 
   const client = await pool.connect()
   try {
@@ -2311,7 +2365,8 @@ export async function cancelRide(
 
     let feeAmount = 0
     if (feeApplicable) {
-      feeAmount = await chargeCancellationFee(client, ride, userId, rideId)
+      feeAmount = await chargeCancellationFee(client, ride, userId, rideId, lateFee > 0 ? lateFee : undefined)
+      if (lateFee > 0) advanceBookingEventsTotal.inc({ event: 'late_fee_charged' })
     }
 
     await client.query(
@@ -2950,6 +3005,11 @@ export async function forceAssignGraceCheck(rideId: bigint, driverId: bigint): P
 // ── Orphaned-ride sweep (cleanup worker) ────────────────────────
 
 export async function expireStaleRequestedRide(rideId: bigint, note = 'auto-expired: no broadcast resolution', releaseOffer = false) {
+  // The dispatch watchdog (releaseOffer) found an advance booking whose rounds ended with no live offer: search again instead of closing it.
+  if (releaseOffer) {
+    const live = await repo.getRideCoreById(rideId)
+    if (live && live.status === 'requested' && live.scheduled_for && await keepSearchingAdvance(live, broadcastDataFor(live))) return
+  }
   // Only a ride that is still 'requested' may expire; one a driver accepted a moment ago must be left alone.
   const expired = await repo.updateRideStatusCAS(rideId, 'requested', 'no_drivers')
   if (!expired) return
@@ -2964,7 +3024,10 @@ export async function expireStaleRequestedRide(rideId: bigint, note = 'auto-expi
   })
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'no_drivers' })
   const noDriversRide = await repo.getRideCoreById(rideId)
-  if (noDriversRide) void notifyRideEvent('ride_no_drivers', BigInt(noDriversRide.user_id), rideId)
+  if (noDriversRide) {
+    if (noDriversRide.scheduled_for) void tellNoDrivers(BigInt(noDriversRide.user_id), rideId, new Date(noDriversRide.scheduled_for))
+    else void notifyRideEvent('ride_no_drivers', BigInt(noDriversRide.user_id), rideId)
+  }
 }
 
 export async function expireStaleAcceptedOrArrivedRide(

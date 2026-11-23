@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtIst, istDay, elapsed, fmtIstDay } from '../ist'
+import { fmtIst, istDay, elapsed, fmtIstDay, toIstInput, fromIstInput } from '../ist'
 
 describe('fmtIst', () => {
   it('shows IST regardless of the machine time zone (18:30 UTC is midnight in India)', () => {
@@ -45,4 +45,18 @@ describe('fmtIstDay', () => {
     expect(fmtIstDay('2026-11-27T04:30:00Z', now)).toBe('Fri, 27 Nov, 10:00 am')
   })
   it('dashes a missing time', () => { expect(fmtIstDay(null, now)).toBe('—') })
+})
+
+describe('datetime-local helpers (India time)', () => {
+  it('round-trips an instant through the IST box value', () => {
+    const d = new Date('2026-11-24T13:00:00Z') // 6:30 pm in India
+    expect(toIstInput(d)).toBe('2026-11-24T18:30')
+    expect(fromIstInput('2026-11-24T18:30')?.toISOString()).toBe('2026-11-24T13:00:00.000Z')
+  })
+  it('uses the Indian day across midnight', () => { expect(toIstInput(new Date('2026-11-24T19:00:00Z'))).toBe('2026-11-25T00:30') })
+  it('rejects a value that is not a date and time', () => {
+    expect(fromIstInput('')).toBeNull()
+    expect(fromIstInput('2026-11-24')).toBeNull()
+    expect(fromIstInput('nope')).toBeNull()
+  })
 })

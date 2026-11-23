@@ -118,6 +118,14 @@ export const analyticsExportTotal = new Counter({
   registers: [register],
 })
 
+// How advance bookings fare: the numbers behind "do riders get their driver". Events are a small fixed set (cardinality-safe).
+export const advanceBookingEventsTotal = new Counter({
+  name: 'advance_booking_events_total',
+  help: 'Advance booking lifecycle events',
+  labelNames: ['event'], // booked | rescheduled | dispatched | search_retry | no_drivers | late_fee_charged | admin_cancelled | reminder_24h | reminder_1h
+  registers: [register],
+})
+
 new Gauge({
   name: 'bullmq_queue_job_counts',
   help: 'BullMQ job counts by queue and state',

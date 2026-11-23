@@ -1,4 +1,5 @@
 import api from './api'
+import type { AdvancePolicy, PolicyLimits } from './advance-policy-model'
 
 export type DispatchLane = 'scheduled' | 'needs_driver'
 
@@ -55,4 +56,11 @@ export const dispatchApi = {
     if (p.limit !== undefined) params['limit'] = p.limit
     return (await api.get('/api/v1/admin/dispatch/queue', { params })).data as DispatchQueueResponse
   },
+  policy: async (): Promise<{ policy: AdvancePolicy; limits: PolicyLimits }> => (await api.get('/api/v1/admin/dispatch/policy')).data as { policy: AdvancePolicy; limits: PolicyLimits },
+  savePolicy: async (changes: Partial<AdvancePolicy>, reason: string): Promise<AdvancePolicy> =>
+    ((await api.put('/api/v1/admin/dispatch/policy', { changes, reason })).data as { policy: AdvancePolicy }).policy,
+  /** Support cancels a ride that has no driver yet. The reason is required and goes into the ride's history. */
+  cancelRide: async (rideId: string, reason: string): Promise<void> => { await api.post(`/api/v1/admin/dispatch/rides/${rideId}/cancel`, { reason }) },
+  /** Moves an advance booking to a new pickup time (ISO). */
+  rescheduleRide: async (rideId: string, scheduledFor: string, reason: string): Promise<void> => { await api.post(`/api/v1/admin/dispatch/rides/${rideId}/reschedule`, { scheduledFor, reason }) },
 }
