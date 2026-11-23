@@ -383,6 +383,12 @@ describe('the optional name', () => {
     expect(lastJob()).toMatchObject({ email: NAMED, fullName: 'Priya Das' })
   })
 
+  it('the link shows the invitee their name, role and who invited them, and nothing else (no token, no ids)', async () => {
+    const res = await request(app).get('/api/v1/admin/invites/verify').query({ token: lastJob().rawToken })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ email: NAMED, role: 'ops_admin', full_name: 'Priya Das', invited_by_name: SUPER })
+  })
+
   it('becomes the new admin name when they accept, and shows in the admin list', async () => {
     const res = await request(app).post('/api/v1/admin/invites/redeem').send({ token: lastJob().rawToken, password: 'a-long-passphrase-77' })
     expect(res.status, JSON.stringify(res.body)).toBe(201)

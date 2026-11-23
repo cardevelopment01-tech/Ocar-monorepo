@@ -13,6 +13,14 @@ export interface AdminAccount {
   created_at: string
 }
 
+/** What the person holding a valid invite link sees before choosing a password. */
+export interface InvitePreview {
+  email: string
+  role: AdminRole
+  full_name: string | null
+  invited_by_name: string | null
+}
+
 export type AdminLifecycleAction = 'role' | 'reset2fa' | 'signOut' | 'remove'
 
 export const adminAccountsApi = {
@@ -87,8 +95,8 @@ export const adminInvitesApi = {
 
   // Public — pre-flight check so accept-invite can show invalid/expired
   // before rendering the password form, instead of only failing on submit.
-  verify: async (token: string): Promise<{ email: string; role: AdminRole }> => {
-    const { data } = await api.get<{ email: string; role: AdminRole }>('/api/v1/admin/invites/verify', { params: { token } })
+  verify: async (token: string): Promise<InvitePreview> => {
+    const { data } = await api.get<InvitePreview>('/api/v1/admin/invites/verify', { params: { token } })
     return data
   },
 
