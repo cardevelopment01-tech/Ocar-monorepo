@@ -7,7 +7,7 @@ import type { AdminAccountListItem } from './admin.types'
 
 // Every column the admin list and the audit log may show. Explicit on purpose: `SELECT *` would also pull password_hash and the encrypted
 // 2FA secret into the audit log, which is append-only (it could never be cleaned up).
-export const ACCOUNT_COLUMNS = `id, code, email, role, admin_status, totp_enabled, last_login_at, created_at`
+export const ACCOUNT_COLUMNS = `id, code, email, full_name, role, admin_status, totp_enabled, last_login_at, created_at`
 
 export async function findAccount(id: bigint): Promise<AdminAccountListItem | null> {
   const res = await pool.query<AdminAccountListItem>(`SELECT ${ACCOUNT_COLUMNS} FROM admins WHERE id = $1 AND deleted_at IS NULL`, [id.toString()])

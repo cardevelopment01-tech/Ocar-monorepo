@@ -6,7 +6,7 @@ import type { AdminInviteRecord, AdminInviteListItem, CreatedAdminFromInvite } f
 // status: a pending invite past its expiry is reported as 'expired' (the row itself is only rewritten if someone tries to use it), so the list,
 // the duplicate check and the accept page all agree.
 const LIST_COLUMNS = `
-  id, email, role, invited_by,
+  id, email, full_name, role, invited_by,
   CASE WHEN status = 'pending' AND expires_at <= now() THEN 'expired' ELSE status END AS status,
   expires_at, accepted_at, accepted_admin_id, email_status, email_error, created_at, updated_at
 `
@@ -17,12 +17,13 @@ export async function createInvite(params: {
   tokenHash: string
   invitedBy: bigint
   expiresAt: Date
+  fullName?: string | null
 }): Promise<AdminInviteListItem> {
   const rows = await query<AdminInviteListItem>(
-    `INSERT INTO admin_invites (email, role, token_hash, invited_by, expires_at, email_status)
-     VALUES ($1, $2, $3, $4, $5, 'queued')
+    `INSERT INTO admin_invites (email, role, token_hash, invited_by, expires_at, email_status, full_name)
+     VALUES ($1, $2, $3, $4, $5, 'queued', $6)
      RETURNING ${LIST_COLUMNS}`,
-    [params.email, params.role, params.tokenHash, params.invitedBy.toString(), params.expiresAt]
+    [params.email, params.role, params.tokenHash, params.invitedBy.toString(), params.expiresAt, params.fullName ?? null]
   )
   return rows[0]!
 }
@@ -137,10 +138,10 @@ export async function redeemInvite(params: {
     }
 
     const inserted = await client.query<CreatedAdminFromInvite>(
-      `INSERT INTO admins (email, password_hash, role)
-       VALUES ($1, $2, $3)
+      `INSERT INTO admins (email, password_hash, role, full_name)
+       VALUES ($1, $2, $3, $4)
        RETURNING id, code, email, role`,
-      [invite.email, params.passwordHash, invite.role]
+      [invite.email, params.passwordHash, invite.role, invite.full_name]
     )
     const admin = inserted.rows[0]!
 

@@ -23,13 +23,13 @@ const app = createApp()
 const SUPER = 'inv-super@test.ocar'
 const OPS = 'inv-ops@test.ocar'
 const NEW = 'inv-new@test.ocar'
-const EMAILS = [NEW, 'inv-pw@test.ocar', 'inv-gone@test.ocar', 'inv-rs@test.ocar', 'inv-rs2@test.ocar', 'inv-rs3@test.ocar']
+const EMAILS = ['inv-name@test.ocar', NEW, 'inv-pw@test.ocar', 'inv-gone@test.ocar', 'inv-rs@test.ocar', 'inv-rs2@test.ocar', 'inv-rs3@test.ocar']
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex')
 
 let superToken: string
 let opsToken: string
 let superId: string
-const emailJobs: Array<{ email: string; rawToken: string; role?: string; inviterEmail?: string; expiresAt?: string }> = []
+const emailJobs: Array<{ email: string; rawToken: string; fullName?: string; role?: string; inviterEmail?: string; expiresAt?: string }> = []
 
 const api = (token: string) => ({
   get: (url: string) => request(app).get(url).set('Authorization', `Bearer ${token}`),
@@ -356,5 +356,37 @@ describe('the activation link in the response, resending, and whether the email 
       await deliverAdminInviteEmail(job(), false)
       expect((await row(id)).email_status).toBe('sent')
     })
+  })
+})
+
+describe('the optional name', () => {
+  const NAMED = 'inv-name@test.ocar'
+
+  it('is tidied, stored on the invite, shown in the list and passed to the email; a blank one means no name', async () => {
+    const res = await api(superToken).post('/api/v1/admin/invites', { email: NAMED, role: 'ops_admin', fullName: '  Priya \r\n Das\t  ' })
+    expect(res.status, JSON.stringify(res.body)).toBe(201)
+    expect(res.body.invite.full_name).toBe('Priya Das') // control characters and runs of spaces collapse: they could break the email's headers
+    expect(lastJob()).toMatchObject({ email: NAMED, fullName: 'Priya Das' })
+    expect((await pool.query('SELECT full_name FROM admin_invites WHERE email = $1', [NAMED])).rows[0].full_name).toBe('Priya Das')
+
+    const blank = await api(superToken).post('/api/v1/admin/invites', { email: 'inv-pw@test.ocar', role: 'ops_admin', fullName: '   ' })
+    expect(blank.status).toBe(201)
+    expect(blank.body.invite.full_name).toBeNull()
+    expect(lastJob()).not.toHaveProperty('fullName')
+  })
+
+  it('a name over 120 characters is refused, and resending keeps the name', async () => {
+    expect((await api(superToken).post('/api/v1/admin/invites', { email: 'inv-gone@test.ocar', role: 'ops_admin', fullName: 'x'.repeat(121) })).status).toBe(422)
+    const id = (await listed(NAMED))[0]!.id
+    await pool.query(`UPDATE admin_invites SET link_issued_at = now() - interval '2 minutes' WHERE id = $1`, [id])
+    expect((await api(superToken).post(`/api/v1/admin/invites/${id}/resend`)).status).toBe(200)
+    expect(lastJob()).toMatchObject({ email: NAMED, fullName: 'Priya Das' })
+  })
+
+  it('becomes the new admin name when they accept, and shows in the admin list', async () => {
+    const res = await request(app).post('/api/v1/admin/invites/redeem').send({ token: lastJob().rawToken, password: 'a-long-passphrase-77' })
+    expect(res.status, JSON.stringify(res.body)).toBe(201)
+    const list = (await api(superToken).get('/api/v1/admin/admins')).body.admins as Array<{ email: string; full_name: string | null }>
+    expect(list.find((a) => a.email === NAMED)?.full_name).toBe('Priya Das')
   })
 })
