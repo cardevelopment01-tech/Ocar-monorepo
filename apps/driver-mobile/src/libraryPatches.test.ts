@@ -18,3 +18,13 @@ describe('expo-audio patch', () => {
     expect(kt).not.toMatch(/setAudioAttributes\(AudioAttributes\.DEFAULT/)
   })
 })
+
+describe('expo-speech patch', () => {
+  it('is applied to the installed package (the ride request voice uses the alarm stream, like the ring)', () => {
+    const root = dirname(require.resolve('expo-speech/package.json'))
+    const kt = readFileSync(join(root, 'android/src/main/java/expo/modules/speech/SpeechModule.kt'), 'utf8')
+    expect(kt).toContain('Ocar patch')
+    expect(kt).toMatch(/\.setUsage\(AudioAttributes\.USAGE_ALARM\)/)
+    expect(kt).toMatch(/setAudioAttributes\(/)
+  })
+})
