@@ -119,6 +119,7 @@ router.patch('/safety/disputes/:id/resolve', requireAdmin('super_admin', 'suppor
 router.get('/rides/stats', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideStats)
 router.get('/rides', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRides)
 router.get('/rides/upcoming', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getUpcomingScheduledRides)
+router.get('/rides/:id/trail', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideTrail)
 router.get('/rides/:id', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideById)
 router.post('/rides/:id/force-resolve', requireAdmin('super_admin', 'ops_admin'), controller.forceResolveAdminRide)
 router.get('/rides/:id/assign-candidates', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getRideAssignCandidates)

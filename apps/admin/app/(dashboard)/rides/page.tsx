@@ -2,24 +2,31 @@
 import React from 'react'
 import { cardMode } from '@/lib/rate-card-mode'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Car, MapPin, Star, ChevronDown, Phone, Copy, Check, Activity, XCircle, Wallet, CalendarClock } from 'lucide-react'
+import { Car, MapPin, Star, ChevronDown, Phone, Copy, Check, Activity, XCircle, Wallet, CalendarClock, AlertTriangle, RefreshCw, Link2 } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
 import StatCard from '@/components/ui/StatCard'
-import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem, type AdminRideStop, type AdminRideDetail, type AdminRideStats } from '@/lib/admin-api'
+import ReasonDialog from '@/components/ui/ReasonDialog'
+import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem, type AdminRideStop, type AdminRideDetail, type AdminRideStats, type AdminRideTrailPoint } from '@/lib/admin-api'
+import { extractErrorMessage } from '@/lib/http-errors'
+import { fmtIst, fmtIstClock, istDay } from '@/lib/ist'
 import { formatTotal, hasNextPage, CAPPED_TOTAL_HINT } from '@/lib/format-total'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 import AssignDriverDrawer from './AssignDriverDrawer'
 import BookedTimeBlock from '@/components/rides/BookedTimeBlock'
+import RideOffers, { offerSummary } from '@/components/rides/RideOffers'
+import RideMap from '@/components/rides/RideMap'
 
-function fmt(iso: string | null) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-}
+const fmt = (iso: string | null) => fmtIst(iso)
+
+// Refresh cadence for the live view. Each tick is the list page + stats (+ upcoming), all index-backed, and only runs while the tab is visible and nothing is open.
+const LIVE_REFRESH_MS = 30_000
+// Statuses where a driver is (or was just) on the way or on the trip: the map is the first thing an operator wants.
+const MAP_OPEN_STATUSES = ['accepted', 'driver_arrived', 'in_progress', 'returning']
 
 function initials(name: string | null | undefined) {
   const parts = (name ?? '').trim().split(/\s+/)
@@ -38,9 +45,9 @@ function Avatar({ name, tone = 'primary' }: { name: string | null | undefined; t
 
 // Secondary/investigative ride-detail info: collapsed by default so the
 // primary trip summary isn't buried under a scroll of equal-weight cards.
-function Section({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+function Section({ title, defaultOpen = false, onToggle, children }: { title: string; defaultOpen?: boolean; onToggle?: (open: boolean) => void; children: React.ReactNode }) {
   return (
-    <details open={defaultOpen} className="bg-surface-2 rounded-xl border border-border-light group">
+    <details open={defaultOpen} onToggle={onToggle ? e => onToggle((e.currentTarget as HTMLDetailsElement).open) : undefined} className="bg-surface-2 rounded-xl border border-border-light group">
       <summary className="flex items-center justify-between px-3 py-2.5 cursor-pointer select-none list-none text-xs font-semibold text-text-secondary [&::-webkit-details-marker]:hidden">
         {title}
         <ChevronDown className="w-3.5 h-3.5 text-text-muted transition-transform duration-150 motion-reduce:transition-none group-open:rotate-180" />
@@ -54,26 +61,33 @@ const LIMIT = 20
 
 function RidesPageContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
   const [rides, setRides] = useState<AdminRideItem[]>([])
   const [total, setTotal] = useState(0)
   // the API stops counting at 10,000 rows (counting every ride is a full scan); show "10,000+" instead of a wrong exact number
   const [totalCapped, setTotalCapped] = useState(false)
   const [pages, setPages] = useState(1)
-  const [page, setPage] = useState(1)
+  // Filters live in the URL, so a refresh, a shared link or the browser's Back button keeps the view.
+  const [page, setPage] = useState(Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1))
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [rideTypeFilter, setRideTypeFilter] = useState('')
+  const [search, setSearch] = useState(searchParams.get('q') ?? '')
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') ?? '')
+  const [rideTypeFilter, setRideTypeFilter] = useState(searchParams.get('type') ?? '')
   const [cashFlagFilter, setCashFlagFilter] = useState(searchParams.get('cash') === 'flagged' ? 'flagged' : '')
-  const [cityFilter, setCityFilter] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [attentionOnly, setAttentionOnly] = useState(searchParams.get('attention') === '1')
+  const [cityFilter, setCityFilter] = useState(searchParams.get('city') ?? '')
+  const [dateFrom, setDateFrom] = useState(searchParams.get('from') ?? '')
+  const [dateTo, setDateTo] = useState(searchParams.get('to') ?? '')
+  const [live, setLive] = useState(true)
+  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null)
   const [cities, setCities] = useState<AdminCity[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Only the newest request may write state: with fast filter changes an older, slower response could otherwise overwrite a newer one.
   const requestId = useRef(0)
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('q') ?? '')
 
   useEffect(() => { cityApi.list().then(setCities).catch(() => setCities([])) }, [])
 
@@ -82,21 +96,40 @@ function RidesPageContent() {
   const [detailStops, setDetailStops] = useState<AdminRideStop[]>([])
   const [detail, setDetail] = useState<AdminRideDetail | null>(null)
   const [resolving, setResolving] = useState(false)
+  const [resolveTarget, setResolveTarget] = useState<'complete' | 'cancel' | null>(null)
+  const [actionError, setActionError] = useState('')
+  const [detailError, setDetailError] = useState(false)
+  const [detailTick, setDetailTick] = useState(0)
+  const [mapOpen, setMapOpen] = useState(false)
+  const [trail, setTrail] = useState<AdminRideTrailPoint[]>([])
+  const [trailState, setTrailState] = useState<'loading' | 'ready' | 'failed' | 'none'>('none')
 
   const [upcoming, setUpcoming] = useState<AdminUpcomingRideItem[]>([])
   const [upcomingLoading, setUpcomingLoading] = useState(true)
 
   const [stats, setStats] = useState<AdminRideStats | null>(null)
-  useEffect(() => { adminRideApi.stats().then(setStats).catch(() => setStats(null)) }, [])
+  // A failed refresh keeps the last numbers on screen instead of blanking the cards.
+  const loadStats = useCallback(() => { adminRideApi.stats().then(setStats).catch(() => {}) }, [])
+  useEffect(() => { loadStats() }, [loadStats])
 
-  const [copiedId, setCopiedId] = useState(false)
+  const [copied, setCopied] = useState<'id' | 'link' | null>(null)
+  async function copyText(text: string, what: 'id' | 'link') {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(what)
+      setTimeout(() => setCopied(null), 1500)
+    } catch {
+      // Clipboard is only available on https and with permission; say so instead of looking like a dead button.
+      setActionError('Could not copy. Select the text and copy it by hand.')
+    }
+  }
 
-  const fetchUpcoming = useCallback(async () => {
-    setUpcomingLoading(true)
+  const fetchUpcoming = useCallback(async (silent = false) => {
+    if (!silent) setUpcomingLoading(true)
     try {
       setUpcoming(await adminRideApi.upcoming())
     } catch {
-      setUpcoming([])
+      if (!silent) setUpcoming([])
     } finally {
       setUpcomingLoading(false)
     }
@@ -107,51 +140,100 @@ function RidesPageContent() {
   // Fetch the ride's stop timeline (incl. wait charges) when a ride is opened —
   // the list row doesn't carry stops. Needed for wait-charge dispute resolution.
   useEffect(() => {
+    setActionError(''); setDetailError(false)
     if (!selected) { setDetailStops([]); setDetail(null); return }
     let cancelled = false
     adminRideApi.getById(selected.id)
       .then(d => { if (!cancelled) { setDetailStops(d.stops ?? []); setDetail(d) } })
-      .catch(() => { if (!cancelled) { setDetailStops([]); setDetail(null) } })
+      .catch(() => { if (!cancelled) { setDetailStops([]); setDetail(null); setDetailError(true) } })
     return () => { cancelled = true }
-  }, [selected?.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, detailTick])
 
-  async function handleForceResolve(action: 'complete' | 'cancel') {
+  // The map and the driver's route load only when the section is open, and only for rides that have had a driver.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setMapOpen(!!selected && MAP_OPEN_STATUSES.includes(selected.status)) }, [selected?.id, selected?.status])
+  useEffect(() => {
+    setTrail([])
+    if (!selected || !mapOpen || !selected.driver_name) { setTrailState('none'); return }
+    let cancelled = false
+    setTrailState('loading')
+    adminRideApi.trail(selected.id)
+      .then(pts => { if (!cancelled) { setTrail(pts); setTrailState(pts.length ? 'ready' : 'none') } })
+      .catch(() => { if (!cancelled) setTrailState('failed') })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, mapOpen])
+
+  // A forced outcome moves a live trip's state and money, so it needs a typed reason; the API stores it in the ride's history.
+  async function handleForceResolve(action: 'complete' | 'cancel', reason: string) {
     if (!selected) return
     setResolving(true)
+    setActionError('')
     try {
-      await adminRideApi.forceResolve(selected.id, action)
+      await adminRideApi.forceResolve(selected.id, action, reason.trim())
+      setResolveTarget(null)
       setSelected(null)
-      await fetchRides()
+      await fetchRides(true)
+      loadStats()
+    } catch (err) {
+      setResolveTarget(null)
+      setActionError(extractErrorMessage(err, `Could not force ${action} this ride. It may have changed: refresh and try again.`))
     } finally {
       setResolving(false)
     }
   }
 
-  // Deep link from other admin pages (e.g. SOS "View ride"), opens the ride
-  // detail directly regardless of the current list/filters/pagination.
+  // Deep link from other admin pages (e.g. SOS "View ride") opens the ride directly, whatever the list's filters or page.
+  // Read once on arrival; after that the URL follows the selection (below), not the other way round.
   useEffect(() => {
     const rideId = searchParams.get('ride')
     if (!rideId) return
     let cancelled = false
     adminRideApi.getById(rideId).then(d => { if (!cancelled) setSelected(d) }).catch(() => {})
     return () => { cancelled = true }
-  }, [searchParams])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Keep the address bar in step with the view. The first run is skipped so an arriving ?ride= is not stripped before it loads.
+  const firstUrlSync = useRef(true)
+  useEffect(() => {
+    if (firstUrlSync.current) { firstUrlSync.current = false; return }
+    const p = new URLSearchParams()
+    if (debouncedSearch) p.set('q', debouncedSearch)
+    if (statusFilter) p.set('status', statusFilter)
+    if (rideTypeFilter) p.set('type', rideTypeFilter)
+    if (cityFilter) p.set('city', cityFilter)
+    if (dateFrom) p.set('from', dateFrom)
+    if (dateTo) p.set('to', dateTo)
+    if (cashFlagFilter) p.set('cash', cashFlagFilter)
+    if (attentionOnly) p.set('attention', '1')
+    if (page > 1) p.set('page', String(page))
+    if (selected) p.set('ride', selected.id)
+    const qs = p.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selected?.id is the only part of selected that matters here
+  }, [debouncedSearch, statusFilter, rideTypeFilter, cityFilter, dateFrom, dateTo, cashFlagFilter, attentionOnly, page, selected?.id, pathname, router])
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => { setDebouncedSearch(search); setPage(1) }, 400)
+    debounceRef.current = setTimeout(() => {
+      // Only a real change of the search resets paging (not the first run, which would drop a ?page= the URL arrived with).
+      setDebouncedSearch(prev => { if (prev !== search) setPage(1); return search })
+    }, 400)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [search])
 
-  const fetchRides = useCallback(async () => {
+  const fetchRides = useCallback(async (silent = false) => {
     const myRequest = ++requestId.current
-    setLoading(true)
+    if (!silent) setLoading(true)
     try {
       const params: Parameters<typeof adminRideApi.list>[0] = { page, limit: LIMIT }
       if (statusFilter)    params.status    = statusFilter
       if (rideTypeFilter)  params.ride_type = rideTypeFilter
       if (debouncedSearch) params.search    = debouncedSearch
       if (cashFlagFilter)  params.cashDiscrepancy = true
+      if (attentionOnly)   params.attention = true
       if (cityFilter)      params.cityId    = parseInt(cityFilter, 10)
       if (dateFrom)         params.dateFrom  = dateFrom
       if (dateTo)           params.dateTo    = dateTo
@@ -161,18 +243,33 @@ function RidesPageContent() {
       setTotal(data.pagination.total)
       setTotalCapped(data.pagination.total_capped === true)
       setPages(data.pagination.pages)
-    } catch {
+      setLoadError('')
+      setRefreshedAt(new Date())
+    } catch (err) {
       if (myRequest !== requestId.current) return
-      setRides([])
-      setTotal(0)
-      setTotalCapped(false)
-      setPages(1)
+      // Say the load failed. An empty table here would read as "no rides", which is the wrong thing to believe in an outage.
+      setLoadError(extractErrorMessage(err, 'Could not load rides.'))
+      if (!silent) { setRides([]); setTotal(0); setTotalCapped(false); setPages(1) }
     } finally {
       if (myRequest === requestId.current) setLoading(false)
     }
-  }, [page, statusFilter, rideTypeFilter, debouncedSearch, cashFlagFilter, cityFilter, dateFrom, dateTo])
+  }, [page, statusFilter, rideTypeFilter, debouncedSearch, cashFlagFilter, attentionOnly, cityFilter, dateFrom, dateTo])
 
   useEffect(() => { void fetchRides() }, [fetchRides])
+
+  const refreshAll = useCallback(() => { void fetchRides(true); loadStats(); void fetchUpcoming(true) }, [fetchRides, loadStats, fetchUpcoming])
+  // Live view: refresh on a timer while the tab is visible and nothing is open (a refresh must never reshuffle rows under an open ride or dialog),
+  // and once more as soon as the tab comes back to the front.
+  useEffect(() => {
+    if (!live || selected || assignTarget || resolveTarget) return
+    const tick = () => { if (document.visibilityState === 'visible') refreshAll() }
+    const id = setInterval(tick, LIVE_REFRESH_MS)
+    document.addEventListener('visibilitychange', tick)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick) }
+  }, [live, selected, assignTarget, resolveTarget, refreshAll])
+
+  const datePreset = (from: string, to: string) => { setDateFrom(from); setDateTo(to); setPage(1) }
+  const presetActive = (daysFrom: number, daysTo: number) => dateFrom === istDay(daysFrom) && dateTo === istDay(daysTo)
 
   const columns = [
     {
@@ -252,7 +349,7 @@ function RidesPageContent() {
       ),
     },
     {
-      key: 'requested_at', header: 'Time',
+      key: 'requested_at', header: 'Time (IST)',
       render: (r: AdminRideItem) => <span className="text-text-muted text-xs whitespace-nowrap">{fmt(r.requested_at)}</span>,
     },
     {
@@ -263,16 +360,11 @@ function RidesPageContent() {
             href={`tel:${r.user_phone}`}
             onClick={e => e.stopPropagation()}
             title={`Call ${r.user_name ?? r.user_phone}`}
+            aria-label={`Call ${r.user_name ?? r.user_phone}`}
             className="p-1.5 rounded-lg text-text-muted hover:text-primary hover:bg-surface-2 transition-colors"
           >
             <Phone className="w-3.5 h-3.5" />
           </a>
-          <button
-            onClick={e => { e.stopPropagation(); setSelected(r) }}
-            className="px-3 py-1 text-xs font-semibold border border-border rounded-lg hover:bg-surface-2 transition-colors text-text-secondary"
-          >
-            View
-          </button>
         </div>
       ),
     },
@@ -287,8 +379,19 @@ function RidesPageContent() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-text-primary">Rides</h2>
-            <p className="text-xs text-text-muted"><span title={totalCapped ? CAPPED_TOTAL_HINT : undefined}>{formatTotal(total, totalCapped)}</span> total rides</p>
+            <p className="text-xs text-text-muted"><span title={totalCapped ? CAPPED_TOTAL_HINT : undefined}>{loadError && rides.length === 0 ? '—' : formatTotal(total, totalCapped)}</span> total rides</p>
           </div>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-text-muted">
+          {refreshedAt && <span aria-live="off">Updated {fmtIstClock(refreshedAt)} IST</span>}
+          <label className="inline-flex items-center gap-1.5 cursor-pointer select-none text-text-secondary font-medium">
+            <input type="checkbox" checked={live} onChange={e => setLive(e.target.checked)} className="accent-primary" />
+            Live
+          </label>
+          <button onClick={refreshAll} aria-label="Refresh now" title="Refresh now"
+            className="p-1.5 rounded-lg border border-border text-text-secondary hover:bg-surface-2 transition-colors">
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
@@ -302,7 +405,7 @@ function RidesPageContent() {
       {!upcomingLoading && upcoming.length > 0 && (
         <div className="admin-card">
           <h3 className="text-sm font-bold text-text-primary mb-3">
-            Upcoming scheduled rides ({upcoming.length})
+            Upcoming scheduled rides ({upcoming.length}{upcoming.length >= 50 ? ', first 50' : ''})
           </h3>
           <div className="flex flex-col gap-2">
             {upcoming.map(r => (
@@ -322,7 +425,7 @@ function RidesPageContent() {
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-xs font-semibold text-text-primary">
-                    {new Date(r.scheduled_for).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })}
+                    {fmtIst(r.scheduled_for)}
                   </p>
                   {r.is_stuck ? (
                     <p className="text-[11px] font-semibold text-red-600">Stuck, sweep may have failed</p>
@@ -337,20 +440,36 @@ function RidesPageContent() {
       )}
 
       <div className="admin-card">
+        <div className="mb-3 flex items-center gap-2 flex-wrap" role="group" aria-label="Quick filters">
+          <button type="button" aria-pressed={attentionOnly} onClick={() => { setAttentionOnly(v => !v); setPage(1) }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+              attentionOnly ? 'bg-danger text-white border-danger' : 'bg-surface border-border text-text-secondary hover:bg-surface-2'}`}>
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Needs attention{stats && Number(stats.needs_attention_count) > 0 ? ` (${Number(stats.needs_attention_count).toLocaleString('en-IN')})` : ''}
+          </button>
+          <span className="w-px h-5 bg-border-light mx-1" aria-hidden />
+          {([['Today', 0, 0], ['Yesterday', 1, 1], ['Last 7 days', 6, 0]] as const).map(([label, from, to]) => (
+            <button key={label} type="button" aria-pressed={presetActive(from, to)} onClick={() => presetActive(from, to) ? datePreset('', '') : datePreset(istDay(from), istDay(to))}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+                presetActive(from, to) ? 'bg-primary text-white border-primary' : 'bg-surface border-border text-text-secondary hover:bg-surface-2'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="mb-4">
           <FilterBar
             search={search}
             onSearch={setSearch}
-            searchPlaceholder="Search by user or driver name/phone…"
+            searchPlaceholder="Name, phone or ride ID…"
             actions={
               <>
                 <input
-                  type="date" value={dateFrom}
+                  type="date" value={dateFrom} aria-label="From date"
                   onChange={e => { setDateFrom(e.target.value); setPage(1) }}
                   className="px-3 py-2 text-sm bg-surface border border-border rounded-xl text-text-secondary focus:outline-none focus:border-primary"
                 />
                 <input
-                  type="date" value={dateTo}
+                  type="date" value={dateTo} aria-label="To date"
                   onChange={e => { setDateTo(e.target.value); setPage(1) }}
                   className="px-3 py-2 text-sm bg-surface border border-border rounded-xl text-text-secondary focus:outline-none focus:border-primary"
                 />
@@ -368,9 +487,11 @@ function RidesPageContent() {
                 options: [
                   { value: 'scheduled',   label: 'Scheduled'   },
                   { value: 'requested',   label: 'Requested'   },
+                  { value: 'no_drivers',  label: 'No Drivers'  },
                   { value: 'accepted',    label: 'Accepted'    },
                   { value: 'driver_arrived', label: 'Arrived'  },
                   { value: 'in_progress', label: 'In Progress' },
+                  { value: 'returning',   label: 'Returning'   },
                   { value: 'completed',   label: 'Completed'   },
                   { value: 'cancelled',   label: 'Cancelled'   },
                 ],
@@ -399,12 +520,18 @@ function RidesPageContent() {
             ]}
           />
         </div>
+        {loadError && (
+          <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger-light px-3 py-2 text-xs text-danger">
+            <span className="font-semibold">{loadError}{rides.length > 0 ? ' The list below may be out of date.' : ''}</span>
+            <button onClick={() => void fetchRides()} className="font-semibold underline flex-shrink-0">Retry</button>
+          </div>
+        )}
         <DataTable
           isLoading={loading}
           columns={columns as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
           data={rides as unknown as Record<string, unknown>[]}
           onRowClick={row => setSelected(row as unknown as AdminRideItem)}
-          emptyMessage="No rides match your filters"
+          emptyMessage={loadError ? 'Rides could not be loaded' : attentionOnly ? 'Nothing needs attention right now' : 'No rides match your filters'}
         />
         {pages > 1 && (
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-border-light">
@@ -453,35 +580,54 @@ function RidesPageContent() {
                 </a>
               )}
               <button
-                onClick={() => {
-                  void navigator.clipboard.writeText(selected.id)
-                  setCopiedId(true)
-                  setTimeout(() => setCopiedId(false), 1500)
-                }}
+                onClick={() => void copyText(selected.id, 'id')}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors"
               >
-                {copiedId ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedId ? 'Copied' : 'Copy ID'}
+                {copied === 'id' ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied === 'id' ? 'Copied' : 'Copy ID'}
+              </button>
+              <button
+                onClick={() => void copyText(`${window.location.origin}${pathname}?ride=${selected.id}`, 'link')}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors"
+              >
+                {copied === 'link' ? <Check className="w-3.5 h-3.5 text-success" /> : <Link2 className="w-3.5 h-3.5" />}
+                {copied === 'link' ? 'Copied' : 'Copy link'}
               </button>
               {(selected.status === 'in_progress' || selected.status === 'returning') && (
-                <>
+                <div className="ml-auto flex items-center gap-1.5">
                   <button
                     disabled={resolving}
-                    onClick={() => void handleForceResolve('cancel')}
-                    className="ml-auto px-2.5 py-1.5 text-xs font-semibold bg-danger text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+                    onClick={() => setResolveTarget('cancel')}
+                    className="px-2.5 py-1.5 text-xs font-semibold bg-danger text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
                   >
                     Force cancel
                   </button>
                   <button
                     disabled={resolving}
-                    onClick={() => void handleForceResolve('complete')}
+                    onClick={() => setResolveTarget('complete')}
                     className="px-2.5 py-1.5 text-xs font-semibold bg-success text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
                   >
                     Force complete
                   </button>
-                </>
+                </div>
               )}
             </div>
+
+            {actionError && (
+              <div role="alert" className="rounded-xl border border-danger/30 bg-danger-light px-3 py-2 text-xs font-semibold text-danger">{actionError}</div>
+            )}
+            {detailError && (
+              <div role="alert" className="rounded-xl border border-warning/40 bg-warning-light px-3 py-2 text-xs text-text-primary flex items-center justify-between gap-3">
+                <span>Full details could not be loaded. Fare breakdown, offers and the map are missing.</span>
+                <button onClick={() => setDetailTick(t => t + 1)} className="font-semibold underline flex-shrink-0">Retry</button>
+              </div>
+            )}
+            {detail && (detail.category_name || detail.origin_city) && (
+              <p className="text-xs text-text-muted -mt-2">
+                {[detail.category_name, detail.origin_city && detail.destination_city && detail.origin_city !== detail.destination_city
+                  ? `${detail.origin_city} → ${detail.destination_city}` : detail.origin_city].filter(Boolean).join(' · ')}
+              </p>
+            )}
 
             {(selected.status === 'in_progress' || selected.status === 'returning') && (
               <div className={selected.review_flagged_at
@@ -515,7 +661,9 @@ function RidesPageContent() {
                 {selected.driver_name && <Avatar name={selected.driver_name} tone="muted" />}
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-text-secondary mb-0.5">Driver</p>
-                  <p className="font-semibold text-text-primary text-sm truncate">{selected.driver_name ?? 'Unassigned'}</p>
+                  {selected.driver_name && detail?.driver_id
+                    ? <Link href={`/drivers/${detail.driver_id}`} className="font-semibold text-primary text-sm truncate block hover:underline">{selected.driver_name}</Link>
+                    : <p className="font-semibold text-text-primary text-sm truncate">{selected.driver_name ?? 'Unassigned'}</p>}
                   <p className="text-xs text-text-muted">{selected.driver_phone ?? ''}</p>
                 </div>
               </div>
@@ -545,6 +693,27 @@ function RidesPageContent() {
                 <p className="text-2xl font-bold text-text-primary mt-3">₹{parseFloat(selected.fare).toLocaleString('en-IN')}</p>
               )}
             </div>
+
+            {/* offers is absent until the API that sends it is deployed: the web side may go out first. */}
+            {detail && detail.offers && (
+              <Section title={`Dispatch history (${detail.offers.length})`} defaultOpen={!selected.driver_name || ['requested', 'no_drivers', 'scheduled'].includes(selected.status)}>
+                <p className="sr-only">{offerSummary(detail.offers)}</p>
+                <RideOffers offers={detail.offers} />
+              </Section>
+            )}
+
+            {detail && (detail.origin_lat != null && detail.origin_lng != null) && (
+              <Section title="Map and route" defaultOpen={mapOpen} onToggle={setMapOpen}>
+                {mapOpen && (
+                  <RideMap
+                    pickup={{ lat: detail.origin_lat, lng: detail.origin_lng }}
+                    drop={detail.destination_lat != null && detail.destination_lng != null ? { lat: detail.destination_lat, lng: detail.destination_lng } : null}
+                    trail={trail}
+                    trailState={trailState}
+                  />
+                )}
+              </Section>
+            )}
 
             {detail && [detail.base_fare, detail.distance_fare, detail.time_fare, detail.stop_fare, detail.hour_surcharge, detail.waiting_fare, detail.overage_fare, detail.surge_fare, detail.overtimeFare != null ? String(detail.overtimeFare) : null, detail.pickup_wait_charge, detail.toll_charge, detail.refund_amount].some(v => v && parseFloat(v) > 0) && (
               <Section title="Fare breakdown">
@@ -740,6 +909,19 @@ function RidesPageContent() {
           </div>
         )}
       </SlideOver>
+
+      <ReasonDialog
+        open={resolveTarget !== null}
+        title={resolveTarget === 'cancel' ? `Force cancel ride #${selected?.id ?? ''}?` : `Force complete ride #${selected?.id ?? ''}?`}
+        description={resolveTarget === 'cancel'
+          ? 'This ends the trip as cancelled and releases the driver. It is recorded in the ride history with your reason, and cannot be undone from here.'
+          : 'This ends the trip as completed and skips any stops the driver did not finish. It is recorded in the ride history with your reason, and cannot be undone from here.'}
+        confirmLabel={resolveTarget === 'cancel' ? 'Force cancel' : 'Force complete'}
+        variant={resolveTarget === 'cancel' ? 'danger' : 'warning'}
+        loading={resolving}
+        onCancel={() => setResolveTarget(null)}
+        onConfirm={reason => { if (resolveTarget) void handleForceResolve(resolveTarget, reason) }}
+      />
 
       <AssignDriverDrawer
         ride={assignTarget}
