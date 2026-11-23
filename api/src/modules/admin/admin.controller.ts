@@ -1070,6 +1070,20 @@ export async function getAdminSosAlerts(
   }
 }
 
+export async function getAdminSosDetail(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const rawId = req.params["id"]!;
+    if (!/^\d+$/.test(rawId)) throw createHttpError(AppErrors.NOT_FOUND);
+    res.json(await sosService.getSosAlertDetail(BigInt(rawId)));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function acknowledgeAdminSos(
   req: Request,
   res: Response,

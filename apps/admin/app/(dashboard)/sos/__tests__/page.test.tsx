@@ -11,6 +11,12 @@ vi.mock('@/lib/safety-api', () => ({ safetyApi: api }))
 vi.mock('@/lib/socket', () => ({
   getAdminSocket: () => ({ on: (e: string, fn: () => void) => { socket.handlers[e] = fn }, off: vi.fn() }),
 }))
+const alarm = vi.hoisted(() => ({ soundAlarm: vi.fn(), notifyDesktop: vi.fn() }))
+vi.mock('@/lib/sos-alarm', () => ({
+  soundAlarm: alarm.soundAlarm, notifyDesktop: alarm.notifyDesktop, primeAlarm: vi.fn(), askDesktopPermission: vi.fn(),
+  isAlarmMuted: () => false, setAlarmMuted: vi.fn(), desktopPermission: () => 'granted',
+}))
+vi.mock('../SosDetailPanel', () => ({ default: ({ id }: { id: string | null }) => (id ? <div>detail panel for {id}</div> : null) }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 
 import SOSPage from '../page'
@@ -52,26 +58,26 @@ describe('SOS page', () => {
   it('keeps the last alerts on screen, with a warning, when a later refresh fails', async () => {
     respond([alert()])
     render(<SOSPage />)
-    expect(await screen.findByText(/waiting for someone to acknowledge/i)).toBeTruthy()
+    expect(await screen.findByText(/waiting to be acknowledged/i)).toBeTruthy()
     // a new-alert push from the socket makes the page reload; this time the server is unreachable
     api.getSosAlerts.mockRejectedValue(new Error('network'))
     act(() => { socket.handlers['sos:alert']!() })
     expect(await screen.findByText(/can.t reach the server/i)).toBeTruthy()
-    expect(screen.getByText(/waiting for someone to acknowledge/i)).toBeTruthy()
+    expect(screen.getByText(/waiting to be acknowledged/i)).toBeTruthy()
     expect(screen.queryByText(/no active sos alerts/i)).toBeNull()
   })
 
   it('shows an active alert with the waiting line, and a warning when there is no location', async () => {
     respond([alert({ location_lat: null, location_lng: null })])
     render(<SOSPage />)
-    expect(await screen.findByText(/waiting for someone to acknowledge/i)).toBeTruthy()
+    expect(await screen.findByText(/waiting to be acknowledged/i)).toBeTruthy()
     expect(screen.getByText(/no location shared/i)).toBeTruthy()
   })
 
   it('counts the stat cards from the server totals, not from the rows on screen', async () => {
     respond([alert()], [alert()])
     render(<SOSPage />)
-    await screen.findByText(/waiting for someone/i)
+    await screen.findByText(/waiting to be acknowledged/i)
     // 1 + 0 + 0 open, 7 in total, though only one row was returned
     await waitFor(() => expect(screen.getByText('7')).toBeTruthy())
   })
@@ -133,5 +139,30 @@ describe('SOS page', () => {
     render(<SOSPage />)
     expect(await screen.findByText('Resolved by ops@ocar.in')).toBeTruthy()
     expect(screen.getByText('“Rider safe”')).toBeTruthy()
+  })
+
+  it('sounds the alarm for an alert that arrives after the page opened, never for the ones already there', async () => {
+    respond([alert({ id: '7' })])
+    render(<SOSPage />)
+    await screen.findByText(/waiting to be acknowledged/i)
+    expect(alarm.soundAlarm).not.toHaveBeenCalled()
+    respond([alert({ id: '7' }), alert({ id: '8', user_name: 'Bikash Nayak' })])
+    act(() => { socket.handlers['sos:alert']!() })
+    await waitFor(() => expect(alarm.soundAlarm).toHaveBeenCalledTimes(1))
+    expect(alarm.notifyDesktop).toHaveBeenCalledWith('New SOS alert', expect.stringContaining('Bikash Nayak'))
+    // the same alert on the next refresh is not announced twice
+    act(() => { socket.handlers['sos:alert']!() })
+    await waitFor(() => expect(api.getSosAlerts.mock.calls.length).toBeGreaterThanOrEqual(6))
+    expect(alarm.soundAlarm).toHaveBeenCalledTimes(1)
+  })
+
+  it('a filter tab asks the server for that status, and Details opens the panel', async () => {
+    respond([alert()])
+    const user = userEvent.setup()
+    render(<SOSPage />)
+    await user.click(await screen.findByRole('tab', { name: 'Resolved' }))
+    await waitFor(() => expect(api.getSosAlerts).toHaveBeenCalledWith({ limit: 25, status: 'resolved' }))
+    await user.click(screen.getByRole('button', { name: /details & map/i }))
+    expect(await screen.findByText('detail panel for 7')).toBeTruthy()
   })
 })
