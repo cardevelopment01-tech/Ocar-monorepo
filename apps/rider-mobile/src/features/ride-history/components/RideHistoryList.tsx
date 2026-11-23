@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useNavClearance } from '@/features/home/FloatingTabBar'
@@ -11,6 +11,10 @@ import { ActiveRideCard } from './ActiveRideCard'
 import { filterRidesByTab } from '../filterRidesByTab'
 import type { HistoryTab, UpcomingRide } from '../types'
 import { confirmDialog } from '@/components/ui/confirm'
+import { PickupTimeSheet } from '@/features/advance/PickupTimeSheet'
+import { apiErrorCode, fetchCancelPreview } from '@/features/advance/api'
+import { cancelCopy, rescheduleErrorMessage } from '@/features/advance/advanceModel'
+import { getApiErrorMessage } from '@ocar/mobile-shared'
 
 const TABS: { id: HistoryTab; label: string }[] = [
   { id: 'upcoming', label: 'Upcoming' },
@@ -39,12 +43,45 @@ export function RideHistoryList() {
   const {
     tab, setTab,
     rides, page, pages, total, loading, error, fetchHistory,
-    upcoming, upcomingLoading, upcomingError, cancellingId, cancelUpcoming,
+    upcoming, upcomingLoading, upcomingError, cancellingId, cancelUpcoming, rescheduleUpcoming, terms,
     activeRide,
     refresh,
   } = useRideHistory()
 
   const openRide = useCallback((id: string) => router.push(`/ride/${id}`), [router])
+
+  // Change time: one sheet for the ride being edited. A failure keeps the sheet open and says why (the old time stays).
+  const [editing, setEditing] = useState<UpcomingRide | null>(null)
+  const [editBusy, setEditBusy] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const saveTime = useCallback(async (iso: string) => {
+    if (!editing) return
+    setEditBusy(true); setEditError(null)
+    try {
+      await rescheduleUpcoming(editing.id, iso)
+      setEditing(null)
+    } catch (err) {
+      setEditError(rescheduleErrorMessage(apiErrorCode(err), getApiErrorMessage(err, "We couldn't change the time. Your booking is unchanged.")))
+    } finally {
+      setEditBusy(false)
+    }
+  }, [editing, rescheduleUpcoming])
+
+  // Cancel: ask the server what it would cost first, so a fee is never a surprise. If that check fails the rider can still cancel.
+  const askCancel = useCallback(async (item: UpcomingRide) => {
+    try {
+      const copy = cancelCopy(await fetchCancelPreview(item.id))
+      confirmDialog(copy.title, copy.body, [
+        { text: 'Keep ride', style: 'cancel' },
+        { text: copy.confirm, style: 'destructive', onPress: () => void cancelUpcoming(item.id) },
+      ])
+    } catch {
+      confirmDialog('Cancel this ride?', "We couldn't check whether a fee applies. If one does, you will see it on your receipt.", [
+        { text: 'Keep ride', style: 'cancel' },
+        { text: 'Cancel ride', style: 'destructive', onPress: () => void cancelUpcoming(item.id) },
+      ])
+    }
+  }, [cancelUpcoming])
   const bookRide = () => router.push('/(tabs)/home')
 
   const filtered = useMemo(() => filterRidesByTab(rides, tab), [rides, tab])
@@ -102,10 +139,9 @@ export function RideHistoryList() {
             <UpcomingCard
               ride={item}
               onOpen={() => openRide(item.id)}
-              onCancel={() => confirmDialog('Cancel this ride?', 'Your scheduled pickup will be cancelled.', [
-                { text: 'Keep ride', style: 'cancel' },
-                { text: 'Cancel ride', style: 'destructive', onPress: () => void cancelUpcoming(item.id) },
-              ])}
+              onCancel={() => void askCancel(item)}
+              onChangeTime={() => { setEditError(null); setEditing(item) }}
+              terms={terms}
               cancelling={cancellingId === item.id}
             />
           )}
@@ -126,6 +162,17 @@ export function RideHistoryList() {
               </View>
             )
           }
+        />
+        <PickupTimeSheet
+          visible={editing !== null}
+          title="Change pickup time"
+          confirmLabel="Change time"
+          terms={terms}
+          initial={editing?.scheduledFor ?? null}
+          error={editError}
+          busy={editBusy}
+          onClose={() => { if (!editBusy) setEditing(null) }}
+          onConfirm={(iso) => void saveTime(iso)}
         />
       </View>
     )

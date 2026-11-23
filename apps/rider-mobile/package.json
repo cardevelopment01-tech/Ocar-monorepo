@@ -20,6 +20,7 @@
     "@ocar/mobile-shared": "workspace:*",
     "@ocar/shared": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "9.1.0",
     "@react-native-firebase/app": "^26.4.0",
     "@react-native-firebase/crashlytics": "^26.4.0",
     "@react-native-firebase/messaging": "^26.4.0",

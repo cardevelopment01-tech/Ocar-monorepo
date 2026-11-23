@@ -21,6 +21,17 @@ describe('resolvePushRoute (rider-mobile)', () => {
     expect(resolvePushRoute({ type: 'payment_failed' })).toBeNull()
   })
 
+  it('opens the ride for every advance-booking notice', () => {
+    for (const type of ['advance_booked', 'advance_reminder', 'advance_rescheduled', 'advance_searching', 'advance_cancelled', 'advance_no_drivers']) {
+      expect(resolvePushRoute({ type, rideId: '9' })).toBe('/ride/9')
+    }
+  })
+
+  it('does not navigate for an advance notice with no ride, except the no-driver one which falls back to Home', () => {
+    expect(resolvePushRoute({ type: 'advance_reminder' })).toBeNull()
+    expect(resolvePushRoute({ type: 'advance_no_drivers' })).toBe('/(tabs)/home')
+  })
+
   it('returns null for an unknown or missing type instead of throwing', () => {
     expect(resolvePushRoute({ type: 'something_new' })).toBeNull()
     expect(resolvePushRoute(undefined)).toBeNull()
