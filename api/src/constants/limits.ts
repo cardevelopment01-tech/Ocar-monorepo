@@ -145,11 +145,9 @@ export const GPS_GAP_MIN_METRES = 300
 export const GPS_MAX_ROUTED_GAPS = 5
 export const GPS_MAX_SILENT_SHARE = 0.2
 
-// Rental overage: extra km/min are only billed once the trip runs past the package
-// limit PLUS this tolerance (GPS jitter / a few minutes of hand-over shouldn't cost
-// the rider). Only the part beyond limit + grace is charged.
-export const RENTAL_OVERAGE_GRACE_KM = 2
-export const RENTAL_OVERAGE_GRACE_MIN = 5
+// Rental overage is billed in full: every km and minute beyond the package is charged at the package's
+// extra_per_km / extra_per_min. The 2 km / 5 min tolerance (RENTAL_FIT_GRACE_* in the apps' recommendPackage)
+// only decides which package is the best fit; it is never a free allowance.
 // GPS distance implying a higher average speed than this over the WHOLE trip (waits and
 // stops included) is treated as noise (ST_Length over a jumpy trail) — km overage is
 // skipped and the ride is flagged. City rentals rarely average anywhere near this.

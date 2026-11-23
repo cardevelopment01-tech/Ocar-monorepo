@@ -35,29 +35,29 @@ describe('recommendPackage', () => {
     expect(recommendPackage(PACKAGES, 8, 90)?.packageId).toBe(2)
   })
 
-  it('flags overage against the largest package, ignoring the grace', () => {
-    // largest = 360 min / 60 km; grace is 2 km and 5 min
+  it('flags overage against the largest package, in full', () => {
+    // largest = 360 min / 60 km: all 10 km and 40 min past it count
     const r = recommendPackage(PACKAGES, 70, 400)
-    expect(r).toEqual({ packageId: 4, exceeds: true, overKm: 8, overMin: 35 })
+    expect(r).toEqual({ packageId: 4, exceeds: true, overKm: 10, overMin: 40 })
   })
 
-  it('a route inside the grace still fits the largest package, so nothing is flagged as over', () => {
-    expect(recommendPackage(PACKAGES, 61, 362)).toEqual({ packageId: 4, exceeds: false, overKm: 0, overMin: 0 })
+  it('a route inside the fit tolerance still picks the largest package, and reports what it runs over', () => {
+    expect(recommendPackage(PACKAGES, 61, 362)).toEqual({ packageId: 4, exceeds: false, overKm: 1, overMin: 2 })
   })
 
-  it('flags overage only once the route is past the largest package AND its grace', () => {
-    expect(recommendPackage(PACKAGES, 62.1, 300)).toEqual({ packageId: 4, exceeds: true, overKm: 1, overMin: 0 })
-    expect(recommendPackage(PACKAGES, 40, 366)).toEqual({ packageId: 4, exceeds: true, overKm: 0, overMin: 1 })
+  it('flags "exceeds" only once the route is past the largest package AND the fit tolerance', () => {
+    expect(recommendPackage(PACKAGES, 62.1, 300)).toEqual({ packageId: 4, exceeds: true, overKm: 3, overMin: 0 })
+    expect(recommendPackage(PACKAGES, 40, 366)).toEqual({ packageId: 4, exceeds: true, overKm: 0, overMin: 6 })
   })
 
-  it('treats a route a little past a limit as fitting it, because the server bills only beyond limit + grace', () => {
+  it('treats a route a little past a limit as fitting it, so the rider pays the small extra instead of a dearer package', () => {
     const small = [pkg(10, 60, 5, 100), pkg(11, 120, 10, 180)]
-    expect(recommendPackage(small, 5.7, 30)?.packageId).toBe(10) // 5.7 km is "the same as 5 km": no extra charge
+    expect(recommendPackage(small, 5.7, 30)).toMatchObject({ packageId: 10, exceeds: false, overKm: 1 }) // the 0.7 km is still charged
     expect(recommendPackage(small, 7, 30)?.packageId).toBe(10) // exactly limit + 2 km
-    expect(recommendPackage(small, 7.1, 30)?.packageId).toBe(11) // past the grace: the bigger package
+    expect(recommendPackage(small, 7.1, 30)?.packageId).toBe(11) // past the tolerance: the bigger package
   })
 
-  it('applies the same grace to time', () => {
+  it('applies the same tolerance to time', () => {
     const small = [pkg(10, 60, 40, 100), pkg(11, 120, 40, 180)]
     expect(recommendPackage(small, 10, 64)?.packageId).toBe(10)
     expect(recommendPackage(small, 10, 65)?.packageId).toBe(10) // limit + 5 min
@@ -67,15 +67,21 @@ describe('recommendPackage', () => {
 
 describe('estimateOverage', () => {
   const p = { kmLimit: 60, durationMinutes: 360, extraPerKm: 10, extraPerMin: 2 }
-  it('is zero when the trip fits, grace included', () => {
+  it('is zero when the trip is within the package', () => {
     expect(estimateOverage(p, 43.3, 99)).toEqual({ overKm: 0, overMin: 0, extra: 0 })
-    expect(estimateOverage(p, 62, 365)).toEqual({ overKm: 0, overMin: 0, extra: 0 })
+    expect(estimateOverage(p, 60, 360)).toEqual({ overKm: 0, overMin: 0, extra: 0 })
   })
-  it('prices km and minutes past limit plus grace', () => {
-    // 70 km: 70 - 60 - 2 = 8 over. 380 min: 380 - 360 - 5 = 15 over.
-    expect(estimateOverage(p, 70, 380)).toEqual({ overKm: 8, overMin: 15, extra: 8 * 10 + 15 * 2 })
+  it('prices every km and minute past the package, with no free allowance', () => {
+    // 70 km: 70 - 60 = 10 over. 380 min: 380 - 360 = 20 over.
+    expect(estimateOverage(p, 70, 380)).toEqual({ overKm: 10, overMin: 20, extra: 10 * 10 + 20 * 2 })
+    // a slight overrun is charged too: 62 km on a 60 km package is 2 km extra
+    expect(estimateOverage(p, 62, 365)).toEqual({ overKm: 2, overMin: 5, extra: 2 * 10 + 5 * 2 })
   })
   it('counts a started km or minute', () => {
-    expect(estimateOverage(p, 62.1, 360)).toEqual({ overKm: 1, overMin: 0, extra: 10 })
+    expect(estimateOverage(p, 62.1, 360)).toEqual({ overKm: 3, overMin: 0, extra: 30 })
+  })
+  it("matches a client's ride: 16.19 km on a 1 h / 10 km package is 6.19 km extra, not 4.19", () => {
+    const hourly = { kmLimit: 10, durationMinutes: 60, extraPerKm: 16, extraPerMin: 2 }
+    expect(estimateOverage(hourly, 16.19, 24)).toEqual({ overKm: 7, overMin: 0, extra: 112 }) // started km rounds up; the bill is 6.19 x 16 = 99
   })
 })

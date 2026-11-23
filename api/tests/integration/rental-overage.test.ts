@@ -29,8 +29,6 @@ interface Pkg { id: number; duration_minutes: number; km_limit: number; package_
 let pkg: Pkg
 let driver: Awaited<ReturnType<typeof setupOnlineDriver>>
 
-const GRACE_KM = 2
-const GRACE_MIN = 5
 const KM_PER_DEG_LNG = 104.4 // at ~20.3°N
 
 beforeAll(async () => {
@@ -121,7 +119,7 @@ async function runRental(opts: {
 }
 
 describe('Rental overage settlement (end to end)', () => {
-  it('within package + grace: package fare only, nothing flagged', async () => {
+  it('within package: package fare only, nothing flagged', async () => {
     const s = await runRental({ phone: PHONES.within, elapsedMin: 100, gpsKm: 20 })
     expect(s['status']).toBe('final')
     expect(s['overage_km']).toBe(0)
@@ -132,12 +130,12 @@ describe('Rental overage settlement (end to end)', () => {
     expect(s['review_reason']).toBeNull()
   })
 
-  it('overruns km and time: bills only beyond limit + grace at the package extra rates, flags for verify', async () => {
+  it('overruns km and time: bills every km and minute beyond the package at the package extra rates, flags for verify', async () => {
     const s = await runRental({ phone: PHONES.overrun, elapsedMin: pkg.duration_minutes + 30, gpsKm: pkg.km_limit + 12 })
     const gpsKm = s['actual_km'] as number
     expect(gpsKm).toBeGreaterThan(pkg.km_limit + 8)
-    const expKm = gpsKm - pkg.km_limit - GRACE_KM
-    const expMin = 30 - GRACE_MIN
+    const expKm = gpsKm - pkg.km_limit
+    const expMin = 30
     expect(s['overage_km'] as number).toBeCloseTo(expKm, 1)
     expect(s['overage_min'] as number).toBeCloseTo(expMin, 0)
     const expOverage = expKm * pkg.extra_per_km + expMin * pkg.extra_per_min
@@ -151,7 +149,7 @@ describe('Rental overage settlement (end to end)', () => {
     const s = await runRental({ phone: PHONES.noGps, elapsedMin: pkg.duration_minutes + 30, gpsKm: null })
     expect(s['actual_km']).toBeNull()
     expect(s['overage_km']).toBe(0)
-    expect(s['overage_min'] as number).toBeCloseTo(30 - GRACE_MIN, 0)
+    expect(s['overage_min'] as number).toBeCloseTo(30, 0)
     expect(s['total_final'] as number).toBeGreaterThan(s['total_estimated'] as number)
     expect(String(s['review_reason'])).toMatch(/not billed/)
   })
@@ -159,7 +157,7 @@ describe('Rental overage settlement (end to end)', () => {
   it('admin raises the package rates after booking: rider is still charged the booked rates', async () => {
     const s = await runRental({
       phone: PHONES.adminEdit,
-      elapsedMin: pkg.duration_minutes + 65, // 60 min over limit + grace(5) => 60 billable min
+      elapsedMin: pkg.duration_minutes + 65, // 65 min over the package => 65 billable min
       gpsKm: null,
       afterBooking: async () => {
         await pool.query('UPDATE rental_packages SET extra_per_min = extra_per_min * 10 WHERE id = $1', [pkg.id])
@@ -168,7 +166,7 @@ describe('Rental overage settlement (end to end)', () => {
     // restore before asserting so a failure can't leave the seed data altered
     await pool.query('UPDATE rental_packages SET extra_per_min = $2 WHERE id = $1', [pkg.id, pkg.extra_per_min])
     expect(s['snap_extra_min']).toBe(pkg.extra_per_min)
-    const expected = (pkg.package_fare + 60 * pkg.extra_per_min) * (s['surge'] as number)
+    const expected = (pkg.package_fare + 65 * pkg.extra_per_min) * (s['surge'] as number)
     expect(s['total_final'] as number).toBeCloseTo(expected, -0.5)
   })
 })

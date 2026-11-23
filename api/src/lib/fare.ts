@@ -217,7 +217,7 @@ function round2(n: number): number {
 }
 
 /**
- * Rental overage: only the part beyond package limit + grace is billable.
+ * Rental overage: every km and minute beyond the package is billable, in full (no free allowance).
  * `actualKm` null = distance couldn't be measured reliably → no km overage
  * (never bill a rider on a number we don't trust); time is always measurable.
  */
@@ -225,11 +225,10 @@ export function rentalOverage(
   pkg: { km_limit: number; duration_minutes: number },
   actualKm: number | null,
   actualMin: number,
-  grace: { km: number; min: number },
 ): { overage_km: number; overage_min: number } {
   return {
-    overage_km:  actualKm == null ? 0 : round2(Math.max(0, actualKm  - pkg.km_limit         - grace.km)),
-    overage_min: round2(Math.max(0, actualMin - pkg.duration_minutes - grace.min)),
+    overage_km:  actualKm == null ? 0 : round2(Math.max(0, actualKm  - pkg.km_limit)),
+    overage_min: round2(Math.max(0, actualMin - pkg.duration_minutes)),
   }
 }
 
@@ -256,12 +255,11 @@ export function settleRentalFare(p: {
   surge_multiplier: number
   gps_km: number | null
   elapsed_min: number
-  grace: { km: number; min: number }
   max_avg_kmh: number
 }): RentalSettlement {
   const maxKm = (p.elapsed_min / 60) * p.max_avg_kmh
   const measured_km = p.gps_km != null && p.gps_km <= maxKm ? p.gps_km : null
-  const { overage_km, overage_min } = rentalOverage(p.pkg, measured_km, p.elapsed_min, p.grace)
+  const { overage_km, overage_min } = rentalOverage(p.pkg, measured_km, p.elapsed_min)
   const fare = calculateFare({
     rate_card: { rate_per_km: 0, rate_per_min: 0, min_fare: 0 },
     ride_type: 'rental', is_return_cab: false,

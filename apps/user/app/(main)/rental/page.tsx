@@ -12,7 +12,7 @@ import { isAxiosError } from 'axios'
 import { rideApi, type RentalPackage, type FareEstimate, type StopInput } from '@/lib/ride-api'
 import { vehicleApi, type VehicleCategory } from '@/lib/vehicle-api'
 import { geoApi } from '@/lib/geo-api'
-import { recommendPackage, type PackageRecommendation } from '@/lib/recommend-package'
+import { estimateOverage, recommendPackage, type PackageRecommendation } from '@/lib/recommend-package'
 import { getPaymentChannel } from '@/lib/payment-channel'
 import { VehicleIcon } from '@/components/ui/VehicleIcon'
 import AnimatedNumber from '@/components/ui/AnimatedNumber'
@@ -647,18 +647,22 @@ function RentalContent() {
                                   </div>
                                 </>
                               )}
-                              {recommendation?.exceeds && trip && (recommendation.overKm > 0 || recommendation.overMin > 0) && (
-                                <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5 mt-2.5">
-                                  <Info size={13} strokeWidth={2.2} className="text-amber-600 mt-0.5 flex-shrink-0" />
-                                  <p className="text-[11px] leading-relaxed text-amber-800">
-                                    Your route (~{trip.km} km, {formatDuration(trip.min)}) is longer than the biggest package.
-                                    {recommendation.overKm > 0 && <> About {recommendation.overKm} km over</>}
-                                    {recommendation.overKm > 0 && recommendation.overMin > 0 && ' and'}
-                                    {recommendation.overMin > 0 && <> {formatDuration(recommendation.overMin)} over</>}
-                                    {' '}will be charged as extra.
-                                  </p>
-                                </div>
-                              )}
+                              {selectedPkg && trip && (() => {
+                                const o = estimateOverage(selectedPkg, trip.km, trip.min)
+                                if (o.overKm === 0 && o.overMin === 0) return null
+                                return (
+                                  <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5 mt-2.5">
+                                    <Info size={13} strokeWidth={2.2} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                                    <p className="text-[11px] leading-relaxed text-amber-800">
+                                      Your route (~{trip.km} km, {formatDuration(trip.min)}) is longer than this package.
+                                      {o.overKm > 0 && <> About {o.overKm} km over</>}
+                                      {o.overKm > 0 && o.overMin > 0 && ' and'}
+                                      {o.overMin > 0 && <> {formatDuration(o.overMin)} over</>}
+                                      {' '}will be charged as extra (about ₹{o.extra}), billed after the ride.
+                                    </p>
+                                  </div>
+                                )
+                              })()}
                             </>
                           )}
                         </div>
