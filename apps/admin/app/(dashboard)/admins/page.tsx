@@ -15,20 +15,7 @@ import { adminInvitesApi, adminAccountsApi, type AdminInvite, type AdminAccount,
 import { useAdminAuth } from '@/lib/auth-context'
 import { extractErrorMessage } from '@/lib/http-errors'
 import type { AdminRole } from '@/lib/mock-data'
-
-const ROLE_LABEL: Record<AdminRole, string> = {
-  super_admin: 'Super Admin',
-  ops_admin: 'Ops Admin',
-  support_admin: 'Support Admin',
-  finance_admin: 'Finance Admin',
-}
-
-const ROLE_HELP: Record<AdminRole, string> = {
-  super_admin: 'Everything, including managing admins, settings and pricing.',
-  ops_admin: 'Day-to-day operations: drivers, vehicles, rides and dispatch.',
-  support_admin: 'Looks up rides, riders and drivers to help with support cases. Cannot approve drivers.',
-  finance_admin: 'Payments, settlements, offers and revenue reports.',
-}
+import { ROLE_LABEL, ROLE_HELP } from '@/lib/admin-roles'
 
 const ROLE_PILL: Record<AdminRole, string> = {
   super_admin: 'pill-purple',
@@ -433,7 +420,7 @@ export default function AdminsPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Active admins" value={activeCount} change={suspendedCount ? `${suspendedCount} suspended` : 'None suspended'} changeType="neutral" icon={Users} gradient="blue" loading={loadingAdmins} />
         <StatCard title="2FA enabled" value={withTotp} change={withTotp === admins.length ? 'Everyone is covered' : `${admins.length - withTotp} without 2FA`} changeType="neutral" icon={ShieldCheck} gradient={withTotp === admins.length ? 'green' : 'amber'} loading={loadingAdmins} />
         <StatCard title="Pending invites" value={pendingInvites} change="Not accepted yet" changeType="neutral" icon={Clock} gradient="purple" loading={loadingInvites} />
@@ -451,7 +438,7 @@ export default function AdminsPage() {
       )}
 
       <div className="admin-card">
-        <div className="px-5 py-4 border-b border-border-light">
+        <div className="py-4 border-b border-border-light">
           <div className="flex flex-wrap items-center gap-3">
             <h3 className="text-sm font-semibold text-text-primary mr-auto">Admin Accounts <span className="font-normal text-text-muted">({filtering ? `${visibleAdmins.length} of ${admins.length}` : admins.length})</span></h3>
             <div className="relative w-full sm:w-56">
@@ -482,7 +469,7 @@ export default function AdminsPage() {
       </div>
 
       <div className="admin-card">
-        <div className="px-5 py-4 border-b border-border-light">
+        <div className="py-4 border-b border-border-light">
           <h3 className="text-sm font-semibold text-text-primary">Invites</h3>
         </div>
         {invitesFailed ? (

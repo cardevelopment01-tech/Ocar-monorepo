@@ -39,6 +39,12 @@ export async function findAdminEmailById(id: bigint): Promise<string | null> {
   return rows[0]?.email ?? null
 }
 
+/** How to name an admin to someone else: their name when they have one, otherwise their address. */
+export async function findAdminLabelById(id: bigint): Promise<string | null> {
+  const rows = await query<{ label: string }>(`SELECT COALESCE(NULLIF(full_name, ''), email) AS label FROM admins WHERE id = $1`, [id.toString()])
+  return rows[0]?.label ?? null
+}
+
 export async function findPendingInviteByEmail(email: string): Promise<AdminInviteListItem | null> {
   const rows = await query<AdminInviteListItem>(
     `SELECT ${LIST_COLUMNS} FROM admin_invites WHERE email = $1 AND status = 'pending' AND expires_at > now() LIMIT 1`,

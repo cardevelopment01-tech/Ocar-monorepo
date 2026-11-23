@@ -4,8 +4,11 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const api = vi.hoisted(() => ({ verify: vi.fn(), redeem: vi.fn() }))
+const auth = vi.hoisted(() => ({ login: vi.fn(), store: vi.fn(), push: vi.fn() }))
 const nav = vi.hoisted(() => ({ push: vi.fn(), query: 'token=abc123' }))
 vi.mock('@/lib/admin-invites-api', () => ({ adminInvitesApi: api }))
+vi.mock('@/lib/auth', () => ({ adminAuthApi: { login: auth.login }, storeAdminAuth: auth.store }))
+vi.mock('@/lib/push', () => ({ registerPush: auth.push }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: nav.push }), useSearchParams: () => new URLSearchParams(nav.query) }))
 
 import AcceptInvitePage from '../page'
@@ -23,7 +26,8 @@ describe('Accept invite page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     nav.query = 'token=abc123'
-    api.verify.mockResolvedValue({ email: 'new@ocar.test', role: 'ops_admin' })
+    api.verify.mockResolvedValue({ email: 'new@ocar.test', role: 'ops_admin', full_name: null, invited_by_name: null })
+    auth.login.mockResolvedValue({ tokens: { accessToken: 'a', refreshToken: 'r' }, admin: { id: '9' } })
   })
 
   const fill = async (user: ReturnType<typeof userEvent.setup>, password: string, confirm = password) => {
@@ -63,14 +67,47 @@ describe('Accept invite page', () => {
     expect(api.redeem).not.toHaveBeenCalled()
   })
 
-  it('a good password activates the account and goes to sign-in', async () => {
+  it('a good password activates the account, signs them straight in, and opens the 2FA setup', async () => {
     const user = userEvent.setup()
     api.redeem.mockResolvedValue({ id: '9', code: 'ADM000009', email: 'new@ocar.test', role: 'ops_admin' })
     render(<AcceptInvitePage />)
     await fill(user, GOOD)
     await user.click(screen.getByRole('button', { name: /Activate Account/ }))
     await waitFor(() => expect(api.redeem).toHaveBeenCalledWith('abc123', GOOD))
-    expect(nav.push).toHaveBeenCalledWith('/login?invited=1')
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/security?setup=1'))
+    expect(auth.login).toHaveBeenCalledWith('new@ocar.test', GOOD)
+    expect(auth.store).toHaveBeenCalledWith('a', { id: '9' }, 'r')
+  })
+
+  it('if signing in does not work (2FA already on, a network blip) the account is still made and they are sent to the login page', async () => {
+    const user = userEvent.setup()
+    api.redeem.mockResolvedValue({ id: '9', code: 'ADM000009', email: 'new@ocar.test', role: 'ops_admin' })
+    for (const outcome of [() => auth.login.mockResolvedValue({ pending: true, pendingToken: 'p' }), () => auth.login.mockRejectedValue(new Error('network'))]) {
+      nav.push.mockClear(); auth.store.mockClear()
+      outcome()
+      const { unmount } = render(<AcceptInvitePage />)
+      await fill(user, GOOD)
+      await user.click(screen.getByRole('button', { name: /Activate Account/ }))
+      await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/login?invited=1'))
+      expect(auth.store).not.toHaveBeenCalled()
+      unmount()
+    }
+  })
+
+  it('greets them by name and shows their role, what it allows, and who invited them', async () => {
+    api.verify.mockResolvedValue({ email: 'new@ocar.test', role: 'finance_admin', full_name: 'Priya Das', invited_by_name: 'Sujal Khatoi' })
+    render(<AcceptInvitePage />)
+    expect(await screen.findByText('Welcome, Priya Das')).toBeInTheDocument()
+    const box = screen.getByTestId('invite-summary')
+    expect(box).toHaveTextContent('Finance Admin')
+    expect(box).toHaveTextContent('Payments, settlements, offers and revenue reports.')
+    expect(box).toHaveTextContent('Invited by Sujal Khatoi')
+  })
+
+  it('without a name or inviter it still reads well (no "undefined", no empty line)', async () => {
+    render(<AcceptInvitePage />)
+    expect(await screen.findByText('Welcome to Ocar admin')).toBeInTheDocument()
+    expect(screen.getByTestId('invite-summary')).not.toHaveTextContent(/Invited by|undefined|null/)
   })
 
   it("the server's reason is shown when it refuses the password (breached, or contains the company name), and the form stays", async () => {

@@ -189,7 +189,10 @@ export async function revokeInvite(id: bigint, actingAdminId: bigint, ipAddress:
 // Read-only pre-flight check for the accept-invite page load — lets the
 // frontend show an invalid/expired state before the user fills in a password,
 // instead of only discovering it on submit. Never mutates invite status.
-export async function verifyInviteToken(token: string): Promise<{ email: string; role: AdminRole }> {
+export interface InvitePreview { email: string; role: AdminRole; full_name: string | null; invited_by_name: string | null }
+
+/** What the person holding a valid link may see before choosing a password: who they are invited as, and by whom (the email says the same). */
+export async function verifyInviteToken(token: string): Promise<InvitePreview> {
   const tokenHash = sha256(token)
   const invite = await repo.findByTokenHash(tokenHash)
   const expired = invite ? new Date(invite.expires_at) <= new Date() : false
@@ -198,7 +201,8 @@ export async function verifyInviteToken(token: string): Promise<{ email: string;
     throw createHttpError(AppErrors.ADMIN_INVITE_INVALID)
   }
 
-  return { email: invite.email, role: invite.role }
+  const inviter = await repo.findAdminLabelById(BigInt(invite.invited_by)).catch(() => null)
+  return { email: invite.email, role: invite.role, full_name: invite.full_name, invited_by_name: inviter }
 }
 
 export async function redeemInvite(token: string, password: string, ipAddress: string | null): Promise<CreatedAdminFromInvite> {

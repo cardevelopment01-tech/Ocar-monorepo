@@ -70,7 +70,7 @@ export default function StatCard({ title, value, change, changeType, icon: Icon,
         </div>
         {loading ? <div className="skeleton h-6 w-16 rounded-full" /> : (
           <span className={cn(
-            'flex items-center gap-0.5 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap',
+            'flex items-center gap-0.5 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap max-w-full min-w-0 overflow-hidden text-ellipsis',
             changeType === 'up'   ? 'bg-success-light text-success' :
             changeType === 'down' ? 'bg-danger-light text-danger' :
             'bg-surface-2 text-text-muted'
