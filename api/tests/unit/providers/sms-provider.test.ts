@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('@/config', () => ({
-  config: { BULKSMSPLANS_API_ID: 'id', BULKSMSPLANS_API_PASSWORD: 'pw', BULKSMSPLANS_SENDER_ID: 'OCAR' },
+  config: { BULKSMSPLANS_API_ID: 'id', BULKSMSPLANS_API_PASSWORD: 'pw', BULKSMSPLANS_SENDER_ID: 'OCAR', NODE_ENV: 'production' },
 }))
 
 const { sendSms } = await import('@/providers/sms.provider')

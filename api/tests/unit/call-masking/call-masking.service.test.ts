@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/system-config')
 vi.mock('@/config', () => ({
-  config: { BULKSMSPLANS_API_ID: 'id', BULKSMSPLANS_API_PASSWORD: 'pw', BULKSMSPLANS_IVR_NUMBER: '0800000000' },
+  config: { BULKSMSPLANS_API_ID: 'id', BULKSMSPLANS_API_PASSWORD: 'pw', BULKSMSPLANS_IVR_NUMBER: '0800000000', NODE_ENV: 'production' },
 }))
 vi.mock('@/modules/call-masking/call-masking.bulksmsplans-client')
 vi.mock('@/modules/rides/rides.repository')
@@ -66,6 +66,22 @@ describe('call-masking service — triggerCall', () => {
     await expect(
       service.triggerCall({ rideId: 1n, callerRole: 'driver', callerId: 999n })
     ).rejects.toMatchObject({ appCode: 'AUTH_FORBIDDEN' })
+  })
+
+  it('places no billed call outside production, even with credentials and the switch on, unless ALLOW_REAL_SMS=true', async () => {
+    const cfg = (await import('@/config')).config as unknown as { NODE_ENV: string; ALLOW_REAL_SMS?: string }
+    vi.mocked(ridesRepo.getRideById).mockResolvedValue(rideFor({}))
+    try {
+      cfg.NODE_ENV = 'development'
+      await expect(service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 1n })).rejects.toMatchObject({ code: 'MASKING_DISABLED' })
+      expect(ivr.makeCall).not.toHaveBeenCalled()
+      cfg.ALLOW_REAL_SMS = 'true'
+      await service.triggerCall({ rideId: 1n, callerRole: 'user', callerId: 1n })
+      expect(ivr.makeCall).toHaveBeenCalledTimes(1)
+    } finally {
+      cfg.NODE_ENV = 'production'
+      delete cfg.ALLOW_REAL_SMS
+    }
   })
 
   it('throws MASKING_DISABLED when the kill switch is off', async () => {

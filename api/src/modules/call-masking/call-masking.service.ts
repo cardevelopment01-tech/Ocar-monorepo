@@ -7,6 +7,7 @@ import { configKey } from '@/constants/redis-keys'
 import { getRideById } from '@/modules/rides/rides.repository'
 import { createHttpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
+import { isRealSendingAllowed } from '@/providers/sms.provider'
 import * as ivr from '@/modules/call-masking/call-masking.bulksmsplans-client'
 import { notifyAllAdmins } from '@/modules/notifications/notifications.service'
 import { CallMaskingError, type CallerRole } from '@/modules/call-masking/call-masking.types'
@@ -44,6 +45,10 @@ export async function triggerCall(params: {
   }
   // Fail fast rather than burn the ride's attempt budget on a call the vendor
   // can't take: empty creds/IVR number mean the env was never configured.
+  if (!isRealSendingAllowed()) {
+    log.warn('masked call not placed: not production and ALLOW_REAL_SMS is not true')
+    throw new CallMaskingError('MASKING_DISABLED', 'Masked calling is currently disabled')
+  }
   if (!config.BULKSMSPLANS_API_ID || !config.BULKSMSPLANS_API_PASSWORD || !config.BULKSMSPLANS_IVR_NUMBER) {
     log.error('call masking enabled but BULKSMSPLANS_API_ID/PASSWORD/IVR_NUMBER not configured')
     throw new CallMaskingError('MASKING_DISABLED', 'Masked calling is currently disabled')

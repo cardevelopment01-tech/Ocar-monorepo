@@ -3,7 +3,7 @@ import { logger } from '@/lib/logger'
 
 // What the vendor told us about one send. Kept so "the app said sent but the phone got nothing" can be answered from our own
 // data (notification_logs.provider_response and the sms.sent log line) instead of only from the vendor's dashboard.
-export type SmsSendResult = { skipped?: 'synthetic' | 'no-credentials' } & Record<string, string | number | boolean>
+export type SmsSendResult = { skipped?: 'synthetic' | 'no-credentials' | 'not-production' } & Record<string, string | number | boolean>
 
 // Top-level scalar fields of the vendor's reply, minus anything that echoes the message text (an OTP must never reach a log
 // or a long-lived table) and anything oversized. Credentials are never part of a reply, so nothing else needs stripping.
@@ -15,6 +15,12 @@ export function pickProviderFields(json: unknown, message: string): Record<strin
     else if (typeof v === 'string' && v.length <= 200 && !v.includes(message) && !(v.length >= 6 && message.includes(v))) out[k] = v
   }
   return out
+}
+
+// Real sends (and billed IVR calls) only happen in production, or when ALLOW_REAL_SMS=true says so on purpose. This is a second lock on top of
+// the credentials: a developer or scratch server that loads real credentials and drains an old queue must not spend money (it did, once).
+export function isRealSendingAllowed(): boolean {
+  return config.NODE_ENV === 'production' || config.ALLOW_REAL_SMS === 'true'
 }
 
 // True when messages are NOT really sent (no vendor credentials). In production this only happens when
@@ -37,6 +43,10 @@ export async function sendSms(phone: string, message: string, templateId?: strin
   if (isSyntheticPhone(phone)) {
     console.log('[SMS] skipped, load-test phone:', phone)
     return { skipped: 'synthetic' }
+  }
+  if (!isRealSendingAllowed()) {
+    console.log('[SMS DEV] not sent (not production and ALLOW_REAL_SMS is not true):', phone)
+    return { skipped: 'not-production' }
   }
   if (isSmsBypassActive()) {
     // Message body is deliberately not logged: it carries OTPs.
