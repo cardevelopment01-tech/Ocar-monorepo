@@ -439,6 +439,16 @@ export type FareSnapshotInput = {
   discountAmount: number
 }
 
+// Waiting terms for a package rental that carries none of its own (migration 148: NULL = use the rate card). A package rental is quoted
+// from the package, so its snapshot has no rate_card_id to read them from; take the current rental rate card for the package's vehicle
+// category in the ride's city (a city card beats the global one), the same lookup getCurrentRateCard does. NULL when no such card exists.
+const rentalWaitFallback = (col: 'pickup_free_wait_min' | 'pickup_wait_per_min') => `(
+         SELECT rc.${col} FROM rate_cards rc
+          WHERE rc.ride_type = 'rental' AND rc.trip_mode = 'standard' AND rc.effective_to IS NULL
+            AND rc.category_id = (SELECT category_id FROM rental_packages WHERE id = $3)
+            AND (rc.city_id = (SELECT origin_city_id FROM rides WHERE id = $1) OR rc.city_id IS NULL)
+          ORDER BY rc.city_id NULLS LAST LIMIT 1)`
+
 /** The estimate snapshot written at booking, on the booking transaction's client. */
 export async function insertFareSnapshot(client: PoolClient, p: FareSnapshotInput): Promise<void> {
   await client.query(
@@ -464,8 +474,8 @@ export async function insertFareSnapshot(client: PoolClient, p: FareSnapshotInpu
        (SELECT stop_charge      FROM rental_packages WHERE id = $3),
        (SELECT cancellation_fee FROM rental_packages WHERE id = $3),
        -- waiting at the pickup (migration 148): a rental package may override the rate card's free minutes and rate
-       COALESCE((SELECT pickup_free_wait_min FROM rental_packages WHERE id = $3), (SELECT pickup_free_wait_min FROM rate_cards WHERE id = $2)),
-       COALESCE((SELECT pickup_wait_per_min  FROM rental_packages WHERE id = $3), (SELECT pickup_wait_per_min  FROM rate_cards WHERE id = $2)),
+       COALESCE((SELECT pickup_free_wait_min FROM rental_packages WHERE id = $3), (SELECT pickup_free_wait_min FROM rate_cards WHERE id = $2), ${rentalWaitFallback('pickup_free_wait_min')}),
+       COALESCE((SELECT pickup_wait_per_min  FROM rental_packages WHERE id = $3), (SELECT pickup_wait_per_min  FROM rate_cards WHERE id = $2), ${rentalWaitFallback('pickup_wait_per_min')}),
        -- airport toll rates in force for this vehicle category (migration 150); NULL when no zone charges this category
        (SELECT jsonb_agg(jsonb_build_object('zone_id', z.id, 'name', z.name, 'amount', t.amount) ORDER BY z.id)
           FROM airport_zones z
