@@ -4,29 +4,28 @@ import { cardMode } from '@/lib/rate-card-mode'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Car, MapPin, Star, ChevronDown, Phone, Copy, Check, Activity, XCircle, Wallet, CalendarClock, AlertTriangle, RefreshCw, Link2, Headset } from 'lucide-react'
+import { Car, MapPin, Activity, XCircle, Wallet, CalendarClock, AlertTriangle, RefreshCw, Headset, Phone } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
 import StatCard from '@/components/ui/StatCard'
 import ReasonDialog from '@/components/ui/ReasonDialog'
-import { adminRideApi, type AdminRideItem, type AdminRideStop, type AdminRideDetail, type AdminRideStats, type AdminRideTrailPoint } from '@/lib/admin-api'
+import { adminRideApi, type AdminRideItem, type AdminRideStats } from '@/lib/admin-api'
 import { extractErrorMessage } from '@/lib/http-errors'
 import { fmtIst, fmtIstClock, istDay } from '@/lib/ist'
+import { useNow } from '@/lib/use-now'
+import { useAdminAuth } from '@/lib/auth-context'
+import { FORCE_CONSEQUENCE } from '@/lib/ride-situation'
 import { formatTotal, hasNextPage, CAPPED_TOTAL_HINT } from '@/lib/format-total'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 import { dispatchApi, type DispatchSummary } from '@/lib/dispatch-api'
-import BookedTimeBlock from '@/components/rides/BookedTimeBlock'
-import RideOffers, { offerSummary } from '@/components/rides/RideOffers'
-import RideMap from '@/components/rides/RideMap'
+import RideDrawer from '@/components/rides/RideDrawer'
 
 const fmt = (iso: string | null) => fmtIst(iso)
 
 // Refresh cadence for the live view. Each tick is the list page + stats, all index-backed, and only runs while the tab is visible and nothing is open.
 const LIVE_REFRESH_MS = 30_000
-// Statuses where a driver is (or was just) on the way or on the trip: the map is the first thing an operator wants.
-const MAP_OPEN_STATUSES = ['accepted', 'driver_arrived', 'in_progress', 'returning']
 
 function initials(name: string | null | undefined) {
   const parts = (name ?? '').trim().split(/\s+/)
@@ -40,20 +39,6 @@ function Avatar({ name, tone = 'primary' }: { name: string | null | undefined; t
     }`}>
       {initials(name) || '?'}
     </span>
-  )
-}
-
-// Secondary/investigative ride-detail info: collapsed by default so the
-// primary trip summary isn't buried under a scroll of equal-weight cards.
-function Section({ title, defaultOpen = false, onToggle, children }: { title: string; defaultOpen?: boolean; onToggle?: (open: boolean) => void; children: React.ReactNode }) {
-  return (
-    <details open={defaultOpen} onToggle={onToggle ? e => onToggle((e.currentTarget as HTMLDetailsElement).open) : undefined} className="bg-surface-2 rounded-xl border border-border-light group">
-      <summary className="flex items-center justify-between px-3 py-2.5 cursor-pointer select-none list-none text-xs font-semibold text-text-secondary [&::-webkit-details-marker]:hidden">
-        {title}
-        <ChevronDown className="w-3.5 h-3.5 text-text-muted transition-transform duration-150 motion-reduce:transition-none group-open:rotate-180" />
-      </summary>
-      <div className="px-3 pb-3 space-y-1.5">{children}</div>
-    </details>
   )
 }
 
@@ -92,16 +77,13 @@ function RidesPageContent() {
   useEffect(() => { cityApi.list().then(setCities).catch(() => setCities([])) }, [])
 
   const [selected, setSelected] = useState<AdminRideItem | null>(null)
-  const [detailStops, setDetailStops] = useState<AdminRideStop[]>([])
-  const [detail, setDetail] = useState<AdminRideDetail | null>(null)
   const [resolving, setResolving] = useState(false)
   const [resolveTarget, setResolveTarget] = useState<'complete' | 'cancel' | null>(null)
   const [actionError, setActionError] = useState('')
-  const [detailError, setDetailError] = useState(false)
-  const [detailTick, setDetailTick] = useState(0)
-  const [mapOpen, setMapOpen] = useState(false)
-  const [trail, setTrail] = useState<AdminRideTrailPoint[]>([])
-  const [trailState, setTrailState] = useState<'loading' | 'ready' | 'failed' | 'none'>('none')
+  const now = useNow(30_000)
+  const { admin } = useAdminAuth()
+  // Only ops and super admins resolve or reassign a ride; support can read everything.
+  const canAct = admin?.role === 'super_admin' || admin?.role === 'ops_admin'
 
   // Advance bookings and driver assignment live on the Dispatch desk; this page only points there, with the number that needs a person.
   const [dispatch, setDispatch] = useState<DispatchSummary | null>(null)
@@ -113,46 +95,8 @@ function RidesPageContent() {
   const loadStats = useCallback(() => { adminRideApi.stats().then(setStats).catch(() => {}) }, [])
   useEffect(() => { loadStats() }, [loadStats])
 
-  const [copied, setCopied] = useState<'id' | 'link' | null>(null)
-  async function copyText(text: string, what: 'id' | 'link') {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(what)
-      setTimeout(() => setCopied(null), 1500)
-    } catch {
-      // Clipboard is only available on https and with permission; say so instead of looking like a dead button.
-      setActionError('Could not copy. Select the text and copy it by hand.')
-    }
-  }
-
-
-  // Fetch the ride's stop timeline (incl. wait charges) when a ride is opened —
-  // the list row doesn't carry stops. Needed for wait-charge dispute resolution.
-  useEffect(() => {
-    setActionError(''); setDetailError(false)
-    if (!selected) { setDetailStops([]); setDetail(null); return }
-    let cancelled = false
-    adminRideApi.getById(selected.id)
-      .then(d => { if (!cancelled) { setDetailStops(d.stops ?? []); setDetail(d) } })
-      .catch(() => { if (!cancelled) { setDetailStops([]); setDetail(null); setDetailError(true) } })
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.id, detailTick])
-
-  // The map and the driver's route load only when the section is open, and only for rides that have had a driver.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setMapOpen(!!selected && MAP_OPEN_STATUSES.includes(selected.status)) }, [selected?.id, selected?.status])
-  useEffect(() => {
-    setTrail([])
-    if (!selected || !mapOpen || !selected.driver_name) { setTrailState('none'); return }
-    let cancelled = false
-    setTrailState('loading')
-    adminRideApi.trail(selected.id)
-      .then(pts => { if (!cancelled) { setTrail(pts); setTrailState(pts.length ? 'ready' : 'none') } })
-      .catch(() => { if (!cancelled) setTrailState('failed') })
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.id, mapOpen])
+  // Opening or leaving a ride clears any message about the previous one.
+  useEffect(() => { setActionError('') }, [selected?.id])
 
   // A forced outcome moves a live trip's state and money, so it needs a typed reason; the API stores it in the ride's history.
   async function handleForceResolve(action: 'complete' | 'cancel', reason: string) {
@@ -256,6 +200,11 @@ function RidesPageContent() {
     document.addEventListener('visibilitychange', tick)
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick) }
   }, [live, selected, resolveTarget, refreshAll])
+
+  // Step through the rides on this page without closing the drawer (arrows, or J and K).
+  const selIndex = selected ? rides.findIndex(x => x.id === selected.id) : -1
+  const prevRide = selIndex > 0 ? () => setSelected(rides[selIndex - 1]!) : null
+  const nextRide = selIndex >= 0 && selIndex < rides.length - 1 ? () => setSelected(rides[selIndex + 1]!) : null
 
   const datePreset = (from: string, to: string) => { setDateFrom(from); setDateTo(to); setPage(1) }
   const presetActive = (daysFrom: number, daysTo: number) => dateFrom === istDay(daysFrom) && dateTo === istDay(daysTo)
@@ -514,377 +463,27 @@ function RidesPageContent() {
         )}
       </div>
 
-      <SlideOver isOpen={!!selected} onClose={() => setSelected(null)} title={selected ? `Ride #${selected.id}` : ''} width="lg">
+      <SlideOver isOpen={!!selected} onClose={() => setSelected(null)} title={selected ? `Ride #${selected.id}` : ''} width="xl" bare>
         {selected && (
-          <div className="p-6 space-y-5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <StatusPill status={selected.status} />
-              <StatusPill status={cardMode(selected)} />
-              {selected.is_return_cab && (
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700">Return Cab</span>
-              )}
-              {detail?.sos_triggered && (
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-700">
-                  SOS · {fmt(detail.sos_triggered_at)}
-                </span>
-              )}
-              <span className="text-text-muted text-sm">{fmt(selected.requested_at)}</span>
-            </div>
-
-            {/* Persistent action bar — the primary CTAs for this ride, always
-                visible instead of buried inline further down the scroll. */}
-            <div className="flex items-center gap-1.5 flex-wrap pb-1 border-b border-border-light">
-              <a
-                href={`tel:${selected.user_phone}`}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors"
-              >
-                <Phone className="w-3.5 h-3.5" /> Call rider
-              </a>
-              {selected.driver_phone && (
-                <a
-                  href={`tel:${selected.driver_phone}`}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors"
-                >
-                  <Phone className="w-3.5 h-3.5" /> Call driver
-                </a>
-              )}
-              <button
-                onClick={() => void copyText(selected.id, 'id')}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors"
-              >
-                {copied === 'id' ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied === 'id' ? 'Copied' : 'Copy ID'}
-              </button>
-              <button
-                onClick={() => void copyText(`${window.location.origin}${pathname}?ride=${selected.id}`, 'link')}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface-2 transition-colors"
-              >
-                {copied === 'link' ? <Check className="w-3.5 h-3.5 text-success" /> : <Link2 className="w-3.5 h-3.5" />}
-                {copied === 'link' ? 'Copied' : 'Copy link'}
-              </button>
-              {(selected.status === 'in_progress' || selected.status === 'returning') && (
-                <div className="ml-auto flex items-center gap-1.5">
-                  <button
-                    disabled={resolving}
-                    onClick={() => setResolveTarget('cancel')}
-                    className="px-2.5 py-1.5 text-xs font-semibold bg-danger text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
-                  >
-                    Force cancel
-                  </button>
-                  <button
-                    disabled={resolving}
-                    onClick={() => setResolveTarget('complete')}
-                    className="px-2.5 py-1.5 text-xs font-semibold bg-success text-white rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
-                  >
-                    Force complete
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {actionError && (
-              <div role="alert" className="rounded-xl border border-danger/30 bg-danger-light px-3 py-2 text-xs font-semibold text-danger">{actionError}</div>
-            )}
-            {detailError && (
-              <div role="alert" className="rounded-xl border border-warning/40 bg-warning-light px-3 py-2 text-xs text-text-primary flex items-center justify-between gap-3">
-                <span>Full details could not be loaded. Fare breakdown, offers and the map are missing.</span>
-                <button onClick={() => setDetailTick(t => t + 1)} className="font-semibold underline flex-shrink-0">Retry</button>
-              </div>
-            )}
-            {detail && (detail.category_name || detail.origin_city) && (
-              <p className="text-xs text-text-muted -mt-2">
-                {[detail.category_name, detail.origin_city && detail.destination_city && detail.origin_city !== detail.destination_city
-                  ? `${detail.origin_city} → ${detail.destination_city}` : detail.origin_city].filter(Boolean).join(' · ')}
-              </p>
-            )}
-
-            {(selected.status === 'in_progress' || selected.status === 'returning') && (
-              <div className={selected.review_flagged_at
-                ? 'bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1'
-                : 'bg-surface-2 border border-border-light rounded-xl p-3 space-y-1'}>
-                <p className={selected.review_flagged_at
-                  ? 'text-xs font-semibold text-amber-800'
-                  : 'text-xs font-semibold text-text-secondary'}>
-                  {selected.review_flagged_at ? 'Flagged, possibly stuck' : 'Trip in progress'}
-                </p>
-                <p className={selected.review_flagged_at ? 'text-xs text-amber-700' : 'text-xs text-text-muted'}>
-                  {selected.review_flagged_at
-                    ? `No driver GPS update since ${fmt(selected.review_flagged_at)}${selected.review_reason ? ` (${selected.review_reason.replace(/_/g, ' ')})` : ''}`
-                    : 'Not auto-flagged yet. Resolve manually if this ride needs intervention.'}
-                </p>
-              </div>
-            )}
-
-            {detail && <BookedTimeBlock ride={detail} />}
-
-            <div className={`bg-surface-2 rounded-xl border border-border-light grid ${detail?.vehicle_number_plate ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-border-light`}>
-              <div className="p-3 min-w-0 flex items-center gap-2">
-                <Avatar name={selected.user_name} />
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-text-secondary mb-0.5">Rider</p>
-                  <p className="font-semibold text-text-primary text-sm truncate">{selected.user_name}</p>
-                  <p className="text-xs text-text-muted">{selected.user_phone}</p>
-                </div>
-              </div>
-              <div className="p-3 min-w-0 flex items-center gap-2">
-                {selected.driver_name && <Avatar name={selected.driver_name} tone="muted" />}
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-text-secondary mb-0.5">Driver</p>
-                  {selected.driver_name && detail?.driver_id
-                    ? <Link href={`/drivers/${detail.driver_id}`} className="font-semibold text-primary text-sm truncate block hover:underline">{selected.driver_name}</Link>
-                    : <p className="font-semibold text-text-primary text-sm truncate">{selected.driver_name ?? 'Unassigned'}</p>}
-                  <p className="text-xs text-text-muted">{selected.driver_phone ?? ''}</p>
-                </div>
-              </div>
-              {detail?.vehicle_number_plate && (
-                <div className="p-3 min-w-0">
-                  <p className="text-xs font-semibold text-text-secondary mb-1">Vehicle</p>
-                  <p className="font-semibold text-text-primary text-sm truncate">{detail.vehicle_name ?? '—'}{detail.vehicle_color ? ` · ${detail.vehicle_color}` : ''}</p>
-                  <p className="text-xs text-text-muted font-mono">{detail.vehicle_number_plate}</p>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-surface-2 rounded-xl p-3 border border-border-light">
-              <p className="text-xs font-semibold text-text-secondary mb-2">Route</p>
-              <div className="space-y-2">
-                <div className="flex items-start gap-2">
-                  <MapPin className="w-3.5 h-3.5 text-success mt-0.5 shrink-0" />
-                  <p className="text-sm font-medium text-text-primary leading-snug">{selected.origin_address ?? '—'}</p>
-                </div>
-                <div className="border-l border-dashed border-border-light ml-[6px] h-3" />
-                <div className="flex items-start gap-2">
-                  <MapPin className="w-3.5 h-3.5 text-danger mt-0.5 shrink-0" />
-                  <p className="text-sm font-medium text-text-primary leading-snug">{selected.destination_address ?? 'No fixed destination'}</p>
-                </div>
-              </div>
-              {selected.fare && (
-                <p className="text-2xl font-bold text-text-primary mt-3">₹{parseFloat(selected.fare).toLocaleString('en-IN')}</p>
-              )}
-            </div>
-
-            {/* offers is absent until the API that sends it is deployed: the web side may go out first. */}
-            {detail && detail.offers && (
-              <Section title={`Dispatch history (${detail.offers.length})`} defaultOpen={!selected.driver_name || ['requested', 'no_drivers', 'scheduled'].includes(selected.status)}>
-                <p className="sr-only">{offerSummary(detail.offers)}</p>
-                <RideOffers offers={detail.offers} />
-              </Section>
-            )}
-
-            {detail && (detail.origin_lat != null && detail.origin_lng != null) && (
-              <Section title="Map and route" defaultOpen={mapOpen} onToggle={setMapOpen}>
-                {mapOpen && (
-                  <RideMap
-                    pickup={{ lat: detail.origin_lat, lng: detail.origin_lng }}
-                    drop={detail.destination_lat != null && detail.destination_lng != null ? { lat: detail.destination_lat, lng: detail.destination_lng } : null}
-                    trail={trail}
-                    trailState={trailState}
-                  />
-                )}
-              </Section>
-            )}
-
-            {detail && [detail.base_fare, detail.distance_fare, detail.time_fare, detail.stop_fare, detail.hour_surcharge, detail.waiting_fare, detail.overage_fare, detail.surge_fare, detail.overtimeFare != null ? String(detail.overtimeFare) : null, detail.pickup_wait_charge, detail.toll_charge, detail.refund_amount].some(v => v && parseFloat(v) > 0) && (
-              <Section title="Fare breakdown">
-                {(
-                  [
-                    ['Base', detail.base_fare], ['Distance', detail.distance_fare], ['Time', detail.time_fare],
-                    ['Stops', detail.stop_fare], ['Hour surcharge', detail.hour_surcharge],
-                    ['Booked time', detail.waiting_fare ?? null],
-                    ['Overage', detail.overage_fare],
-                    ['Surge', detail.surge_fare, detail.surge_multiplier && parseFloat(detail.surge_multiplier) > 1 ? `×${detail.surge_multiplier}` : ''],
-                    // After surge: overtime is not surged.
-                    ['Extra time', detail.overtimeFare != null ? String(detail.overtimeFare) : null],
-                    // Not surged. The suffix shows the minutes waited against the free minutes the ride was booked with.
-                    ['Airport toll', detail.toll_charge ?? null, detail.toll_detail?.length ? `(${detail.toll_detail.map(t => t.zone).join(', ')})` : ''],
-                    ['Waiting at pickup', detail.pickup_wait_charge ?? null, detail.pickup_wait_min ? `(${Math.round(parseFloat(detail.pickup_wait_min))} min${detail.pickup_free_wait_min != null ? `, ${detail.pickup_free_wait_min} free` : ''})` : ''],
-                  ] as [string, string | null, string?][]
-                ).filter(([, v]) => v && parseFloat(v) > 0).map(([label, v, suffix]) => (
-                  <div key={label} className="flex justify-between items-center">
-                    <span className="text-xs text-text-muted">{label} {suffix}</span>
-                    <span className="text-xs font-medium text-text-primary">₹{parseFloat(v!).toLocaleString('en-IN')}</span>
-                  </div>
-                ))}
-                {detail.refund_amount && parseFloat(detail.refund_amount) > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-danger">Refunded</span>
-                    <span className="text-xs font-medium text-danger">₹{parseFloat(detail.refund_amount).toLocaleString('en-IN')}</span>
-                  </div>
-                )}
-                {(detail.actual_km || detail.estimated_km) && (
-                  <p className="text-[11px] text-text-muted pt-1">
-                    {detail.actual_km ? `${parseFloat(detail.actual_km).toFixed(1)} km actual` : `${parseFloat(detail.estimated_km ?? '0').toFixed(1)} km estimated`}
-                    {detail.overage_km && parseFloat(detail.overage_km) > 0 ? ` · ${parseFloat(detail.overage_km).toFixed(1)} km overage` : ''}
-                  </p>
-                )}
-              </Section>
-            )}
-
-            <Section title="Timeline">
-              {(() => {
-                const loggedStatuses = new Set((detail?.status_history ?? []).map(ev => ev.to_status))
-                const fromHistory = (detail?.status_history ?? []).map(ev => ({
-                  label: ev.to_status.replace(/_/g, ' '), ts: ev.created_at, actor: ev.actor, note: ev.note,
-                }))
-                const fromFlat = [
-                  { label: 'Requested',      ts: selected.requested_at,      status: 'requested' },
-                  { label: 'Accepted',       ts: selected.accepted_at,       status: 'accepted' },
-                  { label: 'Driver Arrived', ts: selected.driver_arrived_at, status: 'driver_arrived' },
-                  { label: 'Trip Started',   ts: selected.started_at,        status: 'in_progress' },
-                  { label: 'Completed',      ts: selected.completed_at,      status: 'completed' },
-                ]
-                  .filter(({ ts, status }) => ts && !loggedStatuses.has(status))
-                  .map(({ label, ts }) => ({ label, ts: ts as string, actor: null as string | null, note: null as string | null }))
-                const events = [...fromHistory, ...fromFlat].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
-                return (
-                  <div className="relative">
-                    {events.map((ev, i) => (
-                      <div key={i} className="relative pl-4 pb-3 last:pb-0">
-                        {i < events.length - 1 && (
-                          <span className="absolute left-[3px] top-2.5 bottom-[-4px] w-px bg-border-light" />
-                        )}
-                        <span className={`absolute left-0 top-1 w-[7px] h-[7px] rounded-full ${i === events.length - 1 ? 'bg-primary' : 'bg-text-muted'}`} />
-                        <div className="flex justify-between items-start gap-2">
-                          <div className="min-w-0">
-                            <span className="text-xs font-medium text-text-primary capitalize">{ev.label}</span>
-                            {ev.actor && <span className="text-xs text-text-muted capitalize"> · {ev.actor}</span>}
-                            {ev.note && <p className="text-[11px] text-text-muted">{ev.note}</p>}
-                          </div>
-                          <span className="text-xs text-text-muted whitespace-nowrap">{fmt(ev.ts)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              })()}
-            </Section>
-
-            {detailStops.length > 0 && (
-              <Section title="Stops">
-                {detailStops.map((s) => {
-                  const dwellMin = s.arrived_at && s.reached_at
-                    ? Math.round((new Date(s.reached_at).getTime() - new Date(s.arrived_at).getTime()) / 60000)
-                    : null
-                  const wait = parseFloat(s.wait_charge)
-                  return (
-                    <div key={s.id} className="flex justify-between items-center gap-2">
-                      <span className="text-xs text-text-primary truncate">{s.sequence}. {s.address ?? 'Stop'}</span>
-                      <span className="text-xs text-text-muted whitespace-nowrap capitalize">
-                        {s.status}
-                        {dwellMin != null ? ` · ${dwellMin}m wait` : ''}
-                        {wait > 0 ? ` · ₹${Math.round(wait)}` : ''}
-                      </span>
-                    </div>
-                  )
-                })}
-              </Section>
-            )}
-
-            {(selected.payment_status || selected.payment_channel) && (
-              <Section title="Payment" defaultOpen={selected.cash_discrepancy}>
-                <div className="flex justify-between items-center">
-                  <span className="inline-flex items-center gap-1 flex-wrap">
-                    <StatusPill status={selected.payment_status ?? 'pending'} />
-                    {selected.cash_discrepancy && <StatusPill status="cash_flagged" />}
-                  </span>
-                  {selected.payment_channel && (
-                    <span className="text-xs text-text-muted capitalize">{selected.payment_channel.replace(/_/g, ' ')}</span>
-                  )}
-                </div>
-                {selected.cash_discrepancy && (
-                  <p className="text-xs text-danger mt-2">
-                    Collected ₹{selected.cash_collected_amount ? parseFloat(selected.cash_collected_amount).toLocaleString('en-IN') : '0'}
-                    {selected.fare ? ` vs fare ₹${parseFloat(selected.fare).toLocaleString('en-IN')}` : ''}
-                  </p>
-                )}
-              </Section>
-            )}
-
-            {selected.status === 'cancelled' && (
-              <Section title="Cancellation" defaultOpen>
-                {selected.cancellation_actor && (
-                  <p className="text-xs text-text-muted capitalize mb-1">By: {selected.cancellation_actor}</p>
-                )}
-                <p className="text-sm text-text-primary">
-                  {selected.cancellation_reason
-                    ?? (selected.cancellation_reason_code
-                        ? selected.cancellation_reason_code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-                        : 'No reason provided')}
-                </p>
-                {detail?.cancellation_fee_applicable && (
-                  <p className="text-xs mt-2">
-                    {detail.cancellation_fee_waived ? (
-                      <span className="text-text-muted">
-                        Fee ₹{parseFloat(detail.cancellation_fee_amount ?? '0').toLocaleString('en-IN')} waived
-                        {detail.cancellation_fee_waived_reason ? ` — ${detail.cancellation_fee_waived_reason}` : ''}
-                      </span>
-                    ) : (
-                      <span className="text-text-primary font-medium">
-                        Cancellation fee: ₹{parseFloat(detail.cancellation_fee_amount ?? '0').toLocaleString('en-IN')}
-                      </span>
-                    )}
-                  </p>
-                )}
-              </Section>
-            )}
-
-            {detail && detail.messages.length > 0 && (
-              <Section title={`Chat (${detail.messages.length})`}>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {detail.messages.map(m => {
-                    const fromDriver = m.senderType === 'driver'
-                    return (
-                      <div key={m.id} className={`flex ${fromDriver ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] rounded-lg px-2.5 py-1.5 ${fromDriver ? 'bg-primary/10' : 'bg-surface border border-border-light'}`}>
-                          <p className="text-xs text-text-primary whitespace-pre-wrap break-words">{m.body}</p>
-                          <p className="text-[10px] text-text-muted mt-0.5">
-                            {fromDriver ? selected.driver_name ?? 'Driver' : selected.user_name} · {fmt(m.createdAt)}
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </Section>
-            )}
-
-            {detail && (detail.disputes.length > 0 || detail.sos_alerts.length > 0 || detail.ratings.length > 0) && (
-              <Section title="Related">
-                {detail.disputes.map(d => (
-                  <Link key={d.id} href="/disputes" className="flex justify-between items-center text-xs hover:underline">
-                    <span className="text-text-primary capitalize">Dispute · {d.type.replace(/_/g, ' ')}</span>
-                    <StatusPill status={d.status} />
-                  </Link>
-                ))}
-                {detail.sos_alerts.map(s => (
-                  <Link key={s.id} href="/sos" className="flex justify-between items-center text-xs hover:underline">
-                    <span className="text-text-primary capitalize">SOS · {s.severity}</span>
-                    <StatusPill status={s.status} />
-                  </Link>
-                ))}
-                {detail.ratings.map((r, i) => (
-                  <div key={i} className="flex justify-between items-start gap-2 text-xs">
-                    <span className="text-text-muted capitalize">{r.direction.replace(/_/g, ' ')}</span>
-                    <div className="text-right">
-                      <span className="inline-flex items-center gap-0.5 font-medium text-text-primary">
-                        {r.score} <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                      </span>
-                      {r.comment && <p className="text-[11px] text-text-muted max-w-[170px]">{r.comment}</p>}
-                    </div>
-                  </div>
-                ))}
-              </Section>
-            )}
-          </div>
+          <RideDrawer
+            ride={selected}
+            canAct={canAct}
+            position={selIndex >= 0 ? { index: selIndex, total: rides.length } : null}
+            onPrev={prevRide}
+            onNext={nextRide}
+            onClose={() => setSelected(null)}
+            onForce={setResolveTarget}
+            forceBusy={resolving}
+            actionError={actionError}
+            now={now}
+          />
         )}
       </SlideOver>
 
       <ReasonDialog
         open={resolveTarget !== null}
         title={resolveTarget === 'cancel' ? `Force cancel ride #${selected?.id ?? ''}?` : `Force complete ride #${selected?.id ?? ''}?`}
-        description={resolveTarget === 'cancel'
-          ? 'This ends the trip as cancelled and releases the driver. It is recorded in the ride history with your reason, and cannot be undone from here.'
-          : 'This ends the trip as completed and skips any stops the driver did not finish. It is recorded in the ride history with your reason, and cannot be undone from here.'}
+        description={`${resolveTarget === 'cancel' ? FORCE_CONSEQUENCE.cancel : FORCE_CONSEQUENCE.complete} It is recorded in the ride history with your reason and cannot be undone from here.`}
         confirmLabel={resolveTarget === 'cancel' ? 'Force cancel' : 'Force complete'}
         variant={resolveTarget === 'cancel' ? 'danger' : 'warning'}
         loading={resolving}
