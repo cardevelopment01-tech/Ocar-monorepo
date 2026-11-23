@@ -14,7 +14,7 @@ import { StopTimeline } from '@/features/ride-tracking/components/StopTimeline'
 import { fetchRouteLeg } from '@/features/ride-tracking/api'
 import type { RideDetailExtra } from '@/features/ride-tracking/types'
 import { RatingSection } from './RatingSection'
-import { shareReceipt } from './receiptFile'
+import { openReceipt } from './receiptFile'
 import { useReturnCabSaving } from './ReturnCabPanels'
 import { cancellationFeeOf, endedHeadline } from './endedHeadline'
 import {
@@ -115,12 +115,12 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
   const fareCaption = !completed && showFare ? 'Cancellation fee' : null
 
   const [receiptBusy, setReceiptBusy] = useState(false)
-  // The receipt is a PDF the server draws; it opens the share sheet. A free cancellation has none (no fee, no receipt).
+  // The receipt is a PDF the server draws; it opens in the phone's PDF viewer (share sheet on iOS). A free cancellation has none (no fee, no receipt).
   const hasReceipt = completed || showFare
   const getReceipt = async () => {
     if (receiptBusy) return
     setReceiptBusy(true)
-    try { await shareReceipt(String(ride.id)) }
+    try { await openReceipt(String(ride.id)) }
     catch { Alert.alert('Could not get the receipt', 'Please check your connection and try again.') }
     finally { setReceiptBusy(false) }
   }
@@ -239,9 +239,9 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
             <View style={styles.ticketFoot}>
               <Text style={styles.rideId} selectable>Trip ID #{ride.id}</Text>
               {hasReceipt ? (
-                <Pressable onPress={() => void getReceipt()} disabled={receiptBusy} accessibilityRole="button" accessibilityLabel="Get the receipt for this trip" accessibilityState={{ busy: receiptBusy }} hitSlop={8} style={styles.receiptLink}>
-                  {receiptBusy ? <ActivityIndicator size="small" color={h.tealText} /> : <Feather name="download" size={15} color={h.tealText} />}
-                  <Text style={styles.receiptLinkText}>{receiptBusy ? 'Preparing…' : 'Get receipt'}</Text>
+                <Pressable onPress={() => void getReceipt()} disabled={receiptBusy} accessibilityRole="button" accessibilityLabel="View the receipt for this trip" accessibilityState={{ busy: receiptBusy }} hitSlop={8} style={styles.receiptLink}>
+                  {receiptBusy ? <ActivityIndicator size="small" color={h.tealText} /> : <Feather name="file-text" size={15} color={h.tealText} />}
+                  <Text style={styles.receiptLinkText}>{receiptBusy ? 'Preparing…' : 'View receipt'}</Text>
                 </Pressable>
               ) : null}
             </View>
