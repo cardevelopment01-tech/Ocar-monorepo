@@ -2739,7 +2739,10 @@ export async function forceResolveRide(
 
 // ── Admin manual driver assignment ──────────────────────────────
 
-export async function getRideAssignCandidates(rideId: bigint) {
+export async function getRideAssignCandidates(
+  rideId: bigint,
+  opts: { search?: string; onlineOnly?: boolean; driverId?: bigint; limit?: number } = {},
+) {
   const ride = await repo.getRideCoreById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (!ride.origin_city_id) {
@@ -2755,6 +2758,7 @@ export async function getRideAssignCandidates(rideId: bigint) {
     rideLng: ride.origin_lng,
     categoryIds,
     minWalletBalance,
+    ...opts,
   })
 }
 
@@ -2772,7 +2776,8 @@ export async function adminAssignDriver(
     throw Object.assign(new Error('Ride is not open for assignment'), { httpStatus: 409 })
   }
 
-  const candidates = await getRideAssignCandidates(rideId)
+  // Look the chosen driver up by id. Scanning the picker's capped, distance-ranked list would refuse any driver past the nearest 50.
+  const candidates = await getRideAssignCandidates(rideId, { driverId })
   const candidate = candidates.find(c => c.driver_id === driverId.toString())
   if (!candidate) throw Object.assign(new Error('Driver not found in this city'), { httpStatus: 404 })
 

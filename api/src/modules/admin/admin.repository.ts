@@ -2373,6 +2373,8 @@ export async function getAdminRideById(rideId: bigint) {
        r.cash_discrepancy, r.cash_collected_amount::text AS cash_collected_amount,
        r.sos_triggered, r.sos_triggered_at,
        r.user_id::text AS user_id, r.driver_id::text AS driver_id,
+       r.scheduled_for,
+       COALESCE(r.scheduled_for - (ram.dispatch_buffer_minutes * interval '1 minute'), r.requested_at) AS dispatch_at,
        vc.display_name AS category_name, oc.name AS origin_city, dc.name AS destination_city,
        ST_Y(r.origin::geometry) AS origin_lat, ST_X(r.origin::geometry) AS origin_lng,
        ST_Y(r.destination::geometry) AS destination_lat, ST_X(r.destination::geometry) AS destination_lng,
@@ -2395,6 +2397,7 @@ export async function getAdminRideById(rideId: bigint) {
      JOIN users u ON u.id = r.user_id
      LEFT JOIN drivers d ON d.id = r.driver_id
      LEFT JOIN driver_vehicles dv ON dv.id = r.vehicle_id
+     LEFT JOIN ride_advance_meta ram ON ram.ride_id = r.id
      LEFT JOIN vehicle_categories vc ON vc.id = r.category_id
      LEFT JOIN cities oc ON oc.id = r.origin_city_id
      LEFT JOIN cities dc ON dc.id = r.destination_city_id

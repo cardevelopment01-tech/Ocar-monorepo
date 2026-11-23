@@ -17,12 +17,12 @@ export function offerSummary(offers: AdminRideOffer[]): string {
   return `${offers.length} driver${offers.length === 1 ? '' : 's'} offered over ${rounds} round${rounds === 1 ? '' : 's'}: ${parts.join(', ')}`
 }
 
-export default function RideOffers({ offers }: { offers: AdminRideOffer[] }) {
+export default function RideOffers({ offers, hideSummary = false }: { offers: AdminRideOffer[]; hideSummary?: boolean }) {
   if (offers.length === 0) return <p className="text-xs text-text-muted">{offerSummary(offers)}. Either no driver was online nearby, or the ride was assigned by an admin.</p>
   const rounds = [...new Set(offers.map(o => o.broadcast_round))].sort((a, b) => a - b)
   return (
     <div className="space-y-3">
-      <p className="text-xs font-medium text-text-primary">{offerSummary(offers)}</p>
+      {!hideSummary && <p className="text-xs font-medium text-text-primary">{offerSummary(offers)}</p>}
       {rounds.map(round => (
         <div key={round}>
           <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-1">Round {round}</p>

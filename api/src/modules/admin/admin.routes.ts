@@ -4,6 +4,7 @@ import { requireAdmin } from '@/middleware/role.middleware'
 import * as controller from './admin.controller'
 import multer from 'multer'
 import airportZones from './airport-zones'
+import dispatch from './dispatch'
 import { MAX_ADMIN_UPLOAD_BYTES } from './admin-doc-upload.service'
 
 const docUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ADMIN_UPLOAD_BYTES, files: 1 } })
@@ -16,6 +17,9 @@ router.use(requireAdmin())
 
 // ─── Airport zones and their toll per vehicle type ───────────────────────────
 router.use('/airport-zones', airportZones)
+
+// ─── Dispatch desk: the queue of rides waiting on a driver ───────────────────
+router.use('/dispatch', dispatch)
 
 // ─── Dashboard stats ─────────────────────────────────────────────────────────
 router.get('/stats', controller.getAdminStats)

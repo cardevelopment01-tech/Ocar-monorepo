@@ -398,6 +398,10 @@ export interface AdminRideOffer {
 export interface AdminRideTrailPoint { lat: number; lng: number; recorded_at: string }
 
 export type AdminRideDetail = AdminRideItem & AdminRideFareBreakdown & {
+  /** Pickup time of an advance booking; null for an immediate ride. */
+  scheduled_for: string | null
+  /** When the ride is (or was) handed to drivers: pickup minus the dispatch buffer for an advance booking, booking time otherwise. */
+  dispatch_at: string
   user_id: string
   driver_id: string | null
   category_name: string | null
@@ -490,8 +494,12 @@ export const adminRideApi = {
   forceResolve: async (rideId: string, action: 'complete' | 'cancel', note: string): Promise<void> => {
     await api.post(`/api/v1/admin/rides/${rideId}/force-resolve`, { action, note })
   },
-  getAssignCandidates: async (rideId: string): Promise<AssignCandidate[]> => {
-    const res = await api.get(`/api/v1/admin/rides/${rideId}/assign-candidates`)
+  /** `q` searches every driver in the city by name or phone; `online` limits the list to drivers with a live session (the only ones that can be assigned). */
+  getAssignCandidates: async (rideId: string, opts: { q?: string; online?: boolean } = {}): Promise<AssignCandidate[]> => {
+    const params: Record<string, string> = {}
+    if (opts.q) params['q'] = opts.q
+    if (opts.online) params['online'] = '1'
+    const res = await api.get(`/api/v1/admin/rides/${rideId}/assign-candidates`, { params })
     return (res.data as { candidates: AssignCandidate[] }).candidates
   },
   assignDriver: async (rideId: string, driverId: string, mode: 'request' | 'force', overrideEligibility?: boolean): Promise<void> => {

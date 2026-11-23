@@ -5,6 +5,7 @@ const PROTECTED_PATHS = [
   '/overview',
   '/live-map',
   '/rides',
+  '/dispatch',
   '/drivers',
   '/users',
   '/disputes',

@@ -1333,9 +1333,18 @@ export async function getRideAssignCandidates(
   next: NextFunction,
 ): Promise<void> {
   try {
+    // No params keeps the original behaviour (every driver in the city, nearest 50). The dispatch desk asks for
+    // online drivers only, or searches by name/phone across all of them.
+    const opts: { search?: string; onlineOnly?: boolean; limit?: number } = {};
+    const q = req.query["q"];
+    if (typeof q === "string" && q.trim() !== "") opts.search = q.trim().slice(0, 60);
+    if (req.query["online"] === "1") opts.onlineOnly = true;
+    const limit = Number(req.query["limit"]);
+    if (Number.isInteger(limit) && limit > 0) opts.limit = limit;
     res.json({
       candidates: await service.getRideAssignCandidates(
         BigInt(req.params["id"]!),
+        opts,
       ),
     });
   } catch (err) {

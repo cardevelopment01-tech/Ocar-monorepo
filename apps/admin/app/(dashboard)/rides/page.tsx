@@ -4,26 +4,26 @@ import { cardMode } from '@/lib/rate-card-mode'
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Car, MapPin, Star, ChevronDown, Phone, Copy, Check, Activity, XCircle, Wallet, CalendarClock, AlertTriangle, RefreshCw, Link2 } from 'lucide-react'
+import { Car, MapPin, Star, ChevronDown, Phone, Copy, Check, Activity, XCircle, Wallet, CalendarClock, AlertTriangle, RefreshCw, Link2, Headset } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
 import StatCard from '@/components/ui/StatCard'
 import ReasonDialog from '@/components/ui/ReasonDialog'
-import { adminRideApi, type AdminRideItem, type AdminUpcomingRideItem, type AdminRideStop, type AdminRideDetail, type AdminRideStats, type AdminRideTrailPoint } from '@/lib/admin-api'
+import { adminRideApi, type AdminRideItem, type AdminRideStop, type AdminRideDetail, type AdminRideStats, type AdminRideTrailPoint } from '@/lib/admin-api'
 import { extractErrorMessage } from '@/lib/http-errors'
 import { fmtIst, fmtIstClock, istDay } from '@/lib/ist'
 import { formatTotal, hasNextPage, CAPPED_TOTAL_HINT } from '@/lib/format-total'
 import { cityApi, type AdminCity } from '@/lib/city-api'
-import AssignDriverDrawer from './AssignDriverDrawer'
+import { dispatchApi, type DispatchSummary } from '@/lib/dispatch-api'
 import BookedTimeBlock from '@/components/rides/BookedTimeBlock'
 import RideOffers, { offerSummary } from '@/components/rides/RideOffers'
 import RideMap from '@/components/rides/RideMap'
 
 const fmt = (iso: string | null) => fmtIst(iso)
 
-// Refresh cadence for the live view. Each tick is the list page + stats (+ upcoming), all index-backed, and only runs while the tab is visible and nothing is open.
+// Refresh cadence for the live view. Each tick is the list page + stats, all index-backed, and only runs while the tab is visible and nothing is open.
 const LIVE_REFRESH_MS = 30_000
 // Statuses where a driver is (or was just) on the way or on the trip: the map is the first thing an operator wants.
 const MAP_OPEN_STATUSES = ['accepted', 'driver_arrived', 'in_progress', 'returning']
@@ -92,7 +92,6 @@ function RidesPageContent() {
   useEffect(() => { cityApi.list().then(setCities).catch(() => setCities([])) }, [])
 
   const [selected, setSelected] = useState<AdminRideItem | null>(null)
-  const [assignTarget, setAssignTarget] = useState<AdminRideItem | null>(null)
   const [detailStops, setDetailStops] = useState<AdminRideStop[]>([])
   const [detail, setDetail] = useState<AdminRideDetail | null>(null)
   const [resolving, setResolving] = useState(false)
@@ -104,8 +103,10 @@ function RidesPageContent() {
   const [trail, setTrail] = useState<AdminRideTrailPoint[]>([])
   const [trailState, setTrailState] = useState<'loading' | 'ready' | 'failed' | 'none'>('none')
 
-  const [upcoming, setUpcoming] = useState<AdminUpcomingRideItem[]>([])
-  const [upcomingLoading, setUpcomingLoading] = useState(true)
+  // Advance bookings and driver assignment live on the Dispatch desk; this page only points there, with the number that needs a person.
+  const [dispatch, setDispatch] = useState<DispatchSummary | null>(null)
+  const loadDispatch = useCallback(() => { dispatchApi.summary().then(setDispatch).catch(() => {}) }, [])
+  useEffect(() => { loadDispatch() }, [loadDispatch])
 
   const [stats, setStats] = useState<AdminRideStats | null>(null)
   // A failed refresh keeps the last numbers on screen instead of blanking the cards.
@@ -124,18 +125,6 @@ function RidesPageContent() {
     }
   }
 
-  const fetchUpcoming = useCallback(async (silent = false) => {
-    if (!silent) setUpcomingLoading(true)
-    try {
-      setUpcoming(await adminRideApi.upcoming())
-    } catch {
-      if (!silent) setUpcoming([])
-    } finally {
-      setUpcomingLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { void fetchUpcoming() }, [fetchUpcoming])
 
   // Fetch the ride's stop timeline (incl. wait charges) when a ride is opened —
   // the list row doesn't carry stops. Needed for wait-charge dispute resolution.
@@ -257,16 +246,16 @@ function RidesPageContent() {
 
   useEffect(() => { void fetchRides() }, [fetchRides])
 
-  const refreshAll = useCallback(() => { void fetchRides(true); loadStats(); void fetchUpcoming(true) }, [fetchRides, loadStats, fetchUpcoming])
+  const refreshAll = useCallback(() => { void fetchRides(true); loadStats(); loadDispatch() }, [fetchRides, loadStats, loadDispatch])
   // Live view: refresh on a timer while the tab is visible and nothing is open (a refresh must never reshuffle rows under an open ride or dialog),
   // and once more as soon as the tab comes back to the front.
   useEffect(() => {
-    if (!live || selected || assignTarget || resolveTarget) return
+    if (!live || selected || resolveTarget) return
     const tick = () => { if (document.visibilityState === 'visible') refreshAll() }
     const id = setInterval(tick, LIVE_REFRESH_MS)
     document.addEventListener('visibilitychange', tick)
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick) }
-  }, [live, selected, assignTarget, resolveTarget, refreshAll])
+  }, [live, selected, resolveTarget, refreshAll])
 
   const datePreset = (from: string, to: string) => { setDateFrom(from); setDateTo(to); setPage(1) }
   const presetActive = (daysFrom: number, daysTo: number) => dateFrom === istDay(daysFrom) && dateTo === istDay(daysTo)
@@ -304,12 +293,13 @@ function RidesPageContent() {
           <div className="flex items-center gap-2">
             <span className="text-text-muted italic text-xs">Unassigned</span>
             {['scheduled', 'requested', 'no_drivers'].includes(r.status) && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setAssignTarget(r) }}
+              <Link
+                href={`/dispatch?ride=${r.id}`}
+                onClick={e => e.stopPropagation()}
                 className="px-2 py-1 text-xs font-semibold bg-primary text-white rounded-full hover:bg-primary-dark transition-colors duration-150"
               >
                 Assign
-              </button>
+              </Link>
             )}
           </div>
         ),
@@ -402,42 +392,21 @@ function RidesPageContent() {
         <StatCard title="Cash flagged today" value={stats?.cash_flagged_count ?? '—'} change="" changeType="neutral" icon={Wallet} gradient="amber" loading={!stats} />
       </div>
 
-      {!upcomingLoading && upcoming.length > 0 && (
-        <div className="admin-card">
-          <h3 className="text-sm font-bold text-text-primary mb-3">
-            Upcoming scheduled rides ({upcoming.length}{upcoming.length >= 50 ? ', first 50' : ''})
-          </h3>
-          <div className="flex flex-col gap-2">
-            {upcoming.map(r => (
-              <div
-                key={r.id}
-                className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-sm ${
-                  r.is_stuck ? 'border-red-300 bg-red-50' : 'border-border'
-                }`}
-              >
-                <div className="min-w-0">
-                  <p className="font-semibold text-text-primary truncate">
-                    {r.user_name} · {r.user_phone}
-                  </p>
-                  <p className="text-xs text-text-muted truncate">
-                    {r.origin_address ?? '—'} → {r.destination_address ?? '—'}
-                  </p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="text-xs font-semibold text-text-primary">
-                    {fmtIst(r.scheduled_for)}
-                  </p>
-                  {r.is_stuck ? (
-                    <p className="text-[11px] font-semibold text-red-600">Stuck, sweep may have failed</p>
-                  ) : (
-                    <p className="text-[11px] text-text-muted">{r.advance_status}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <Link href="/dispatch" className="flex items-center justify-between gap-3 rounded-2xl border border-border-light bg-surface hover:bg-surface-2 transition-colors px-4 py-3">
+        <span className="flex items-center gap-3 min-w-0">
+          <span className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0"><Headset className="w-4 h-4 text-primary" /></span>
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-text-primary">Dispatch desk</span>
+            <span className="block text-xs text-text-muted truncate">Advance bookings, and rides that still need a driver</span>
+          </span>
+        </span>
+        <span className="flex items-center gap-2 flex-shrink-0 text-xs">
+          {dispatch && dispatch.searching_long + dispatch.no_drivers + dispatch.overdue > 0 && (
+            <span className="pill-danger">{(dispatch.searching_long + dispatch.no_drivers + dispatch.overdue).toLocaleString('en-IN')} need attention</span>
+          )}
+          {dispatch && <span className="text-text-muted">{dispatch.scheduled_total.toLocaleString('en-IN')} scheduled</span>}
+        </span>
+      </Link>
 
       <div className="admin-card">
         <div className="mb-3 flex items-center gap-2 flex-wrap" role="group" aria-label="Quick filters">
@@ -921,12 +890,6 @@ function RidesPageContent() {
         loading={resolving}
         onCancel={() => setResolveTarget(null)}
         onConfirm={reason => { if (resolveTarget) void handleForceResolve(resolveTarget, reason) }}
-      />
-
-      <AssignDriverDrawer
-        ride={assignTarget}
-        onClose={() => setAssignTarget(null)}
-        onAssigned={() => { setAssignTarget(null); void fetchRides() }}
       />
     </div>
   )

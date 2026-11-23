@@ -356,6 +356,16 @@ To tell "we never sent it" from "sent, not delivered": find the request (`auth.o
 message id from it to the BulkSMSPlans delivery report. No `sms.sent` line and a `notifications job failed` or `sms.rejected` line means we failed (balance, bad template, vendor down).
 `sms.sent` present and nothing on the phone means delivery: check the vendor's delivery report, the DLT template (`BULKSMSPLANS_OTP_TEMPLATE_ID`) and sender ID approval, balance, and the phone's operator.
 
+## Dispatch desk: advance bookings and rides waiting on a driver
+
+Admin → Dispatch (`/dispatch`, roles super/ops/support; only super and ops can assign). It is the one place that lists rides needing a person's attention; the Rides page only links to it.
+
+- **Scheduled** lane: advance bookings (`status = scheduled`), soonest pickup first. Each is dispatched automatically at pickup minus its buffer (15 min); the sweep (`sweep_scheduled_rides`) is the safety net.
+- **Needs a driver** lane: rides in `requested` for more than 90 s after they should have been dispatched, and `no_drivers` rides from the last 24 h.
+- **Overdue to dispatch** (tile): a scheduled ride whose dispatch time passed 5+ minutes ago and is still `scheduled`: the sweep missed it. Check the `scheduler` worker is running (Grafana, BullMQ queue counts) before assigning by hand.
+- **Assigning**: "Ask the driver" sends a request (30 s to accept; if declined or unanswered the ride returns to open dispatch). "Book directly" books at once and, if the driver's app shows no activity in 4 minutes, releases the ride and re-broadcasts it. Assigning an advance booking **early is not a reservation**: it opens the ride for dispatch immediately and the driver must be online now, so leave far-off rides to automatic dispatch.
+- Cost at scale: every list and count is an index-backed set over a rare status (`rides_scheduled_idx`, `rides_active_idx`, `rides_no_drivers_idx`), paged before any join. The driver list asks for online drivers only unless a name or phone is searched.
+
 ## Reports: digest did not arrive / Reports slow
 
 Alert: **Admin daily digest not sent** (Grafana, `admin_digest_runs_total{result="sent"}`). The digest runs

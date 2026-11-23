@@ -28,7 +28,8 @@ describe('gross-fare readers are classified', () => {
   // Raw COALESCE(..total_final, ..total_estimated) not wrapped in ocar_payable(). Admin lists show the gross "fare" next
   // to the payment's own paid amount; Task 9 adds the Gross / Paid / Discount columns.
   // rides.service.ts: the pickup waiting charge is added on top of the gross fare at settlement (a writer, followed by finaliseDiscount), not shown.
-  const GROSS_DISPLAY_ALLOWLIST: Record<string, number> = { 'modules/admin/admin.repository.ts': 4, 'modules/rides/rides.service.ts': 1 }
+  // dispatch.repository.ts: the dispatch desk shows the quoted fare of rides still waiting for a driver, which have no payment yet, as the Rides list does.
+  const GROSS_DISPLAY_ALLOWLIST: Record<string, number> = { 'modules/admin/admin.repository.ts': 4, 'modules/admin/dispatch.repository.ts': 1, 'modules/rides/rides.service.ts': 1 }
 
   it('no unclassified raw reader exists', () => {
     const found: Record<string, number> = {}
