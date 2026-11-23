@@ -64,7 +64,7 @@ export default function SlideOver({
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             className="fixed top-0 right-0 h-screen bg-surface flex flex-col shadow-2xl"
-            style={{ width: panelWidth, zIndex: 50 }}
+            style={{ width: panelWidth, maxWidth: '100vw', zIndex: 50 }}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0 bg-surface">

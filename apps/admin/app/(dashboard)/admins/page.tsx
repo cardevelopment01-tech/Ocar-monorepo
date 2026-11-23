@@ -420,7 +420,7 @@ export default function AdminsPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Active admins" value={activeCount} change={suspendedCount ? `${suspendedCount} suspended` : 'None suspended'} changeType="neutral" icon={Users} gradient="blue" loading={loadingAdmins} />
         <StatCard title="2FA enabled" value={withTotp} change={withTotp === admins.length ? 'Everyone is covered' : `${admins.length - withTotp} without 2FA`} changeType="neutral" icon={ShieldCheck} gradient={withTotp === admins.length ? 'green' : 'amber'} loading={loadingAdmins} />
         <StatCard title="Pending invites" value={pendingInvites} change="Not accepted yet" changeType="neutral" icon={Clock} gradient="purple" loading={loadingInvites} />
@@ -438,7 +438,7 @@ export default function AdminsPage() {
       )}
 
       <div className="admin-card">
-        <div className="px-5 py-4 border-b border-border-light">
+        <div className="py-4 border-b border-border-light">
           <div className="flex flex-wrap items-center gap-3">
             <h3 className="text-sm font-semibold text-text-primary mr-auto">Admin Accounts <span className="font-normal text-text-muted">({filtering ? `${visibleAdmins.length} of ${admins.length}` : admins.length})</span></h3>
             <div className="relative w-full sm:w-56">
@@ -469,7 +469,7 @@ export default function AdminsPage() {
       </div>
 
       <div className="admin-card">
-        <div className="px-5 py-4 border-b border-border-light">
+        <div className="py-4 border-b border-border-light">
           <h3 className="text-sm font-semibold text-text-primary">Invites</h3>
         </div>
         {invitesFailed ? (
