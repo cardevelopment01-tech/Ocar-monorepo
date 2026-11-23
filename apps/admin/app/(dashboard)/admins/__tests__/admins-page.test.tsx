@@ -28,6 +28,14 @@ const LINK = 'https://admin.ocar.example/accept-invite?token=abc123def456'
 const issued = (over: Partial<AdminInvite> = {}) => ({ invite: invite(over), link: LINK })
 const httpError = (status: number, error?: string) => ({ isAxiosError: true, response: { status, data: error ? { error } : {} } })
 
+const openMenu = async (user: ReturnType<typeof userEvent.setup>, email: string) => {
+  await user.click(await screen.findByRole('button', { name: `Actions for ${email}` }))
+}
+const pick = async (user: ReturnType<typeof userEvent.setup>, email: string, item: string) => {
+  await openMenu(user, email)
+  await user.click(await screen.findByRole('menuitem', { name: item }))
+}
+
 describe('Admins page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -39,8 +47,8 @@ describe('Admins page', () => {
     render(<AdminsPage />)
     expect(await screen.findByText('ops@ocar.test')).toBeInTheDocument()
     expect(screen.getByText('new@ocar.test')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Suspend ops@ocar.test' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Suspend me@ocar.test' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Actions for ops@ocar.test' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Actions for me@ocar.test' })).toBeNull()
   })
 
   it('shows "access restricted" for anyone who is not a super admin', async () => {
@@ -180,21 +188,24 @@ describe('Admins page', () => {
       const user = userEvent.setup()
       accounts.setStatus.mockResolvedValue(account({ admin_status: 'suspended' }))
       render(<AdminsPage />)
-      await user.click(await screen.findByRole('button', { name: 'Suspend ops@ocar.test' }))
+      await pick(user, 'ops@ocar.test', 'Suspend…')
       await user.click(await screen.findByRole('button', { name: 'Suspend' }))
       await waitFor(() => expect(accounts.setStatus).toHaveBeenCalledWith('2', 'suspended'))
       expect(await screen.findByText('ops@ocar.test suspended')).toBeInTheDocument()
-      expect(await screen.findByRole('button', { name: 'Reactivate ops@ocar.test' })).toBeInTheDocument()
+      await openMenu(user, 'ops@ocar.test')
+      expect(await screen.findByRole('menuitem', { name: 'Reactivate…' })).toBeInTheDocument()
     })
 
     it('a failure is shown, can be dismissed, and the admin stays active', async () => {
       const user = userEvent.setup()
       accounts.setStatus.mockRejectedValue(httpError(500))
       render(<AdminsPage />)
-      await user.click(await screen.findByRole('button', { name: 'Suspend ops@ocar.test' }))
+      await pick(user, 'ops@ocar.test', 'Suspend…')
       await user.click(await screen.findByRole('button', { name: 'Suspend' }))
       expect(await screen.findByText(/The server hit a problem/)).toBeInTheDocument()
-      expect(await screen.findByRole('button', { name: 'Suspend ops@ocar.test' })).toBeInTheDocument() // still active
+      await openMenu(user, 'ops@ocar.test')
+      expect(await screen.findByRole('menuitem', { name: 'Suspend…' })).toBeInTheDocument() // still active
+      await user.keyboard('{Escape}')
 
       await user.click(await screen.findByRole('button', { name: 'Dismiss this message' }))
       expect(screen.queryByText(/The server hit a problem/)).toBeNull()
@@ -328,28 +339,66 @@ describe('Admins page', () => {
     })
   })
 
-  describe('managing another admin', () => {
-    const open = async (user: ReturnType<typeof userEvent.setup>, name: string) => {
+  describe('the overview and the filters', () => {
+    beforeEach(() => accounts.list.mockResolvedValue([
+      account({ id: '1', email: 'me@ocar.test', role: 'super_admin', full_name: 'Sujal Khatoi' }),
+      account({ id: '2', email: 'ops@ocar.test', totp_enabled: false }),
+      account({ id: '3', email: 'fin@ocar.test', role: 'finance_admin', admin_status: 'suspended' }),
+    ]))
+
+    it('counts active admins, 2FA coverage, pending invites and email problems', async () => {
+      invites.list.mockResolvedValue([invite(), invite({ id: '12', email: 'bad@ocar.test', email_status: 'failed' }), invite({ id: '13', email: 'old@ocar.test', status: 'revoked' })])
       render(<AdminsPage />)
       await screen.findByText('ops@ocar.test')
-      await user.click(screen.getByRole('button', { name }))
+      const card = (title: string) => screen.getByText(title).closest('div')!.parentElement!
+      expect(card('Active admins')).toHaveTextContent('2')
+      expect(card('Active admins')).toHaveTextContent('1 suspended')
+      expect(card('2FA enabled')).toHaveTextContent('1 without 2FA')
+      expect(card('Pending invites')).toHaveTextContent('2')
+      expect(card('Email problems')).toHaveTextContent('1')
+    })
+
+    it('searches by name or email, filters by role and status, says so when nothing matches, and shows how many', async () => {
+      const user = userEvent.setup()
+      render(<AdminsPage />)
+      await screen.findByText('ops@ocar.test')
+      await user.type(screen.getByLabelText('Search admins'), 'sujal')
+      expect(screen.getByText('me@ocar.test')).toBeInTheDocument()
+      expect(screen.queryByText('ops@ocar.test')).toBeNull()
+      expect(screen.getByText('(1 of 3)')).toBeInTheDocument()
+
+      await user.clear(screen.getByLabelText('Search admins'))
+      await user.selectOptions(screen.getByLabelText('Filter by role'), 'finance_admin')
+      expect(screen.getByText('fin@ocar.test')).toBeInTheDocument()
+      expect(screen.queryByText('ops@ocar.test')).toBeNull()
+
+      await user.selectOptions(screen.getByLabelText('Filter by status'), 'active') // finance admin is suspended
+      expect(await screen.findByText('No admins match these filters')).toBeInTheDocument()
+    })
+  })
+
+  describe('managing another admin', () => {
+    const open = async (user: ReturnType<typeof userEvent.setup>, item: string) => {
+      render(<AdminsPage />)
+      await screen.findByText('ops@ocar.test')
+      await pick(user, 'ops@ocar.test', item)
     }
 
     it('offers the four actions for others but none for yourself, and Reset 2FA only when they have 2FA', async () => {
       accounts.list.mockResolvedValue([account({ id: '1', email: 'me@ocar.test', role: 'super_admin' }), account({ totp_enabled: false })])
+      const user = userEvent.setup()
       render(<AdminsPage />)
       await screen.findByText('ops@ocar.test')
-      expect(screen.getByRole('button', { name: 'Change role of ops@ocar.test' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Sign out ops@ocar.test everywhere' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Remove ops@ocar.test' })).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Reset 2FA for ops@ocar.test' })).toBeNull()
-      expect(screen.queryByRole('button', { name: /me@ocar.test/ })).toBeNull()
+      await openMenu(user, 'ops@ocar.test')
+      for (const name of ['Change role…', 'Sign out everywhere…', 'Suspend…', 'Remove admin…']) expect(await screen.findByRole('menuitem', { name })).toBeInTheDocument()
+      expect(screen.queryByRole('menuitem', { name: 'Reset 2FA…' })).toBeNull()
+      expect(screen.queryByRole('button', { name: /Actions for me@ocar.test/ })).toBeNull()
     })
 
     it('a wrong password keeps the dialog open with the server message, and nothing changes in the list', async () => {
       const user = userEvent.setup()
       accounts.changeRole.mockRejectedValue(httpError(403, 'That password is not right'))
-      await open(user, 'Change role of ops@ocar.test')
+      await open(user, 'Change role…')
       await user.type(screen.getByLabelText(/Your password/), 'nope')
       await user.click(screen.getByRole('button', { name: 'Change role' }))
       expect(await screen.findByRole('alert')).toHaveTextContent('That password is not right')
@@ -360,7 +409,7 @@ describe('Admins page', () => {
     it('changing the role updates the row and confirms', async () => {
       const user = userEvent.setup()
       accounts.changeRole.mockResolvedValue(account({ role: 'support_admin' }))
-      await open(user, 'Change role of ops@ocar.test')
+      await open(user, 'Change role…')
       await user.type(screen.getByLabelText(/Your password/), 'Admin@1234')
       await user.click(screen.getByRole('button', { name: 'Change role' }))
       expect(await screen.findByText('ops@ocar.test is now Support Admin')).toBeInTheDocument()
@@ -370,7 +419,7 @@ describe('Admins page', () => {
     it('removing needs the email typed exactly and a password, then drops the row', async () => {
       const user = userEvent.setup()
       accounts.remove.mockResolvedValue(undefined)
-      await open(user, 'Remove ops@ocar.test')
+      await open(user, 'Remove admin…')
       const submit = screen.getByRole('button', { name: 'Remove admin' })
       await user.type(screen.getByLabelText(/Your password/), 'Admin@1234')
       expect(submit).toBeDisabled() // email not typed yet

@@ -1,9 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { UserPlus, UserCog, KeyRound, LogOut, Trash2, X, Send, Ban, ShieldOff, ShieldCheck, RotateCw, AlertCircle, RefreshCw, Mail, Copy, Check } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { UserPlus, UserCog, KeyRound, LogOut, Trash2, MoreHorizontal, Search, Users, Clock, X, Send, Ban, ShieldOff, ShieldCheck, RotateCw, AlertCircle, RefreshCw, Mail, Copy, Check } from 'lucide-react'
 import DataTable from '@/components/ui/DataTable'
 import StatusPill from '@/components/ui/StatusPill'
+import StatCard from '@/components/ui/StatCard'
+import { InitialsAvatar } from '../drivers/shared'
 import SlideOver from '@/components/ui/SlideOver'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import SuccessToast from '@/components/ui/SuccessToast'
@@ -20,11 +23,30 @@ const ROLE_LABEL: Record<AdminRole, string> = {
   finance_admin: 'Finance Admin',
 }
 
+const ROLE_HELP: Record<AdminRole, string> = {
+  super_admin: 'Everything, including managing admins, settings and pricing.',
+  ops_admin: 'Day-to-day operations: drivers, vehicles, rides and dispatch.',
+  support_admin: 'Looks up rides, riders and drivers to help with support cases. Cannot approve drivers.',
+  finance_admin: 'Payments, settlements, offers and revenue reports.',
+}
+
 const ROLE_PILL: Record<AdminRole, string> = {
   super_admin: 'pill-purple',
   ops_admin: 'pill-info',
   support_admin: 'pill-muted',
   finance_admin: 'pill-success',
+}
+
+function MenuItem({ icon, danger, onSelect, children }: { icon: React.ReactNode; danger?: boolean; onSelect: () => void; children: React.ReactNode }) {
+  return (
+    <DropdownMenu.Item
+      onSelect={onSelect}
+      className={`flex items-center gap-2.5 px-3 py-2 mx-1 rounded-lg text-sm font-medium cursor-pointer outline-none ${danger ? 'text-danger data-[highlighted]:bg-danger-light' : 'text-text-secondary data-[highlighted]:bg-surface-2 data-[highlighted]:text-text-primary'}`}
+    >
+      <span aria-hidden className="flex-shrink-0">{icon}</span>
+      {children}
+    </DropdownMenu.Item>
+  )
 }
 
 function RolePill({ role }: { role: AdminRole }) {
@@ -155,6 +177,9 @@ export default function AdminsPage() {
   const [resendTarget, setResendTarget] = useState<AdminInvite | null>(null)
   const [issued, setIssued] = useState<Issued | null>(null)
   const [statusTarget, setStatusTarget] = useState<AdminAccount | null>(null)
+  const [search, setSearch] = useState('')
+  const [roleFilter, setRoleFilter] = useState<AdminRole | ''>('')
+  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'suspended'>('')
   const [manage, setManage] = useState<{ target: AdminAccount; action: AdminLifecycleAction } | null>(null)
 
   const [toast, setToast] = useState<string | null>(null)
@@ -278,6 +303,20 @@ export default function AdminsPage() {
     }
   }
 
+  const visibleAdmins = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return admins.filter(a =>
+      (!roleFilter || a.role === roleFilter) &&
+      (!statusFilter || a.admin_status === statusFilter) &&
+      (!q || a.email.toLowerCase().includes(q) || (a.full_name ?? '').toLowerCase().includes(q)))
+  }, [admins, search, roleFilter, statusFilter])
+  const filtering = !!(search.trim() || roleFilter || statusFilter)
+  const activeCount = admins.filter(a => a.admin_status === 'active').length
+  const suspendedCount = admins.length - activeCount
+  const withTotp = admins.filter(a => a.totp_enabled).length
+  const pendingInvites = invites.filter(i => i.status === 'pending').length
+  const failedEmails = invites.filter(i => i.status === 'pending' && i.email_status === 'failed').length
+
   const afterManage = (updated: AdminAccount | null, removedId: string | null, message: string) => {
     if (updated) setAdmins(prev => prev.map(a => (a.id === updated.id ? updated : a)))
     if (removedId) setAdmins(prev => prev.filter(a => a.id !== removedId))
@@ -286,29 +325,43 @@ export default function AdminsPage() {
   }
 
   const adminColumns = [
-    { key: 'email', header: 'Admin', render: (a: AdminAccount) => a.full_name ? <div><span className="text-sm font-medium text-text-primary">{a.full_name}</span><span className="block text-xs text-text-muted">{a.email}</span></div> : <span className="text-sm font-medium text-text-primary">{a.email}</span> },
+    {
+      key: 'email', header: 'Admin',
+      render: (a: AdminAccount) => (
+        <div className="flex items-center gap-3 min-w-0">
+          <InitialsAvatar name={a.full_name ?? a.email.split('@')[0]!.replace(/[._-]+/g, ' ')} />
+          <div className="min-w-0">
+            {a.full_name && <span className="block truncate text-sm font-medium text-text-primary">{a.full_name}</span>}
+            <span className={a.full_name ? 'block truncate text-xs text-text-muted' : 'block truncate text-sm font-medium text-text-primary'}>{a.email}</span>
+          </div>
+        </div>
+      ),
+    },
     { key: 'role', header: 'Role', width: '160px', render: (a: AdminAccount) => <RolePill role={a.role} /> },
     { key: 'admin_status', header: 'Status', width: '120px', render: (a: AdminAccount) => <StatusPill status={a.admin_status} /> },
     { key: 'totp_enabled', header: '2FA', width: '80px', render: (a: AdminAccount) => <span className={`text-xs ${a.totp_enabled ? 'text-success' : 'text-text-muted'}`}>{a.totp_enabled ? 'On' : 'Off'}</span> },
     { key: 'last_login_at', header: 'Last sign-in', width: '140px', render: (a: AdminAccount) => <span className="text-xs text-text-muted">{a.last_login_at ? formatDate(a.last_login_at) : 'Never'}</span> },
     { key: 'created_at', header: 'Joined', width: '140px', render: (a: AdminAccount) => <span className="text-xs text-text-muted">{formatDate(a.created_at)}</span> },
     {
-      key: 'actions', header: '', width: '170px',
+      key: 'actions', header: '', width: '56px',
       render: (a: AdminAccount) => a.id === currentAdmin?.id ? null : (
-        <div className="flex items-center gap-0.5">
-        <button onClick={() => setManage({ target: a, action: 'role' })} className={ICON_BUTTON} title="Change role" aria-label={`Change role of ${a.email}`}><UserCog size={14} /></button>
-        {a.totp_enabled && <button onClick={() => setManage({ target: a, action: 'reset2fa' })} className={ICON_BUTTON} title="Reset 2FA" aria-label={`Reset 2FA for ${a.email}`}><KeyRound size={14} /></button>}
-        <button onClick={() => setManage({ target: a, action: 'signOut' })} className={ICON_BUTTON} title="Sign out everywhere" aria-label={`Sign out ${a.email} everywhere`}><LogOut size={14} /></button>
-        <button onClick={() => setManage({ target: a, action: 'remove' })} className={ICON_BUTTON} title="Remove admin" aria-label={`Remove ${a.email}`}><Trash2 size={14} /></button>
-        <button
-          onClick={() => setStatusTarget(a)}
-          className={ICON_BUTTON}
-          title={a.admin_status === 'active' ? 'Suspend admin' : 'Reactivate admin'}
-          aria-label={`${a.admin_status === 'active' ? 'Suspend' : 'Reactivate'} ${a.email}`}
-        >
-          {a.admin_status === 'active' ? <ShieldOff size={14} /> : <ShieldCheck size={14} />}
-        </button>
-        </div>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button type="button" aria-label={`Actions for ${a.email}`} className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors cursor-pointer">
+              <MoreHorizontal size={16} aria-hidden />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content align="end" sideOffset={6} className="z-50 bg-surface border border-border rounded-xl py-1 min-w-[200px] animate-fade-in" style={{ boxShadow: '0 8px 32px rgba(15,23,42,0.12), 0 0 0 1px #DCEBEE' }}>
+              <MenuItem icon={<UserCog size={14} />} onSelect={() => setManage({ target: a, action: 'role' })}>Change role…</MenuItem>
+              {a.totp_enabled && <MenuItem icon={<KeyRound size={14} />} onSelect={() => setManage({ target: a, action: 'reset2fa' })}>Reset 2FA…</MenuItem>}
+              <MenuItem icon={<LogOut size={14} />} onSelect={() => setManage({ target: a, action: 'signOut' })}>Sign out everywhere…</MenuItem>
+              <MenuItem icon={a.admin_status === 'active' ? <ShieldOff size={14} /> : <ShieldCheck size={14} />} onSelect={() => setStatusTarget(a)}>{a.admin_status === 'active' ? 'Suspend…' : 'Reactivate…'}</MenuItem>
+              <DropdownMenu.Separator className="my-1 h-px bg-border-light" />
+              <MenuItem danger icon={<Trash2 size={14} />} onSelect={() => setManage({ target: a, action: 'remove' })}>Remove admin…</MenuItem>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       ),
     },
   ]
@@ -380,6 +433,13 @@ export default function AdminsPage() {
         </button>
       </div>
 
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Active admins" value={activeCount} change={suspendedCount ? `${suspendedCount} suspended` : 'None suspended'} changeType="neutral" icon={Users} gradient="blue" loading={loadingAdmins} />
+        <StatCard title="2FA enabled" value={withTotp} change={withTotp === admins.length ? 'Everyone is covered' : `${admins.length - withTotp} without 2FA`} changeType="neutral" icon={ShieldCheck} gradient={withTotp === admins.length ? 'green' : 'amber'} loading={loadingAdmins} />
+        <StatCard title="Pending invites" value={pendingInvites} change="Not accepted yet" changeType="neutral" icon={Clock} gradient="purple" loading={loadingInvites} />
+        <StatCard title="Email problems" value={failedEmails} change="Not delivered" changeType="neutral" icon={AlertCircle} gradient="pink" loading={loadingInvites} />
+      </div>
+
       {actionError && (
         <div role="alert" className="flex items-start gap-3 rounded-xl bg-danger-light px-4 py-3 text-sm text-danger">
           <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
@@ -392,15 +452,30 @@ export default function AdminsPage() {
 
       <div className="admin-card">
         <div className="px-5 py-4 border-b border-border-light">
-          <h3 className="text-sm font-semibold text-text-primary">Admin Accounts</h3>
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="text-sm font-semibold text-text-primary mr-auto">Admin Accounts <span className="font-normal text-text-muted">({filtering ? `${visibleAdmins.length} of ${admins.length}` : admins.length})</span></h3>
+            <div className="relative w-full sm:w-56">
+              <Search size={14} aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or email" aria-label="Search admins" className="w-full pl-8 pr-3 py-2 text-sm border border-border rounded-xl outline-none focus:border-primary bg-surface" />
+            </div>
+            <select value={roleFilter} onChange={e => setRoleFilter(e.target.value as AdminRole | '')} aria-label="Filter by role" className="px-3 py-2 text-sm border border-border rounded-xl bg-surface outline-none focus:border-primary">
+              <option value="">All roles</option>
+              {(Object.keys(ROLE_LABEL) as AdminRole[]).map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+            </select>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as '' | 'active' | 'suspended')} aria-label="Filter by status" className="px-3 py-2 text-sm border border-border rounded-xl bg-surface outline-none focus:border-primary">
+              <option value="">Any status</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </div>
         </div>
         {adminsFailed ? (
           <LoadError what="admin accounts" onRetry={() => void loadAdmins()} />
         ) : (
           <DataTable
             isLoading={loadingAdmins}
-            emptyMessage="No admin accounts yet"
-            data={admins as unknown as Record<string, unknown>[]}
+            emptyMessage={filtering ? 'No admins match these filters' : 'No admin accounts yet'}
+            data={visibleAdmins as unknown as Record<string, unknown>[]}
             columns={adminColumns as unknown as { key: string; header: string; width?: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
           />
         )}
@@ -467,7 +542,8 @@ export default function AdminsPage() {
                 <option key={role} value={role}>{ROLE_LABEL[role]}</option>
               ))}
             </select>
-            <p className="mt-1.5 text-[11px] text-text-muted">The invite link works for 48 hours and can be used once.</p>
+            <p className="mt-1.5 text-xs text-text-secondary">{ROLE_HELP[inviteRole]}</p>
+            <p className="mt-1 text-[11px] text-text-muted">The invite link works for 48 hours and can be used once.</p>
           </div>
 
           {inviteError && (
