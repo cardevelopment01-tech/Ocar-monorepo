@@ -17,13 +17,16 @@ export const LIVE_TTL_MS = 10_000
 export const SNAPSHOT_TTL_MS = 20_000
 /** A snapshot position only replaces a live one that is at least this old. */
 export const LIVE_FRESH_MS = 5_000
-/** The rider's map frames and shows cars within this distance of the pickup, which the server's cells always cover. */
+/** Ride tracking (the searching map) shows cars within this distance of the pickup, which the server's cells always cover. The booking map uses BOOKING_SHOW_WITHIN_M. */
 export const SHOW_WITHIN_M = 3_000
 /**
- * The booking map draws the category being booked as far out as the card's ETA counts it: the server's own nearby radius (8 km). A
+ * The booking map draws the category being booked as far out as the card's ETA counts it: the server's own nearby radius (8 km, `radius` default
+ * of GET /rides/nearby-drivers). The card applies this same limit (fare.tsx), so the two cannot drift apart. A
  * shorter limit put "6 min away" on the card (a car about 3 km out) with no car on the map. Ride tracking keeps SHOW_WITHIN_M.
  */
 export const BOOKING_SHOW_WITHIN_M = 8_000
+/** The booking camera zooms out to include the nearest car only when it is this close to the pickup; a far car is drawn but not chased (it would shrink the route to a dot). */
+export const FRAME_CAR_WITHIN_M = 4_000
 /** At most this many cars are drawn: the request goes to a handful of drivers, and a swarm of icons says more than is true. */
 export const MAX_SHOWN = 8
 

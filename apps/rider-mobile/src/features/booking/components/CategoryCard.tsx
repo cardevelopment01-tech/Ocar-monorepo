@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { formatNearestKm } from '../eta'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Feather } from '@expo/vector-icons'
 import { Skeleton, VehicleIcon, font, h } from '@ocar/mobile-shared'
@@ -65,7 +66,7 @@ function CategoryCardBase({
         {noCars ? (
           <Text style={[styles.sub, { color: h.label }]}>No cars nearby right now</Text>
         ) : eta && eta.etaMin > 0 ? (
-          <Text style={[styles.sub, { color: h.tealText }]}>{eta.etaMin} min away{eta.km !== undefined ? ` · ${eta.km < 1 ? `${Math.round(eta.km * 10) * 100} m` : `${(Math.round(eta.km * 10) / 10).toFixed(1)} km`}` : ''}</Text>
+          <Text style={[styles.sub, { color: h.tealText }]}>{eta.etaMin} min away{eta.km !== undefined ? ` · ${formatNearestKm(eta.km)}` : ''}</Text>
         ) : null}
         {offerSavingText ? <Text style={styles.offerSaving}>{offerSavingText}</Text> : null}
       </View>

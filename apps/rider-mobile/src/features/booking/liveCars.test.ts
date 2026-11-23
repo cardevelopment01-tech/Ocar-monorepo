@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOOKING_SHOW_WITHIN_M, LIVE_FRESH_MS, LIVE_TTL_MS, MAX_SHOWN, SNAPSHOT_TTL_MS, applyLive, applySnapshot, carsForBooking, carsNear, chooseCars, expireCars, liveIsFlowing, parseCarEvent, sameCars, showWithinMetres, type LiveCars } from './liveCars'
+import { BOOKING_SHOW_WITHIN_M, FRAME_CAR_WITHIN_M, LIVE_FRESH_MS, LIVE_TTL_MS, MAX_SHOWN, SNAPSHOT_TTL_MS, applyLive, applySnapshot, carsForBooking, carsNear, chooseCars, expireCars, liveIsFlowing, parseCarEvent, sameCars, showWithinMetres, type LiveCars } from './liveCars'
 
 // Value: protects=the cars on a searching rider's map are the freshest word on each driver: live positions win, the REST
 // snapshot fills in and takes over when the push is not arriving, silent cars drop out, and a hostile or malformed socket
@@ -174,5 +174,12 @@ describe('showWithinMetres for a city ride (offered within the same radius as a 
     expect(showWithinMetres('one_way', 'auto', 'city')).toBe(2_000)
     expect(showWithinMetres('one_way', 'sedan', 'city')).toBe(2_500)
     expect(showWithinMetres('one_way', null, 'city')).toBe(2_500)
+  })
+})
+
+describe('FRAME_CAR_WITHIN_M (how far the booking camera chases the nearest car)', () => {
+  it('covers a 6 minute auto (about 3 km) but not one so far that the route would shrink to a dot', () => {
+    expect(FRAME_CAR_WITHIN_M).toBeGreaterThanOrEqual(3_250)
+    expect(FRAME_CAR_WITHIN_M).toBeLessThan(BOOKING_SHOW_WITHIN_M)
   })
 })
