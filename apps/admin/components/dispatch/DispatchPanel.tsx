@@ -128,7 +128,7 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
               {detail.scheduled_for ? ` · Pickup ${fmtIst(detail.scheduled_for)} (${relativeTo(detail.scheduled_for, now)})` : ` · Booked ${fmtIst(detail.requested_at)}`}
             </p>
             <div className="flex items-center gap-2 flex-wrap pt-1">
-              <Link href={`/rides?ride=${detail.id}`} className="text-xs font-semibold text-primary hover:underline mr-auto">Open full ride details</Link>
+              <Link href={`/rides/${detail.id}`} className="text-xs font-semibold text-primary hover:underline mr-auto">Open full ride details</Link>
               {canAssign && detail.status === 'scheduled' && (
                 <button type="button" onClick={() => { setActionError(''); setAction('reschedule') }}
                   className="px-3 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface transition-colors">Change time</button>

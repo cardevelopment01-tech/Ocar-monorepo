@@ -10,9 +10,7 @@ interface SlideOverProps {
   onClose: () => void
   title: string
   children: React.ReactNode
-  width?: 'md' | 'lg' | 'xl'
-  /** The child draws its own header and scrolls itself (the ride drawer). The panel then has no title bar. */
-  bare?: boolean
+  width?: 'md' | 'lg'
 }
 
 export default function SlideOver({
@@ -21,9 +19,8 @@ export default function SlideOver({
   title,
   children,
   width = 'md',
-  bare = false,
 }: SlideOverProps) {
-  const panelWidth = width === 'xl' ? '720px' : width === 'lg' ? '600px' : '480px'
+  const panelWidth = width === 'lg' ? '600px' : '480px'
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
@@ -67,9 +64,8 @@ export default function SlideOver({
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             className="fixed top-0 right-0 h-screen bg-surface flex flex-col shadow-2xl"
-            style={{ width: panelWidth, maxWidth: '100vw', zIndex: 50 }}
+            style={{ width: panelWidth, zIndex: 50 }}
           >
-            {bare ? <div className="flex-1 min-h-0">{children}</div> : (<>
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0 bg-surface">
               <h2 className="text-lg font-semibold text-text-primary truncate pr-4">
@@ -87,7 +83,6 @@ export default function SlideOver({
             <div className="flex-1 overflow-y-auto overscroll-contain">
               {children}
             </div>
-            </>)}
           </motion.div>
         </>
       )}

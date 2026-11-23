@@ -8,19 +8,15 @@ import { Car, MapPin, Activity, XCircle, Wallet, CalendarClock, AlertTriangle, R
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
 import FilterBar from '@/components/ui/FilterBar'
-import SlideOver from '@/components/ui/SlideOver'
 import StatCard from '@/components/ui/StatCard'
-import ReasonDialog from '@/components/ui/ReasonDialog'
 import { adminRideApi, type AdminRideItem, type AdminRideStats } from '@/lib/admin-api'
 import { extractErrorMessage } from '@/lib/http-errors'
 import { fmtIst, fmtIstClock, istDay } from '@/lib/ist'
-import { useNow } from '@/lib/use-now'
-import { useAdminAuth } from '@/lib/auth-context'
-import { FORCE_CONSEQUENCE } from '@/lib/ride-situation'
+
 import { formatTotal, hasNextPage, CAPPED_TOTAL_HINT } from '@/lib/format-total'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 import { dispatchApi, type DispatchSummary } from '@/lib/dispatch-api'
-import RideDrawer from '@/components/rides/RideDrawer'
+import { RIDES_NAV_KEY } from '@/components/rides/RideDetail'
 
 const fmt = (iso: string | null) => fmtIst(iso)
 
@@ -76,14 +72,6 @@ function RidesPageContent() {
 
   useEffect(() => { cityApi.list().then(setCities).catch(() => setCities([])) }, [])
 
-  const [selected, setSelected] = useState<AdminRideItem | null>(null)
-  const [resolving, setResolving] = useState(false)
-  const [resolveTarget, setResolveTarget] = useState<'complete' | 'cancel' | null>(null)
-  const [actionError, setActionError] = useState('')
-  const now = useNow(30_000)
-  const { admin } = useAdminAuth()
-  // Only ops and super admins resolve or reassign a ride; support can read everything.
-  const canAct = admin?.role === 'super_admin' || admin?.role === 'ops_admin'
 
   // Advance bookings and driver assignment live on the Dispatch desk; this page only points there, with the number that needs a person.
   const [dispatch, setDispatch] = useState<DispatchSummary | null>(null)
@@ -95,43 +83,19 @@ function RidesPageContent() {
   const loadStats = useCallback(() => { adminRideApi.stats().then(setStats).catch(() => {}) }, [])
   useEffect(() => { loadStats() }, [loadStats])
 
-  // Opening or leaving a ride clears any message about the previous one.
-  useEffect(() => { setActionError('') }, [selected?.id])
-
-  // A forced outcome moves a live trip's state and money, so it needs a typed reason; the API stores it in the ride's history.
-  async function handleForceResolve(action: 'complete' | 'cancel', reason: string) {
-    if (!selected) return
-    setResolving(true)
-    setActionError('')
-    try {
-      await adminRideApi.forceResolve(selected.id, action, reason.trim())
-      setResolveTarget(null)
-      setSelected(null)
-      await fetchRides(true)
-      loadStats()
-    } catch (err) {
-      setResolveTarget(null)
-      setActionError(extractErrorMessage(err, `Could not force ${action} this ride. It may have changed: refresh and try again.`))
-    } finally {
-      setResolving(false)
-    }
-  }
-
-  // Deep link from other admin pages (e.g. SOS "View ride") opens the ride directly, whatever the list's filters or page.
-  // Read once on arrival; after that the URL follows the selection (below), not the other way round.
+  const redirecting = useRef(false)
+  // Old deep links (/rides?ride=ID, from SOS and Dispatch) land on the ride's own page.
   useEffect(() => {
     const rideId = searchParams.get('ride')
-    if (!rideId) return
-    let cancelled = false
-    adminRideApi.getById(rideId).then(d => { if (!cancelled) setSelected(d) }).catch(() => {})
-    return () => { cancelled = true }
+    if (rideId && /^\d+$/.test(rideId)) { redirecting.current = true; router.replace(`/rides/${rideId}`) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Keep the address bar in step with the view. The first run is skipped so an arriving ?ride= is not stripped before it loads.
+  // Keep the address bar in step with the filters. The first run is skipped so an arriving ?ride= is not stripped before it redirects.
   const firstUrlSync = useRef(true)
   useEffect(() => {
     if (firstUrlSync.current) { firstUrlSync.current = false; return }
+    if (redirecting.current) return // an old ?ride= link is on its way to the ride's own page
     const p = new URLSearchParams()
     if (debouncedSearch) p.set('q', debouncedSearch)
     if (statusFilter) p.set('status', statusFilter)
@@ -142,11 +106,9 @@ function RidesPageContent() {
     if (cashFlagFilter) p.set('cash', cashFlagFilter)
     if (attentionOnly) p.set('attention', '1')
     if (page > 1) p.set('page', String(page))
-    if (selected) p.set('ride', selected.id)
     const qs = p.toString()
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- selected?.id is the only part of selected that matters here
-  }, [debouncedSearch, statusFilter, rideTypeFilter, cityFilter, dateFrom, dateTo, cashFlagFilter, attentionOnly, page, selected?.id, pathname, router])
+  }, [debouncedSearch, statusFilter, rideTypeFilter, cityFilter, dateFrom, dateTo, cashFlagFilter, attentionOnly, page, pathname, router])
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -191,20 +153,21 @@ function RidesPageContent() {
   useEffect(() => { void fetchRides() }, [fetchRides])
 
   const refreshAll = useCallback(() => { void fetchRides(true); loadStats(); loadDispatch() }, [fetchRides, loadStats, loadDispatch])
-  // Live view: refresh on a timer while the tab is visible and nothing is open (a refresh must never reshuffle rows under an open ride or dialog),
+  // Live view: refresh on a timer while the tab is visible and a ride detail is its own page now,
   // and once more as soon as the tab comes back to the front.
   useEffect(() => {
-    if (!live || selected || resolveTarget) return
+    if (!live) return
     const tick = () => { if (document.visibilityState === 'visible') refreshAll() }
     const id = setInterval(tick, LIVE_REFRESH_MS)
     document.addEventListener('visibilitychange', tick)
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick) }
-  }, [live, selected, resolveTarget, refreshAll])
+  }, [live, refreshAll])
 
-  // Step through the rides on this page without closing the drawer (arrows, or J and K).
-  const selIndex = selected ? rides.findIndex(x => x.id === selected.id) : -1
-  const prevRide = selIndex > 0 ? () => setSelected(rides[selIndex - 1]!) : null
-  const nextRide = selIndex >= 0 && selIndex < rides.length - 1 ? () => setSelected(rides[selIndex + 1]!) : null
+  // Open a ride on its own page, leaving the visible ids behind so J / K can step through them there.
+  function openRide(id: string) {
+    try { sessionStorage.setItem(RIDES_NAV_KEY, JSON.stringify(rides.map(x => x.id))) } catch { /* private mode: stepping is just unavailable */ }
+    router.push(`/rides/${id}`)
+  }
 
   const datePreset = (from: string, to: string) => { setDateFrom(from); setDateTo(to); setPage(1) }
   const presetActive = (daysFrom: number, daysTo: number) => dateFrom === istDay(daysFrom) && dateTo === istDay(daysTo)
@@ -448,7 +411,7 @@ function RidesPageContent() {
           isLoading={loading}
           columns={columns as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
           data={rides as unknown as Record<string, unknown>[]}
-          onRowClick={row => setSelected(row as unknown as AdminRideItem)}
+          onRowClick={row => openRide((row as unknown as AdminRideItem).id)}
           emptyMessage={loadError ? 'Rides could not be loaded' : attentionOnly ? 'Nothing needs attention right now' : 'No rides match your filters'}
         />
         {pages > 1 && (
@@ -463,33 +426,6 @@ function RidesPageContent() {
         )}
       </div>
 
-      <SlideOver isOpen={!!selected} onClose={() => setSelected(null)} title={selected ? `Ride #${selected.id}` : ''} width="xl" bare>
-        {selected && (
-          <RideDrawer
-            ride={selected}
-            canAct={canAct}
-            position={selIndex >= 0 ? { index: selIndex, total: rides.length } : null}
-            onPrev={prevRide}
-            onNext={nextRide}
-            onClose={() => setSelected(null)}
-            onForce={setResolveTarget}
-            forceBusy={resolving}
-            actionError={actionError}
-            now={now}
-          />
-        )}
-      </SlideOver>
-
-      <ReasonDialog
-        open={resolveTarget !== null}
-        title={resolveTarget === 'cancel' ? `Force cancel ride #${selected?.id ?? ''}?` : `Force complete ride #${selected?.id ?? ''}?`}
-        description={`${resolveTarget === 'cancel' ? FORCE_CONSEQUENCE.cancel : FORCE_CONSEQUENCE.complete} It is recorded in the ride history with your reason and cannot be undone from here.`}
-        confirmLabel={resolveTarget === 'cancel' ? 'Force cancel' : 'Force complete'}
-        variant={resolveTarget === 'cancel' ? 'danger' : 'warning'}
-        loading={resolving}
-        onCancel={() => setResolveTarget(null)}
-        onConfirm={reason => { if (resolveTarget) void handleForceResolve(resolveTarget, reason) }}
-      />
     </div>
   )
 }

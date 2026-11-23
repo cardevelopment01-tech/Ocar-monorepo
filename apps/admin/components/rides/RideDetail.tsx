@@ -1,14 +1,19 @@
 'use client'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, Check, ExternalLink, Headset, Info, Link2, MapPin, MoreHorizontal, Navigation, Phone, Star, X, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, Check, ExternalLink, Headset, Info, KeyRound, Link2, MapPin, MoreHorizontal, Navigation, Phone, Star, X, Zap } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
+import ReasonDialog from '@/components/ui/ReasonDialog'
 import { cardMode } from '@/lib/rate-card-mode'
-import { adminRideApi, type AdminRideDetail, type AdminRideItem, type AdminRideTrailPoint } from '@/lib/admin-api'
+import { adminRideApi, type AdminRideDetail, type AdminRideTrailPoint } from '@/lib/admin-api'
+import { useAdminAuth } from '@/lib/auth-context'
+import { useNow } from '@/lib/use-now'
+import { extractErrorMessage } from '@/lib/http-errors'
 import { fmtIst, fmtIstTime } from '@/lib/ist'
 import { fmtDuration } from '@/lib/dispatch-model'
-import { ago, keyFacts, rideSituation, rideSummaryText, riderRating, tabsFor, timelineEvents, channelLabel, type RideLike, type TabId, type Tone } from '@/lib/ride-situation'
+import { FORCE_CONSEQUENCE, ago, keyFacts, rideSituation, rideSummaryText, riderRating, tabsFor, timelineEvents, channelLabel, type RideLike, type TabId, type Tone } from '@/lib/ride-situation'
 import BookedTimeBlock from './BookedTimeBlock'
 import RideOffers from './RideOffers'
 import RideMap from './RideMap'
@@ -17,6 +22,10 @@ import RideMap from './RideMap'
 const LIVE_STATUSES = ['requested', 'accepted', 'driver_arrived', 'in_progress', 'returning']
 const MAP_STATUSES = ['accepted', 'driver_arrived', 'in_progress', 'returning', 'completed']
 const LIVE_MS = 15_000
+/** The rides list leaves its visible ids here so J / K can step through them from the detail page. */
+export const RIDES_NAV_KEY = 'ocar_rides_nav'
+
+const readNav = (): string[] => { try { const v = JSON.parse(sessionStorage.getItem(RIDES_NAV_KEY) ?? '[]'); return Array.isArray(v) ? v.map(String) : [] } catch { return [] } }
 
 const TONE_BOX: Record<Tone, string> = {
   neutral: 'bg-surface-2 border-border-light',
@@ -58,22 +67,69 @@ function Row({ label, value, strong, tone }: { label: string; value: string; str
   )
 }
 
-export interface RideDrawerProps {
-  /** The ride row from the list (shown at once); the full detail loads behind it. */
-  ride: AdminRideItem
-  canAct: boolean
-  /** Position in the list, for the previous / next arrows. */
-  position: { index: number; total: number } | null
-  onPrev: (() => void) | null
-  onNext: (() => void) | null
-  onClose: () => void
-  onForce: (action: 'complete' | 'cancel') => void
-  forceBusy: boolean
-  actionError: string
-  now: number
+function Card({ title, children, icon }: { title: string; children: React.ReactNode; icon?: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl border border-border-light bg-surface p-4">
+      <h3 className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary mb-3">{icon}{title}</h3>
+      {children}
+    </section>
+  )
 }
 
-export default function RideDrawer({ ride, canAct, position, onPrev, onNext, onClose, onForce, forceBusy, actionError, now }: RideDrawerProps) {
+function OtpLine({ label, otp }: { label: string; otp: { verified_at: string | null; failed_attempts: number } }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-1.5">
+      <span className="text-xs text-text-muted">{label}</span>
+      <span className="text-sm text-right tabular-nums">
+        {otp.verified_at ? <span className="font-medium text-text-primary">Verified {fmtIstTime(new Date(otp.verified_at))}</span> : <span className="text-text-muted">Not verified</span>}
+        {otp.failed_attempts > 0 && <span className="block text-[11px] text-warning font-medium">{otp.failed_attempts} wrong {otp.failed_attempts === 1 ? 'try' : 'tries'}</span>}
+      </span>
+    </div>
+  )
+}
+
+function Notes({ rideId, notes, onAdded }: { rideId: string; notes: AdminRideDetail['notes']; onAdded: () => void }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  async function add() {
+    const t = text.trim()
+    if (!t) return
+    setBusy(true); setErr('')
+    try { await adminRideApi.addNote(rideId, t); setText(''); onAdded() }
+    catch (e) { setErr(extractErrorMessage(e, 'Could not save the note. Try again.')) }
+    finally { setBusy(false) }
+  }
+  return (
+    <Card title="Internal notes">
+      {notes.length === 0 && <p className="text-xs text-text-muted mb-3">Nothing yet. Notes here are for the team only; riders and drivers never see them.</p>}
+      {notes.length > 0 && (
+        <ul className="space-y-3 mb-3">
+          {notes.map(n => (
+            <li key={n.id}>
+              <p className="text-sm text-text-primary whitespace-pre-wrap break-words">{n.note}</p>
+              <p className="text-[11px] text-text-muted mt-0.5">{n.admin_name ?? 'Admin'} · {fmtIst(n.created_at, true)}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <label htmlFor="ride-note" className="sr-only">Add a note</label>
+      <textarea id="ride-note" value={text} onChange={e => setText(e.target.value)} maxLength={2000} rows={3} placeholder="What did you do or learn? Notes cannot be edited or deleted."
+        className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y" />
+      {err && <p role="alert" className="text-xs text-danger font-semibold mt-1">{err}</p>}
+      <div className="flex justify-end mt-2">
+        <button onClick={() => void add()} disabled={busy || !text.trim()} className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-primary text-white hover:bg-primary-dark disabled:opacity-40">{busy ? 'Saving…' : 'Add note'}</button>
+      </div>
+    </Card>
+  )
+}
+
+export default function RideDetail({ rideId }: { rideId: string }) {
+  const router = useRouter()
+  const now = useNow(30_000)
+  const { admin } = useAdminAuth()
+  // Only ops and super admins resolve or reassign a ride; support can read everything and add notes.
+  const canAct = admin?.role === 'super_admin' || admin?.role === 'ops_admin'
   const [detail, setDetail] = useState<AdminRideDetail | null>(null)
   const [detailError, setDetailError] = useState(false)
   const [tick, setTick] = useState(0)
@@ -83,19 +139,23 @@ export default function RideDrawer({ ride, canAct, position, onPrev, onNext, onC
   const [copied, setCopied] = useState<'id' | 'link' | 'summary' | null>(null)
   const [copyError, setCopyError] = useState('')
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const [resolveTarget, setResolveTarget] = useState<'complete' | 'cancel' | null>(null)
+  const [resolving, setResolving] = useState(false)
+  const [actionError, setActionError] = useState('')
+  const [nav, setNav] = useState<string[]>([])
+  useEffect(() => { setNav(readNav()) }, [rideId])
 
-  // New ride: start from its own overview, at the top.
-  useEffect(() => { setTab('overview'); setDetail(null); setDetailError(false); setTrail([]); setTrailState('none'); setCopyError(''); scrollRef.current?.scrollTo({ top: 0 }) }, [ride.id])
+  // New ride: start from its own overview.
+  useEffect(() => { setTab('overview'); setDetail(null); setDetailError(false); setTrail([]); setTrailState('none'); setCopyError(''); setActionError(''); window.scrollTo({ top: 0 }) }, [rideId])
 
   // The full detail, refreshed every 15 s while the ride is live and the tab is visible. A failed refresh keeps what is on screen.
   const load = useCallback((silent: boolean) => {
-    adminRideApi.getById(ride.id)
+    adminRideApi.getById(rideId)
       .then(d => { setDetail(d); setDetailError(false); setRefreshedAt(Date.now()) })
       .catch(() => { if (!silent) setDetailError(true) })
-  }, [ride.id])
+  }, [rideId])
   useEffect(() => { load(false) }, [load, tick])
-  const live = LIVE_STATUSES.includes(detail?.status ?? ride.status)
+  const live = detail ? LIVE_STATUSES.includes(detail.status) : false
   useEffect(() => {
     if (!live) return
     const run = () => { if (document.visibilityState === 'visible') load(true) }
@@ -104,62 +164,132 @@ export default function RideDrawer({ ride, canAct, position, onPrev, onNext, onC
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', run) }
   }, [live, load])
 
-  const r: RideLike = useMemo(() => ({ ...ride, ...(detail ?? {}) }) as RideLike, [ride, detail])
+  const r = (detail ?? {}) as AdminRideDetail
 
   // The driver's route, once there is a driver and the map is worth showing. Its last point is when we last heard from them.
   useEffect(() => {
-    if (!r.driver_name || !MAP_STATUSES.includes(r.status)) { setTrail([]); setTrailState('none'); return }
+    if (!detail?.driver_name || !MAP_STATUSES.includes(detail.status)) { setTrail([]); setTrailState('none'); return }
     let cancelled = false
     setTrailState(s => (s === 'ready' ? s : 'loading'))
-    adminRideApi.trail(ride.id)
+    adminRideApi.trail(rideId)
       .then(pts => { if (!cancelled) { setTrail(pts); setTrailState(pts.length ? 'ready' : 'none') } })
       .catch(() => { if (!cancelled) setTrailState(s => (s === 'ready' ? s : 'failed')) })
     return () => { cancelled = true }
     // refreshedAt: a live ride re-reads its route with each detail refresh
-  }, [ride.id, r.status, r.driver_name, refreshedAt])
-  const lastSignalAt = trail.length ? trail[trail.length - 1]!.recorded_at : null
+  }, [rideId, detail?.status, detail?.driver_name, refreshedAt])
+  // The exact last point beats the thinned route, so the banner and the Last signal card always agree.
+  const lastSignalAt = detail?.last_position?.recorded_at ?? (trail.length ? trail[trail.length - 1]!.recorded_at : null)
 
-  const situation = useMemo(() => rideSituation(r, now, { lastSignalAt }), [r, now, lastSignalAt])
-  const facts = useMemo(() => keyFacts(r, now), [r, now])
-  const tabs = useMemo(() => tabsFor(r), [r])
-  useEffect(() => { if (!tabs.some(t => t.id === tab)) setTab('overview') }, [tabs, tab])
-  const SituationIcon = TONE_ICON[situation.tone]
-  const rating = riderRating(r)
+  const situation = useMemo(() => (detail ? rideSituation(detail as RideLike, now, { lastSignalAt }) : null), [detail, now, lastSignalAt])
+  const facts = useMemo(() => (detail ? keyFacts(detail as RideLike, now) : []), [detail, now])
+  const tabs = useMemo(() => (detail ? tabsFor(detail as RideLike) : []), [detail])
+  useEffect(() => { if (tabs.length && !tabs.some(t => t.id === tab)) setTab('overview') }, [tabs, tab])
+  const events = useMemo(() => (detail ? timelineEvents(detail as RideLike) : []), [detail])
+  const rating = detail ? riderRating(detail as RideLike) : null
   const canForce = canAct && (r.status === 'in_progress' || r.status === 'returning')
 
-  async function copy(what: 'id' | 'link' | 'summary') {
-    const link = `${window.location.origin}/rides?ride=${ride.id}`
-    const text = what === 'id' ? ride.id : what === 'link' ? link : rideSummaryText(r, now, link)
-    try { await navigator.clipboard.writeText(text); setCopied(what); setCopyError(''); setTimeout(() => setCopied(null), 1500) }
-    catch { setCopyError('Could not copy. Select the text and copy it by hand.') }
-  }
+  const idx = nav.indexOf(rideId)
+  const prevId = idx > 0 ? nav[idx - 1]! : null
+  const nextId = idx >= 0 && idx < nav.length - 1 ? nav[idx + 1]! : null
+  const goPrev = prevId ? () => router.push(`/rides/${prevId}`) : null
+  const goNext = nextId ? () => router.push(`/rides/${nextId}`) : null
 
-  // J / K step through the list while the drawer is open (not while typing).
+  // J / K step through the list you came from (not while typing).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
-      if (e.key === 'j' && onNext) onNext()
-      if (e.key === 'k' && onPrev) onPrev()
+      if (e.key === 'j' && goNext) goNext()
+      if (e.key === 'k' && goPrev) goPrev()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onNext, onPrev])
+  })
 
-  const events = useMemo(() => timelineEvents(r), [r])
+  async function copy(what: 'id' | 'link' | 'summary') {
+    const link = `${window.location.origin}/rides/${rideId}`
+    const text = what === 'id' ? rideId : what === 'link' ? link : rideSummaryText(detail as RideLike, now, link)
+    try { await navigator.clipboard.writeText(text); setCopied(what); setCopyError(''); setTimeout(() => setCopied(null), 1500) }
+    catch { setCopyError('Could not copy. Select the text and copy it by hand.') }
+  }
+
+  // A forced outcome moves a live trip's state and money, so it needs a typed reason; the API stores it in the ride's history.
+  async function handleForceResolve(action: 'complete' | 'cancel', reason: string) {
+    setResolving(true); setActionError('')
+    try {
+      await adminRideApi.forceResolve(rideId, action, reason.trim())
+      setResolveTarget(null)
+      load(true)
+    } catch (err) {
+      setResolveTarget(null)
+      setActionError(extractErrorMessage(err, `Could not force ${action} this ride. It may have changed: refresh and try again.`))
+    } finally { setResolving(false) }
+  }
+
+  if (!detail || !situation) {
+    return (
+      <div className="max-w-[1200px] mx-auto px-6 py-5">
+        <Link href="/rides" className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-secondary hover:text-primary"><ArrowLeft className="w-3.5 h-3.5" />All rides</Link>
+        <h1 className="text-xl font-bold text-text-primary tabular-nums mt-2">Ride #{rideId}</h1>
+        {detailError
+          ? <div role="alert" className="mt-4 rounded-xl border border-warning/40 bg-warning-light px-3 py-2 text-sm flex items-center justify-between gap-3"><span>This ride could not be loaded. It may not exist, or the connection dropped.</span><button onClick={() => setTick(t => t + 1)} className="font-semibold underline flex-shrink-0">Retry</button></div>
+          : <p className="text-sm text-text-muted mt-4" aria-live="polite">Loading ride…</p>}
+      </div>
+    )
+  }
+
+  const SituationIcon = TONE_ICON[situation.tone]
+  const needsDriverSignal = live && !!r.driver_id
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      {/* ── Header: who this is, how long ago, and a way to move through the list ── */}
-      <header className="px-6 pt-4 pb-3 border-b border-border-light bg-surface flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold text-text-primary tabular-nums">Ride #{ride.id}</h2>
+    <div className="max-w-[1200px] mx-auto px-6 py-5">
+      {/* ── Header: where you are, who this is, and the actions ── */}
+      <header className="mb-5">
+        <Link href="/rides" className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-secondary hover:text-primary"><ArrowLeft className="w-3.5 h-3.5" />All rides</Link>
+        <div className="flex items-center gap-2 flex-wrap mt-2">
+          <h1 className="text-xl font-bold text-text-primary tabular-nums">Ride #{rideId}</h1>
           {live && <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success"><span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse motion-reduce:animate-none" />Live</span>}
-          <div className="ml-auto flex items-center gap-1">
-            {position && <span className="text-[11px] text-text-muted tabular-nums mr-1">{position.index + 1} of {position.total}</span>}
-            <button onClick={() => onPrev?.()} disabled={!onPrev} aria-label="Previous ride (K)" title="Previous ride (K)" className="p-1.5 rounded-lg text-text-secondary hover:bg-surface-2 disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
-            <button onClick={() => onNext?.()} disabled={!onNext} aria-label="Next ride (J)" title="Next ride (J)" className="p-1.5 rounded-lg text-text-secondary hover:bg-surface-2 disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
-            <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-2"><X className="w-[18px] h-[18px]" /></button>
+          <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+            {nav.length > 0 && idx >= 0 && <span className="text-[11px] text-text-muted tabular-nums mr-1">{idx + 1} of {nav.length}</span>}
+            <button onClick={() => goPrev?.()} disabled={!goPrev} aria-label="Previous ride (K)" title="Previous ride (K)" className="p-1.5 rounded-lg text-text-secondary hover:bg-surface-2 disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
+            <button onClick={() => goNext?.()} disabled={!goNext} aria-label="Next ride (J)" title="Next ride (J)" className="p-1.5 rounded-lg text-text-secondary hover:bg-surface-2 disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
+            <button onClick={() => void copy('summary')} className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-border text-text-secondary hover:bg-surface-2" title="Copies a short summary of this ride">
+              {copied === 'summary' ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}{copied === 'summary' ? 'Copied' : 'Copy summary'}
+            </button>
+            <button onClick={() => void copy('link')} className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-border text-text-secondary hover:bg-surface-2">
+              {copied === 'link' ? <Check className="w-3.5 h-3.5 text-success" /> : <Link2 className="w-3.5 h-3.5" />}{copied === 'link' ? 'Copied' : 'Copy link'}
+            </button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button aria-label="More actions" className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-border text-text-secondary hover:bg-surface-2"><MoreHorizontal className="w-4 h-4" />More</button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content align="end" sideOffset={8} className="z-[80] w-[320px] rounded-2xl bg-surface border border-border shadow-hover p-1.5">
+                  {['scheduled', 'requested', 'no_drivers'].includes(r.status) && (
+                    <DropdownMenu.Item asChild>
+                      <Link href={`/dispatch?ride=${rideId}`} className="flex gap-2.5 rounded-xl px-3 py-2.5 outline-none data-[highlighted]:bg-surface-2 cursor-pointer">
+                        <Zap className="w-4 h-4 mt-0.5 text-primary flex-shrink-0" />
+                        <span><span className="block text-sm font-semibold text-text-primary">Assign, change time or cancel</span><span className="block text-xs text-text-muted mt-0.5">Opens this ride on the Dispatch desk.</span></span>
+                      </Link>
+                    </DropdownMenu.Item>
+                  )}
+                  {canForce && (
+                    <>
+                      <DropdownMenu.Item disabled={resolving} onSelect={() => setResolveTarget('complete')} className="flex gap-2.5 rounded-xl px-3 py-2.5 outline-none data-[highlighted]:bg-surface-2 cursor-pointer data-[disabled]:opacity-50">
+                        <CheckCircle2 className="w-4 h-4 mt-0.5 text-success flex-shrink-0" />
+                        <span><span className="block text-sm font-semibold text-text-primary">Force complete</span><span className="block text-xs text-text-muted mt-0.5">Ends the trip as completed and settles the fare at the booked estimate. You will be asked for a reason.</span></span>
+                      </DropdownMenu.Item>
+                      <DropdownMenu.Item disabled={resolving} onSelect={() => setResolveTarget('cancel')} className="flex gap-2.5 rounded-xl px-3 py-2.5 outline-none data-[highlighted]:bg-danger-light cursor-pointer data-[disabled]:opacity-50">
+                        <X className="w-4 h-4 mt-0.5 text-danger flex-shrink-0" />
+                        <span><span className="block text-sm font-semibold text-danger">Force cancel</span><span className="block text-xs text-text-muted mt-0.5">Ends the trip as cancelled and frees the driver. The rider is not charged. You will be asked for a reason.</span></span>
+                      </DropdownMenu.Item>
+                    </>
+                  )}
+                  <DropdownMenu.Separator className="h-px bg-border-light my-1" />
+                  <DropdownMenu.Item onSelect={() => void copy('id')} className="flex items-center gap-2.5 rounded-xl px-3 py-2 outline-none data-[highlighted]:bg-surface-2 cursor-pointer text-xs font-medium text-text-secondary"><Copy className="w-3.5 h-3.5" />Copy ride ID</DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap mt-1.5">
@@ -168,44 +298,42 @@ export default function RideDrawer({ ride, canAct, position, onPrev, onNext, onC
           {r.is_return_cab && <span className="pill-warning">Return cab</span>}
           {r.sos_triggered && <span className="pill-danger">SOS</span>}
           <span className="text-xs text-text-muted" title={fmtIst(r.requested_at, true)}>Requested {ago(r.requested_at, now)}</span>
+          {(r.category_name || r.origin_city) && <span className="text-xs text-text-muted">· {[r.category_name, r.origin_city && r.destination_city && r.origin_city !== r.destination_city ? `${r.origin_city} → ${r.destination_city}` : r.origin_city].filter(Boolean).join(' · ')}</span>}
+          {copyError && <span role="alert" className="text-xs text-danger font-semibold">{copyError}</span>}
+          {!copyError && refreshedAt && live && <span className="text-[11px] text-text-muted ml-auto" aria-live="off"><Clock className="w-3 h-3 inline -mt-0.5 mr-1" />Updated {fmtIstTime(new Date(refreshedAt))}</span>}
         </div>
-        {(r.category_name || r.origin_city) && (
-          <p className="text-xs text-text-muted mt-1">
-            {[r.category_name, r.origin_city && r.destination_city && r.origin_city !== r.destination_city ? `${r.origin_city} → ${r.destination_city}` : r.origin_city].filter(Boolean).join(' · ')}
-          </p>
-        )}
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain min-h-0">
-        <div className="px-6 py-5 space-y-5">
-          {/* ── What this ride means, in words, with the next step beside it ── */}
-          <section aria-label="Situation" className={`rounded-2xl border p-4 ${TONE_BOX[situation.tone]}`}>
-            <div className="flex gap-3">
-              <SituationIcon className={`w-5 h-5 mt-0.5 flex-shrink-0 ${TONE_TEXT[situation.tone]}`} aria-hidden />
-              <div className="min-w-0 flex-1">
-                <p className={`text-sm font-bold leading-snug ${TONE_TEXT[situation.tone]}`}>{situation.headline}</p>
-                {situation.lines.map((l, i) => <p key={i} className="text-xs text-text-secondary mt-1 leading-relaxed">{l}</p>)}
-                <div className="flex gap-2 flex-wrap mt-3">
-                  {situation.suggested.map(s => s === 'call_driver' && r.driver_phone
-                    ? <a key={s} href={`tel:${r.driver_phone}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-surface border border-border text-text-primary hover:bg-surface-2"><Phone className="w-3.5 h-3.5" />Call driver</a>
-                    : s === 'call_rider'
-                      ? <a key={s} href={`tel:${r.user_phone}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-surface border border-border text-text-primary hover:bg-surface-2"><Phone className="w-3.5 h-3.5" />Call rider</a>
-                      : s === 'open_dispatch'
-                        ? <Link key={s} href={`/dispatch?ride=${ride.id}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-primary text-white hover:bg-primary-dark"><Headset className="w-3.5 h-3.5" />Open in Dispatch</Link>
-                        : null)}
-                </div>
-              </div>
+      {/* ── What this ride means, in words, with the next step beside it ── */}
+      <section aria-label="Situation" className={`rounded-2xl border p-4 mb-4 ${TONE_BOX[situation.tone]}`}>
+        <div className="flex gap-3">
+          <SituationIcon className={`w-5 h-5 mt-0.5 flex-shrink-0 ${TONE_TEXT[situation.tone]}`} aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className={`text-sm font-bold leading-snug ${TONE_TEXT[situation.tone]}`}>{situation.headline}</p>
+            {situation.lines.map((l, i) => <p key={i} className="text-xs text-text-secondary mt-1 leading-relaxed">{l}</p>)}
+            <div className="flex gap-2 flex-wrap mt-3">
+              {situation.suggested.map(s => s === 'call_driver' && r.driver_phone
+                ? <a key={s} href={`tel:${r.driver_phone}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-surface border border-border text-text-primary hover:bg-surface-2"><Phone className="w-3.5 h-3.5" />Call driver</a>
+                : s === 'call_rider'
+                  ? <a key={s} href={`tel:${r.user_phone}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-surface border border-border text-text-primary hover:bg-surface-2"><Phone className="w-3.5 h-3.5" />Call rider</a>
+                  : s === 'open_dispatch'
+                    ? <Link key={s} href={`/dispatch?ride=${rideId}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-primary text-white hover:bg-primary-dark"><Headset className="w-3.5 h-3.5" />Open in Dispatch</Link>
+                    : null)}
             </div>
-          </section>
+          </div>
+        </div>
+      </section>
 
-          {actionError && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-light px-3 py-2 text-xs font-semibold text-danger">{actionError}</p>}
-          {detailError && (
-            <div role="alert" className="rounded-xl border border-warning/40 bg-warning-light px-3 py-2 text-xs flex items-center justify-between gap-3">
-              <span>Full details could not be loaded. Money, activity and the map are missing.</span>
-              <button onClick={() => setTick(t => t + 1)} className="font-semibold underline flex-shrink-0">Retry</button>
-            </div>
-          )}
+      {actionError && <p role="alert" className="mb-4 rounded-xl border border-danger/30 bg-danger-light px-3 py-2 text-xs font-semibold text-danger">{actionError}</p>}
+      {detailError && (
+        <div role="alert" className="mb-4 rounded-xl border border-warning/40 bg-warning-light px-3 py-2 text-xs flex items-center justify-between gap-3">
+          <span>The latest details could not be loaded. What you see may be out of date.</span>
+          <button onClick={() => setTick(t => t + 1)} className="font-semibold underline flex-shrink-0">Retry</button>
+        </div>
+      )}
 
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
+        <div className="min-w-0 space-y-5 order-2 lg:order-1">
           {/* ── The few numbers that matter ── */}
           {facts.length > 0 && (
             <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3 border-y border-border-light py-4">
@@ -218,13 +346,6 @@ export default function RideDrawer({ ride, canAct, position, onPrev, onNext, onC
               ))}
             </dl>
           )}
-
-          {/* ── The people ── */}
-          <section aria-label="People" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Person role="Rider" name={r.user_name} phone={r.user_phone} tone="primary" />
-            <Person role="Driver" name={r.driver_name} phone={r.driver_phone} tone="muted" href={r.driver_id ? `/drivers/${r.driver_id}` : null}
-              extra={r.vehicle_number_plate ? `${r.vehicle_name ?? 'Vehicle'}${r.vehicle_color ? ` · ${r.vehicle_color}` : ''} · ${r.vehicle_number_plate}` : null} />
-          </section>
 
           {/* ── Tabs: only the ones with something to say ── */}
           <div role="tablist" aria-label="Ride details" className="flex gap-1 border-b border-border-light -mb-px">
@@ -239,7 +360,7 @@ export default function RideDrawer({ ride, canAct, position, onPrev, onNext, onC
             ))}
           </div>
 
-          <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="pt-1 pb-24">
+          <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="pt-1 pb-10">
             {tab === 'overview' && (
               <div className="space-y-6">
                 <div>
@@ -351,10 +472,24 @@ export default function RideDrawer({ ride, canAct, position, onPrev, onNext, onC
                     <div className="divide-y divide-border-light">
                       <div className="flex items-center justify-between py-1.5"><span className="text-xs text-text-muted">Status</span><span className="inline-flex gap-1"><StatusPill status={r.payment_status ?? 'pending'} />{r.cash_discrepancy && <StatusPill status="cash_flagged" />}</span></div>
                       {r.payment_channel && <Row label="Paid by" value={(channelLabel(r.payment_channel) ?? '').replace(/^./, c => c.toUpperCase())} />}
+                      {r.payment_amount && <Row label="Amount" value={rupees(r.payment_amount) ?? ''} />}
+                      {r.payment_captured_at && <Row label="Received" value={fmtIst(r.payment_captured_at, true)} />}
+                      {r.payment_txn_id && <Row label="Gateway reference" value={r.payment_txn_id} />}
+                      {r.payment_failed_at && <Row label="Failed" value={`${fmtIst(r.payment_failed_at, true)}${r.payment_failure_reason ? `: ${r.payment_failure_reason}` : ''}`} tone="danger" />}
                       {r.cash_discrepancy && <Row label="Cash the driver collected" value={rupees(r.cash_collected_amount ?? 0) ?? '₹0'} tone="danger" />}
                     </div>
                   ) : <p className="text-xs text-text-muted py-2">No payment yet. It is taken when the trip ends.</p>}
                 </div>
+
+                {r.driver_earning != null && parseFloat(r.driver_earning) > 0 && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-text-secondary mb-1">Driver earnings</h3>
+                    <div className="divide-y divide-border-light">
+                      <Row label={`Commission${r.commission_percent ? ` (${parseFloat(r.commission_percent)}%)` : ''}`} value={rupees(r.commission_amount ?? 0) ?? '₹0'} />
+                      <Row label="Driver keeps" value={rupees(r.driver_earning) ?? ''} strong />
+                    </div>
+                  </div>
+                )}
 
                 {r.status === 'cancelled' && (
                   <div>
@@ -423,53 +558,49 @@ export default function RideDrawer({ ride, canAct, position, onPrev, onNext, onC
             )}
           </div>
         </div>
+
+        {/* ── Who and what is on this ride ── */}
+        <aside aria-label="People and notes" className="space-y-4 order-1 lg:order-2 lg:sticky lg:top-4">
+          <Card title="People">
+            <div className="space-y-4">
+              <Person role="Rider" name={r.user_name} phone={r.user_phone} tone="primary" />
+              <Person role="Driver" name={r.driver_name} phone={r.driver_phone} tone="muted" href={r.driver_id ? `/drivers/${r.driver_id}` : null}
+                extra={r.vehicle_number_plate ? `${r.vehicle_name ?? 'Vehicle'}${r.vehicle_color ? ` · ${r.vehicle_color}` : ''} · ${r.vehicle_number_plate}` : null} />
+            </div>
+          </Card>
+
+          {needsDriverSignal && (
+            <Card title="Last signal" icon={<Navigation className="w-3.5 h-3.5" />}>
+              {r.last_position
+                ? <div className="flex items-center justify-between gap-3"><p className="text-sm text-text-primary">Driver heard from <strong>{ago(r.last_position.recorded_at, now)}</strong></p>
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${r.last_position.lat},${r.last_position.lng}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">Open in Maps<ExternalLink className="w-3 h-3" /></a></div>
+                : <p className="text-xs text-text-muted">No location has been recorded for this trip yet.</p>}
+            </Card>
+          )}
+
+          {r.otp && r.driver_id && (
+            <Card title="Trip codes" icon={<KeyRound className="w-3.5 h-3.5" />}>
+              <div className="divide-y divide-border-light">
+                <OtpLine label="Start code" otp={r.otp.trip_start} />
+                <OtpLine label="End code" otp={r.otp.trip_end} />
+              </div>
+            </Card>
+          )}
+
+          <Notes rideId={rideId} notes={r.notes ?? []} onAdded={() => load(true)} />
+        </aside>
       </div>
 
-      {/* ── Footer: the useful actions up front, the irreversible ones behind More with what they do ── */}
-      <footer className="flex-shrink-0 border-t border-border bg-surface px-6 py-3 flex items-center gap-2">
-        {copyError && <span role="alert" className="text-xs text-danger font-semibold mr-auto">{copyError}</span>}
-        {!copyError && refreshedAt && live && <span className="text-[11px] text-text-muted mr-auto" aria-live="off"><Clock className="w-3 h-3 inline -mt-0.5 mr-1" />Updated {fmtIstTime(new Date(refreshedAt))}</span>}
-        {!copyError && !(refreshedAt && live) && <span className="mr-auto" />}
-        <button onClick={() => void copy('summary')} className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-border text-text-secondary hover:bg-surface-2" title="Copies a short summary of this ride">
-          {copied === 'summary' ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}{copied === 'summary' ? 'Copied' : 'Copy summary'}
-        </button>
-        <button onClick={() => void copy('link')} className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-border text-text-secondary hover:bg-surface-2">
-          {copied === 'link' ? <Check className="w-3.5 h-3.5 text-success" /> : <Link2 className="w-3.5 h-3.5" />}{copied === 'link' ? 'Copied' : 'Copy link'}
-        </button>
-        {(canForce || ['scheduled', 'requested', 'no_drivers'].includes(r.status)) && (
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button aria-label="More actions" className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-border text-text-secondary hover:bg-surface-2"><MoreHorizontal className="w-4 h-4" />More</button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content align="end" side="top" sideOffset={8} className="z-[80] w-[320px] rounded-2xl bg-surface border border-border shadow-hover p-1.5">
-                {['scheduled', 'requested', 'no_drivers'].includes(r.status) && (
-                  <DropdownMenu.Item asChild>
-                    <Link href={`/dispatch?ride=${ride.id}`} className="flex gap-2.5 rounded-xl px-3 py-2.5 outline-none data-[highlighted]:bg-surface-2 cursor-pointer">
-                      <Zap className="w-4 h-4 mt-0.5 text-primary flex-shrink-0" />
-                      <span><span className="block text-sm font-semibold text-text-primary">Assign, change time or cancel</span><span className="block text-xs text-text-muted mt-0.5">Opens this ride on the Dispatch desk.</span></span>
-                    </Link>
-                  </DropdownMenu.Item>
-                )}
-                {canForce && (
-                  <>
-                    <DropdownMenu.Item disabled={forceBusy} onSelect={() => onForce('complete')} className="flex gap-2.5 rounded-xl px-3 py-2.5 outline-none data-[highlighted]:bg-surface-2 cursor-pointer data-[disabled]:opacity-50">
-                      <CheckCircle2 className="w-4 h-4 mt-0.5 text-success flex-shrink-0" />
-                      <span><span className="block text-sm font-semibold text-text-primary">Force complete</span><span className="block text-xs text-text-muted mt-0.5">Ends the trip as completed and settles the fare at the booked estimate. You will be asked for a reason.</span></span>
-                    </DropdownMenu.Item>
-                    <DropdownMenu.Item disabled={forceBusy} onSelect={() => onForce('cancel')} className="flex gap-2.5 rounded-xl px-3 py-2.5 outline-none data-[highlighted]:bg-danger-light cursor-pointer data-[disabled]:opacity-50">
-                      <X className="w-4 h-4 mt-0.5 text-danger flex-shrink-0" />
-                      <span><span className="block text-sm font-semibold text-danger">Force cancel</span><span className="block text-xs text-text-muted mt-0.5">Ends the trip as cancelled and frees the driver. The rider is not charged. You will be asked for a reason.</span></span>
-                    </DropdownMenu.Item>
-                  </>
-                )}
-                <DropdownMenu.Separator className="h-px bg-border-light my-1" />
-                <DropdownMenu.Item onSelect={() => void copy('id')} className="flex items-center gap-2.5 rounded-xl px-3 py-2 outline-none data-[highlighted]:bg-surface-2 cursor-pointer text-xs font-medium text-text-secondary"><Copy className="w-3.5 h-3.5" />Copy ride ID</DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-        )}
-      </footer>
+      <ReasonDialog
+        open={resolveTarget !== null}
+        title={resolveTarget === 'cancel' ? `Force cancel ride #${rideId}?` : `Force complete ride #${rideId}?`}
+        description={`${resolveTarget === 'cancel' ? FORCE_CONSEQUENCE.cancel : FORCE_CONSEQUENCE.complete} It is recorded in the ride history with your reason and cannot be undone from here.`}
+        confirmLabel={resolveTarget === 'cancel' ? 'Force cancel' : 'Force complete'}
+        variant={resolveTarget === 'cancel' ? 'danger' : 'warning'}
+        loading={resolving}
+        onCancel={() => setResolveTarget(null)}
+        onConfirm={reason => { if (resolveTarget) void handleForceResolve(resolveTarget, reason) }}
+      />
     </div>
   )
 }
