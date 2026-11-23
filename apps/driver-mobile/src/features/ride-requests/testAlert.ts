@@ -48,5 +48,5 @@ export async function playTestAlert(): Promise<void> {
       spoke = true
       Speech.speak(buildAnnouncement(SAMPLE, language), { language: SPEECH_LOCALE[language], rate: 0.95, onDone: stop, onStopped: stop, onError: stop })
     } else stop()
-  }, 1600)
+  }, 1300) // one 1.0 s ring plus a short margin
 }

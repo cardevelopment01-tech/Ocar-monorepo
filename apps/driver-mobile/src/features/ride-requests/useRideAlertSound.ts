@@ -26,9 +26,9 @@ const RIDE_ALERT_SOUND = rideAlertSoundAsset
 const VIBRATION_PATTERN = [0, 400, 200, 400]
 
 // Ring once, then read the request aloud straight away, then ring again until the request is answered. The ring is paused while
-// speaking so the two never fight over the speaker. One ring is exactly the length of assets/sounds/ride-request.wav (1.3 s); an
-// extra pause here only used up the accept window.
-const RING_BEFORE_SPEECH_MS = 1300
+// speaking so the two never fight over the speaker. One ring is exactly the length of assets/sounds/ride-request.wav (1.0 s: the
+// client's tone, one clean loop of it); an extra pause here only used up the accept window.
+const RING_BEFORE_SPEECH_MS = 1000
 const FALLBACK_AFTER_MS = 1200 // no word positions this long after the voice starts: follow the clock instead
 
 let audioModeSet = false
