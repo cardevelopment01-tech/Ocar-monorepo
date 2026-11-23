@@ -140,7 +140,10 @@ export function renderAdminInviteEmail(p: { redeemUrl: string; expiresAt: Date; 
 
 /** Builds and sends one invitation. Throws (so the job is retried and marked failed) rather than send a link that cannot work. */
 export async function sendAdminInviteEmail(job: AdminInviteEmailJob): Promise<void> {
-  const base = config.ADMIN_APP_URL.replace(/\/+$/, '')
+  // Only the site address is used (https://admin.example.com). A page address pasted into the setting by mistake, such as
+  // https://admin.example.com/dispatch?lane=x, would otherwise end up in front of /accept-invite and break every invite link.
+  let base = config.ADMIN_APP_URL.trim().replace(/\/+$/, '')
+  try { base = new URL(base).origin } catch { /* not a URL: the checks below refuse it in production */ }
   // ADMIN_APP_URL defaults to http://localhost:3002. If production never set it, the email would carry a dead link that looks fine.
   if (config.NODE_ENV === 'production' && config.ALLOW_DEV_EMAIL !== 'true' && (!/^https:\/\//i.test(base) || /\/\/(localhost|127\.)/i.test(base))) {
     throw new Error('ADMIN_APP_URL is not a public https address, so the invite link would not work. Set it, then invite again.')

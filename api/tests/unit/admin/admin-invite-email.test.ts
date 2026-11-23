@@ -152,6 +152,19 @@ describe('sendAdminInviteEmail', () => {
     expect(content.text).not.toContain('example//accept')
   })
 
+  it('only the site address is used: a page address with a path or query in the setting does not end up inside the link', async () => {
+    cfg.ADMIN_APP_URL = 'https://admin.ocarindia.com/dispatch?lane=needs_driver'
+    await sendAdminInviteEmail(job)
+    const content = send.mock.calls[0]![2] as { text: string; html: string }
+    expect(content.text).toContain('https://admin.ocarindia.com/accept-invite?token=tok%2Fwith%2Bodd%3Dchars')
+    expect(content.text).not.toContain('dispatch')
+    expect(content.html).not.toContain('dispatch')
+    send.mockClear()
+    cfg.ADMIN_APP_URL = ' https://admin.ocarindia.com/ '
+    await sendAdminInviteEmail(job)
+    expect((send.mock.calls[0]![2] as { text: string }).text).toContain('https://admin.ocarindia.com/accept-invite?token=')
+  })
+
   it('an invitation queued before inviter and role existed still sends, without a reply address', async () => {
     await sendAdminInviteEmail({ email: 'new@ocar.example', rawToken: 'abc', expiresAt: WHEN.toISOString() })
     const content = send.mock.calls[0]![2] as Record<string, unknown>
