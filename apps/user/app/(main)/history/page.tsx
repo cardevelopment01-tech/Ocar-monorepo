@@ -4,10 +4,14 @@ import { Suspense, useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Clock, MapPin, CheckCircle2, XCircle, ChevronRight, ChevronLeft, CalendarClock, Inbox, Plus, X } from 'lucide-react'
+import axios from 'axios'
 import { rideApi, type RideDetail, type RideHistoryItem, type UpcomingRide } from '@/lib/ride-api'
 import { cn } from '@/lib/utils'
 import { formatPickupTime } from '@/lib/format-pickup-time'
 import OcarSpinner from '@/components/ui/OcarSpinner'
+import SchedulePickerSheet from '@/components/ui/SchedulePickerSheet'
+import { MIN_ADVANCE_MINUTES, MAX_ADVANCE_DAYS } from '@/lib/advance-booking-limits'
+import { cancelCopy, rescheduleErrorMessage, termsLines, upcomingStatusLine, FALLBACK_TERMS, type AdvanceTerms, type CancelPreview } from '@/lib/advance-model'
 import { DriverAvatar, driverViewFromName } from '@/components/ride/DriverIdentity'
 
 const EASE   = [0.22, 1, 0.36, 1] as const
@@ -118,13 +122,21 @@ function RideCard({ ride, onOpen }: { ride: RideHistoryItem; onOpen: () => void 
 }
 
 function UpcomingCard({
-  ride, onOpen, onCancel, cancelling,
+  ride, terms, onOpen, onAskCancel, onKeep, onConfirmCancel, onChangeTime, confirm, notice, cancelling,
 }: {
   ride: UpcomingRide
+  terms: AdvanceTerms
   onOpen: () => void
-  onCancel: () => void
+  onAskCancel: () => void
+  onKeep: () => void
+  onConfirmCancel: () => void
+  onChangeTime: () => void
+  /** Set while the rider is deciding: what cancelling costs (null = still checking). */
+  confirm: CancelPreview | 'checking' | 'unknown' | null
+  notice: string | null
   cancelling: boolean
 }) {
+  const copy = confirm && confirm !== 'checking' && confirm !== 'unknown' ? cancelCopy(confirm) : null
   return (
     <motion.div
       variants={cardVariant}
@@ -163,14 +175,38 @@ function UpcomingCard({
         <ChevronRight size={16} className="text-text-muted flex-shrink-0" />
       </motion.button>
 
-      <button
-        type="button"
-        onClick={onCancel}
-        disabled={cancelling}
-        className="w-full pt-3 border-t border-border text-xs font-semibold text-status-error disabled:opacity-50"
-      >
-        {cancelling ? 'Cancelling…' : 'Cancel ride'}
-      </button>
+      <p className="text-xs text-text-secondary mb-3">{upcomingStatusLine(ride.scheduled_for, terms)}</p>
+
+      {notice && <p role="alert" className="text-xs font-semibold text-status-error mb-3">{notice}</p>}
+
+      {confirm === null ? (
+        <div className="flex border-t border-border">
+          <button type="button" onClick={onChangeTime} disabled={cancelling}
+            className="flex-1 min-h-[44px] pt-3 text-xs font-semibold text-primary disabled:opacity-50">Change time</button>
+          <button type="button" onClick={onAskCancel} disabled={cancelling}
+            className="flex-1 min-h-[44px] pt-3 text-xs font-semibold text-status-error disabled:opacity-50">
+            {cancelling ? 'Cancelling…' : 'Cancel ride'}
+          </button>
+        </div>
+      ) : (
+        // The fee is stated before the rider confirms, in the card itself (no modal for a yes/no).
+        <div className="pt-3 border-t border-border" role="group" aria-label="Confirm cancellation">
+          <p className="text-sm font-semibold text-text-primary">
+            {confirm === 'checking' ? 'Checking the cost of cancelling…' : confirm === 'unknown' ? 'Cancel this ride?' : copy?.title}
+          </p>
+          <p className="text-xs text-text-secondary mt-0.5 mb-3">
+            {confirm === 'checking' ? 'One moment.' : confirm === 'unknown' ? "We couldn't check whether a fee applies. If one does, you will see it on your receipt." : copy?.body}
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={onKeep} disabled={cancelling}
+              className="flex-1 min-h-[44px] rounded-xl bg-surface-2 text-xs font-semibold text-text-primary disabled:opacity-50">Keep ride</button>
+            <button type="button" onClick={onConfirmCancel} disabled={cancelling || confirm === 'checking'}
+              className="flex-1 min-h-[44px] rounded-xl bg-status-error text-xs font-semibold text-white disabled:opacity-50">
+              {cancelling ? 'Cancelling…' : confirm === 'checking' ? 'Cancel ride' : confirm === 'unknown' ? 'Cancel ride' : copy?.confirm}
+            </button>
+          </div>
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -324,6 +360,10 @@ function HistoryContent() {
   const [upcomingLoading, setUpcomingLoading] = useState(true)
   const [upcomingError,   setUpcomingError]   = useState(false)
   const [cancellingId,    setCancellingId]    = useState<string | null>(null)
+  const [terms, setTerms] = useState<AdvanceTerms>(FALLBACK_TERMS)
+  const [confirming, setConfirming] = useState<{ id: string; state: CancelPreview | 'checking' | 'unknown' } | null>(null)
+  const [editing, setEditing] = useState<UpcomingRide | null>(null)
+  const [notice, setNotice] = useState<{ id: string; text: string } | null>(null)
 
   const [activeRide, setActiveRide] = useState<RideDetail | null>(null)
 
@@ -364,13 +404,26 @@ function HistoryContent() {
 
   useEffect(() => { void fetchHistory(1) }, [fetchHistory])
   useEffect(() => { void fetchUpcoming() }, [fetchUpcoming])
+  useEffect(() => { void rideApi.advanceTerms().then(setTerms) }, [])
   useEffect(() => { void fetchActive() }, [fetchActive])
+
+  // Cancel asks what it costs first, so a fee is never a surprise. If the check fails the rider can still cancel.
+  async function askCancel(rideId: string) {
+    setNotice(null)
+    setConfirming({ id: rideId, state: 'checking' })
+    try {
+      setConfirming({ id: rideId, state: await rideApi.cancelPreview(rideId) })
+    } catch {
+      setConfirming({ id: rideId, state: 'unknown' })
+    }
+  }
 
   async function handleCancelUpcoming(rideId: string) {
     setCancellingId(rideId)
     try {
       await rideApi.cancelRide(rideId)
       setUpcoming(prev => prev.filter(r => r.id !== rideId))
+      setConfirming(null)
     } catch {
       setUpcomingError(true)
     } finally {
@@ -378,7 +431,25 @@ function HistoryContent() {
     }
   }
 
+  async function saveNewTime(ride: UpcomingRide, when: Date | null) {
+    setEditing(null)
+    if (!when) return // the picker's "Now" does not apply to a booking that already exists
+    setNotice(null)
+    try {
+      const out = await rideApi.reschedule(ride.id, when.toISOString())
+      setUpcoming(prev => prev
+        .map(r => (r.id === ride.id ? { ...r, scheduled_for: out.scheduledFor } : r))
+        .sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime()))
+    } catch (err) {
+      const code = axios.isAxiosError(err) ? (err.response?.data as { code?: string } | undefined)?.code : undefined
+      const serverMsg = axios.isAxiosError(err) ? (err.response?.data as { error?: string } | undefined)?.error : undefined
+      setNotice({ id: ride.id, text: rescheduleErrorMessage(code, serverMsg ?? "We couldn't change the time. Your booking is unchanged.") })
+    }
+  }
+
   const filtered = tab === 'all' ? rides : rides.filter(r => r.status === tab)
+  const pickerMin = new Date(Date.now() + MIN_ADVANCE_MINUTES * 60_000)
+  const pickerMax = new Date(Date.now() + MAX_ADVANCE_DAYS * 24 * 60 * 60_000)
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -491,8 +562,14 @@ function HistoryContent() {
                   <UpcomingCard
                     key={ride.id}
                     ride={ride}
+                    terms={terms}
                     onOpen={() => router.push(`/ride/${ride.id}`)}
-                    onCancel={() => void handleCancelUpcoming(ride.id)}
+                    onAskCancel={() => void askCancel(ride.id)}
+                    onKeep={() => setConfirming(null)}
+                    onConfirmCancel={() => void handleCancelUpcoming(ride.id)}
+                    onChangeTime={() => { setNotice(null); setEditing(ride) }}
+                    confirm={confirming?.id === ride.id ? confirming.state : null}
+                    notice={notice?.id === ride.id ? notice.text : null}
                     cancelling={cancellingId === ride.id}
                   />
                 ))}
@@ -562,6 +639,18 @@ function HistoryContent() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Change time: the same calendar the booking flow uses, limited to the bookable window. The rules sit with the booking, not here. */}
+      <SchedulePickerSheet
+        open={editing !== null}
+        value={editing ? new Date(editing.scheduled_for) : null}
+        min={pickerMin}
+        max={pickerMax}
+        onChange={(d) => { if (editing) void saveNewTime(editing, d) }}
+        onClose={() => setEditing(null)}
+        notes={termsLines(terms)}
+        reschedule
+      />
     </div>
   )
 }

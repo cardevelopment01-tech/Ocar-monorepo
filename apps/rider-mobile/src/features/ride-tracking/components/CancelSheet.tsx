@@ -22,11 +22,13 @@ const AFTER_REASONS = [
 export type CancelSheetProps = {
   visible: boolean
   feeWarning: boolean
+  /** The exact fee and why, from the server (e.g. a late cancellation of an advance booking). Shown at any stage when set. */
+  feeText?: string | null
   onClose: () => void
   onConfirm: (reasonCode: string, reason?: string) => Promise<void>
 }
 
-export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelSheetProps) {
+export function CancelSheet({ visible, feeWarning, feeText = null, onClose, onConfirm }: CancelSheetProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [otherText, setOtherText] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -78,11 +80,11 @@ export function CancelSheet({ visible, feeWarning, onClose, onConfirm }: CancelS
             </Pressable>
           </View>
 
-          {feeWarning ? (
+          {feeWarning || feeText ? (
             <View style={styles.feeWarning}>
               <Feather name="alert-circle" size={17} color={h.goldInk} style={{ marginTop: 1 }} />
               <Text style={styles.feeWarningText}>
-                A small cancellation fee may apply since your driver has already arrived at your pick up point.
+                {feeText ?? 'A small cancellation fee may apply since your driver has already arrived at your pick up point.'}
               </Text>
             </View>
           ) : null}
