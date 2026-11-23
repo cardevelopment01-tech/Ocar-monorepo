@@ -8,6 +8,7 @@ const STATUS_MAP: Record<string, string> = {
   cancelled: 'pill-danger', suspended: 'pill-danger', failed: 'pill-danger', banned: 'pill-danger',
   in_progress: 'pill-info', accepted: 'pill-info', driver_arrived: 'pill-info', returning: 'pill-info',
   no_drivers: 'pill-danger', scheduled: 'pill-muted',
+  expired: 'pill-muted', revoked: 'pill-muted',
   disputed: 'pill-purple',
   one_way: 'pill-info', round_trip: 'pill-purple', rental: 'pill-muted', city: 'pill-success',
   under_review: 'pill-warning', resolved: 'pill-success',
