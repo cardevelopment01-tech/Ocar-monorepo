@@ -4,6 +4,7 @@ import Animated, { Easing, FadeIn, ReduceMotion, ZoomIn } from 'react-native-rea
 import { Button, buildTripFacts, colors, radii, rentalFareLines, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import type { RideDetailSettled } from '../useActiveRide'
 import { cashDueOf } from '../cashDue'
+import { rentalBreakdown } from '../rentalBreakdown'
 
 export type TripCompletionCardProps = {
   ride: RideDetailSettled
@@ -36,11 +37,12 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
   const route = `${ride.originAddress ?? '-'} → ${ride.destinationAddress ?? '-'}`
   const facts = buildTripFacts(ride)
   // Rental: package price, extra km and extra time under the fare, so the driver sees what the rider is paying for.
-  const rentalLinesRaw = rentalFareLines(ride)
-  // The package/extra lines leave out surge and stops, so add what is left as one line and the lines always add up to the fare.
-  const rentalLines = rentalLinesRaw && fare - rentalLinesRaw.reduce((s, l) => s + l.amount, 0) >= 1
-    ? [...rentalLinesRaw, { key: 'other', label: 'Surge and extras', amount: fare - rentalLinesRaw.reduce((s, l) => s + l.amount, 0) }]
-    : rentalLinesRaw
+  // The wait at the pickup past the free minutes, so the driver sees it is part of the fare they collect.
+  const pickupWaitFare = ride.pickupWaitCharge != null ? parseFloat(ride.pickupWaitCharge) : 0
+  const pickupWaitMin = ride.pickupWaitMin != null ? Math.round(parseFloat(ride.pickupWaitMin)) : 0
+  // The package/extra lines leave out waiting, surge and stops: waiting is a line of its own and what is left is one "Surge and
+  // extras" line, so the lines always add up to the fare.
+  const rentalLines = rentalBreakdown(rentalFareLines(ride), fare, pickupWaitFare, pickupWaitMin)
   const headline = fmt(isCash ? (collectedCash ?? fare) : net)
   // Only when overtime was actually billed, so ordinary trips look exactly as before. The line
   // ties the live clock the driver watched to the number they are paid on.
@@ -48,9 +50,6 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
     ? { min: ride.overtimeMin as number, fare: ride.overtimeFare }
     : null
 
-  // The wait at the pickup past the free minutes, so the driver sees it is part of the fare they collect.
-  const pickupWaitFare = ride.pickupWaitCharge != null ? parseFloat(ride.pickupWaitCharge) : 0
-  const pickupWaitMin = ride.pickupWaitMin != null ? Math.round(parseFloat(ride.pickupWaitMin)) : 0
   // An airport toll is part of the cash the driver collects and is paid on to them, not taken as commission.
   const tollFare = ride.tollCharge != null ? parseFloat(ride.tollCharge) : 0
 
@@ -116,8 +115,8 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
               Airport toll · {fmt(tollFare)} · paid to you, no commission
             </Text>
           ) : null}
-          {pickupWaitFare > 0 ? (
-            // Already inside the fare above: a caption, not another amount to add up.
+          {pickupWaitFare > 0 && !rentalLines ? (
+            // Already inside the fare above: a caption, not another amount to add up. A rental lists it under the fare instead.
             <Text style={styles.overtimeNote}>
               Waiting at pickup · {pickupWaitMin} min · {fmt(pickupWaitFare)}
             </Text>
