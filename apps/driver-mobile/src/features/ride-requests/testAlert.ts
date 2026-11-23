@@ -53,26 +53,44 @@ export async function playTestAlert(): Promise<void> {
   }, 1300) // one 1.0 s ring plus a short margin
 }
 
+const RING_CHANNEL = 'ride_requests_v3'
+
 /**
- * Rings the real background channel (the "Ride requests (loud)" notification channel on the alarm volume), the way a request rings when
- * Ocar is closed. The in-app test above cannot tell a driver whether that channel is muted, blocked or on a low alarm volume: this one does,
- * because it only makes a sound if the phone lets that channel make one. After a few seconds the test notification is cleared, which also
- * stops its ring, and the driver is asked whether they heard it and shown where to fix it if not.
+ * Rings the same notification channel a ride request uses when Ocar is closed ("Ride requests (loud)", on the alarm volume). It runs with
+ * the app open, so it does not test that a push reaches a closed app; it tests what the in-app test above cannot: whether the phone lets
+ * that channel make a sound, and how loud the alarm volume is. A channel that is missing or switched off is reported straight away.
+ * After a few seconds the test notification is cleared, which also stops its ring, and the driver is asked whether it was loud.
+ * It is registered like the in-app test, so tapping again, or a real ride request, ends it first (and cancels its follow-up question).
  */
 export async function playTestBackgroundRing(): Promise<void> {
   if (useRideRequestStore.getState().pending) return // never ring over a real request
   if (Platform.OS !== 'android') { await playTestAlert(); return } // channels are an Android thing
-  stopTestAlert()
+  stopTestAlert() // ends a previous run of either test
+  const channel = await Notifications.getNotificationChannelAsync(RING_CHANNEL).catch(() => null)
+  if (!channel) {
+    Alert.alert("Couldn't start the test", 'The ride request notification channel is not set up on this phone. Please check that notifications are allowed for Ocar Driver, then restart the app.', [
+      { text: 'Open settings', onPress: () => { void Linking.openSettings() } },
+      { text: 'OK', style: 'cancel' },
+    ])
+    return
+  }
+  if (channel.importance === Notifications.AndroidImportance.NONE) {
+    Alert.alert('Ride request ring is switched off', 'Open the notification settings for Ocar Driver and switch "Ride requests (loud)" on, with sound. Until then a new ride request will not ring when Ocar is in the background.', [
+      { text: 'Open settings', onPress: () => { void Linking.openSettings() } },
+      { text: 'OK', style: 'cancel' },
+    ])
+    return
+  }
   let id: string
   try {
     id = await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Test: new ride request',
-        body: 'This is how a ride request rings when Ocar is closed.',
+        body: 'This is how a ride request rings on the loud channel.',
         sound: 'ride_request_long.wav',
         data: { type: 'ring_test' },
       },
-      trigger: { channelId: 'ride_requests_v3' },
+      trigger: { channelId: RING_CHANNEL },
     })
   } catch {
     Alert.alert("Couldn't start the test", 'Please check that notifications are allowed for Ocar Driver, then try again.', [
@@ -81,8 +99,18 @@ export async function playTestBackgroundRing(): Promise<void> {
     ])
     return
   }
-  setTimeout(() => {
+  let done = false
+  const stop = () => {
+    if (done) return
+    done = true
+    clearTimeout(timer)
+    if (running?.stop === stop) running = null
     Notifications.dismissNotificationAsync(id).catch(() => {})
+  }
+  running = { stop }
+  const timer = setTimeout(() => {
+    stop()
+    if (useRideRequestStore.getState().pending) return // a real request arrived: do not put a question over it
     Alert.alert(
       'Did it ring loudly?',
       'If you heard nothing or it was quiet: turn up your phone\'s Alarm volume, make sure Do Not Disturb is off, and in Notifications check that "Ride requests (loud)" is switched on with sound.',

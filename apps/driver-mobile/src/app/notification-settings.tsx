@@ -65,8 +65,8 @@ export default function NotificationSettingsScreen() {
           <Pressable onPress={() => { void playTestAlert() }} accessibilityRole="button" accessibilityLabel="Test the ride request ring and voice" style={{ minHeight: 48, borderRadius: 14, backgroundColor: '#0A9FB0', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Test ring and voice</Text>
           </Pressable>
-          <Pressable onPress={() => { void playTestBackgroundRing() }} accessibilityRole="button" accessibilityLabel="Test how a ride request rings when Ocar is closed" style={{ minHeight: 48, borderRadius: 14, marginTop: 10, borderWidth: 1.5, borderColor: '#0A9FB0', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: '#0A9FB0', fontWeight: '700', fontSize: 15 }}>Test ring when Ocar is closed</Text>
+          <Pressable onPress={() => { void playTestBackgroundRing() }} accessibilityRole="button" accessibilityLabel="Test the ride request ring on the alarm volume" style={{ minHeight: 48, borderRadius: 14, marginTop: 10, borderWidth: 1.5, borderColor: '#0A9FB0', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#0A9FB0', fontWeight: '700', fontSize: 15 }}>Test loud ring (alarm volume)</Text>
           </Pressable>
         </>
       }
