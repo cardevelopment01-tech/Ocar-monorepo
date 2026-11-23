@@ -118,11 +118,15 @@ export const notificationsWorker = new Worker(
         rideId:      string
         userId:      string
         userPhone:   string
-        lat:         number
-        lng:         number
+        lat:         number | null
+        lng:         number | null
         triggeredByRole?: 'user' | 'driver'
         triggeredAt: string
       }
+      // No GPS fix = null. Jobs queued before this change carry 0,0 for "no fix", which is not a place either.
+      const hasFix = data.lat != null && data.lng != null && !(data.lat === 0 && data.lng === 0)
+      const latText = hasFix ? String(data.lat) : 'unknown'
+      const lngText = hasFix ? String(data.lng) : 'unknown'
       // In-app + push to every admin goes first and on its own: an SMS vendor outage must never
       // silence the alert. Retries re-run this job, so only the first attempt notifies (otherwise
       // every SMS retry would page the admins again).
@@ -176,7 +180,10 @@ export const notificationsWorker = new Worker(
                   }
                 }
                 if (body === null) {
-                  body = (await renderTemplate('sos_contact', 'sms', { riderName, lat: String(data.lat), lng: String(data.lng) })).body
+                  // The static text is a map pin. With no fix there is no pin to send, and a 0,0 link would point at the ocean:
+                  // refuse here so it shows as a failed send in the notification log (the admin card also says "no location").
+                  if (!hasFix) throw new Error('no location fix for the static pin')
+                  body = (await renderTemplate('sos_contact', 'sms', { riderName, lat: latText, lng: lngText })).body
                 }
                 const sms = await sendSms(c.phone, body)
                 await notifService.markSent(logId, sms)
@@ -203,7 +210,7 @@ export const notificationsWorker = new Worker(
         try {
           const { body: message } = await renderTemplate('sos_alert', 'sms', {
             userPhone: data.userPhone, rideId: data.rideId,
-            lat: String(data.lat), lng: String(data.lng), triggeredAt: data.triggeredAt,
+            lat: latText, lng: lngText, triggeredAt: data.triggeredAt,
           })
           const sms = await sendSms(config.ADMIN_PHONE, message)
           await notifService.markSent(logId, sms)

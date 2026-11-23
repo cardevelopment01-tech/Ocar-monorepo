@@ -190,7 +190,9 @@ export async function getSosAlerts(opts: {
   const conditions: string[] = []
   const params: unknown[] = []
 
-  if (opts.status !== undefined) {
+  if (opts.status === 'active') {
+    conditions.push(`sa.status IN ('triggered', 'acknowledged', 'responding')`)
+  } else if (opts.status !== undefined) {
     params.push(opts.status)
     conditions.push(`sa.status = $${params.length}`)
   }
@@ -223,10 +225,23 @@ export async function getSosAlerts(opts: {
     params.slice(0, -2)
   )
 
+  // Whole-table totals by status, so the page's stat cards are not counted from just the rows on screen.
+  const countsRes = await pool.query<{ status: string; n: string }>(
+    `SELECT status, COUNT(*) AS n FROM sos_alerts GROUP BY status`
+  )
+  const counts: Record<string, number> = { triggered: 0, acknowledged: 0, responding: 0, resolved: 0, false_alarm: 0 }
+  for (const r of countsRes.rows) counts[r.status] = parseInt(r.n, 10)
+
   return {
     alerts: res.rows,
     total: parseInt(countRes.rows[0]?.total ?? '0'),
+    counts,
   }
+}
+
+export async function getSosStatus(id: bigint): Promise<string | null> {
+  const res = await pool.query<{ status: string }>(`SELECT status FROM sos_alerts WHERE id = $1`, [id])
+  return res.rows[0]?.status ?? null
 }
 
 export async function updateSosStatus(
@@ -250,8 +265,11 @@ export async function updateSosStatus(
     params.push(adminId, note ?? null)
   }
 
+  // A move is only legal from the states below, checked in the UPDATE itself so two admins pressing at once cannot both win:
+  // acknowledge only from 'triggered'; resolve / false alarm from any still-open state. A closed alert never reopens.
+  const from = status === 'acknowledged' ? `('triggered')` : `('triggered', 'acknowledged', 'responding')`
   const res = await pool.query(
-    `UPDATE sos_alerts SET ${cols.join(', ')} WHERE id = $1 RETURNING *`,
+    `UPDATE sos_alerts SET ${cols.join(', ')} WHERE id = $1 AND status IN ${from} RETURNING *`,
     params
   )
   return res.rows[0] ?? null

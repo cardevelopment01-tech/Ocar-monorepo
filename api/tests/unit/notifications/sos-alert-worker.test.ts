@@ -61,6 +61,21 @@ describe('sos_alert worker', () => {
     expect(h.notifService.markSent).toHaveBeenCalledWith(1, undefined)
   })
 
+  it.each([
+    ['no fix (null)', { lat: null, lng: null }],
+    ['a pre-fix queued job (0,0)', { lat: 0, lng: 0 }],
+  ])('texts "unknown", never a 0,0 map point, for %s', async (_label, loc) => {
+    h.sendSms.mockResolvedValue(undefined)
+    await h.processor!({ ...job(1), data: { ...job(1).data, ...loc } })
+    expect(h.renderTemplate).toHaveBeenCalledWith('sos_alert', 'sms', expect.objectContaining({ lat: 'unknown', lng: 'unknown' }))
+  })
+
+  it('sends the real coordinates when there is a fix', async () => {
+    h.sendSms.mockResolvedValue(undefined)
+    await h.processor!(job(1))
+    expect(h.renderTemplate).toHaveBeenCalledWith('sos_alert', 'sms', expect.objectContaining({ lat: '20.29', lng: '85.82' }))
+  })
+
   it('records a failure, not "sent", when ADMIN_PHONE is not configured', async () => {
     h.config.ADMIN_PHONE = undefined
     await expect(h.processor!(job(0))).resolves.toBeUndefined()

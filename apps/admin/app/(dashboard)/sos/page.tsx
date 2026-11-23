@@ -1,19 +1,18 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Shield, ShieldAlert, CheckCircle, Clock, AlertTriangle, ExternalLink, Phone, MapPin } from 'lucide-react'
+import { Shield, ShieldAlert, CheckCircle, Clock, AlertTriangle, ExternalLink, Phone, MapPin, MapPinOff, WifiOff, RefreshCw } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
-import ConfirmDialog from '@/components/ui/ConfirmDialog'
-import { safetyApi, type SosAlert } from '@/lib/safety-api'
+import SuccessToast from '@/components/ui/SuccessToast'
+import { safetyApi, type SosAlert, type SosCounts } from '@/lib/safety-api'
 import { getAdminSocket } from '@/lib/socket'
+import { extractErrorCode, extractErrorMessage } from '@/lib/http-errors'
+import { ACTIVE_STATUSES, absoluteTime, activeCount, elapsedLabel, handledBy, hasLocation, totalCount } from '@/lib/sos-model'
+import SosNoteDialog from './SosNoteDialog'
 
-const ACTIVE_STATUSES = new Set(['triggered', 'acknowledged', 'responding'])
-
-function severityClass(s: string) {
-  if (s === 'high')   return 'pill-danger'
-  if (s === 'medium') return 'pill-warning'
-  return 'pill-info'
-}
+const EMPTY_COUNTS: SosCounts = { triggered: 0, acknowledged: 0, responding: 0, resolved: 0, false_alarm: 0 }
+const HISTORY_STEP = 25
+const HISTORY_MAX = 100
 
 function statusClass(s: string) {
   if (ACTIVE_STATUSES.has(s)) return 'pill-danger'
@@ -21,31 +20,42 @@ function statusClass(s: string) {
   return 'pill-info'
 }
 
-function elapsed(iso: string) {
-  const ms = Date.now() - new Date(iso).getTime()
-  const m  = Math.floor(ms / 60000)
-  if (m < 1)  return 'just now'
-  if (m < 60) return `${m} min ago`
-  return `${Math.floor(m / 60)}h ago`
-}
+type Pending = { id: string; kind: 'resolved' | 'false_alarm' }
 
 export default function SOSPage() {
   const router = useRouter()
-  const [alerts,         setAlerts]         = useState<SosAlert[]>([])
-  const [loading,        setLoading]        = useState(true)
-  const [actingId,       setActingId]       = useState<string | null>(null)
-  const [confirmAction,  setConfirmAction]  = useState<{ id: string; status: 'resolved' | 'false_alarm' } | null>(null)
+  const [active,   setActive]   = useState<SosAlert[]>([])
+  const [history,  setHistory]  = useState<SosAlert[]>([])
+  const [counts,   setCounts]   = useState<SosCounts>(EMPTY_COUNTS)
+  const [loaded,   setLoaded]   = useState(false)
+  // A failed fetch must never read as "all clear": it is shown as an error, and the last good data stays on screen, marked stale.
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [lastOk,   setLastOk]   = useState<number | null>(null)
+  const [historyLimit, setHistoryLimit] = useState(HISTORY_STEP)
+
+  const [actingId,   setActingId]   = useState<string | null>(null)
+  const [cardError,  setCardError]  = useState<{ id: string; message: string } | null>(null)
+  const [pending,    setPending]    = useState<Pending | null>(null)
+  const [dialogError, setDialogError] = useState<string | null>(null)
+  const [toast,      setToast]      = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const data = await safetyApi.getSosAlerts({ limit: 50 })
-      setAlerts(data.alerts)
+      const [open, recent] = await Promise.all([
+        safetyApi.getSosAlerts({ status: 'active', limit: 100 }),
+        safetyApi.getSosAlerts({ limit: historyLimit }),
+      ])
+      setActive(open.alerts)
+      setHistory(recent.alerts)
+      setCounts(recent.counts ?? open.counts ?? EMPTY_COUNTS)
+      setLoadFailed(false)
+      setLastOk(Date.now())
     } catch {
-      // ignore, show empty state
+      setLoadFailed(true)
     } finally {
-      setLoading(false)
+      setLoaded(true)
     }
-  }, [])
+  }, [historyLimit])
 
   useEffect(() => {
     void load()
@@ -64,27 +74,43 @@ export default function SOSPage() {
   }, [])
 
   // Oldest unresolved first: the alert that has waited longest is the most urgent.
-  const active    = alerts
-    .filter(a => ACTIVE_STATUSES.has(a.status))
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-  const resolved  = alerts.filter(a => a.status === 'resolved').length
-  const falseAlarm = alerts.filter(a => a.status === 'false_alarm').length
+  const queue = [...active].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  // Nothing has ever loaded and the last try failed: the numbers are unknown, not zero.
+  const unknown = loadFailed && lastOk === null
+  const activeTotal = activeCount(counts)
+  const total = totalCount(counts)
+
+  // Someone else got there first (409), or the alert is gone: show what the server says and refresh so the card is right.
+  function handleActionError(err: unknown, fallback: string): string {
+    const code = extractErrorCode(err)
+    if (code === 'SOS_STATE_CONFLICT' || code === 'SOS_ALERT_NOT_FOUND') void load()
+    return extractErrorMessage(err, fallback)
+  }
 
   async function acknowledge(id: string) {
     setActingId(id)
+    setCardError(null)
     try {
-      const updated = await safetyApi.acknowledgeSos(id)
-      setAlerts(prev => prev.map(a => a.id === id ? updated : a))
+      await safetyApi.acknowledgeSos(id)
+      await load()
+    } catch (err) {
+      setCardError({ id, message: handleActionError(err, 'Could not acknowledge this alert. Try again.') })
     } finally {
       setActingId(null)
     }
   }
 
-  async function resolve(id: string, status: 'resolved' | 'false_alarm' = 'resolved') {
-    setActingId(id)
+  async function resolve(note: string) {
+    if (!pending) return
+    setActingId(pending.id)
+    setDialogError(null)
     try {
-      const updated = await safetyApi.resolveSos(id, { status })
-      setAlerts(prev => prev.map(a => a.id === id ? updated : a))
+      await safetyApi.resolveSos(pending.id, { status: pending.kind, ...(note ? { note } : {}) })
+      setToast(pending.kind === 'false_alarm' ? 'Alert dismissed as a false alarm' : 'Alert closed')
+      setPending(null)
+      await load()
+    } catch (err) {
+      setDialogError(handleActionError(err, 'Could not save this. Try again.'))
     } finally {
       setActingId(null)
     }
@@ -92,7 +118,21 @@ export default function SOSPage() {
 
   return (
     <div className="space-y-5">
-      {!loading && active.length > 0 && (
+      {loadFailed && lastOk !== null && (
+        <div role="alert" className="rounded-2xl px-5 py-3 border border-warning/40 bg-warning/10 flex items-center gap-3 text-sm text-text-primary">
+          <WifiOff size={18} className="text-warning flex-shrink-0" />
+          <p className="flex-1">
+            <span className="font-bold">Can&apos;t reach the server.</span>{' '}
+            {lastOk ? `This list may be out of date (last updated ${new Date(lastOk).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}). ` : ''}
+            New alerts may not be showing. Keep the SOS phone line open.
+          </p>
+          <button onClick={() => void load()} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-border rounded-xl bg-surface hover:bg-surface-2">
+            <RefreshCw size={12} /> Retry
+          </button>
+        </div>
+      )}
+
+      {loaded && !loadFailed && queue.length > 0 && (
         <div
           role="alert"
           className="rounded-2xl px-5 py-4 border-2 border-danger flex items-center gap-4"
@@ -101,171 +141,197 @@ export default function SOSPage() {
           <ShieldAlert size={28} className="text-danger flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="font-black text-danger text-lg">
-              {active.length === 1 ? '1 active SOS alert' : `${active.length} active SOS alerts`}
+              {queue.length === 1 ? '1 active SOS alert' : `${queue.length} active SOS alerts`}
             </p>
             <p className="text-sm text-danger/80 truncate">
-              Longest waiting: {active[0]?.driver_name ?? active[0]?.user_name ?? 'Unknown'} ·{' '}
-              {active[0]?.origin_address ?? '—'} → {active[0]?.destination_address ?? '—'}
+              Longest waiting: {queue[0]?.driver_name ?? queue[0]?.user_name ?? 'Unknown'} ·{' '}
+              {queue[0]?.origin_address ?? '—'} → {queue[0]?.destination_address ?? '—'}
             </p>
           </div>
-          <span className="text-danger font-bold text-sm whitespace-nowrap">{active[0] ? elapsed(active[0].created_at) : ''}</span>
+          <span className="text-danger font-bold text-sm whitespace-nowrap">{queue[0] ? elapsedLabel(queue[0].created_at) : ''}</span>
         </div>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Active Now"     value={active.length}   change={active.length > 0 ? 'Needs action' : 'All clear'} changeType={active.length > 0 ? 'down' : 'neutral'} icon={Shield}        gradient="pink"   loading={loading} />
-        <StatCard title="Resolved"       value={resolved}        change="All time"   changeType="up"    icon={CheckCircle}   gradient="green"  loading={loading} />
-        <StatCard title="False Alarms"   value={falseAlarm}      change="All time"   changeType="neutral" icon={AlertTriangle} gradient="amber"  loading={loading} />
-        <StatCard title="Total Alerts"   value={alerts.length}   change="All time"   changeType="neutral" icon={Clock}         gradient="blue"   loading={loading} />
+        <StatCard title="Active Now"     value={unknown ? '—' : activeTotal}       change={unknown ? 'Unavailable' : activeTotal > 0 ? 'Needs action' : 'All clear'} changeType={!unknown && activeTotal > 0 ? 'down' : 'neutral'} icon={Shield}        gradient="pink"  loading={!loaded} />
+        <StatCard title="Resolved"       value={unknown ? '—' : counts.resolved}    change="All time"   changeType={unknown ? 'neutral' : 'up'} icon={CheckCircle}   gradient="green" loading={!loaded} />
+        <StatCard title="False Alarms"   value={unknown ? '—' : counts.false_alarm} change="All time"   changeType="neutral" icon={AlertTriangle} gradient="amber" loading={!loaded} />
+        <StatCard title="Total Alerts"   value={unknown ? '—' : total}              change="All time"   changeType="neutral" icon={Clock}         gradient="blue"  loading={!loaded} />
       </div>
 
-      {!loading && active.length > 0 && (
+      {loaded && !lastOk && loadFailed && (
+        <div role="alert" className="admin-card flex flex-col items-center justify-center py-12 text-center">
+          <WifiOff size={40} className="text-warning mb-3" />
+          <p className="font-bold text-text-primary">Can&apos;t load SOS alerts</p>
+          <p className="text-sm text-text-muted mt-1 max-w-sm">This does not mean there are none. Check your connection and retry. If this keeps happening, tell engineering and watch the SOS phone line.</p>
+          <button onClick={() => void load()} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-primary text-white rounded-xl hover:bg-primary-dark">
+            <RefreshCw size={14} /> Retry
+          </button>
+        </div>
+      )}
+
+      {loaded && queue.length > 0 && (
         <div>
           <h2 className="text-md font-bold text-text-primary mb-3">Active Alerts</h2>
           <div className="space-y-3">
-            {active.map(sos => (
-              <div
-                key={sos.id}
-                className="bg-surface rounded-2xl border border-danger/20 p-5 shadow-card"
-                style={{ background: 'rgba(239,68,68,0.04)' }}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="w-2 h-2 rounded-full bg-danger animate-pulse" />
-                      <p className="font-bold text-text-primary text-lg">
-                        {sos.driver_name ?? sos.user_name ?? 'Unknown'}
-                      </p>
-                      {(sos.driver_phone ?? sos.user_phone) && (
+            {queue.map(sos => {
+              const phone = sos.driver_phone ?? sos.user_phone
+              const who = handledBy(sos)
+              const busy = actingId === sos.id
+              return (
+                <div
+                  key={sos.id}
+                  className="bg-surface rounded-2xl border border-danger/20 p-5 shadow-card"
+                  style={{ background: 'rgba(239,68,68,0.04)' }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+                        <span className="w-2 h-2 rounded-full bg-danger animate-pulse" />
+                        <p className="font-bold text-text-primary text-lg">{sos.driver_name ?? sos.user_name ?? 'Unknown'}</p>
+                        {phone && (
+                          <a href={`tel:${phone}`} className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline">
+                            <Phone size={12} />
+                            {phone}
+                          </a>
+                        )}
+                        <span className="text-xs text-text-muted">{sos.triggered_by_driver ? 'Driver alert' : 'Rider alert'}</span>
+                      </div>
+                      <p className="text-sm text-text-secondary">{sos.origin_address ?? '—'} → {sos.destination_address ?? '—'}</p>
+                      {hasLocation(sos) ? (
                         <a
-                          href={`tel:${sos.driver_phone ?? sos.user_phone}`}
-                          className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
+                          href={`https://www.google.com/maps?q=${sos.location_lat},${sos.location_lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
                         >
-                          <Phone size={12} />
-                          {sos.driver_phone ?? sos.user_phone}
+                          <MapPin size={12} />
+                          {parseFloat(sos.location_lat!).toFixed(4)}, {parseFloat(sos.location_lng!).toFixed(4)} (open map)
                         </a>
+                      ) : (
+                        <p className="inline-flex items-center gap-1 text-xs font-semibold text-warning mt-1">
+                          <MapPinOff size={12} /> No location shared. Call them, or open the ride to see the last trail.
+                        </p>
                       )}
-                      <span className="text-xs text-text-muted">
-                        {sos.triggered_by_driver ? 'Driver alert' : 'Rider alert'}
-                      </span>
+                      {sos.notes && <p className="text-xs text-text-muted mt-1">Note: {sos.notes}</p>}
+                      <p className="text-xs mt-2" title={absoluteTime(sos.created_at)}>
+                        <span className="text-danger font-semibold">Raised {elapsedLabel(sos.created_at)}</span>
+                        {sos.status === 'triggered'
+                          ? <span className="text-danger"> · waiting for someone to acknowledge</span>
+                          : who && <span className="text-text-muted"> · {who} {elapsedLabel(sos.acknowledged_at)}</span>}
+                      </p>
                     </div>
-                    <p className="text-sm text-text-secondary">
-                      {sos.origin_address ?? '—'} → {sos.destination_address ?? '—'}
-                    </p>
-                    {(sos.location_lat && sos.location_lng) && (
-                      <a
-                        href={`https://www.google.com/maps?q=${sos.location_lat},${sos.location_lng}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
-                      >
-                        <MapPin size={12} />
-                        {parseFloat(sos.location_lat).toFixed(4)}, {parseFloat(sos.location_lng).toFixed(4)} (open map)
-                      </a>
-                    )}
-                    {sos.notes && <p className="text-xs text-text-muted mt-1">Note: {sos.notes}</p>}
-                    <p className="text-xs text-danger font-semibold mt-2">{elapsed(sos.created_at)}</p>
                   </div>
-                  <span className={`pill ${severityClass(sos.severity)}`}>{sos.severity}</span>
-                </div>
-                <div className="flex flex-wrap gap-2 mt-4">
-                  {sos.status === 'triggered' && (
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {sos.status === 'triggered' && (
+                      <button
+                        disabled={busy}
+                        onClick={() => void acknowledge(sos.id)}
+                        className="px-4 py-2 text-sm font-semibold bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-50"
+                      >
+                        {busy ? 'Acknowledging…' : 'Acknowledge'}
+                      </button>
+                    )}
                     <button
-                      disabled={actingId === sos.id}
-                      onClick={() => void acknowledge(sos.id)}
-                      className="px-4 py-2 text-sm font-semibold bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-50"
+                      disabled={busy}
+                      onClick={() => { setDialogError(null); setPending({ id: sos.id, kind: 'resolved' }) }}
+                      className="px-4 py-2 text-sm font-semibold bg-success text-white rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50"
                     >
-                      Acknowledge
+                      Mark Resolved
                     </button>
-                  )}
-                  <button
-                    disabled={actingId === sos.id}
-                    onClick={() => setConfirmAction({ id: sos.id, status: 'resolved' })}
-                    className="px-4 py-2 text-sm font-semibold bg-success text-white rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50"
-                  >
-                    Mark Resolved
-                  </button>
-                  <button
-                    disabled={actingId === sos.id}
-                    onClick={() => setConfirmAction({ id: sos.id, status: 'false_alarm' })}
-                    className="px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 transition-colors text-text-secondary disabled:opacity-50"
-                  >
-                    False Alarm
-                  </button>
-                  <button
-                    onClick={() => router.push(`/rides/${sos.ride_id}`)}
-                    className="ml-auto flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 transition-colors text-text-secondary"
-                  >
-                    <ExternalLink size={14} />
-                    View ride
-                  </button>
+                    <button
+                      disabled={busy}
+                      onClick={() => { setDialogError(null); setPending({ id: sos.id, kind: 'false_alarm' }) }}
+                      className="px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 transition-colors text-text-secondary disabled:opacity-50"
+                    >
+                      False Alarm
+                    </button>
+                    <button
+                      onClick={() => router.push(`/rides/${sos.ride_id}`)}
+                      className="ml-auto flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 transition-colors text-text-secondary"
+                    >
+                      <ExternalLink size={14} />
+                      View ride
+                    </button>
+                  </div>
+                  {cardError?.id === sos.id && <p role="alert" className="text-sm text-danger mt-3">{cardError.message}</p>}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
 
-      {!loading && active.length === 0 && (
+      {loaded && !loadFailed && queue.length === 0 && (
         <div className="admin-card flex flex-col items-center justify-center py-12 text-center">
           <CheckCircle size={40} className="text-success mb-3" />
           <p className="font-bold text-text-primary">No active SOS alerts</p>
-          <p className="text-sm text-text-muted mt-1">All riders and drivers are safe</p>
+          <p className="text-sm text-text-muted mt-1">Nobody has an open alert right now</p>
         </div>
       )}
 
       <div className="admin-card">
         <h2 className="text-md font-bold text-text-primary mb-4">All SOS Events</h2>
-        {loading ? (
+        {!loaded ? (
           <table className="data-table w-full"><tbody>
             {Array.from({ length: 5 }).map((_, i) => (
               <tr key={i}><td colSpan={6} className="py-3"><div className="skeleton h-4 rounded w-full" /></td></tr>
             ))}
           </tbody></table>
-        ) : alerts.length === 0 ? (
-          <p className="text-text-muted text-sm py-4 text-center">No SOS events recorded</p>
+        ) : history.length === 0 ? (
+          <p className="text-text-muted text-sm py-4 text-center">{loadFailed ? 'Could not load events' : 'No SOS events recorded'}</p>
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th><th>Person</th><th>Route</th><th>Severity</th><th>Status</th><th>Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {alerts.map(sos => (
-                <tr key={sos.id} className="group">
-                  <td className="font-mono text-xs text-primary">#{sos.id}</td>
-                  <td className="font-semibold text-text-primary">
-                    {sos.driver_name ?? sos.user_name ?? 'Unknown'}
-                  </td>
-                  <td className="text-text-secondary text-sm">
-                    {sos.origin_address ?? '—'} → {sos.destination_address ?? '—'}
-                  </td>
-                  <td><span className={`pill ${severityClass(sos.severity)}`}>{sos.severity}</span></td>
-                  <td><span className={`pill ${statusClass(sos.status)}`}>{sos.status.replace(/_/g, ' ')}</span></td>
-                  <td className="text-text-muted text-sm">{elapsed(sos.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Person</th><th>Route</th><th>Status</th><th>Raised</th><th>Handled by</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map(sos => (
+                    <tr key={sos.id} className="group">
+                      <td className="font-mono text-xs text-primary">#{sos.id}</td>
+                      <td className="font-semibold text-text-primary">
+                        {sos.driver_name ?? sos.user_name ?? 'Unknown'}
+                        <span className="block text-xs font-normal text-text-muted">{sos.triggered_by_driver ? 'Driver alert' : 'Rider alert'}</span>
+                      </td>
+                      <td className="text-text-secondary text-sm">{sos.origin_address ?? '—'} → {sos.destination_address ?? '—'}</td>
+                      <td><span className={`pill ${statusClass(sos.status)}`}>{sos.status.replace(/_/g, ' ')}</span></td>
+                      <td className="text-text-muted text-sm whitespace-nowrap" title={absoluteTime(sos.created_at)}>{elapsedLabel(sos.created_at)}</td>
+                      <td className="text-sm text-text-secondary">
+                        {handledBy(sos) || <span className="text-text-muted">—</span>}
+                        {sos.resolution_note && <span className="block text-xs text-text-muted max-w-[260px] truncate" title={sos.resolution_note}>“{sos.resolution_note}”</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {history.length >= historyLimit && historyLimit < HISTORY_MAX && counts && total > history.length && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => setHistoryLimit(n => Math.min(n + HISTORY_STEP, HISTORY_MAX))}
+                  className="px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 text-text-secondary"
+                >
+                  Show more ({history.length} of {total})
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      <ConfirmDialog
-        open={confirmAction !== null}
-        onOpenChange={open => { if (!open) setConfirmAction(null) }}
-        title={confirmAction?.status === 'false_alarm' ? 'Mark as false alarm?' : 'Mark SOS resolved?'}
-        description={
-          confirmAction?.status === 'false_alarm'
-            ? 'This will dismiss the alert as a false alarm. Only do this if you are certain no emergency occurred.'
-            : 'This will close the SOS alert and notify the parties involved.'
-        }
-        confirmLabel={confirmAction?.status === 'false_alarm' ? 'False Alarm' : 'Mark Resolved'}
-        variant={confirmAction?.status === 'false_alarm' ? 'warning' : 'success'}
-        onConfirm={() => {
-          if (confirmAction) void resolve(confirmAction.id, confirmAction.status)
-        }}
+      <SosNoteDialog
+        open={pending !== null}
+        kind={pending?.kind ?? 'resolved'}
+        loading={actingId !== null && pending !== null}
+        error={dialogError}
+        onCancel={() => setPending(null)}
+        onConfirm={note => void resolve(note)}
       />
+      <SuccessToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   )
 }
