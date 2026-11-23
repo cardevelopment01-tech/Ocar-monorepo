@@ -15,6 +15,7 @@ export const h = {
   gold: '#D6A552',
   goldLight: '#E7C27D',
   live: '#25B87A',
+  liveInk: '#16805A', // text and button fill on a success state: white on it is 5.6:1 (live is 2.5:1)
   // Rider redesign additions (docs/designs/ocar-redesign, brief section 3). Additive only.
   muted: '#5F6468',
   label: '#6B7176',

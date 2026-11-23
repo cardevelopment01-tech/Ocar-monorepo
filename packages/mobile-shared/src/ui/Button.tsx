@@ -59,14 +59,19 @@ export function Button({ label, variant = 'primary', loading = false, success = 
         disabled={isDisabled}
         style={({ pressed }) => [
           cta ? styles.cta : styles.soft,
-          { backgroundColor: cta ? h.tealCta : h.tealWash },
-          cta && !dim ? { boxShadow: '0 12px 24px rgba(14,143,163,0.30)' } : null,
+          { backgroundColor: success && cta ? h.liveInk : cta ? h.tealCta : h.tealWash },
+          cta && !dim ? { boxShadow: success ? '0 12px 24px rgba(22,128,90,0.28)' : '0 12px 24px rgba(14,143,163,0.30)' } : null,
           dim ? styles.disabled : null,
           pressed && !isDisabled ? styles.pressed : null,
         ]}
         {...pressableProps}
       >
-        {loading ? <ActivityIndicator color={cta ? '#fff' : h.tealText} /> : (
+        {success ? (
+          <Animated.View key="success" entering={FadeIn.duration(160)} style={styles.row}>
+            <Feather name="check" size={19} color={cta ? '#fff' : h.tealText} />
+            <Text style={[styles.ctaLabel, { color: cta ? '#fff' : h.tealText }]}>Verified</Text>
+          </Animated.View>
+        ) : loading ? <ActivityIndicator color={cta ? '#fff' : h.tealText} /> : (
           <View style={styles.row}>
             {icon ? <Feather name={icon} size={17} color={cta ? '#fff' : h.tealText} /> : null}
             <Text style={[styles.ctaLabel, { color: cta ? '#fff' : h.tealText }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{label}</Text>

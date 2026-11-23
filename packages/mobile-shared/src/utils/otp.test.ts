@@ -46,6 +46,17 @@ describe('otpWaitStatus', () => {
     expect(slow).toMatchObject({ title: 'Taking longer than usual' })
     expect((slow as { hint: string }).hint).toMatch(/Spam or Blocked/)
   })
+  it('the slow hint only mentions resending once Resend is available', () => {
+    const early = otpWaitStatus({ ...base, elapsedSec: 20, canResend: false }) as { hint: string }
+    expect(early.hint).not.toMatch(/resend/i)
+    const late = otpWaitStatus({ ...base, elapsedSec: 41, canResend: true }) as { hint: string }
+    expect(late.hint).toMatch(/resend the code/)
+  })
+  it('success, then verifying, then an error outrank everything below them', () => {
+    expect(otpWaitStatus({ ...base, success: true, verifying: true, error: 'x', detected: true, typed: 6 })).toEqual({ kind: 'success', title: "You're in" })
+    expect(otpWaitStatus({ ...base, verifying: true, error: 'x', detected: true, typed: 6 }).kind).toBe('verifying')
+    expect(otpWaitStatus({ ...base, error: 'Incorrect code', elapsedSec: 40 })).toEqual({ kind: 'error', title: 'Incorrect code' })
+  })
   it('a code read from the SMS shows as detected, whatever else is going on', () => {
     expect(otpWaitStatus({ ...base, detected: true })).toEqual({ kind: 'detected', title: 'Code detected' })
     expect(otpWaitStatus({ ...base, detected: true, elapsedSec: 40, typed: 6 }).kind).toBe('detected')
