@@ -1,4 +1,5 @@
 import { pool, withTransaction } from "@/db/client";
+import { ACCOUNT_COLUMNS, assertAnotherSuperRemains, lockActiveSuperAdmins } from "./admin-lifecycle.repository";
 import { client as redisClient, withTimeout } from "@/db/redis";
 import {
   RATE_CARD_VERSION_KEY,
@@ -85,7 +86,7 @@ const VEHICLE_EDITABLE_COLUMNS = [
 export async function listAdminAccounts(): Promise<AdminAccountListItem[]> {
   return pool
     .query<AdminAccountListItem>(
-      `SELECT id, code, email, role, admin_status, created_at
+      `SELECT ${ACCOUNT_COLUMNS}
      FROM admins
      WHERE deleted_at IS NULL
      ORDER BY created_at DESC`,
@@ -96,39 +97,48 @@ export async function listAdminAccounts(): Promise<AdminAccountListItem[]> {
 // admin_status and is_active are kept in lockstep — is_active is what
 // login/authenticate() actually check, admin_status is the richer lifecycle
 // label surfaced in the UI. Suspending/reactivating always updates both.
+// Suspending a super admin goes through the same "never zero super admins" lock as removal and demotion.
 export async function setAdminStatus(params: {
   targetId: bigint;
   status: "active" | "suspended";
   actingAdminId: bigint;
   ipAddress: string | null;
 }): Promise<AdminAccountListItem | null> {
-  const beforeRes = await pool.query(
-    "SELECT * FROM admins WHERE id = $1 AND deleted_at IS NULL",
-    [params.targetId],
-  );
-  const before = beforeRes.rows[0];
-  if (!before) return null;
-
-  const afterRes = await pool.query<AdminAccountListItem>(
-    `UPDATE admins
-     SET admin_status = $1, is_active = $2, updated_at = now()
-     WHERE id = $3
-     RETURNING id, code, email, role, admin_status, created_at`,
-    [params.status, params.status === "active", params.targetId],
-  );
-  const after = afterRes.rows[0]!;
+  const changed = await withTransaction(async (client) => {
+    const supers = params.status === "suspended" ? await lockActiveSuperAdmins(client) : [];
+    const before = (
+      await client.query<AdminAccountListItem>(
+        `SELECT ${ACCOUNT_COLUMNS} FROM admins WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [params.targetId],
+      )
+    ).rows[0];
+    if (!before) return null;
+    if (params.status === "suspended" && before.role === "super_admin") assertAnotherSuperRemains(supers, before.id);
+    const after = (
+      await client.query<AdminAccountListItem>(
+        `UPDATE admins
+         SET admin_status = $1, is_active = $2, updated_at = now()
+         WHERE id = $3
+         RETURNING ${ACCOUNT_COLUMNS}`,
+        [params.status, params.status === "active", params.targetId],
+      )
+    ).rows[0]!;
+    return { before, after };
+  });
+  if (!changed) return null;
 
   await recordAuditLog({
     adminId: params.actingAdminId,
     action: "admins.status_change",
     targetTable: "admins",
     targetId: params.targetId,
-    beforeState: before,
-    afterState: after as unknown as Record<string, unknown>,
+    // Only the columns the list shows: the whole row would include the password hash and the 2FA secret, in a log that can never be edited.
+    beforeState: changed.before as unknown as Record<string, unknown>,
+    afterState: changed.after as unknown as Record<string, unknown>,
     ipAddress: params.ipAddress,
   });
 
-  return after;
+  return changed.after;
 }
 
 export interface DriverListFilters {

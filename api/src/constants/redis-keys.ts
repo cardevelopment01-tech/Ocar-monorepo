@@ -97,6 +97,9 @@ export const routeKey = (
   return `geo:route:${r(originLat)},${r(originLng)}:${r(destLat)},${r(destLng)}:${o}`
 }
 
+// The copy of an admin that every authenticated request is checked against (20 seconds): dropped when a role, status or session changes.
+export const adminPrincipalKey = (id: string | bigint): string => `auth:admin:${id}`
+
 // One push per ride + recipient + event, so a retried status transition never double-notifies.
 export const rideEventPushKey = (rideId: string, event: string, ownerId: string): string =>
   `ride:${rideId}:event-push:${event}:${ownerId}`

@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { UserPlus, X, Send, Ban, ShieldOff, ShieldCheck, RotateCw, AlertCircle, RefreshCw, Mail, Copy, Check } from 'lucide-react'
+import { UserPlus, UserCog, KeyRound, LogOut, Trash2, X, Send, Ban, ShieldOff, ShieldCheck, RotateCw, AlertCircle, RefreshCw, Mail, Copy, Check } from 'lucide-react'
 import DataTable from '@/components/ui/DataTable'
 import StatusPill from '@/components/ui/StatusPill'
 import SlideOver from '@/components/ui/SlideOver'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import SuccessToast from '@/components/ui/SuccessToast'
-import { adminInvitesApi, adminAccountsApi, type AdminInvite, type AdminAccount } from '@/lib/admin-invites-api'
+import ManageAdminDialog from './ManageAdminDialog'
+import { adminInvitesApi, adminAccountsApi, type AdminInvite, type AdminAccount, type AdminLifecycleAction } from '@/lib/admin-invites-api'
 import { useAdminAuth } from '@/lib/auth-context'
 import { extractErrorMessage } from '@/lib/http-errors'
 import type { AdminRole } from '@/lib/mock-data'
@@ -153,6 +154,7 @@ export default function AdminsPage() {
   const [resendTarget, setResendTarget] = useState<AdminInvite | null>(null)
   const [issued, setIssued] = useState<Issued | null>(null)
   const [statusTarget, setStatusTarget] = useState<AdminAccount | null>(null)
+  const [manage, setManage] = useState<{ target: AdminAccount; action: AdminLifecycleAction } | null>(null)
 
   const [toast, setToast] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -274,14 +276,28 @@ export default function AdminsPage() {
     }
   }
 
+  const afterManage = (updated: AdminAccount | null, removedId: string | null, message: string) => {
+    if (updated) setAdmins(prev => prev.map(a => (a.id === updated.id ? updated : a)))
+    if (removedId) setAdmins(prev => prev.filter(a => a.id !== removedId))
+    setManage(null)
+    setToast(message)
+  }
+
   const adminColumns = [
     { key: 'email', header: 'Email', render: (a: AdminAccount) => <span className="text-sm font-medium text-text-primary">{a.email}</span> },
     { key: 'role', header: 'Role', width: '160px', render: (a: AdminAccount) => <RolePill role={a.role} /> },
     { key: 'admin_status', header: 'Status', width: '120px', render: (a: AdminAccount) => <StatusPill status={a.admin_status} /> },
+    { key: 'totp_enabled', header: '2FA', width: '80px', render: (a: AdminAccount) => <span className={`text-xs ${a.totp_enabled ? 'text-success' : 'text-text-muted'}`}>{a.totp_enabled ? 'On' : 'Off'}</span> },
+    { key: 'last_login_at', header: 'Last sign-in', width: '140px', render: (a: AdminAccount) => <span className="text-xs text-text-muted">{a.last_login_at ? formatDate(a.last_login_at) : 'Never'}</span> },
     { key: 'created_at', header: 'Joined', width: '140px', render: (a: AdminAccount) => <span className="text-xs text-text-muted">{formatDate(a.created_at)}</span> },
     {
-      key: 'actions', header: '', width: '90px',
+      key: 'actions', header: '', width: '170px',
       render: (a: AdminAccount) => a.id === currentAdmin?.id ? null : (
+        <div className="flex items-center gap-0.5">
+        <button onClick={() => setManage({ target: a, action: 'role' })} className={ICON_BUTTON} title="Change role" aria-label={`Change role of ${a.email}`}><UserCog size={14} /></button>
+        {a.totp_enabled && <button onClick={() => setManage({ target: a, action: 'reset2fa' })} className={ICON_BUTTON} title="Reset 2FA" aria-label={`Reset 2FA for ${a.email}`}><KeyRound size={14} /></button>}
+        <button onClick={() => setManage({ target: a, action: 'signOut' })} className={ICON_BUTTON} title="Sign out everywhere" aria-label={`Sign out ${a.email} everywhere`}><LogOut size={14} /></button>
+        <button onClick={() => setManage({ target: a, action: 'remove' })} className={ICON_BUTTON} title="Remove admin" aria-label={`Remove ${a.email}`}><Trash2 size={14} /></button>
         <button
           onClick={() => setStatusTarget(a)}
           className={ICON_BUTTON}
@@ -290,6 +306,7 @@ export default function AdminsPage() {
         >
           {a.admin_status === 'active' ? <ShieldOff size={14} /> : <ShieldCheck size={14} />}
         </button>
+        </div>
       ),
     },
   ]
@@ -496,6 +513,8 @@ export default function AdminsPage() {
         variant={statusTarget?.admin_status === 'active' ? 'danger' : 'success'}
         onConfirm={() => void confirmStatusChange()}
       />
+
+      <ManageAdminDialog target={manage?.target ?? null} action={manage?.action ?? null} onClose={() => setManage(null)} onDone={afterManage} />
 
       <SuccessToast message={toast} onDismiss={() => setToast(null)} />
     </div>

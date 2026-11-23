@@ -4,6 +4,7 @@ import { AppErrors } from '@/constants/errors'
 import { validateTierFields } from '@/modules/packages/package-tier-rules'
 import { getPresignedUrl } from '@/lib/storage'
 import * as repo from './admin.repository'
+import { forgetAdminPrincipal } from './admin-lifecycle.service'
 import type { DriverStatus, UpdateDriverStatusPayload, UpdateDriverProfilePayload, UpdateDriverVehiclePayload, CityBoundaryGeoJson, CityBoundaryAnalysis, CityBoundaryWrite } from './admin.types'
 import { cityBoundaryGeoJsonSchema } from './admin.types'
 import { CITY_BOUNDARY_MIN_AREA_KM2, CITY_BOUNDARY_MAX_AREA_KM2 } from '@/constants/limits'
@@ -310,6 +311,7 @@ export async function setAdminStatus(params: {
 
   const updated = await repo.setAdminStatus(params)
   if (!updated) throw createHttpError(AppErrors.NOT_FOUND)
+  await forgetAdminPrincipal(params.targetId) // suspended or reactivated from their next request, not up to 20 seconds later
   return updated
 }
 

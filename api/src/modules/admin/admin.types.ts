@@ -430,6 +430,8 @@ export interface AdminAccountListItem {
   email: string
   role: 'super_admin' | 'ops_admin' | 'support_admin' | 'finance_admin'
   admin_status: 'active' | 'suspended'
+  totp_enabled: boolean
+  last_login_at: string | null
   created_at: string
 }
 
