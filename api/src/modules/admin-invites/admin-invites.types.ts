@@ -9,6 +9,7 @@ export type InviteEmailStatus = 'unknown' | 'queued' | 'sent' | 'failed'
 export interface AdminInviteRecord {
   id: string
   email: string
+  full_name: string | null
   role: AdminRole
   token_hash: string
   invited_by: string

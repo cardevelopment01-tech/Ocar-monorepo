@@ -228,7 +228,7 @@ describe('the audit log never holds a secret', () => {
     const a = lastAudit('admins.status_change')!
     const text = json(a)
     expect(text).not.toMatch(/password_hash|totp_secret|enc-secret-must-not-leak|\$2[aby]\$/)
-    expect(Object.keys(a['beforeState'] as object).sort()).toEqual(['admin_status', 'code', 'created_at', 'email', 'id', 'last_login_at', 'role', 'totp_enabled'])
+    expect(Object.keys(a['beforeState'] as object).sort()).toEqual(['admin_status', 'code', 'created_at', 'email', 'full_name', 'id', 'last_login_at', 'role', 'totp_enabled'])
     expect((await act().patch(`/api/v1/admin/admins/${idOf[T[5]!]}/status`, { status: 'active' })).status).toBe(200)
   })
 

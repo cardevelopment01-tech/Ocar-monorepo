@@ -5,6 +5,8 @@ export const createInviteSchema = z.object({
   // Checked after trimming, so a padded address is accepted; the service does the actual trimming and lower-casing (validate() discards the parsed copy).
   email: z.string().trim().toLowerCase().email(),
   role: z.enum(['super_admin', 'ops_admin', 'support_admin', 'finance_admin']),
+  // Optional. The service tidies it (whitespace, control characters); an empty or blank one counts as not given.
+  fullName: z.string().max(120).optional(),
 })
 
 export const redeemInviteSchema = z.object({

@@ -15,6 +15,7 @@ export interface AdminInviteEmailJob {
   /** ISO timestamp */
   expiresAt: string
   inviterEmail?: string
+  fullName?: string
   role?: AdminRole
   /** Which invite this email is for, so the outcome can be recorded on it. */
   inviteId?: string
@@ -45,8 +46,9 @@ const escapeHtml = (value: string): string =>
 
 export interface RenderedInviteEmail { subject: string; text: string; html: string }
 
-export function renderAdminInviteEmail(p: { redeemUrl: string; expiresAt: Date; inviterEmail?: string | undefined; roleLabel?: string | undefined }): RenderedInviteEmail {
-  const { redeemUrl, inviterEmail, roleLabel } = p
+export function renderAdminInviteEmail(p: { redeemUrl: string; expiresAt: Date; inviterEmail?: string | undefined; roleLabel?: string | undefined; fullName?: string | undefined }): RenderedInviteEmail {
+  const { redeemUrl, inviterEmail, roleLabel, fullName } = p
+  const hello = fullName ? `Hi ${fullName},` : ''
   const expires = formatIst(p.expiresAt)
   const asRole = roleLabel ? ` as ${roleLabel}` : ''
   const lead = inviterEmail
@@ -63,6 +65,7 @@ export function renderAdminInviteEmail(p: { redeemUrl: string; expiresAt: Date; 
   const text = [
     "You're invited to the Ocar admin panel",
     '',
+    ...(hello ? [hello, ''] : []),
     lead,
     '',
     'Activate your account:',
@@ -116,6 +119,7 @@ export function renderAdminInviteEmail(p: { redeemUrl: string; expiresAt: Date; 
           <td style="padding-left:8px;font-family:${font};font-size:18px;font-weight:800;color:#0F172A;">car</td>
         </tr></table>
         <h1 style="margin:24px 0 8px;font-family:${font};font-size:22px;line-height:28px;font-weight:700;color:#0F172A;">You're invited to the Ocar admin panel</h1>
+        ${hello ? `<p style="margin:0 0 8px;font-family:${font};font-size:15px;line-height:23px;color:#0F172A;">${e(hello)}</p>` : ''}
         <p style="margin:0 0 24px;font-family:${font};font-size:15px;line-height:23px;color:#475569;">${e(lead)}</p>
         <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
           <td align="center" bgcolor="#0A6F80" style="border-radius:10px;background-color:#0A6F80;">
@@ -162,6 +166,7 @@ export async function sendAdminInviteEmail(job: AdminInviteEmailJob): Promise<vo
     redeemUrl: inviteLink(job.rawToken),
     expiresAt: new Date(job.expiresAt),
     inviterEmail: job.inviterEmail,
+    fullName: job.fullName,
     roleLabel: job.role ? (ROLE_LABEL[job.role] ?? job.role) : undefined,
   })
   await sendEmail(job.email, rendered.subject, {

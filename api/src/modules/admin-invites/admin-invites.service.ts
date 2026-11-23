@@ -56,8 +56,15 @@ const queueFailed = (invite: AdminInviteListItem): AdminInviteListItem => ({
   ...invite, email_status: 'failed', email_error: 'The email could not be queued (the job queue is unavailable).',
 })
 
+/** One line, single spaces, no control characters (they would break email headers and the page). Blank means no name. */
+export function cleanFullName(raw: string | undefined): string | null {
+  const name = (raw ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120)
+  return name || null
+}
+
 export async function createInvite(params: {
   email: string
+  fullName?: string
   role: AdminRole
   invitedBy: bigint
   ipAddress: string | null
@@ -84,6 +91,7 @@ export async function createInvite(params: {
     tokenHash,
     invitedBy: params.invitedBy,
     expiresAt,
+    fullName: cleanFullName(params.fullName),
   })
 
   // The email names who invited them and as what: without that an invitation looks like phishing. Their own address is the one reply goes to.
@@ -94,6 +102,7 @@ export async function createInvite(params: {
     expiresAt: expiresAt.toISOString(),
     role: params.role,
     inviteId: invite.id,
+    ...(invite.full_name ? { fullName: invite.full_name } : {}),
     ...(inviterEmail ? { inviterEmail } : {}),
   })
 
@@ -140,6 +149,7 @@ export async function resendInvite(id: bigint, actingAdminId: bigint, ipAddress:
     expiresAt: expiresAt.toISOString(),
     role: invite.role,
     inviteId: invite.id,
+    ...(invite.full_name ? { fullName: invite.full_name } : {}),
     ...(inviterEmail ? { inviterEmail } : {}),
   })
 

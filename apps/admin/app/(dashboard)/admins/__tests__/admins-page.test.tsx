@@ -18,10 +18,10 @@ import AdminsPage from '../page'
 // errors and had no feedback on any action; seam=the API client is replaced; no_claim=real requests.
 
 const account = (over: Partial<AdminAccount> = {}): AdminAccount => ({
-  id: '2', code: 'ADM000002', email: 'ops@ocar.test', role: 'ops_admin', admin_status: 'active', totp_enabled: true, last_login_at: null, created_at: '2026-11-01T00:00:00.000Z', ...over,
+  id: '2', code: 'ADM000002', email: 'ops@ocar.test', full_name: null, role: 'ops_admin', admin_status: 'active', totp_enabled: true, last_login_at: null, created_at: '2026-11-01T00:00:00.000Z', ...over,
 })
 const invite = (over: Partial<AdminInvite> = {}): AdminInvite => ({
-  id: '11', email: 'new@ocar.test', role: 'support_admin', invited_by: '1', status: 'pending', expires_at: '2026-11-25T00:00:00.000Z',
+  id: '11', email: 'new@ocar.test', full_name: null, role: 'support_admin', invited_by: '1', status: 'pending', expires_at: '2026-11-25T00:00:00.000Z',
   accepted_at: null, accepted_admin_id: null, email_status: 'sent', email_error: null, created_at: '2026-11-23T00:00:00.000Z', updated_at: '2026-11-23T00:00:00.000Z', ...over,
 })
 const LINK = 'https://admin.ocar.example/accept-invite?token=abc123def456'
@@ -96,6 +96,23 @@ describe('Admins page', () => {
       await screen.findByText('ops@ocar.test')
       await user.click(screen.getByRole('button', { name: /Invite Admin/ }))
     }
+
+    it('sends the optional name only when typed, and shows named people by name with the address underneath', async () => {
+      const user = userEvent.setup()
+      invites.create.mockResolvedValue(issued({ id: '15', email: 'sam@ocar.test', full_name: 'Sam Roy' }))
+      await open(user)
+      await user.type(screen.getByLabelText(/^Name/), '  Sam Roy ')
+      await user.type(screen.getByLabelText('Email address'), 'sam@ocar.test')
+      await user.click(screen.getByRole('button', { name: /Send Invite/ }))
+      await waitFor(() => expect(invites.create).toHaveBeenCalledWith({ email: 'sam@ocar.test', role: 'ops_admin', fullName: 'Sam Roy' }))
+    })
+
+    it('lists a named admin by name, with the email under it', async () => {
+      accounts.list.mockResolvedValue([account({ id: '1', email: 'me@ocar.test', role: 'super_admin' }), account({ full_name: 'Priya Das' })])
+      render(<AdminsPage />)
+      expect(await screen.findByText('Priya Das')).toBeInTheDocument()
+      expect(screen.getByText('ops@ocar.test')).toBeInTheDocument()
+    })
 
     it('sends the address in lower case with the chosen role', async () => {
       const user = userEvent.setup()

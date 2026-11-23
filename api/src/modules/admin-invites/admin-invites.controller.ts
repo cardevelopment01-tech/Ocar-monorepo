@@ -4,8 +4,8 @@ import type { AdminRole } from '@/constants/enums'
 
 export async function createInvite(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email, role } = req.body as { email: string; role: AdminRole }
-    const issued = await service.createInvite({ email, role, invitedBy: req.admin!.id, ipAddress: req.ip ?? null })
+    const { email, role, fullName } = req.body as { email: string; role: AdminRole; fullName?: string }
+    const issued = await service.createInvite({ email, role, ...(fullName !== undefined ? { fullName } : {}), invitedBy: req.admin!.id, ipAddress: req.ip ?? null })
     // The response holds the activation link (it is a live credential): never let a browser or proxy keep a copy.
     res.setHeader('Cache-Control', 'no-store')
     res.status(201).json(issued)

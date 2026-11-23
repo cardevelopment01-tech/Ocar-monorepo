@@ -146,6 +146,7 @@ export default function AdminsPage() {
 
   const [inviting, setInviting] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteName, setInviteName] = useState('')
   const [inviteRole, setInviteRole] = useState<AdminRole>('ops_admin')
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
@@ -204,8 +205,9 @@ export default function AdminsPage() {
   }, [sendingEmail])
 
   // Opening from an expired or revoked invite pre-fills the same person and role: "invite again" is one click.
-  const openInvite = (email = '', role: AdminRole = 'ops_admin') => {
+  const openInvite = (email = '', role: AdminRole = 'ops_admin', name = '') => {
     setInviteEmail(email)
+    setInviteName(name)
     setInviteRole(role)
     setInviteError(null)
     setIssued(null)
@@ -223,7 +225,7 @@ export default function AdminsPage() {
 
     setSending(true)
     try {
-      const { invite, link } = await adminInvitesApi.create({ email: inviteEmail.trim().toLowerCase(), role: inviteRole })
+      const { invite, link } = await adminInvitesApi.create({ email: inviteEmail.trim().toLowerCase(), role: inviteRole, ...(inviteName.trim() ? { fullName: inviteName.trim() } : {}) })
       // A re-invite leaves the old expired row in the list too; the new one goes on top.
       setInvites(prev => [invite, ...prev])
       // The panel stays open and shows the link: it cannot be shown again later.
@@ -284,7 +286,7 @@ export default function AdminsPage() {
   }
 
   const adminColumns = [
-    { key: 'email', header: 'Email', render: (a: AdminAccount) => <span className="text-sm font-medium text-text-primary">{a.email}</span> },
+    { key: 'email', header: 'Admin', render: (a: AdminAccount) => a.full_name ? <div><span className="text-sm font-medium text-text-primary">{a.full_name}</span><span className="block text-xs text-text-muted">{a.email}</span></div> : <span className="text-sm font-medium text-text-primary">{a.email}</span> },
     { key: 'role', header: 'Role', width: '160px', render: (a: AdminAccount) => <RolePill role={a.role} /> },
     { key: 'admin_status', header: 'Status', width: '120px', render: (a: AdminAccount) => <StatusPill status={a.admin_status} /> },
     { key: 'totp_enabled', header: '2FA', width: '80px', render: (a: AdminAccount) => <span className={`text-xs ${a.totp_enabled ? 'text-success' : 'text-text-muted'}`}>{a.totp_enabled ? 'On' : 'Off'}</span> },
@@ -312,7 +314,7 @@ export default function AdminsPage() {
   ]
 
   const inviteColumns = [
-    { key: 'email', header: 'Email', render: (i: AdminInvite) => <div><span className="text-sm font-medium text-text-primary">{i.email}</span><EmailState invite={i} /></div> },
+    { key: 'email', header: 'Invitee', render: (i: AdminInvite) => <div>{i.full_name ? <><span className="text-sm font-medium text-text-primary">{i.full_name}</span><span className="block text-xs text-text-muted">{i.email}</span></> : <span className="text-sm font-medium text-text-primary">{i.email}</span>}<EmailState invite={i} /></div> },
     { key: 'role', header: 'Role', width: '160px', render: (i: AdminInvite) => <RolePill role={i.role} /> },
     { key: 'status', header: 'Status', width: '110px', render: (i: AdminInvite) => <StatusPill status={i.status} /> },
     { key: 'expires_at', header: 'Expires', width: '140px', render: (i: AdminInvite) => <span className="text-xs text-text-muted">{formatDate(i.expires_at)}</span> },
@@ -341,7 +343,7 @@ export default function AdminsPage() {
         </div>
       ) : i.status === 'revoked' ? (
         <button
-          onClick={() => openInvite(i.email, i.role)}
+          onClick={() => openInvite(i.email, i.role, i.full_name ?? '')}
           className="text-text-muted hover:text-primary transition-colors p-1 rounded hover:bg-surface-2 cursor-pointer"
           title="Invite again"
           aria-label={`Invite ${i.email} again`}
@@ -426,6 +428,22 @@ export default function AdminsPage() {
         ) : (
         <form onSubmit={e => void submitInvite(e)} className="p-6 space-y-5">
           <div>
+            <label htmlFor="invite-name" className="block text-xs font-semibold text-text-secondary mb-1.5">Name <span className="font-normal text-text-muted">(optional)</span></label>
+            <input
+              id="invite-name"
+              type="text"
+              value={inviteName}
+              onChange={e => setInviteName(e.target.value)}
+              maxLength={120}
+              placeholder="Priya Das"
+              autoComplete="off"
+              className="w-full px-3 py-2 text-sm border border-border rounded-xl outline-none focus:border-primary transition-colors"
+              autoFocus
+            />
+            <p className="mt-1 text-xs text-text-muted">Shown in this list and used to greet them in the email.</p>
+          </div>
+
+          <div>
             <label htmlFor="invite-email" className="block text-xs font-semibold text-text-secondary mb-1.5">Email address</label>
             <input
               id="invite-email"
@@ -434,7 +452,6 @@ export default function AdminsPage() {
               onChange={e => setInviteEmail(e.target.value)}
               placeholder="name@ocar.com"
               className="w-full px-3 py-2 text-sm border border-border rounded-xl outline-none focus:border-primary transition-colors"
-              autoFocus
             />
           </div>
 

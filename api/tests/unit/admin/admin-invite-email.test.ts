@@ -94,6 +94,15 @@ describe('renderAdminInviteEmail', () => {
     expect(hostile.text).toContain("o'brien&co@x.test")
   })
 
+  it('greets the person by name when there is one, escaped, and says nothing extra when there is not', () => {
+    const named = renderAdminInviteEmail({ redeemUrl: URL, expiresAt: WHEN, fullName: 'Priya <b>Das</b> & Co' })
+    expect(named.text).toContain('Hi Priya <b>Das</b> & Co,')
+    expect(named.html).toContain('Hi Priya &lt;b&gt;Das&lt;/b&gt; &amp; Co,')
+    expect(named.html).not.toContain('<b>Das')
+    expect(full.text).not.toMatch(/\nHi /)
+    expect(full.html).not.toMatch(/>Hi /)
+  })
+
   it('loads nothing from the internet: no images, scripts, stylesheets or fonts to be blocked or to track opens', () => {
     expect(full.html).not.toMatch(/<img|<script|<link|<iframe|src=|@import|url\(/i)
   })

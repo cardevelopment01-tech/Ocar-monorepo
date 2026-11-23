@@ -5,6 +5,7 @@ export interface AdminAccount {
   id: string
   code: string
   email: string
+  full_name: string | null
   role: AdminRole
   admin_status: 'active' | 'suspended'
   totp_enabled: boolean
@@ -42,6 +43,7 @@ export type InviteEmailStatus = 'unknown' | 'queued' | 'sent' | 'failed'
 export interface AdminInvite {
   id: string
   email: string
+  full_name: string | null
   role: AdminRole
   invited_by: string
   status: InviteStatus
@@ -67,7 +69,7 @@ export const adminInvitesApi = {
     return data.invites
   },
 
-  create: async (params: { email: string; role: AdminRole }): Promise<IssuedInvite> => {
+  create: async (params: { email: string; role: AdminRole; fullName?: string }): Promise<IssuedInvite> => {
     const { data } = await api.post<IssuedInvite>('/api/v1/admin/invites', params)
     return data
   },
