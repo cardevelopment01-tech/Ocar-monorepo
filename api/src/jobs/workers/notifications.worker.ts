@@ -24,20 +24,7 @@ export const notificationsWorker = new Worker(
         driverPhone: string
         submittedAt: string
       }
-      const lp: LogParams = { jobName: job.name, payload: data as Record<string, unknown> }
-      if (config.ADMIN_PHONE) lp.recipientPhone = config.ADMIN_PHONE
-      const logId = await notifService.logNotification(lp)
-      try {
-        const { body: message } = await renderTemplate('driver_submitted_for_review', 'sms', {
-          driverName: data.driverName, driverPhone: data.driverPhone, submittedAt: data.submittedAt,
-        })
-        const sms = config.ADMIN_PHONE ? await sendSms(config.ADMIN_PHONE, message) : undefined
-        await notifService.markSent(logId, sms)
-      } catch (err) {
-        await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
-        throw err
-      }
-
+      // Admin gets the push and in-app notification below; no SMS (only login OTPs are DLT-registered).
       try {
         const { subject, body } = await renderTemplate('driver_submitted_for_review', 'push', {
           driverName: data.driverName,
@@ -60,19 +47,6 @@ export const notificationsWorker = new Worker(
         docName: string
         rejectionCount: string
       }
-      const lp: LogParams = { jobName: job.name, payload: data as Record<string, unknown>, recipientPhone: data.driverPhone }
-      const logId = await notifService.logNotification(lp)
-      try {
-        const { body: message } = await renderTemplate('document_rejected', 'sms', {
-          doc_name: data.docName, rejection_count: data.rejectionCount,
-        })
-        const sms = await sendSms(data.driverPhone, message)
-        await notifService.markSent(logId, sms)
-      } catch (err) {
-        await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
-        throw err
-      }
-
       try {
         const { subject, body } = await renderTemplate('document_rejection_escalated', 'push', {
           driverName: data.driverName, driverPhone: data.driverPhone,
@@ -222,24 +196,11 @@ export const notificationsWorker = new Worker(
         bookedCategoryName:   string | null
         assignedCategoryName: string | null
       }
-      const lp: LogParams = { jobName: job.name, recipientPhone: data.userPhone, payload: data as Record<string, unknown> }
-      const logId = await notifService.logNotification(lp)
       const driverName = data.driverName ?? 'Your driver'
       const upgradeNote =
         data.bookedCategoryName && data.assignedCategoryName && data.bookedCategoryName !== data.assignedCategoryName
           ? ` You've been upgraded to ${data.assignedCategoryName} at no extra cost.`
           : ''
-      try {
-        const { body: message } = await renderTemplate('ride_accepted', 'sms', {
-          driverName,
-        })
-        const sms = await sendSms(data.userPhone, message)
-        await notifService.markSent(logId, sms)
-      } catch (err) {
-        await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
-        throw err
-      }
-
       try {
         const { subject, body } = await renderTemplate('ride_accepted', 'push', { driverName, upgradeNote })
         await notifService.notifyOwner({
@@ -261,8 +222,6 @@ export const notificationsWorker = new Worker(
         userPhone:  string
         driverName: string | null
       }
-      const lp: LogParams = { jobName: job.name, recipientPhone: data.userPhone, payload: data as Record<string, unknown> }
-      const logId = await notifService.logNotification(lp)
       let fareStr = ''
       try {
         const fareRes = await pool.query<{ amount: string }>(
@@ -272,12 +231,8 @@ export const notificationsWorker = new Worker(
         )
         const fare = fareRes.rows[0] ? Math.round(parseFloat(fareRes.rows[0].amount)) : null
         fareStr = fare != null && fare > 0 ? ` Total fare: ₹${fare}.` : ''
-        const { body: message } = await renderTemplate('ride_completed', 'sms', { fareStr })
-        const sms = await sendSms(data.userPhone, message)
-        await notifService.markSent(logId, sms)
       } catch (err) {
-        await notifService.markFailed(logId, err instanceof Error ? err.message : String(err))
-        throw err
+        log.error({ err }, 'fare lookup failed for ride_completed')
       }
 
       try {
