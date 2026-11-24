@@ -17,11 +17,16 @@ export type SosAlert = {
   location_lng: string | null
   notes: string | null
   acknowledged_by: string | null
+  acknowledged_by_email: string | null
   acknowledged_at: string | null
+  resolved_by_email: string | null
   resolved_at: string | null
   resolution_note: string | null
   created_at: string
 }
+
+/** Whole-table totals by status, from the server (not counted from the rows on screen). */
+export type SosCounts = Record<'triggered' | 'acknowledged' | 'responding' | 'resolved' | 'false_alarm', number>
 
 export type Dispute = {
   id: string
@@ -69,8 +74,9 @@ export type TripReplay = {
 
 export const safetyApi = {
   // SOS
+  // status: 'active' = every still-open alert; or one exact status.
   getSosAlerts: (params?: { status?: string; limit?: number; offset?: number }) =>
-    api.get<{ alerts: SosAlert[]; total: number }>('/api/v1/admin/safety/sos', { params }).then(r => r.data),
+    api.get<{ alerts: SosAlert[]; total: number; counts: SosCounts }>('/api/v1/admin/safety/sos', { params }).then(r => r.data),
 
   acknowledgeSos: (id: string) =>
     api.patch<SosAlert>(`/api/v1/admin/safety/sos/${id}/acknowledge`).then(r => r.data),

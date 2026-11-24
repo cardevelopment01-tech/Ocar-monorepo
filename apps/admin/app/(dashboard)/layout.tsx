@@ -9,8 +9,6 @@ import type { AdminRole } from '@/lib/mock-data'
 import { getAdminSocket } from '@/lib/socket'
 import { safetyApi } from '@/lib/safety-api'
 
-const ACTIVE_SOS = new Set(['triggered', 'acknowledged', 'responding'])
-
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   '/overview':              { title: 'Dashboard',     subtitle: 'Platform health at a glance' },
   '/live-map':              { title: 'Live Map',       subtitle: 'Real-time driver & ride tracking' },
@@ -67,9 +65,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const load = async () => {
       try {
-        const data = await safetyApi.getSosAlerts({ limit: 50 })
-        setSosCount(data.alerts.filter(a => ACTIVE_SOS.has(a.status)).length)
-      } catch { /* silent, badge shows 0 */ }
+        // Asks the server for the open alerts only. The old "latest 50, then filter" missed an old open alert once 50 newer ones existed.
+        const data = await safetyApi.getSosAlerts({ status: 'active', limit: 1 })
+        setSosCount(data.total)
+      } catch { /* keep the last count: a failed poll must not turn the badge off */ }
     }
     void load()
     const id = setInterval(() => void load(), 30_000)

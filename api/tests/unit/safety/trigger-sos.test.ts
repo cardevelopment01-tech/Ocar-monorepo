@@ -65,6 +65,26 @@ describe('triggerSos', () => {
     }
   )
 
+  it.each([
+    ['a real position', 20.2961, 85.8245, { lat: 20.2961, lng: 85.8245 }],
+    ['no position', undefined, undefined, null],
+    ['the 0,0 of a phone with no fix', 0, 0, null],
+    ['only one coordinate', 20.29, undefined, null],
+    ['out-of-range numbers', 95, 200, null],
+    ['not numbers', '20.2' as never, '85.8' as never, null],
+  ])('stores, queues and emits one answer for %s, and never refuses the alert', async (_label, lat, lng, expected) => {
+    vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'in_progress', user_id: 1n } as never)
+    let emitted: { location: unknown } | undefined
+    vi.mocked(getIO).mockReturnValue({ to: () => ({ emit: (_e: string, p: { location: unknown }) => { emitted = p } }) } as never)
+    const { notificationsQueue } = await import('@/jobs/queues')
+
+    await triggerSos({ rideId: 5n, triggeredByUserId: 1n, ...(lat !== undefined ? { lat } : {}), ...(lng !== undefined ? { lng } : {}) })
+
+    expect(repo.insertSosAlert).toHaveBeenCalledWith(expect.objectContaining({ location_lat: expected?.lat ?? null, location_lng: expected?.lng ?? null }))
+    expect(notificationsQueue.add).toHaveBeenCalledWith('sos_alert', expect.objectContaining({ lat: expected?.lat ?? null, lng: expected?.lng ?? null }), expect.anything())
+    expect(emitted?.location).toEqual(expected)
+  })
+
   it('still returns the alert successfully even if the admin:ops socket emit throws', async () => {
     vi.mocked(repo.getRideBasic).mockResolvedValue({ id: 5n, status: 'in_progress', user_id: 1n } as never)
     vi.mocked(getIO).mockImplementation(() => { throw new Error('socket server not initialized') })

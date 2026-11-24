@@ -158,14 +158,14 @@ export async function markRideSosTriggered(rideId: bigint) {
   )
 }
 
-// Most-recent still-'triggered' alert for this ride created inside the dedup
-// window — used to collapse repeat SOS presses into the existing alert instead
-// of inserting a new row + re-paging admins.
+// Most-recent still-open alert for this ride created inside the dedup window, whether or not an admin has acknowledged it
+// already: a rider hammering the button after "we've got it" must not page everyone a second time. Used to collapse repeat
+// SOS presses into the existing alert instead of inserting a new row + re-paging admins.
 export async function getActiveSosForRide(rideId: bigint, withinSeconds: number) {
   const res = await pool.query(
     `SELECT * FROM sos_alerts
      WHERE ride_id = $1
-       AND status = 'triggered'
+       AND status IN ('triggered', 'acknowledged', 'responding')
        AND created_at >= now() - make_interval(secs => $2)
      ORDER BY created_at DESC
      LIMIT 1`,
@@ -190,7 +190,9 @@ export async function getSosAlerts(opts: {
   const conditions: string[] = []
   const params: unknown[] = []
 
-  if (opts.status !== undefined) {
+  if (opts.status === 'active') {
+    conditions.push(`sa.status IN ('triggered', 'acknowledged', 'responding')`)
+  } else if (opts.status !== undefined) {
     params.push(opts.status)
     conditions.push(`sa.status = $${params.length}`)
   }
@@ -213,7 +215,7 @@ export async function getSosAlerts(opts: {
      LEFT JOIN admins  aa ON aa.id = sa.acknowledged_by
      LEFT JOIN admins  ra ON ra.id = sa.resolved_by
      ${where}
-     ORDER BY sa.created_at DESC
+     ORDER BY sa.created_at ${opts.status === 'active' ? 'ASC' : 'DESC'}
      LIMIT $${lp - 1} OFFSET $${lp}`,
     params
   )
@@ -223,10 +225,23 @@ export async function getSosAlerts(opts: {
     params.slice(0, -2)
   )
 
+  // Whole-table totals by status, so the page's stat cards are not counted from just the rows on screen.
+  const countsRes = await pool.query<{ status: string; n: string }>(
+    `SELECT status, COUNT(*) AS n FROM sos_alerts GROUP BY status`
+  )
+  const counts: Record<string, number> = { triggered: 0, acknowledged: 0, responding: 0, resolved: 0, false_alarm: 0 }
+  for (const r of countsRes.rows) counts[r.status] = parseInt(r.n, 10)
+
   return {
     alerts: res.rows,
     total: parseInt(countRes.rows[0]?.total ?? '0'),
+    counts,
   }
+}
+
+export async function getSosStatus(id: bigint): Promise<string | null> {
+  const res = await pool.query<{ status: string }>(`SELECT status FROM sos_alerts WHERE id = $1`, [id])
+  return res.rows[0]?.status ?? null
 }
 
 export async function updateSosStatus(
@@ -250,8 +265,11 @@ export async function updateSosStatus(
     params.push(adminId, note ?? null)
   }
 
+  // A move is only legal from the states below, checked in the UPDATE itself so two admins pressing at once cannot both win:
+  // acknowledge only from 'triggered'; resolve / false alarm from any still-open state. A closed alert never reopens.
+  const from = status === 'acknowledged' ? `('triggered')` : `('triggered', 'acknowledged', 'responding')`
   const res = await pool.query(
-    `UPDATE sos_alerts SET ${cols.join(', ')} WHERE id = $1 RETURNING *`,
+    `UPDATE sos_alerts SET ${cols.join(', ')} WHERE id = $1 AND status IN ${from} RETURNING *`,
     params
   )
   return res.rows[0] ?? null

@@ -1042,17 +1042,28 @@ export async function patchDriverPackageBalance(
 
 // ─── Admin Safety — SOS ───────────────────────────────────────────────────────
 
+const SOS_LIST_FILTERS = new Set(["active", "triggered", "acknowledged", "responding", "resolved", "false_alarm"]);
+
 export async function getAdminSosAlerts(
   req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
+    const limit = parseInt(String(req.query["limit"] ?? "20"), 10);
+    const offset = parseInt(String(req.query["offset"] ?? "0"), 10);
     const opts: { status?: string; limit: number; offset: number } = {
-      limit: parseInt((req.query["limit"] as string) ?? "20", 10),
-      offset: parseInt((req.query["offset"] as string) ?? "0", 10),
+      limit: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 100) : 20,
+      offset: Number.isFinite(offset) ? Math.max(offset, 0) : 0,
     };
-    if (req.query["status"]) opts.status = req.query["status"] as string;
+    const status = req.query["status"];
+    if (status) {
+      // An unknown status used to reach the enum cast and come back as a 500. "active" = every still-open state.
+      if (typeof status !== "string" || !SOS_LIST_FILTERS.has(status)) {
+        throw httpError(400, "Invalid status filter", AppErrors.VALIDATION_ERROR.code);
+      }
+      opts.status = status;
+    }
     res.json(await sosService.listSosAlerts(opts));
   } catch (err) {
     next(err);
@@ -1065,11 +1076,9 @@ export async function acknowledgeAdminSos(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const alert = await sosService.acknowledgeSosAlert(
-      BigInt(req.params["id"]!),
-      req.admin!.id,
-    );
-    res.json(alert);
+    const rawId = req.params["id"]!;
+    if (!/^\d+$/.test(rawId)) throw createHttpError(AppErrors.NOT_FOUND);
+    res.json(await sosService.acknowledgeSosAlert(BigInt(rawId), req.admin!.id, req.ip ?? null));
   } catch (err) {
     next(err);
   }
@@ -1085,14 +1094,10 @@ export async function resolveAdminSos(
       req.body.status === "false_alarm"
         ? ("false_alarm" as const)
         : ("resolved" as const);
-    const note = req.body.note ? String(req.body.note) : undefined;
-    const alert = await sosService.resolveSosAlert(
-      BigInt(req.params["id"]!),
-      req.admin!.id,
-      status,
-      note,
-    );
-    res.json(alert);
+    const note = typeof req.body.note === "string" ? req.body.note : undefined;
+    const rawId = req.params["id"]!;
+    if (!/^\d+$/.test(rawId)) throw createHttpError(AppErrors.NOT_FOUND);
+    res.json(await sosService.resolveSosAlert(BigInt(rawId), req.admin!.id, status, note, req.ip ?? null));
   } catch (err) {
     next(err);
   }

@@ -279,6 +279,61 @@ describe('M09 — Safety', () => {
       expect(rows).toHaveLength(1)
       expect(rows[0]?.status).toBe('acknowledged')
       expect(String(rows[0]?.acknowledged_by)).toBe(String(admin.adminId))
+
+      // Hammering the button after an admin has acknowledged must not make a second alert (and page everyone again).
+      const pressAgain = await request(app)
+        .post('/api/v1/safety/sos')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ rideId })
+      expect(pressAgain.status, JSON.stringify(pressAgain.body)).toBe(201)
+      expect(pressAgain.body.id).toBe(alertId)
+      const { rows: perRide } = await pool.query('SELECT count(*)::int AS n FROM sos_alerts WHERE ride_id = $1', [rideId])
+      expect(perRide[0]?.n).toBe(1)
+
+      // Lifecycle guards: a second acknowledge is a 409 and keeps the first admin's name on the alert.
+      const ackAgain = await request(app)
+        .patch(`/api/v1/admin/safety/sos/${alertId}/acknowledge`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+      expect(ackAgain.status, JSON.stringify(ackAgain.body)).toBe(409)
+
+      // A false alarm needs a note; with one it closes the alert and records who and why.
+      const noNote = await request(app)
+        .patch(`/api/v1/admin/safety/sos/${alertId}/resolve`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ status: 'false_alarm' })
+      expect(noNote.status, JSON.stringify(noNote.body)).toBe(400)
+      const closed = await request(app)
+        .patch(`/api/v1/admin/safety/sos/${alertId}/resolve`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ status: 'false_alarm', note: 'Rider pressed it by accident, confirmed by phone' })
+      expect(closed.status, JSON.stringify(closed.body)).toBe(200)
+      expect(closed.body.resolution_note).toBe('Rider pressed it by accident, confirmed by phone')
+
+      // A closed alert never reopens: acknowledging or resolving it again is a 409 and the status stays.
+      for (const path of ['acknowledge', 'resolve']) {
+        const again = await request(app)
+          .patch(`/api/v1/admin/safety/sos/${alertId}/${path}`)
+          .set('Authorization', `Bearer ${admin.accessToken}`)
+          .send({ status: 'resolved' })
+        expect(again.status, `${path}: ${JSON.stringify(again.body)}`).toBe(409)
+      }
+      const { rows: final } = await pool.query('SELECT status FROM sos_alerts WHERE id = $1', [alertId])
+      expect(final[0]?.status).toBe('false_alarm')
+
+      // The list: the whole-table counts and the "active" filter; a bad filter is a 400, not a 500.
+      const list = await request(app)
+        .get('/api/v1/admin/safety/sos?status=active&limit=5')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+      expect(list.status, JSON.stringify(list.body)).toBe(200)
+      expect(list.body.counts).toEqual(expect.objectContaining({ false_alarm: expect.any(Number), triggered: expect.any(Number) }))
+      expect((list.body.alerts as { id: string }[]).some(a => a.id === alertId)).toBe(false)
+      // The open-alert queue comes back oldest first, so a limit cuts off the newest, never the one waiting longest.
+      const times = (list.body.alerts as { created_at: string }[]).map(a => new Date(a.created_at).getTime())
+      expect(times).toEqual([...times].sort((a, b) => a - b))
+      const bad = await request(app)
+        .get('/api/v1/admin/safety/sos?status=bogus')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+      expect(bad.status).toBe(400)
     })
   })
 
