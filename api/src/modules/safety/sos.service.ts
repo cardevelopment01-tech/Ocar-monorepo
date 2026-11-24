@@ -9,6 +9,7 @@ import { client as redis } from '@/db/redis'
 import { withTimeout } from '@/lib/with-timeout'
 import { httpError } from '@/lib/errors'
 import { recordAuditLog } from '@/lib/audit-log'
+import { notifyOwner } from '@/modules/notifications/notifications.service'
 
 const log = logger.child({ module: 'sos-service' })
 
@@ -164,7 +165,31 @@ export async function acknowledgeSosAlert(id: bigint, adminId: bigint, ip: strin
   if (!alert) return refuseTransition(id)
   log.info({ event: 'sos.acknowledged', sos_id: String(id), admin_id: String(adminId) }, 'sos.acknowledged')
   await audit('sos.acknowledge', id, adminId, { status: 'acknowledged' }, null, ip)
+  // Tell the person who pressed it that a human has it. Best effort: never holds up the admin's action.
+  const presser = alert.triggered_by_user != null
+    ? { ownerType: 'user' as const, ownerId: BigInt(alert.triggered_by_user) }
+    : alert.triggered_by_driver != null
+      ? { ownerType: 'driver' as const, ownerId: BigInt(alert.triggered_by_driver) }
+      : null
+  if (presser) {
+    notifyOwner({
+      ...presser, type: 'sos_acknowledged', rideId: BigInt(alert.ride_id),
+      title: 'Ocar safety team has your alert',
+      body: 'A member of our safety team is on it and will follow up. If you are in danger, call 112 now.',
+    }).catch((err: unknown) => log.error({ err, sosId: String(id) }, 'sos acknowledged notice failed'))
+  }
   return alert
+}
+
+export async function getOnCall(adminId: bigint) {
+  const admins = await repo.getOnCallAdmins()
+  return { admins, me: admins.some(a => a.id === String(adminId)) }
+}
+
+export async function setOnCall(adminId: bigint, onCall: boolean, ip: string | null = null) {
+  await repo.setAdminOnCall(adminId, onCall)
+  await audit(onCall ? 'sos.on_call_start' : 'sos.on_call_end', adminId, adminId, { sos_on_call: onCall }, null, ip)
+  return getOnCall(adminId)
 }
 
 const SOS_NOTE_MAX = 500
