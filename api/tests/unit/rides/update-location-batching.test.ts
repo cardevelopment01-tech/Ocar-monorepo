@@ -100,7 +100,7 @@ describe('updateLocation', () => {
 
   it('the live marker is emitted from the raw fix on every ping (never waits on the paid API)', async () => {
     await updateLocation(DRIVER, ping({ lat: 20.5 }))
-    expect(socketEvents.sendDriverLocation).toHaveBeenCalledWith('777', expect.objectContaining({ lat: 20.5 }))
+    expect(socketEvents.sendDriverLocation).toHaveBeenCalledWith('777', expect.objectContaining({ lat: 20.5, rideId: '777' }))
   })
 
   it('throttles the admin live-map broadcast per driver', async () => {
