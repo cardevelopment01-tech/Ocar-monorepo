@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Shield, ShieldAlert, CheckCircle, Clock, AlertTriangle, ExternalLink, Phone, MapPin, MapPinOff, WifiOff, RefreshCw, Volume2, VolumeX, BellRing } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
 import SuccessToast from '@/components/ui/SuccessToast'
-import { safetyApi, type SosAlert, type SosCounts } from '@/lib/safety-api'
+import { safetyApi, type SosAlert, type SosCounts, type SosOnCall } from '@/lib/safety-api'
 import { getAdminSocket } from '@/lib/socket'
 import { extractErrorCode, extractErrorMessage } from '@/lib/http-errors'
 import { ACTIVE_STATUSES, SOS_FILTERS, absoluteTime, activeCount, elapsedLabel, handledBy, hasLocation, totalCount, unannounced, waitingClock, waitingTone, type SosFilter } from '@/lib/sos-model'
@@ -38,6 +38,8 @@ export default function SOSPage() {
   const [filter, setFilter] = useState<SosFilter>('all')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [muted, setMuted] = useState(false)
+  const [onCall, setOnCall] = useState<SosOnCall | null>(null)
+  const [onCallBusy, setOnCallBusy] = useState(false)
   const [desktop, setDesktop] = useState<ReturnType<typeof desktopPermission>>('unsupported')
   // null until the first load: what is already open when the page is opened is not "new".
   const seen = useRef<Set<string> | null>(null)
@@ -70,6 +72,7 @@ export default function SOSPage() {
       }
       setHistory(recent.alerts)
       setHistoryTotal(recent.total)
+      safetyApi.getSosOnCall().then(setOnCall).catch(() => { /* the strip just keeps its last value */ })
       setCounts(recent.counts ?? open.counts ?? EMPTY_COUNTS)
       setLoadFailed(false)
       setLastOk(Date.now())
@@ -109,6 +112,19 @@ export default function SOSPage() {
     const code = extractErrorCode(err)
     if (code === 'SOS_STATE_CONFLICT' || code === 'SOS_ALERT_NOT_FOUND') void load()
     return extractErrorMessage(err, fallback)
+  }
+
+  async function toggleOnCall() {
+    if (!onCall) return
+    setOnCallBusy(true)
+    try {
+      setOnCall(await safetyApi.setSosOnCall(!onCall.me))
+      setToast(onCall.me ? 'You are off call' : 'You are on call for SOS')
+    } catch (err) {
+      setToast(extractErrorMessage(err, 'Could not change your on-call status'))
+    } finally {
+      setOnCallBusy(false)
+    }
   }
 
   async function acknowledge(id: string) {
@@ -177,6 +193,22 @@ export default function SOSPage() {
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-2 -mb-2">
+        {onCall && (
+          <>
+            <p className="mr-auto text-xs text-text-muted" data-testid="on-call-line">
+              {onCall.admins.length === 0
+                ? 'Nobody is on call: every admin is reminded after 1 min.'
+                : `On call: ${onCall.admins.map(a => a.email).join(', ')}. They are reminded after 1 min, everyone after 3 min.`}
+            </p>
+            <button
+              onClick={() => void toggleOnCall()}
+              disabled={onCallBusy}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border rounded-xl disabled:opacity-50 ${onCall.me ? 'border-success text-success bg-success/10' : 'border-border text-text-secondary bg-surface hover:bg-surface-2'}`}
+            >
+              {onCall.me ? 'I am on call · end' : 'Start my on-call'}
+            </button>
+          </>
+        )}
         <button
           onClick={() => { const next = !muted; setMuted(next); setAlarmMuted(next); if (!next) { primeAlarm(); soundAlarm() } }}
           aria-pressed={!muted}

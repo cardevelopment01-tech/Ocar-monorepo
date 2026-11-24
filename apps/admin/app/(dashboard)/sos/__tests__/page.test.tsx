@@ -4,7 +4,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { SosAlert } from '@/lib/safety-api'
 
-const api = vi.hoisted(() => ({ getSosAlerts: vi.fn(), acknowledgeSos: vi.fn(), resolveSos: vi.fn() }))
+const api = vi.hoisted(() => ({ getSosAlerts: vi.fn(), acknowledgeSos: vi.fn(), resolveSos: vi.fn(), getSosOnCall: vi.fn(), setSosOnCall: vi.fn() }))
 // The page subscribes to 'sos:alert'; the test fires it by hand.
 const socket = vi.hoisted(() => ({ handlers: {} as Record<string, () => void> }))
 vi.mock('@/lib/safety-api', () => ({ safetyApi: api }))
@@ -44,7 +44,7 @@ const respond = (open: SosAlert[], recent: SosAlert[] = open, counts = COUNTS) =
 const conflict = (code: string, error: string) =>
   Object.assign(new Error('x'), { isAxiosError: true, response: { status: 409, data: { code, error } } })
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => { vi.clearAllMocks(); api.getSosOnCall.mockResolvedValue({ admins: [], me: false }) })
 
 describe('SOS page', () => {
   it('never says "all clear" when the alerts could not be loaded', async () => {
@@ -164,5 +164,24 @@ describe('SOS page', () => {
     await waitFor(() => expect(api.getSosAlerts).toHaveBeenCalledWith({ limit: 25, status: 'resolved' }))
     await user.click(screen.getByRole('button', { name: /details & map/i }))
     expect(await screen.findByText('detail panel for 7')).toBeTruthy()
+  })
+
+  it('shows who is on call and lets an admin start and end their own duty', async () => {
+    respond([alert()])
+    api.getSosOnCall.mockResolvedValue({ admins: [{ id: '9', email: 'ops@ocar.in' }], me: false })
+    api.setSosOnCall.mockResolvedValue({ admins: [{ id: '9', email: 'ops@ocar.in' }, { id: '1', email: 'me@ocar.in' }], me: true })
+    const user = userEvent.setup()
+    render(<SOSPage />)
+    expect((await screen.findByTestId('on-call-line')).textContent).toContain('On call: ops@ocar.in')
+    await user.click(screen.getByRole('button', { name: 'Start my on-call' }))
+    await waitFor(() => expect(api.setSosOnCall).toHaveBeenCalledWith(true))
+    expect(await screen.findByRole('button', { name: /I am on call/ })).toBeTruthy()
+    expect(screen.getByTestId('on-call-line').textContent).toContain('me@ocar.in')
+  })
+
+  it('says every admin is reminded when nobody is on call', async () => {
+    respond([alert()])
+    render(<SOSPage />)
+    expect((await screen.findByTestId('on-call-line')).textContent).toContain('Nobody is on call')
   })
 })

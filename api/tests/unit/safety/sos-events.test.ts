@@ -2,16 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const log = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 const audit = vi.hoisted(() => ({ recordAuditLog: vi.fn() }))
+const notif = vi.hoisted(() => ({ notifyOwner: vi.fn() }))
+vi.mock('@/modules/notifications/notifications.service', () => notif)
 vi.mock('@/lib/logger', () => ({ logger: { child: () => log } }))
 vi.mock('@/lib/audit-log', () => audit)
-vi.mock('@/modules/safety/safety.repository', () => ({ updateSosStatus: vi.fn(), getSosStatus: vi.fn() }))
+vi.mock('@/modules/safety/safety.repository', () => ({ updateSosStatus: vi.fn(), getSosStatus: vi.fn(), getOnCallAdmins: vi.fn(), setAdminOnCall: vi.fn() }))
 vi.mock('@/websocket/socket.server', () => ({ getIO: vi.fn() }))
 vi.mock('@/db/client', () => ({ pool: { query: vi.fn() } }))
 vi.mock('@/jobs/queues', () => ({ notificationsQueue: { add: vi.fn() } }))
 vi.mock('@/db/redis', () => ({ client: {} }))
 
 import * as repo from '@/modules/safety/safety.repository'
-import { acknowledgeSosAlert, resolveSosAlert } from '@/modules/safety/sos.service'
+import { acknowledgeSosAlert, resolveSosAlert, setOnCall } from '@/modules/safety/sos.service'
 
 describe('SOS lifecycle events', () => {
   beforeEach(() => {
@@ -105,5 +107,46 @@ describe('SOS audit trail', () => {
     audit.recordAuditLog.mockRejectedValue(new Error('redis down'))
     await expect(acknowledgeSosAlert(5n, 2n)).resolves.toEqual({ id: 5 })
     expect(log.error).toHaveBeenCalled()
+  })
+})
+
+describe('SOS acknowledged notice and on-call duty', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    audit.recordAuditLog.mockResolvedValue(undefined)
+    notif.notifyOwner.mockResolvedValue(undefined)
+  })
+
+  it('tells a rider who pressed SOS that the safety team has it', async () => {
+    vi.mocked(repo.updateSosStatus).mockResolvedValue({ id: 5, ride_id: 9, triggered_by_user: 7, triggered_by_driver: null } as never)
+    await acknowledgeSosAlert(5n, 2n)
+    expect(notif.notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ ownerType: 'user', ownerId: 7n, type: 'sos_acknowledged', rideId: 9n }))
+  })
+
+  it('tells a driver who pressed SOS, not the rider', async () => {
+    vi.mocked(repo.updateSosStatus).mockResolvedValue({ id: 5, ride_id: 9, triggered_by_user: null, triggered_by_driver: 42 } as never)
+    await acknowledgeSosAlert(5n, 2n)
+    expect(notif.notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ ownerType: 'driver', ownerId: 42n }))
+  })
+
+  it('still acknowledges when the notice cannot be sent', async () => {
+    vi.mocked(repo.updateSosStatus).mockResolvedValue({ id: 5, ride_id: 9, triggered_by_user: 7, triggered_by_driver: null } as never)
+    notif.notifyOwner.mockRejectedValue(new Error('push down'))
+    await expect(acknowledgeSosAlert(5n, 2n)).resolves.toMatchObject({ id: 5 })
+  })
+
+  it('sends no notice when the alert could not be acknowledged', async () => {
+    vi.mocked(repo.updateSosStatus).mockResolvedValue(null as never)
+    vi.mocked(repo.getSosStatus).mockResolvedValue('resolved')
+    await expect(acknowledgeSosAlert(5n, 2n)).rejects.toMatchObject({ httpStatus: 409 })
+    expect(notif.notifyOwner).not.toHaveBeenCalled()
+  })
+
+  it('setting on-call updates only the caller, audits it, and reports who is on call', async () => {
+    vi.mocked(repo.getOnCallAdmins).mockResolvedValue([{ id: '2', email: 'me@x.com' }, { id: '3', email: 'o@x.com' }])
+    const r = await setOnCall(2n, true, '1.1.1.1')
+    expect(repo.setAdminOnCall).toHaveBeenCalledWith(2n, true)
+    expect(audit.recordAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: 'sos.on_call_start', adminId: 2n }))
+    expect(r).toEqual({ admins: [{ id: '2', email: 'me@x.com' }, { id: '3', email: 'o@x.com' }], me: true })
   })
 })

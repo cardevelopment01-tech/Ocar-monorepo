@@ -28,6 +28,9 @@ export type SosAlert = {
 /** Whole-table totals by status, from the server (not counted from the rows on screen). */
 export type SosCounts = Record<'triggered' | 'acknowledged' | 'responding' | 'resolved' | 'false_alarm', number>
 
+/** Who is on duty for SOS right now, and whether that includes me. */
+export type SosOnCall = { admins: { id: string; email: string }[]; me: boolean }
+
 export type SosDetail = SosAlert & {
   ride_status: string
   pickup_lat: number | null
@@ -89,6 +92,12 @@ export const safetyApi = {
   // status: 'active' = every still-open alert; or one exact status.
   getSosAlerts: (params?: { status?: string; limit?: number; offset?: number }) =>
     api.get<{ alerts: SosAlert[]; total: number; counts: SosCounts }>('/api/v1/admin/safety/sos', { params }).then(r => r.data),
+
+  getSosOnCall: () =>
+    api.get<SosOnCall>('/api/v1/admin/safety/sos/on-call').then(r => r.data),
+
+  setSosOnCall: (onCall: boolean) =>
+    api.put<SosOnCall>('/api/v1/admin/safety/sos/on-call', { onCall }).then(r => r.data),
 
   getSosDetail: (id: string) =>
     api.get<SosDetail>(`/api/v1/admin/safety/sos/${id}`).then(r => r.data),

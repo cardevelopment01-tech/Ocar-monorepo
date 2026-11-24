@@ -576,22 +576,39 @@ export async function getDriverStatus(driverId: bigint): Promise<string | null> 
 
 // ── SLA ESCALATION SWEEPS (§03.4) ─────────────────────────────────
 
-// SOS alerts still 'triggered' (never acknowledged) past the staleness window
-// and not yet escalated. Bounded by the sos_alerts_status_idx partial index.
-export async function getStaleSosAlerts(olderThanMinutes: number) {
+// SOS alerts still 'triggered' (never acknowledged) older than `minAgeSeconds` whose reminders have not yet reached `level`.
+// Bounded by the sos_alerts_status_idx partial index.
+export async function getUnackedSosAlerts(level: number, minAgeSeconds: number) {
   const res = await pool.query<{ id: string; ride_id: string; created_at: Date }>(
     `SELECT id, ride_id, created_at
      FROM sos_alerts
      WHERE status = 'triggered'
-       AND escalated_at IS NULL
-       AND created_at < now() - make_interval(mins => $1)`,
-    [olderThanMinutes]
+       AND escalation_level < $1
+       AND created_at < now() - make_interval(secs => $2)`,
+    [level, minAgeSeconds]
   )
   return res.rows
 }
 
-export async function markSosEscalated(id: bigint) {
-  await pool.query(`UPDATE sos_alerts SET escalated_at = now() WHERE id = $1`, [id])
+// Level 2 is "everyone has been paged": escalated_at keeps meaning that for anything that reads it.
+export async function markSosEscalated(id: bigint, level: number) {
+  await pool.query(
+    `UPDATE sos_alerts SET escalation_level = $2, escalated_at = CASE WHEN $2 >= 2 THEN now() ELSE escalated_at END
+     WHERE id = $1 AND escalation_level < $2`,
+    [id, level]
+  )
+}
+
+export async function getOnCallAdmins(): Promise<{ id: string; email: string }[]> {
+  const res = await pool.query<{ id: string; email: string }>(
+    `SELECT id::text, email FROM admins WHERE sos_on_call = true AND is_active = true ORDER BY email`
+  )
+  return res.rows
+}
+
+export async function setAdminOnCall(adminId: bigint, onCall: boolean) {
+  await pool.query(`UPDATE admins SET sos_on_call = $2 WHERE id = $1`, [adminId, onCall])
+
 }
 
 // Disputes past their SLA deadline, not in a terminal state, not yet escalated.
