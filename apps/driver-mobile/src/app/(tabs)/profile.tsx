@@ -289,6 +289,16 @@ export default function ProfileScreen() {
               </View>
               <Feather name="chevron-right" size={14} color={colors.ink400} />
             </Pressable>
+            <Pressable onPress={() => router.push('/keep-running')} style={[styles.menuRow, styles.menuRowBorder]} accessibilityRole="button">
+              <View style={styles.menuIcon}>
+                <Feather name="battery-charging" size={15} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuLabel}>Keep Ocar running</Text>
+                <Text style={styles.menuSub}>Stop your phone putting Ocar to sleep</Text>
+              </View>
+              <Feather name="chevron-right" size={14} color={colors.ink400} />
+            </Pressable>
             <Pressable onPress={() => router.push('/onboarding/personal?edit=1')} style={[styles.menuRow, styles.menuRowBorder]} accessibilityRole="button">
               <View style={styles.menuIcon}>
                 <Feather name="user" size={15} color={colors.primary} />
