@@ -7,6 +7,8 @@ import { getAdminSocket } from '@/lib/socket'
 import api from '@/lib/api'
 import { decodePolyline } from '@/lib/polyline'
 import { COLORS } from '@/lib/colors'
+import { isStale } from '@/lib/driver-staleness'
+import { ago } from '@/lib/ride-situation'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -67,9 +69,10 @@ function useSmoothedLatLng(lat: number, lng: number): { lat: number; lng: number
 // closure every parent render but always resolves to the same session data) —
 // otherwise every driver marker re-renders on every OTHER driver's location
 // update, since `onClick`'s identity would defeat the default shallow compare.
-const DriverDot = memo(function DriverDot({ session, onClick }: { session: ActiveDriverSession; onClick: () => void }) {
+const DriverDot = memo(function DriverDot({ session, stale, onClick }: { session: ActiveDriverSession; stale: boolean; onClick: () => void }) {
   const isOnTrip = session.session_status === 'on_trip'
-  const color = isOnTrip ? COLORS.primary : COLORS.success
+  // A driver who stopped sending location is grey and dimmed so a frozen dot is never mistaken for a live one.
+  const color = stale ? COLORS.textMuted : isOnTrip ? COLORS.primary : COLORS.success
   const pos = useSmoothedLatLng(session.lat!, session.lng!)
 
   return (
@@ -77,7 +80,7 @@ const DriverDot = memo(function DriverDot({ session, onClick }: { session: Activ
       position={pos}
       onClick={onClick}
     >
-      <div style={{ position: 'relative', width: 28, height: 28, cursor: 'pointer' }}>
+      <div style={{ position: 'relative', width: 28, height: 28, cursor: 'pointer', opacity: stale ? 0.65 : 1 }}>
         {/* Halo */}
         <div style={{
           position: 'absolute', inset: -6, borderRadius: '50%',
@@ -93,7 +96,7 @@ const DriverDot = memo(function DriverDot({ session, onClick }: { session: Activ
       </div>
     </AdvancedMarker>
   )
-}, (prev, next) => prev.session === next.session)
+}, (prev, next) => prev.session === next.session && prev.stale === next.stale)
 
 // ─── FlyTo helper (must be inside Map tree) ───────────────────────────────────
 
@@ -121,6 +124,10 @@ export default function LiveMap() {
   const [tripRoute,   setTripRoute]   = useState<[number, number][] | null>(null)
   const [flyTarget,   setFlyTarget]   = useState<{ lat: number; lng: number; zoom: number } | null>(null)
   const [socketLive,  setSocketLive]  = useState(true)
+  // Re-evaluated every 15 s so a dot turns grey on its own when its driver goes quiet, without waiting for a refetch.
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  useEffect(() => { const t = setInterval(() => setNowMs(Date.now()), 15_000); return () => clearInterval(t) }, [])
+  const silentCount = drivers.filter(d => d.session_status === 'on_trip' && isStale(d.location_updated_at, nowMs)).length
 
   // Fetch trip route when selected on_trip driver changes
   useEffect(() => {
@@ -169,7 +176,7 @@ export default function LiveMap() {
       const existing = driversRef.current.get(update.driverId)
       if (!existing) { void reconcile(); return }
       const next = new Map(driversRef.current)
-      next.set(update.driverId, { ...existing, lat: update.lat, lng: update.lng, heading: update.heading })
+      next.set(update.driverId, { ...existing, lat: update.lat, lng: update.lng, heading: update.heading, location_updated_at: new Date().toISOString() })
       syncDrivers(next)
     })
     const onDisconnect = () => setSocketLive(false)
@@ -204,6 +211,12 @@ export default function LiveMap() {
           <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
           <span className="text-xs font-semibold text-text-secondary">{tripCount} on trip</span>
         </div>
+        {silentCount > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-danger" />
+            <span className="text-xs font-semibold text-danger">{silentCount} on trip with no location</span>
+          </div>
+        )}
         {!socketLive && (
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-danger" />
@@ -266,6 +279,7 @@ export default function LiveMap() {
             <DriverDot
               key={session.driver_id}
               session={session}
+              stale={isStale(session.location_updated_at, nowMs)}
               onClick={() => setSelected(session)}
             />
           ))}
@@ -303,7 +317,10 @@ export default function LiveMap() {
             </div>
           )}
           {selected.lat != null && (
-            <p className="text-xs text-text-muted mt-1.5">
+            <p className={`text-xs mt-1.5 ${isStale(selected.location_updated_at, nowMs) ? 'text-danger font-semibold' : 'text-text-muted'}`}>
+              {isStale(selected.location_updated_at, nowMs)
+                ? `Last seen ${ago(selected.location_updated_at, nowMs) || 'a long time ago'}, not live · `
+                : 'Live · '}
               {selected.lat.toFixed(5)}, {selected.lng?.toFixed(5)}
               {selected.speed_kmph != null ? ` · ${selected.speed_kmph} km/h` : ''}
             </p>

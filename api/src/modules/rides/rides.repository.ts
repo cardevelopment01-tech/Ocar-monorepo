@@ -1189,6 +1189,23 @@ export async function findStaleInProgressRides(staleSeconds: number): Promise<St
   return res.rows
 }
 
+export interface SilentDriverRow { ride_id: string; driver_id: string; driver_name: string | null; silent_seconds: number }
+
+// Drivers on a live ride (heading to pickup, waiting, driving, or on the return leg) whose last GPS fix is older than silentSeconds.
+export async function findSilentOnTripDrivers(silentSeconds: number): Promise<SilentDriverRow[]> {
+  const res = await pool.query<SilentDriverRow>(
+    `SELECT r.id::text AS ride_id, r.driver_id::text AS driver_id, d.full_name AS driver_name,
+            EXTRACT(EPOCH FROM now() - dls.recorded_at)::int AS silent_seconds
+     FROM rides r
+     JOIN drivers d ON d.id = r.driver_id
+     JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
+     WHERE r.status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
+       AND now() - dls.recorded_at > ($1 || ' seconds')::interval`,
+    [silentSeconds]
+  )
+  return res.rows
+}
+
 export async function setDriverAvailability(driverId: bigint, isAvailable: boolean): Promise<void> {
   await pool.query(
     `UPDATE driver_location_snapshots SET is_available = $2, updated_at = now() WHERE driver_id = $1`,

@@ -7,6 +7,9 @@ export const driverHeartbeatThrottleKey = (driverId: string): string => `driver:
  *  driver chose never sets it, so a heartbeat never overrides a deliberate pause. */
 export const driverSweepPausedKey = (driverId: string): string => `driver:sweep-paused:${driverId}`
 
+/** Set while an on-trip driver's GPS silence has already been alerted, so ops is paged once per silence, not every minute. */
+export const driverSilentAlertKey = (rideId: string): string => `ride:gps-silent:${rideId}`
+
 export const rideAckKey = (rideId: string, driverId: string): string =>
   `ride:ack:${rideId}:${driverId}`
 
