@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { Search, Bell, ChevronDown, Car, CircleCheck, TriangleAlert, FileText } from 'lucide-react'
+import { Search, Bell, ChevronDown, Car, CircleCheck, TriangleAlert, FileText, MapPinOff } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { cn } from '@/lib/utils'
 import { useNotifications } from '@/lib/notifications-context'
@@ -17,6 +17,7 @@ const NOTIF_ICONS: Record<string, typeof Bell> = {
   ride_accepted: Car,
   ride_completed: CircleCheck,
   sos: TriangleAlert,
+  driver_gps_silent: MapPinOff,
   driver_submitted_for_review: FileText,
 }
 

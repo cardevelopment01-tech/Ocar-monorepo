@@ -9,7 +9,7 @@ import { notifyAllAdmins, notifyOwner } from '@/modules/notifications/notificati
 import { client as redis } from '@/db/redis'
 import { alertSilentDrivers, SILENT_ALERT_SECONDS } from '@/modules/rides/silent-drivers'
 
-const row = { ride_id: '1212', driver_id: '615', driver_name: 'Tapas Ray', silent_seconds: 4 * 60 }
+const row = { ride_id: '1212', driver_id: '615', driver_name: 'Tapas Ray', silent_seconds: 4 * 60, last_fix_epoch: 1_000 }
 
 describe('alertSilentDrivers', () => {
   beforeEach(() => {
@@ -31,6 +31,15 @@ describe('alertSilentDrivers', () => {
     expect(notifyAllAdmins).toHaveBeenCalledWith(expect.objectContaining({ type: 'driver_gps_silent', rideId: 1212n }))
     expect(vi.mocked(notifyAllAdmins).mock.calls[0]![0].body).toContain('Tapas Ray')
     expect(notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ ownerType: 'driver', ownerId: 615n, type: 'location_paused' }))
+  })
+
+  it('keys the alert on the ride and its last fix, so a recovered-then-silent-again driver is a new episode', async () => {
+    await alertSilentDrivers()
+    vi.mocked(repo.findSilentOnTripDrivers).mockResolvedValue([{ ...row, last_fix_epoch: 2_000 }])
+    await alertSilentDrivers()
+    const keys = vi.mocked(redis.set).mock.calls.map(c => c[0])
+    expect(keys).toEqual(['ride:gps-silent:1212:1000', 'ride:gps-silent:1212:2000'])
+    expect(vi.mocked(redis.set).mock.calls[0]![4]).toBe('NX')
   })
 
   it('does nothing again while the same silence is already alerted', async () => {

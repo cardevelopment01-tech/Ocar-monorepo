@@ -6,16 +6,17 @@ import * as repo from './rides.repository'
 
 const log = logger.child({ module: 'silent-drivers' })
 
-// A phone in a dead zone or tunnel is quiet for a minute or two, so ops is paged from 3 minutes of silence, and again only after
-// REPEAT_SECONDS if it is still silent. The 10-minute "possibly stuck" flag on the ride (cleanup worker) is separate and unchanged.
+// A phone in a dead zone or tunnel is quiet for a minute or two, so ops is paged from 3 minutes of silence, once per silence episode (no
+// repeats: the live map keeps showing who is still silent). The 10-minute "possibly stuck" flag on the ride (cleanup worker) is separate.
 export const SILENT_ALERT_SECONDS = 180
-const REPEAT_SECONDS = 30 * 60
+// Only cleanup: an episode is identified by its last fix, so the key never needs to expire for correctness.
+const KEY_TTL_SECONDS = 12 * 60 * 60
 
 export async function alertSilentDrivers(): Promise<void> {
   for (const d of await repo.findSilentOnTripDrivers(SILENT_ALERT_SECONDS)) {
     try {
-      // NX: only the first sweep after the silence starts gets 'OK'. If Redis is down this throws and the driver is retried next minute.
-      if ((await redis.set(driverSilentAlertKey(d.ride_id), '1', 'EX', REPEAT_SECONDS, 'NX')) !== 'OK') continue
+      // NX: only the first sweep of this episode gets 'OK'. If Redis is down this throws and the driver is retried next minute.
+      if ((await redis.set(driverSilentAlertKey(d.ride_id, d.last_fix_epoch), '1', 'EX', KEY_TTL_SECONDS, 'NX')) !== 'OK') continue
       const mins = Math.max(1, Math.round(d.silent_seconds / 60))
       await notifyAllAdmins({
         type: 'driver_gps_silent',

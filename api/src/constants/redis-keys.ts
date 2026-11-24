@@ -7,8 +7,9 @@ export const driverHeartbeatThrottleKey = (driverId: string): string => `driver:
  *  driver chose never sets it, so a heartbeat never overrides a deliberate pause. */
 export const driverSweepPausedKey = (driverId: string): string => `driver:sweep-paused:${driverId}`
 
-/** Set while an on-trip driver's GPS silence has already been alerted, so ops is paged once per silence, not every minute. */
-export const driverSilentAlertKey = (rideId: string): string => `ride:gps-silent:${rideId}`
+/** One silence episode of an on-trip driver, identified by the time of their last fix: it is alerted once, and a driver who recovers and
+ *  goes quiet again has a newer last fix, so a new key and a fresh page. */
+export const driverSilentAlertKey = (rideId: string, lastFixEpochSec: number): string => `ride:gps-silent:${rideId}:${lastFixEpochSec}`
 
 export const rideAckKey = (rideId: string, driverId: string): string =>
   `ride:ack:${rideId}:${driverId}`
