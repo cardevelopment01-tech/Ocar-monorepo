@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, type TextInputProps } from 'react-native'
-import Animated, { Easing, useAnimatedStyle, withSequence, withSpring, withTiming } from 'react-native-reanimated'
+import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated'
+import { h } from '../theme/brand'
 import { colors, radii, fonts } from '../theme/tokens'
 
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1)
@@ -10,6 +11,9 @@ export type OtpBoxInputProps = Omit<TextInputProps, 'value' | 'onChangeText' | '
   value: string
   onChangeText: (value: string) => void
   error?: boolean
+  // The code was accepted: boxes turn green. `busy`: it is being checked, boxes breathe softly.
+  success?: boolean
+  busy?: boolean
   autoFocus?: boolean
   // Login's 6-digit code sizes boxes to the default (42x60) since that's the
   // widest row this component has to fit without overflowing the sheet's
@@ -30,7 +34,7 @@ export type OtpBoxInputProps = Omit<TextInputProps, 'value' | 'onChangeText' | '
 // Android's Autofill framework both key off a real focused TextInput, not a fake one assembled
 // from N separate inputs.
 export function OtpBoxInput({
-  length = 6, value, onChangeText, error = false, autoFocus, boxWidth, boxHeight, digitFontSize, gap, ...inputProps
+  length = 6, value, onChangeText, error = false, success = false, busy = false, autoFocus, boxWidth, boxHeight, digitFontSize, gap, ...inputProps
 }: OtpBoxInputProps) {
   const inputRef = useRef<TextInput>(null)
   const digits = Array.from({ length }, (_, i) => value[i] ?? '')
@@ -51,7 +55,10 @@ export function OtpBoxInput({
           key={i}
           digit={digit}
           error={error}
+          success={success}
+          busy={busy}
           active={i === activeIndex}
+          index={i}
           {...(boxWidth !== undefined ? { width: boxWidth } : {})}
           {...(boxHeight !== undefined ? { height: boxHeight } : {})}
           {...(digitFontSize !== undefined ? { fontSize: digitFontSize } : {})}
@@ -75,9 +82,33 @@ export function OtpBoxInput({
 }
 
 function OtpBox({
-  digit, error, active, width, height, fontSize,
-}: { digit: string; error: boolean; active: boolean; width?: number; height?: number; fontSize?: number }) {
+  digit, error, success, busy, active, index, width, height, fontSize,
+}: { digit: string; error: boolean; success: boolean; busy: boolean; active: boolean; index: number; width?: number; height?: number; fontSize?: number }) {
   const filled = digit !== ''
+  const reduced = useReducedMotion()
+  // Success runs along the row, left to right: each box turns green and gives one small bounce, 60 ms after the one before it.
+  const waveMs = reduced ? 0 : index * 60
+  const [lit, setLit] = useState(false)
+  useEffect(() => {
+    if (!success) { setLit(false); return undefined }
+    const t = setTimeout(() => setLit(true), waveMs)
+    return () => clearTimeout(t)
+  }, [success, waveMs])
+  // A thin caret in the box the next digit lands in, blinking slowly: the real caret is hidden (it has nowhere sensible to sit over six boxes).
+  const showCaret = active && !filled && !error && !success && !busy
+  const caret = useSharedValue(1)
+  useEffect(() => {
+    if (!showCaret || reduced) { caret.value = 1; return }
+    caret.value = withRepeat(withTiming(0, { duration: 520, easing: Easing.inOut(Easing.quad) }), -1, true)
+  }, [showCaret, reduced, caret])
+  const caretStyle = useAnimatedStyle(() => ({ opacity: caret.value }))
+  // While the code is checked the filled boxes breathe, so the screen is visibly working.
+  const pulse = useSharedValue(1)
+  useEffect(() => {
+    if (!busy || reduced) { pulse.value = withTiming(1, { duration: 120 }); return }
+    pulse.value = withRepeat(withTiming(0.55, { duration: 520, easing: Easing.inOut(Easing.quad) }), -1, true)
+  }, [busy, reduced, pulse])
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }))
 
   // Momentary pop on fill, not a persistent scale -- every box rests at scale 1
   // so the row stays flush (a permanent scale on filled boxes, which is what
@@ -87,9 +118,12 @@ function OtpBox({
   // shadow, which made a filled box look like its own little floating card
   // nested inside the screen's Card (a real anti-pattern, not a taste call).
   const style = useAnimatedStyle(() => {
-    const scale = filled
-      ? withSequence(withTiming(1.16, { duration: 90, easing: EASE_OUT }), withSpring(1, { duration: 260, dampingRatio: 0.65 }))
-      : withTiming(1, { duration: 120, easing: EASE_OUT })
+    // No pop on an error: the effect re-runs when `error` flips, and a 1.16 pop on top of the shake made the boxes overlap their neighbours.
+    const scale = success && !reduced
+      ? withDelay(waveMs, withSequence(withTiming(1.18, { duration: 150, easing: EASE_OUT }), withSpring(1, { duration: 320, dampingRatio: 0.6 })))
+      : filled && !error
+        ? withSequence(withTiming(1.16, { duration: 90, easing: EASE_OUT }), withSpring(1, { duration: 260, dampingRatio: 0.65 }))
+        : withTiming(1, { duration: 120, easing: EASE_OUT })
     const shakeX = error
       ? withSequence(
           withTiming(-4, { duration: 40 }),
@@ -99,15 +133,16 @@ function OtpBox({
         )
       : withTiming(0, { duration: 0 })
     return { transform: [{ scale }, { translateX: shakeX }] }
-  }, [filled, error])
+  }, [filled, error, success, reduced, waveMs])
 
-  const boxState = error ? styles.boxError : filled ? styles.boxFilled : active ? styles.boxActive : styles.boxDefault
-  const digitState = error ? styles.digitError : filled ? styles.digitFilled : null
+  const boxState = error ? styles.boxError : success && lit ? styles.boxSuccess : filled ? styles.boxFilled : active && !busy ? styles.boxActive : styles.boxDefault
+  const digitState = error ? styles.digitError : success && lit ? styles.digitSuccess : filled ? styles.digitFilled : null
 
   const sizeStyle = (width != null || height != null) ? { width: width ?? BOX_SIZE, height: height ?? 60 } : null
 
   return (
-    <Animated.View style={[styles.box, boxState, sizeStyle, style]}>
+    <Animated.View style={[styles.box, boxState, sizeStyle, style, pulseStyle]}>
+      {showCaret ? <Animated.View style={[styles.caret, caretStyle]} /> : null}
       <Text style={[styles.digit, fontSize != null ? { fontSize } : null, digitState]}>{digit}</Text>
     </Animated.View>
   )
@@ -148,6 +183,8 @@ const styles = StyleSheet.create({
   },
   boxFilled: { borderColor: colors.primary, backgroundColor: colors.primarySubtle },
   boxError: { borderColor: colors.error, backgroundColor: colors.errorLight },
+  boxSuccess: { borderColor: colors.success, backgroundColor: colors.successLight },
+  caret: { position: 'absolute', width: 2, height: 26, borderRadius: 1, backgroundColor: colors.primary },
   // Plus Jakarta Sans Bold, not Space Grotesk -- web's digit boxes on both
   // apps are just `font-bold` (the default body font), never `font-display`.
   // Confirmed by reading both web OtpInput components directly: neither one
@@ -155,4 +192,5 @@ const styles = StyleSheet.create({
   digit: { fontSize: 24, fontFamily: fonts.bold, color: colors.ink900 },
   digitFilled: { color: colors.primary },
   digitError: { color: colors.error },
+  digitSuccess: { color: h.liveInk },
 })

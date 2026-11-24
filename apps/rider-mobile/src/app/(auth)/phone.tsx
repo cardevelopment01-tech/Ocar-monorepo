@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { BackHandler, Dimensions, Image, Linking, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { BackHandler, Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
+import { Feather } from '@expo/vector-icons'
 import Animated, {
   Easing,
   FadeIn,
@@ -9,11 +10,14 @@ import Animated, {
   SlideOutLeft,
   SlideOutRight,
 } from 'react-native-reanimated'
-import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { smsRetriever } from '@ocar/expo-sms-retriever'
-import { Button, Input, OtpBoxInput, OtpStatusLine, otpWaitStatus, useOtpAutoRead, useOtpWaitSeconds, colors, spacing, typography, mapOtpErrorCode, TERMS_URL, PRIVACY_URL, fonts, track } from '@ocar/mobile-shared'
+import {
+  AuthHero, Button, FieldMessage, OtpBoxInput, OtpResendRow, OtpStatusLine, PhoneField,
+  colors, fonts, formatPhoneDisplay, h, mapOtpErrorCode, otpWaitStatus, spacing, track, typography,
+  PRIVACY_URL, TERMS_URL, useOtpAutoRead, useOtpWaitSeconds, OTP_PACING,
+} from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { setupPushNotifications } from '@/services/notifications'
 import { useAuthStore, type UserProfile } from '@/store/useAuthStore'
@@ -21,23 +25,14 @@ import loginHeroImage from '../../../assets/brand/login-hero.webp'
 import logoMarkImage from '../../../assets/brand/logo-mark.png'
 
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1)
-// Fixed at module load, not reactive to rotation -- portrait-only auth screen.
-// Must stay well under (screen height - typical keyboard height, ~40-45% of
-// screen) -- the sheet's marginTop is HERO_HEIGHT-28, and with content
-// top-anchored (see contentGroupInner below) everything the user needs to
-// touch sits right after that margin. A taller hero here directly pushes
-// the Send OTP button further down; at 0.68 it landed entirely behind the
-// keyboard on a real device, unreachable regardless of any scroll/avoidance
-// logic, since no pixel of it was rendered above the keyboard's window.
-// (Confirmed on driver-mobile's identical screen: KeyboardAvoidingView, a
-// hand-rolled useAnimatedKeyboard collapse, and this library's own
-// KeyboardAwareScrollView all failed identically -- react-native-keyboard-
-// controller has an open compatibility bug where its native keyboard-height
-// listener never fires under New Architecture/Fabric on Android, which this
-// app has enabled (required by Reanimated 4). The actual fix is structural:
-// keep the hero+sheet small and top-anchored enough that the interactive
-// content never depends on keyboard-height detection at all.)
-const HERO_HEIGHT = Dimensions.get('window').height * 0.3
+// Photo heights below the status bar. Fixed per STEP, never derived from the keyboard: react-native-keyboard-controller's keyboard-height
+// listener never fires under New Architecture on Android (KeyboardAvoidingView, a collapsing hero and KeyboardAwareScrollView were all tried
+// and failed), so the content has to fit above a ~300 px keyboard by construction. Phone step: photo + field + button + terms. OTP step: the
+// photo eases down so the boxes, status line, button and resend row still clear the keyboard.
+const PHONE_HERO = 250
+const OTP_HERO = 180
+const OTP_RESEND_AFTER_SEC = 30
+const WRONG_CODE_HOLD_MS = 700
 
 type Step = 'phone' | 'otp'
 
@@ -57,6 +52,7 @@ function formatPhone(input: string): string {
 export default function PhoneScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const { width } = useWindowDimensions()
   const setAuth = useAuthStore((s) => s.setAuth)
 
   const [step, setStep] = useState<Step>('phone')
@@ -67,42 +63,73 @@ export default function PhoneScreen() {
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
+  const [verifying, setVerifying] = useState(false)
   const [verified, setVerified] = useState(false)
   const [error, setError] = useState('')
+  // True for a moment after a wrong code: the boxes shake and keep the digits so the rider can see what they typed, then clear.
+  const [wrong, setWrong] = useState(false)
   const [countdown, setCountdown] = useState(0)
   // Android SMS auto-read: the phone listens for the one code SMS and fills the boxes (the 6-digit effect below then verifies).
   // waitKey restarts the "how long has it been" clock on every send, so Resend starts the calm waiting state afresh.
   const [waitKey, setWaitKey] = useState(0)
-  const autoRead = useOtpAutoRead(smsRetriever, setOtp)
+  // A code read from the SMS is not dropped in whole: the digits land one by one, "Code detected" holds a moment, then it is sent.
+  const revealTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const revealingRef = useRef(false)
+  function revealCode(code: string) {
+    revealTimersRef.current.forEach(clearTimeout)
+    revealingRef.current = true
+    setOtp('')
+    revealTimersRef.current = code.split('').map((_, i) => setTimeout(() => {
+      setOtp(code.slice(0, i + 1))
+      if (i === code.length - 1) revealingRef.current = false
+    }, (i + 1) * OTP_PACING.detectStaggerMs))
+  }
+  const autoRead = useOtpAutoRead(smsRetriever, revealCode)
   const waitSec = useOtpWaitSeconds(step === 'otp' && !verified, waitKey)
-  const waitStatus = otpWaitStatus({ elapsedSec: waitSec, autoReading: autoRead.listening, detected: autoRead.detected, typed: otp.length })
+  const waitStatus = otpWaitStatus({
+    elapsedSec: waitSec, autoReading: autoRead.listening, detected: autoRead.detected, typed: otp.length,
+    canResend: countdown === 0, verifying, success: verified, error,
+  })
 
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const wrongTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const otpRequestInFlightRef = useRef(false)
   const otpVerifyInFlightRef = useRef(false)
 
   useEffect(() => {
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current)
+      if (wrongTimerRef.current) clearTimeout(wrongTimerRef.current)
+      revealTimersRef.current.forEach(clearTimeout)
     }
   }, [])
 
-  // Android hardware/gesture back from the OTP sub-state returns to phone entry
-  // instead of exiting the (auth) stack -- there's no second route to pop since
-  // this is a same-screen transition, not a stack push.
+  // Back to the phone step: the round back button, the Edit link and Android's hardware/gesture back all do this -- there's no second
+  // route to pop since this is a same-screen transition, not a stack push.
+  function handleEdit() {
+    setDirection('back')
+    revealTimersRef.current.forEach(clearTimeout)
+    revealingRef.current = false
+    setStep('phone')
+    setOtp('')
+    setError('')
+    setWrong(false)
+    autoRead.disarm()
+  }
+
   useEffect(() => {
     if (step !== 'otp') return
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setDirection('back')
-      setStep('phone')
-      autoRead.disarm()
+      handleEdit()
       return true
     })
     return () => sub.remove()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleEdit only calls setters and autoRead.disarm
   }, [step])
 
   function startCountdown() {
-    setCountdown(30)
+    if (countdownRef.current) clearInterval(countdownRef.current)
+    setCountdown(OTP_RESEND_AFTER_SEC)
     countdownRef.current = setInterval(() => {
       setCountdown((c) => {
         if (c <= 1) {
@@ -147,11 +174,21 @@ export default function PhoneScreen() {
     await handlePhoneSubmit()
   }
 
+  function handleOtpChange(value: string) {
+    // Typing is ignored (not blocked with editable={false}, which would drop the keyboard) while a code is checked or a wrong one shows.
+    if (loading || verified || wrong || revealingRef.current) return
+    if (error) setError('')
+    setOtp(value)
+  }
+
   // Auto-submit the instant all 6 digits land -- typed, pasted, or SMS-autofilled --
   // instead of making the rider also tap Verify. handleOtpSubmit's own guards
   // (length check, in-flight ref) make this safe to fire on every otp change.
+  // A code the phone read itself waits a beat on "Code detected" first; a typed or pasted one goes at once.
   useEffect(() => {
-    if (otp.length === 6) void handleOtpSubmit()
+    if (otp.length !== 6) return undefined
+    const t = setTimeout(() => void handleOtpSubmit(), autoRead.detected ? OTP_PACING.detectedHoldMs : 0)
+    return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only otp reaching 6 digits should trigger this
   }, [otp])
 
@@ -160,6 +197,8 @@ export default function PhoneScreen() {
     otpVerifyInFlightRef.current = true
     setError('')
     setLoading(true)
+    setVerifying(true)
+    const startedAt = Date.now()
     try {
       const res = await api.post<VerifyOtpResponse>('/api/v1/auth/otp/verify', {
         phone: formatPhone(phone),
@@ -168,6 +207,8 @@ export default function PhoneScreen() {
         purpose: 'login',
       })
       const { tokens, principal, isNew } = res.data
+      // Keep "Verifying" up long enough to be seen when the server answers fast.
+      await new Promise((r) => setTimeout(r, Math.max(0, OTP_PACING.verifyMinMs - (Date.now() - startedAt))))
       setAuth(tokens.accessToken, tokens.refreshToken, principal)
       track('login_success')
       void setupPushNotifications()
@@ -178,90 +219,84 @@ export default function PhoneScreen() {
       const destination = isNew || !principal.name ? '/onboarding' : '/(tabs)/home'
       // Hold on the verified checkmark for a beat before swapping screens --
       // otherwise success is invisible, the OTP screen just vanishes.
-      setTimeout(() => router.replace(destination), 550)
+      setTimeout(() => router.replace(destination), OTP_PACING.successHoldMs)
     } catch (err) {
       const code = axios.isAxiosError(err) ? (err.response?.data as { code?: string } | undefined)?.code : undefined
-      setOtp('')
       setError(code ? mapOtpErrorCode(code) : 'Check your connection and try again')
+      // Shake with the digits still showing, then clear for the next try.
+      setWrong(true)
+      if (wrongTimerRef.current) clearTimeout(wrongTimerRef.current)
+      wrongTimerRef.current = setTimeout(() => {
+        setOtp('')
+        setWrong(false)
+      }, WRONG_CODE_HOLD_MS)
     } finally {
       setLoading(false)
+      setVerifying(false)
       otpVerifyInFlightRef.current = false
     }
   }
 
+  // Six boxes plus gaps must fit the sheet's padded width with a margin on a 360 px phone.
+  const boxWidth = Math.min(46, Math.floor((width - spacing.lg * 2 - 24 - 5 * 8) / 6))
+
   return (
     <View style={styles.container}>
-      {/* Persistent hero backdrop -- stays put behind both steps, only the
-          sheet content below it swaps, matching the approved mockup's
-          Full-Bleed Hero direction. Static -- the ScrollView below handles
-          keyboard avoidance by scrolling its own content, not by this moving. */}
-      <View style={[styles.hero, { height: HERO_HEIGHT }]}>
-        <Image
-          source={loginHeroImage}
-          style={styles.heroImage}
-          resizeMode="cover"
-        />
-        <LinearGradient colors={['transparent', colors.bg]} style={styles.heroFade} />
-      </View>
+      <AuthHero
+        image={loginHeroImage}
+        logo={logoMarkImage}
+        height={step === 'phone' ? PHONE_HERO : OTP_HERO}
+        focus={{ y: 0.2 }}
+        {...(step === 'phone'
+          ? { headline: 'Your ride, door to door.', subline: 'Sign in with your mobile number.' }
+          : { onBack: handleEdit })}
+      />
 
-      <View style={styles.sheetWrapper}>
-        <Animated.View
-          entering={FadeIn.duration(320)}
-          style={[styles.sheet, { marginTop: HERO_HEIGHT - 28, paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
+      <Animated.View
+        entering={FadeIn.duration(320)}
+        style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
+      >
+        {/* Plain ScrollView: it won't auto-scroll a focused input into view above the keyboard (see the note on PHONE_HERO), but the
+            content is always reachable by swiping, and staying top-anchored and compact keeps it above the keyboard in the first place. */}
+        <ScrollView
+          style={styles.contentGroup}
+          contentContainerStyle={styles.contentGroupInner}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <View style={styles.handle} />
-          {/* Handle stays pinned under the sheet's top edge (standard drag-affordance
-              placement); only the logo+form group below it centers in the remaining
-              space, which on a tall screen is much bigger than the group needs.
-              Plain ScrollView: it won't auto-scroll a focused input into view
-              above the keyboard (react-native-keyboard-controller's native
-              keyboard-height listener has a confirmed compatibility bug under
-              New Architecture on Android -- see the HERO_HEIGHT comment), but
-              the content is always manually reachable by swiping, and staying
-              top-anchored/small keeps it above the keyboard in the first place. */}
-          <ScrollView
-            style={styles.contentGroup}
-            contentContainerStyle={styles.contentGroupInner}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+          <Animated.View
+            key={step}
+            entering={
+              step === 'phone'
+                ? direction === 'back'
+                  ? SlideInLeft.duration(300).easing(EASE_OUT)
+                  : FadeIn.duration(320)
+                : SlideInRight.duration(300).easing(EASE_OUT)
+            }
+            exiting={step === 'phone' ? SlideOutLeft.duration(220).easing(EASE_OUT) : SlideOutRight.duration(220).easing(EASE_OUT)}
+            style={styles.stepContainer}
           >
-            <Image source={logoMarkImage} style={styles.logo} resizeMode="contain" />
-
-            <Animated.View
-              key={step}
-              entering={
-                step === 'phone'
-                  ? direction === 'back'
-                    ? SlideInLeft.duration(300).easing(EASE_OUT)
-                    : FadeIn.duration(320)
-                  : SlideInRight.duration(300).easing(EASE_OUT)
-              }
-              exiting={step === 'phone' ? SlideOutLeft.duration(220).easing(EASE_OUT) : SlideOutRight.duration(220).easing(EASE_OUT)}
-              style={styles.stepContainer}
-            >
             {step === 'phone' ? (
               <>
-                <Text style={styles.title}>Welcome back</Text>
-                <Text style={styles.subtitle}>Enter your phone number to continue</Text>
-                <Input
+                <Text style={styles.label}>Mobile number</Text>
+                <PhoneField
                   value={phone}
-                  onChangeText={setPhone}
-                  keyboardType="phone-pad"
-                  placeholder="10-digit mobile number"
-                  accessibilityLabel="Phone number"
-                  accessibilityHint="Enter your 10-digit mobile number"
-                  maxLength={10}
+                  onChangeText={(digits) => {
+                    if (error) setError('')
+                    setPhone(digits)
+                  }}
+                  locked={loading}
+                  autoFocus
+                  onSubmitEditing={handlePhoneSubmit}
                 />
-                {error ? (
-                  <Text style={styles.error} accessibilityLiveRegion="polite">
-                    {error}
-                  </Text>
-                ) : null}
+                <FieldMessage tone={error ? 'error' : 'hint'}>{error || "We'll text you a 6-digit code."}</FieldMessage>
                 <Button
-                  label="Send OTP"
+                  variant="cta"
+                  label="Get code"
                   onPress={handlePhoneSubmit}
                   loading={loading}
-                  disabled={phone.replace(/\D/g, '').length !== 10}
+                  disabled={phone.length !== 10}
+                  flatDisabled
                 />
                 <Text style={styles.consent}>
                   By continuing you agree to our{' '}
@@ -272,81 +307,71 @@ export default function PhoneScreen() {
               </>
             ) : (
               <>
-                <Text style={styles.title}>Enter OTP</Text>
-                <Text style={styles.subtitle}>Sent to {formatPhone(phone)}</Text>
+                <View>
+                  <Text style={styles.title}>Enter the code</Text>
+                  <View style={styles.sentRow}>
+                    <Text style={styles.subtitle}>
+                      Sent to <Text style={styles.subtitleStrong}>+91 {formatPhoneDisplay(phone)}</Text>
+                    </Text>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Change phone number" onPress={handleEdit} hitSlop={8} style={styles.edit}>
+                      <Feather name="edit-2" size={14} color={h.tealText} />
+                      <Text style={styles.editLabel}>Edit</Text>
+                    </Pressable>
+                  </View>
+                </View>
                 <OtpBoxInput
                   value={otp}
-                  onChangeText={setOtp}
-                  error={!!error}
+                  onChangeText={handleOtpChange}
+                  error={wrong}
+                  success={verified}
+                  busy={verifying}
                   autoFocus
-                  editable={!loading && !verified}
+                  boxWidth={boxWidth}
+                  boxHeight={58}
+                  gap={8}
                 />
-                {error ? (
-                  <Text style={styles.error} accessibilityLiveRegion="polite">
-                    {error}
-                  </Text>
+                <OtpStatusLine status={waitStatus} />
+                <Button variant="cta" flatDisabled label="Verify" onPress={handleOtpSubmit} loading={verifying} success={verified} disabled={otp.length !== 6 || wrong} />
+                {verifying || verified ? (
+                  <View style={styles.resendSpacer} />
                 ) : (
-                  <OtpStatusLine status={waitStatus} />
+                  <OtpResendRow seconds={countdown} total={OTP_RESEND_AFTER_SEC} onResend={handleResend} disabled={loading} />
                 )}
-                <Button label="Verify" onPress={handleOtpSubmit} loading={loading} success={verified} disabled={otp.length !== 6} />
-                <Button
-                  label={countdown > 0 ? `Resend in ${countdown}s` : 'Resend OTP'}
-                  variant="ghost"
-                  onPress={handleResend}
-                  disabled={countdown > 0 || verified}
-                />
               </>
             )}
-            </Animated.View>
-          </ScrollView>
-        </Animated.View>
-      </View>
+          </Animated.View>
+        </ScrollView>
+      </Animated.View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  hero: { position: 'absolute', top: 0, left: 0, right: 0 },
-  heroImage: { width: '100%', height: '100%' },
-  heroFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 80 },
-  sheetWrapper: { flex: 1 },
-  // marginTop pulls the sheet up to overlap the hero's bottom edge -- the
-  // rounded top corners read as "tucked under" the photo rather than a hard
-  // seam between photo and card.
+  // marginTop pulls the sheet up over the photo's bottom edge: the rounded top corners read as "tucked over" the photo, not a seam.
   sheet: {
     flex: 1,
+    marginTop: -28,
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: -6 },
-    elevation: 10,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: spacing.lg - 4,
+    paddingTop: 26,
+    boxShadow: '0 -10px 28px rgba(20,23,26,0.07)',
   },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(20,23,26,0.16)', marginBottom: spacing.md },
-  // The sheet fills the rest of the screen below the hero (so the rounded card
-  // still reaches the bottom edge), but the logo+form is far shorter than that
-  // on a tall phone. Deliberately top-anchored (flex-start), not centered or
-  // bottom-anchored: any leftover flex space this leaves lands below the
-  // button, inside the same white sheet, where it's invisible -- rather than
-  // above the button, which is what pushes it toward (or behind) the
-  // keyboard's safe zone on a real device.
+  // Top-anchored, never centred or bottom-anchored: leftover space lands below the button, inside the same white sheet, instead of above
+  // it where it would push the button toward the keyboard.
   contentGroup: { flex: 1, width: '100%' },
-  contentGroupInner: { flexGrow: 1, width: '100%', alignItems: 'center', justifyContent: 'flex-start' },
-  logo: { width: 56, height: 56, marginBottom: spacing.md },
-  stepContainer: { width: '100%', gap: spacing.md },
-  // typography.display now resolves to Plus Jakarta Sans Bold for rider
-  // (tokens.ts splits display/headline per app -- rider web never applies
-  // its own font-display class anywhere, incl. its own home page greeting).
-  title: { ...typography.display, color: colors.ink900 },
-  subtitle: { ...typography.body, color: colors.ink600 },
-  error: { ...typography.label, color: colors.error },
-  consent: { ...typography.caption, color: colors.ink400, textAlign: 'center', marginTop: spacing.xs },
-  consentLink: { color: colors.primary, fontFamily: fonts.bold },
+  contentGroupInner: { flexGrow: 1, width: '100%', justifyContent: 'flex-start' },
+  stepContainer: { width: '100%', gap: spacing.sm },
+  label: { fontFamily: fonts.semibold, fontSize: 14, lineHeight: 20, color: colors.ink900, marginBottom: 2 },
+  title: { ...typography.display, fontSize: 26, lineHeight: 30, letterSpacing: -0.5, color: colors.ink900 },
+  sentRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 2 },
+  subtitle: { ...typography.body, fontSize: 14, lineHeight: 20, color: colors.ink600 },
+  subtitleStrong: { fontFamily: fonts.bold, color: colors.ink900 },
+  edit: { height: 44, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  editLabel: { fontFamily: fonts.bold, fontSize: 14, color: h.tealText },
+  resendSpacer: { height: 44 },
+  consent: { ...typography.caption, color: h.label, textAlign: 'center', marginTop: spacing.sm },
+  consentLink: { color: h.tealText, fontFamily: fonts.bold },
 })
