@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { activeCount, elapsedLabel, handledBy, hasLocation, timeline, totalCount, unannounced, waitingClock, waitingTone } from '../sos-model'
+import { activeCount, elapsedLabel, handledBy, hasLocation, signalState, timeline, totalCount, unannounced, waitingClock, waitingTone } from '../sos-model'
 
 const NOW = Date.parse('2026-11-24T12:00:00Z')
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString()
@@ -83,5 +83,20 @@ describe('timeline', () => {
       resolved_by_email: 'b@x.com', status: 'false_alarm', resolution_note: 'pressed by mistake', triggered_by_driver: null,
     })
     expect(t.map(e => e.text)).toEqual(['Rider pressed SOS', 'Acknowledged by a@x.com', 'Dismissed as a false alarm by b@x.com: pressed by mistake'])
+  })
+})
+
+describe('signalState', () => {
+  const t = (secs: number) => new Date(NOW - secs * 1000).toISOString()
+  it('is live under 20 s, delayed to a minute, then no signal, with the age in the words', () => {
+    expect(signalState(t(5), NOW)).toEqual({ tone: 'live', label: 'Live · updated 5s ago' })
+    expect(signalState(t(20), NOW)).toEqual({ tone: 'delayed', label: 'Delayed · last seen 20s ago' })
+    expect(signalState(t(59), NOW).tone).toBe('delayed')
+    expect(signalState(t(60), NOW)).toEqual({ tone: 'lost', label: 'No signal · last seen 1 min ago' })
+    expect(signalState(t(600), NOW).label).toBe('No signal · last seen 10 min ago')
+  })
+  it('says nothing was received when there is no position or a bad time', () => {
+    expect(signalState(null, NOW).tone).toBe('none')
+    expect(signalState('nope', NOW).tone).toBe('none')
   })
 })
