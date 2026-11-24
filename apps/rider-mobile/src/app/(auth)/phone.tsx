@@ -16,7 +16,7 @@ import { smsRetriever } from '@ocar/expo-sms-retriever'
 import {
   AuthHero, Button, FieldMessage, OtpBoxInput, OtpResendRow, OtpStatusLine, PhoneField,
   colors, fonts, formatPhoneDisplay, h, mapOtpErrorCode, otpWaitStatus, spacing, track, typography,
-  PRIVACY_URL, TERMS_URL, useOtpAutoRead, useOtpWaitSeconds,
+  PRIVACY_URL, TERMS_URL, useOtpAutoRead, useOtpWaitSeconds, OTP_PACING,
 } from '@ocar/mobile-shared'
 import { api } from '@/services/api'
 import { setupPushNotifications } from '@/services/notifications'
@@ -72,7 +72,19 @@ export default function PhoneScreen() {
   // Android SMS auto-read: the phone listens for the one code SMS and fills the boxes (the 6-digit effect below then verifies).
   // waitKey restarts the "how long has it been" clock on every send, so Resend starts the calm waiting state afresh.
   const [waitKey, setWaitKey] = useState(0)
-  const autoRead = useOtpAutoRead(smsRetriever, setOtp)
+  // A code read from the SMS is not dropped in whole: the digits land one by one, "Code detected" holds a moment, then it is sent.
+  const revealTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const revealingRef = useRef(false)
+  function revealCode(code: string) {
+    revealTimersRef.current.forEach(clearTimeout)
+    revealingRef.current = true
+    setOtp('')
+    revealTimersRef.current = code.split('').map((_, i) => setTimeout(() => {
+      setOtp(code.slice(0, i + 1))
+      if (i === code.length - 1) revealingRef.current = false
+    }, (i + 1) * OTP_PACING.detectStaggerMs))
+  }
+  const autoRead = useOtpAutoRead(smsRetriever, revealCode)
   const waitSec = useOtpWaitSeconds(step === 'otp' && !verified, waitKey)
   const waitStatus = otpWaitStatus({
     elapsedSec: waitSec, autoReading: autoRead.listening, detected: autoRead.detected, typed: otp.length,
@@ -88,6 +100,7 @@ export default function PhoneScreen() {
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current)
       if (wrongTimerRef.current) clearTimeout(wrongTimerRef.current)
+      revealTimersRef.current.forEach(clearTimeout)
     }
   }, [])
 
@@ -95,6 +108,8 @@ export default function PhoneScreen() {
   // route to pop since this is a same-screen transition, not a stack push.
   function handleEdit() {
     setDirection('back')
+    revealTimersRef.current.forEach(clearTimeout)
+    revealingRef.current = false
     setStep('phone')
     setOtp('')
     setError('')
@@ -161,7 +176,7 @@ export default function PhoneScreen() {
 
   function handleOtpChange(value: string) {
     // Typing is ignored (not blocked with editable={false}, which would drop the keyboard) while a code is checked or a wrong one shows.
-    if (loading || verified || wrong) return
+    if (loading || verified || wrong || revealingRef.current) return
     if (error) setError('')
     setOtp(value)
   }
@@ -169,8 +184,11 @@ export default function PhoneScreen() {
   // Auto-submit the instant all 6 digits land -- typed, pasted, or SMS-autofilled --
   // instead of making the rider also tap Verify. handleOtpSubmit's own guards
   // (length check, in-flight ref) make this safe to fire on every otp change.
+  // A code the phone read itself waits a beat on "Code detected" first; a typed or pasted one goes at once.
   useEffect(() => {
-    if (otp.length === 6) void handleOtpSubmit()
+    if (otp.length !== 6) return undefined
+    const t = setTimeout(() => void handleOtpSubmit(), autoRead.detected ? OTP_PACING.detectedHoldMs : 0)
+    return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only otp reaching 6 digits should trigger this
   }, [otp])
 
@@ -180,6 +198,7 @@ export default function PhoneScreen() {
     setError('')
     setLoading(true)
     setVerifying(true)
+    const startedAt = Date.now()
     try {
       const res = await api.post<VerifyOtpResponse>('/api/v1/auth/otp/verify', {
         phone: formatPhone(phone),
@@ -188,6 +207,8 @@ export default function PhoneScreen() {
         purpose: 'login',
       })
       const { tokens, principal, isNew } = res.data
+      // Keep "Verifying" up long enough to be seen when the server answers fast.
+      await new Promise((r) => setTimeout(r, Math.max(0, OTP_PACING.verifyMinMs - (Date.now() - startedAt))))
       setAuth(tokens.accessToken, tokens.refreshToken, principal)
       track('login_success')
       void setupPushNotifications()
@@ -198,7 +219,7 @@ export default function PhoneScreen() {
       const destination = isNew || !principal.name ? '/onboarding' : '/(tabs)/home'
       // Hold on the verified checkmark for a beat before swapping screens --
       // otherwise success is invisible, the OTP screen just vanishes.
-      setTimeout(() => router.replace(destination), 550)
+      setTimeout(() => router.replace(destination), OTP_PACING.successHoldMs)
     } catch (err) {
       const code = axios.isAxiosError(err) ? (err.response?.data as { code?: string } | undefined)?.code : undefined
       setError(code ? mapOtpErrorCode(code) : 'Check your connection and try again')

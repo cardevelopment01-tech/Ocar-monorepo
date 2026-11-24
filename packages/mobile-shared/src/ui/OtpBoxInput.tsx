@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, type TextInputProps } from 'react-native'
-import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated'
+import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated'
 import { h } from '../theme/brand'
 import { colors, radii, fonts } from '../theme/tokens'
 
@@ -58,6 +58,7 @@ export function OtpBoxInput({
           success={success}
           busy={busy}
           active={i === activeIndex}
+          index={i}
           {...(boxWidth !== undefined ? { width: boxWidth } : {})}
           {...(boxHeight !== undefined ? { height: boxHeight } : {})}
           {...(digitFontSize !== undefined ? { fontSize: digitFontSize } : {})}
@@ -81,10 +82,18 @@ export function OtpBoxInput({
 }
 
 function OtpBox({
-  digit, error, success, busy, active, width, height, fontSize,
-}: { digit: string; error: boolean; success: boolean; busy: boolean; active: boolean; width?: number; height?: number; fontSize?: number }) {
+  digit, error, success, busy, active, index, width, height, fontSize,
+}: { digit: string; error: boolean; success: boolean; busy: boolean; active: boolean; index: number; width?: number; height?: number; fontSize?: number }) {
   const filled = digit !== ''
   const reduced = useReducedMotion()
+  // Success runs along the row, left to right: each box turns green and gives one small bounce, 60 ms after the one before it.
+  const waveMs = reduced ? 0 : index * 60
+  const [lit, setLit] = useState(false)
+  useEffect(() => {
+    if (!success) { setLit(false); return undefined }
+    const t = setTimeout(() => setLit(true), waveMs)
+    return () => clearTimeout(t)
+  }, [success, waveMs])
   // A thin caret in the box the next digit lands in, blinking slowly: the real caret is hidden (it has nowhere sensible to sit over six boxes).
   const showCaret = active && !filled && !error && !success && !busy
   const caret = useSharedValue(1)
@@ -110,9 +119,11 @@ function OtpBox({
   // nested inside the screen's Card (a real anti-pattern, not a taste call).
   const style = useAnimatedStyle(() => {
     // No pop on an error: the effect re-runs when `error` flips, and a 1.16 pop on top of the shake made the boxes overlap their neighbours.
-    const scale = filled && !error
-      ? withSequence(withTiming(1.16, { duration: 90, easing: EASE_OUT }), withSpring(1, { duration: 260, dampingRatio: 0.65 }))
-      : withTiming(1, { duration: 120, easing: EASE_OUT })
+    const scale = success && !reduced
+      ? withDelay(waveMs, withSequence(withTiming(1.18, { duration: 150, easing: EASE_OUT }), withSpring(1, { duration: 320, dampingRatio: 0.6 })))
+      : filled && !error
+        ? withSequence(withTiming(1.16, { duration: 90, easing: EASE_OUT }), withSpring(1, { duration: 260, dampingRatio: 0.65 }))
+        : withTiming(1, { duration: 120, easing: EASE_OUT })
     const shakeX = error
       ? withSequence(
           withTiming(-4, { duration: 40 }),
@@ -122,10 +133,10 @@ function OtpBox({
         )
       : withTiming(0, { duration: 0 })
     return { transform: [{ scale }, { translateX: shakeX }] }
-  }, [filled, error])
+  }, [filled, error, success, reduced, waveMs])
 
-  const boxState = error ? styles.boxError : success ? styles.boxSuccess : filled ? styles.boxFilled : active && !busy ? styles.boxActive : styles.boxDefault
-  const digitState = error ? styles.digitError : success ? styles.digitSuccess : filled ? styles.digitFilled : null
+  const boxState = error ? styles.boxError : success && lit ? styles.boxSuccess : filled ? styles.boxFilled : active && !busy ? styles.boxActive : styles.boxDefault
+  const digitState = error ? styles.digitError : success && lit ? styles.digitSuccess : filled ? styles.digitFilled : null
 
   const sizeStyle = (width != null || height != null) ? { width: width ?? BOX_SIZE, height: height ?? 60 } : null
 

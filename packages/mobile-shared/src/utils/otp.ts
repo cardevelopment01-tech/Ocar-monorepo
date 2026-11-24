@@ -53,3 +53,16 @@ export function otpWaitStatus(p: {
   }
   return { kind: 'waiting', title: p.autoReading ? 'Reading your SMS automatically' : 'Waiting for your code' }
 }
+
+/** How long each step of a login code is on screen. A code that arrives by SMS used to fill, verify and leave inside half a second, so the
+ *  rider never saw what happened. Typed codes skip the detect steps but keep the verify and success beats. */
+export const OTP_PACING = {
+  /** Gap between digits as an SMS-read code fills the boxes. */
+  detectStaggerMs: 110,
+  /** After the last digit lands: "Code detected" stays up before the code is sent. */
+  detectedHoldMs: 800,
+  /** "Verifying" stays up at least this long, even when the server answers faster. */
+  verifyMinMs: 700,
+  /** The green Verified frame stays up this long before the screen moves on. */
+  successHoldMs: 1000,
+} as const
