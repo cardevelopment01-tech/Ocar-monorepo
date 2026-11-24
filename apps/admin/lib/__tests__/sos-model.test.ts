@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { activeCount, elapsedLabel, handledBy, hasLocation, totalCount } from '../sos-model'
+import { activeCount, elapsedLabel, handledBy, hasLocation, timeline, totalCount, unannounced, waitingClock, waitingTone } from '../sos-model'
 
 const NOW = Date.parse('2026-11-24T12:00:00Z')
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString()
@@ -45,4 +45,43 @@ describe('counts', () => {
   const c = { triggered: 2, acknowledged: 1, responding: 0, resolved: 7, false_alarm: 3 }
   it('active is the three open states', () => expect(activeCount(c)).toBe(3))
   it('total is everything', () => expect(totalCount(c)).toBe(13))
+})
+
+describe('waiting clock and tone', () => {
+  it('counts up as m:ss then h:mm:ss', () => {
+    expect(waitingClock(ago(0), NOW)).toBe('0:00')
+    expect(waitingClock(new Date(NOW - 252_000).toISOString(), NOW)).toBe('4:12')
+    expect(waitingClock(new Date(NOW - 3_725_000).toISOString(), NOW)).toBe('1:02:05')
+  })
+  it('is ok under a minute, late to five, overdue after', () => {
+    expect(waitingTone(ago(0.5), NOW)).toBe('ok')
+    expect(waitingTone(ago(1), NOW)).toBe('late')
+    expect(waitingTone(ago(4.9), NOW)).toBe('late')
+    expect(waitingTone(ago(5), NOW)).toBe('overdue')
+  })
+})
+
+describe('unannounced', () => {
+  const a = (id: string, status = 'triggered') => ({ id, status })
+  it('stays silent on the first load but remembers what is there', () => {
+    const r = unannounced(null, [a('1'), a('2')])
+    expect(r.ids).toEqual([])
+    expect([...r.seen]).toEqual(['1', '2'])
+  })
+  it('reports only new, still-unacknowledged alerts, once', () => {
+    const first = unannounced(null, [a('1')])
+    const second = unannounced(first.seen, [a('1'), a('2'), a('3', 'acknowledged')])
+    expect(second.ids).toEqual(['2'])
+    expect(unannounced(second.seen, [a('1'), a('2')]).ids).toEqual([])
+  })
+})
+
+describe('timeline', () => {
+  it('tells the story oldest first', () => {
+    const t = timeline({
+      created_at: ago(10), acknowledged_at: ago(8), acknowledged_by_email: 'a@x.com', resolved_at: ago(2),
+      resolved_by_email: 'b@x.com', status: 'false_alarm', resolution_note: 'pressed by mistake', triggered_by_driver: null,
+    })
+    expect(t.map(e => e.text)).toEqual(['Rider pressed SOS', 'Acknowledged by a@x.com', 'Dismissed as a false alarm by b@x.com: pressed by mistake'])
+  })
 })

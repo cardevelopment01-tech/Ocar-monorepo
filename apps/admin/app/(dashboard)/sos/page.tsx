@@ -1,14 +1,16 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Shield, ShieldAlert, CheckCircle, Clock, AlertTriangle, ExternalLink, Phone, MapPin, MapPinOff, WifiOff, RefreshCw } from 'lucide-react'
+import { Shield, ShieldAlert, CheckCircle, Clock, AlertTriangle, ExternalLink, Phone, MapPin, MapPinOff, WifiOff, RefreshCw, Volume2, VolumeX, BellRing } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
 import SuccessToast from '@/components/ui/SuccessToast'
 import { safetyApi, type SosAlert, type SosCounts } from '@/lib/safety-api'
 import { getAdminSocket } from '@/lib/socket'
 import { extractErrorCode, extractErrorMessage } from '@/lib/http-errors'
-import { ACTIVE_STATUSES, absoluteTime, activeCount, elapsedLabel, handledBy, hasLocation, totalCount } from '@/lib/sos-model'
+import { ACTIVE_STATUSES, SOS_FILTERS, absoluteTime, activeCount, elapsedLabel, handledBy, hasLocation, totalCount, unannounced, waitingClock, waitingTone, type SosFilter } from '@/lib/sos-model'
+import { askDesktopPermission, desktopPermission, isAlarmMuted, notifyDesktop, primeAlarm, setAlarmMuted, soundAlarm } from '@/lib/sos-alarm'
 import SosNoteDialog from './SosNoteDialog'
+import SosDetailPanel from './SosDetailPanel'
 
 const EMPTY_COUNTS: SosCounts = { triggered: 0, acknowledged: 0, responding: 0, resolved: 0, false_alarm: 0 }
 const HISTORY_STEP = 25
@@ -32,6 +34,14 @@ export default function SOSPage() {
   const [loadFailed, setLoadFailed] = useState(false)
   const [lastOk,   setLastOk]   = useState<number | null>(null)
   const [historyLimit, setHistoryLimit] = useState(HISTORY_STEP)
+  const [historyTotal, setHistoryTotal] = useState(0)
+  const [filter, setFilter] = useState<SosFilter>('all')
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [muted, setMuted] = useState(false)
+  const [desktop, setDesktop] = useState<ReturnType<typeof desktopPermission>>('unsupported')
+  // null until the first load: what is already open when the page is opened is not "new".
+  const seen = useRef<Set<string> | null>(null)
+  useEffect(() => { setMuted(isAlarmMuted()); setDesktop(desktopPermission()) }, [])
 
   const [actingId,   setActingId]   = useState<string | null>(null)
   const [cardError,  setCardError]  = useState<{ id: string; message: string } | null>(null)
@@ -47,11 +57,19 @@ export default function SOSPage() {
     try {
       const [open, recent] = await Promise.all([
         safetyApi.getSosAlerts({ status: 'active', limit: 100 }),
-        safetyApi.getSosAlerts({ limit: historyLimit }),
+        safetyApi.getSosAlerts({ limit: historyLimit, ...(filter !== 'all' ? { status: filter } : {}) }),
       ])
       if (mine !== latest.current) return
       setActive(open.alerts)
+      const fresh = unannounced(seen.current, open.alerts)
+      seen.current = fresh.seen
+      if (fresh.ids.length > 0) {
+        soundAlarm()
+        const a = open.alerts.find(x => x.id === fresh.ids[0])
+        notifyDesktop(fresh.ids.length === 1 ? 'New SOS alert' : `${fresh.ids.length} new SOS alerts`, a ? `${a.driver_name ?? a.user_name ?? 'Someone'} · ${a.origin_address ?? ''} → ${a.destination_address ?? ''}` : 'Open the SOS page')
+      }
       setHistory(recent.alerts)
+      setHistoryTotal(recent.total)
       setCounts(recent.counts ?? open.counts ?? EMPTY_COUNTS)
       setLoadFailed(false)
       setLastOk(Date.now())
@@ -61,7 +79,7 @@ export default function SOSPage() {
     } finally {
       setLoaded(true)
     }
-  }, [historyLimit])
+  }, [historyLimit, filter])
 
   useEffect(() => {
     void load()
@@ -75,7 +93,7 @@ export default function SOSPage() {
 
   const [, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 30_000)
+    const id = setInterval(() => setTick(t => t + 1), 1_000)
     return () => clearInterval(id)
   }, [])
 
@@ -158,6 +176,24 @@ export default function SOSPage() {
         </div>
       )}
 
+      <div className="flex flex-wrap items-center justify-end gap-2 -mb-2">
+        <button
+          onClick={() => { const next = !muted; setMuted(next); setAlarmMuted(next); if (!next) { primeAlarm(); soundAlarm() } }}
+          aria-pressed={!muted}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-border rounded-xl bg-surface hover:bg-surface-2 text-text-secondary"
+        >
+          {muted ? <VolumeX size={13} /> : <Volume2 size={13} />} Alarm {muted ? 'off' : 'on'}
+        </button>
+        {desktop === 'default' && (
+          <button
+            onClick={() => { primeAlarm(); askDesktopPermission(); setTimeout(() => setDesktop(desktopPermission()), 1500) }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-border rounded-xl bg-surface hover:bg-surface-2 text-text-secondary"
+          >
+            <BellRing size={13} /> Allow desktop alerts
+          </button>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Active Now"     value={unknown ? '—' : activeTotal}       change={unknown ? 'Unavailable' : activeTotal > 0 ? 'Needs action' : 'All clear'} changeType={!unknown && activeTotal > 0 ? 'down' : 'neutral'} icon={Shield}        gradient="pink"  loading={!loaded} />
         <StatCard title="Resolved"       value={unknown ? '—' : counts.resolved}    change="All time"   changeType={unknown ? 'neutral' : 'up'} icon={CheckCircle}   gradient="green" loading={!loaded} />
@@ -223,7 +259,7 @@ export default function SOSPage() {
                       <p className="text-xs mt-2" title={absoluteTime(sos.created_at)}>
                         <span className="text-danger font-semibold">Raised {elapsedLabel(sos.created_at)}</span>
                         {sos.status === 'triggered'
-                          ? <span className="text-danger"> · waiting for someone to acknowledge</span>
+                          ? <span className={waitingTone(sos.created_at) === 'ok' ? 'text-danger' : 'text-danger font-bold'}> · waiting to be acknowledged <span className="font-mono tabular-nums">{waitingClock(sos.created_at)}</span>{waitingTone(sos.created_at) === 'overdue' ? ' · OVERDUE (over 5 min)' : waitingTone(sos.created_at) === 'late' ? ' · over the 1 min target' : ''}</span>
                           : who && <span className="text-text-muted"> · {who} {elapsedLabel(sos.acknowledged_at)}</span>}
                       </p>
                     </div>
@@ -253,8 +289,14 @@ export default function SOSPage() {
                       False Alarm
                     </button>
                     <button
+                      onClick={() => setDetailId(sos.id)}
+                      className="ml-auto px-4 py-2 text-sm font-semibold border border-primary/40 text-primary rounded-xl hover:bg-primary/5 transition-colors"
+                    >
+                      Details &amp; map
+                    </button>
+                    <button
                       onClick={() => router.push(`/rides/${sos.ride_id}`)}
-                      className="ml-auto flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 transition-colors text-text-secondary"
+                      className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 transition-colors text-text-secondary"
                     >
                       <ExternalLink size={14} />
                       View ride
@@ -277,7 +319,22 @@ export default function SOSPage() {
       )}
 
       <div className="admin-card">
-        <h2 className="text-md font-bold text-text-primary mb-4">All SOS Events</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 className="text-md font-bold text-text-primary">SOS Events</h2>
+          <div role="tablist" aria-label="Filter events" className="inline-flex gap-1 p-1 rounded-xl bg-surface-2">
+            {SOS_FILTERS.map(f => (
+              <button
+                key={f.key}
+                role="tab"
+                aria-selected={filter === f.key}
+                onClick={() => { setFilter(f.key); setHistoryLimit(HISTORY_STEP) }}
+                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${filter === f.key ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {!loaded ? (
           <table className="data-table w-full"><tbody>
             {Array.from({ length: 5 }).map((_, i) => (
@@ -285,7 +342,7 @@ export default function SOSPage() {
             ))}
           </tbody></table>
         ) : history.length === 0 ? (
-          <p className="text-text-muted text-sm py-4 text-center">{loadFailed ? 'Could not load events' : 'No SOS events recorded'}</p>
+          <p className="text-text-muted text-sm py-4 text-center">{loadFailed ? 'Could not load events' : filter === 'all' ? 'No SOS events recorded' : 'Nothing matches this filter'}</p>
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -298,7 +355,7 @@ export default function SOSPage() {
                 <tbody>
                   {history.map(sos => (
                     <tr key={sos.id} className="group">
-                      <td className="font-mono text-xs text-primary">#{sos.id}</td>
+                      <td className="font-mono text-xs"><button onClick={() => setDetailId(sos.id)} className="text-primary hover:underline">#{sos.id}</button></td>
                       <td className="font-semibold text-text-primary">
                         {sos.driver_name ?? sos.user_name ?? 'Unknown'}
                         <span className="block text-xs font-normal text-text-muted">{sos.triggered_by_driver ? 'Driver alert' : 'Rider alert'}</span>
@@ -315,13 +372,13 @@ export default function SOSPage() {
                 </tbody>
               </table>
             </div>
-            {history.length >= historyLimit && historyLimit < HISTORY_MAX && counts && total > history.length && (
+            {history.length >= historyLimit && historyLimit < HISTORY_MAX && historyTotal > history.length && (
               <div className="mt-4 text-center">
                 <button
                   onClick={() => setHistoryLimit(n => Math.min(n + HISTORY_STEP, HISTORY_MAX))}
                   className="px-4 py-2 text-sm font-semibold border border-border rounded-xl hover:bg-surface-2 text-text-secondary"
                 >
-                  Show more ({history.length} of {total})
+                  Show more ({history.length} of {historyTotal})
                 </button>
               </div>
             )}
@@ -337,6 +394,7 @@ export default function SOSPage() {
         onCancel={() => setPending(null)}
         onConfirm={note => void resolve(note)}
       />
+      <SosDetailPanel id={detailId} onClose={() => setDetailId(null)} />
       <SuccessToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   )

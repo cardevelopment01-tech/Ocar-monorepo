@@ -290,6 +290,15 @@ describe('M09 — Safety', () => {
       const { rows: perRide } = await pool.query('SELECT count(*)::int AS n FROM sos_alerts WHERE ride_id = $1', [rideId])
       expect(perRide[0]?.n).toBe(1)
 
+      // The detail view: the alert, the ride and who is in it, the trail and earlier alerts, on one read.
+      const det = await request(app).get(`/api/v1/admin/safety/sos/${alertId}`).set('Authorization', `Bearer ${admin.accessToken}`)
+      expect(det.status, JSON.stringify(det.body)).toBe(200)
+      expect(det.body).toEqual(expect.objectContaining({ id: alertId, ride_status: 'in_progress', previous_alerts: 0, trail: expect.any(Array) }))
+      expect(det.body.rider_phone).toEqual(expect.any(String))
+      expect(det.body.driver_phone).toEqual(expect.any(String))
+      expect((await request(app).get('/api/v1/admin/safety/sos/999999999').set('Authorization', `Bearer ${admin.accessToken}`)).status).toBe(404)
+      expect((await request(app).get('/api/v1/admin/safety/sos/abc').set('Authorization', `Bearer ${admin.accessToken}`)).status).toBe(404)
+
       // Lifecycle guards: a second acknowledge is a 409 and keeps the first admin's name on the alert.
       const ackAgain = await request(app)
         .patch(`/api/v1/admin/safety/sos/${alertId}/acknowledge`)

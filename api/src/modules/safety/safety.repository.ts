@@ -244,6 +244,43 @@ export async function getSosStatus(id: bigint): Promise<string | null> {
   return res.rows[0]?.status ?? null
 }
 
+// Everything an admin needs on one screen to deal with an alert: the alert, the ride and who is in it, the car, the last known
+// positions and how often this person has raised one before.
+export async function getSosDetail(id: bigint) {
+  const res = await pool.query(
+    `SELECT sa.*,
+            aa.email AS acknowledged_by_email, ra.email AS resolved_by_email,
+            r.status AS ride_status, r.origin_address, r.destination_address, r.driver_arrived_at,
+            ST_Y(r.origin::geometry) AS pickup_lat, ST_X(r.origin::geometry) AS pickup_lng,
+            u.name AS rider_name, u.phone AS rider_phone,
+            d.full_name AS driver_name, d.phone AS driver_phone,
+            v.number_plate, v.vehicle_name,
+            (SELECT COUNT(*)::int FROM sos_alerts o WHERE o.id <> sa.id
+               AND ((sa.triggered_by_user IS NOT NULL AND o.triggered_by_user = sa.triggered_by_user)
+                 OR (sa.triggered_by_driver IS NOT NULL AND o.triggered_by_driver = sa.triggered_by_driver))) AS previous_alerts
+     FROM sos_alerts sa
+     JOIN rides r ON r.id = sa.ride_id
+     LEFT JOIN users u ON u.id = r.user_id
+     LEFT JOIN drivers d ON d.id = r.driver_id
+     LEFT JOIN driver_vehicles v ON v.id = r.vehicle_id
+     LEFT JOIN admins aa ON aa.id = sa.acknowledged_by
+     LEFT JOIN admins ra ON ra.id = sa.resolved_by
+     WHERE sa.id = $1`,
+    [id]
+  )
+  const row = res.rows[0]
+  if (!row) return null
+  // The last 40 pings of the driver's trail (oldest first), enough to see where the car has been heading without a big payload.
+  const trail = await pool.query<{ lat: number; lng: number; recorded_at: string; speed_kmph: number | null }>(
+    `SELECT lat, lng, recorded_at, speed_kmph FROM (
+       SELECT ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng, recorded_at, speed_kmph::float8 AS speed_kmph
+       FROM gps_tracks WHERE ride_id = $1 ORDER BY recorded_at DESC LIMIT 40
+     ) t ORDER BY recorded_at ASC`,
+    [row.ride_id]
+  )
+  return { ...row, trail: trail.rows }
+}
+
 export async function updateSosStatus(
   id:      bigint,
   status:  string,
