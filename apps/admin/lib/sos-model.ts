@@ -88,3 +88,19 @@ export function timeline(a: Pick<SosAlert, 'created_at' | 'acknowledged_at' | 'a
   }
   return out
 }
+
+/** How trustworthy the car's last position is: live under 20 s, delayed to a minute, then no signal. Where the dot is and how old it is are shown together. */
+export type Signal = { tone: 'live' | 'delayed' | 'lost' | 'none'; label: string }
+export function signalState(lastIso: string | null | undefined, now: number = Date.now()): Signal {
+  if (!lastIso) return { tone: 'none', label: 'No car position received yet' }
+  const t = new Date(lastIso).getTime()
+  if (Number.isNaN(t)) return { tone: 'none', label: 'No car position received yet' }
+  const s = Math.max(0, Math.floor((now - t) / 1000))
+  const age = s < 60 ? `${s}s` : `${Math.floor(s / 60)} min`
+  if (s < 20) return { tone: 'live', label: `Live · updated ${age} ago` }
+  if (s < 60) return { tone: 'delayed', label: `Delayed · last seen ${age} ago` }
+  return { tone: 'lost', label: `No signal · last seen ${age} ago` }
+}
+
+/** How often the open alert's detail is re-read while the alert is still open. */
+export const LIVE_REFRESH_MS = 5_000

@@ -10,7 +10,7 @@ import { extractErrorCode, extractErrorMessage } from '@/lib/http-errors'
 import { ACTIVE_STATUSES, SOS_FILTERS, absoluteTime, activeCount, elapsedLabel, handledBy, hasLocation, totalCount, unannounced, waitingClock, waitingTone, type SosFilter } from '@/lib/sos-model'
 import { askDesktopPermission, desktopPermission, isAlarmMuted, notifyDesktop, primeAlarm, setAlarmMuted, soundAlarm } from '@/lib/sos-alarm'
 import SosNoteDialog from './SosNoteDialog'
-import SosDetailPanel from './SosDetailPanel'
+import SosLivePanel from './SosLivePanel'
 
 const EMPTY_COUNTS: SosCounts = { triggered: 0, acknowledged: 0, responding: 0, resolved: 0, false_alarm: 0 }
 const HISTORY_STEP = 25
@@ -43,6 +43,8 @@ export default function SOSPage() {
   const [desktop, setDesktop] = useState<ReturnType<typeof desktopPermission>>('unsupported')
   // null until the first load: what is already open when the page is opened is not "new".
   const seen = useRef<Set<string> | null>(null)
+  // The first time alerts load, open the one that has waited longest so its map is already in front of the admin.
+  const autoOpened = useRef(false)
   useEffect(() => { setMuted(isAlarmMuted()); setDesktop(desktopPermission()) }, [])
 
   const [actingId,   setActingId]   = useState<string | null>(null)
@@ -63,6 +65,7 @@ export default function SOSPage() {
       ])
       if (mine !== latest.current) return
       setActive(open.alerts)
+      if (!autoOpened.current && open.alerts.length > 0) { autoOpened.current = true; setDetailId(open.alerts[0]!.id) }
       const fresh = unannounced(seen.current, open.alerts)
       seen.current = fresh.seen
       if (fresh.ids.length > 0) {
@@ -192,6 +195,8 @@ export default function SOSPage() {
         </div>
       )}
 
+      <div className={detailId ? 'grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_460px] gap-5 items-start' : ''}>
+      <div className="space-y-5 min-w-0">
       <div className="flex flex-wrap items-center justify-end gap-2 -mb-2">
         {onCall && (
           <>
@@ -226,7 +231,7 @@ export default function SOSPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 gap-4 ${detailId ? '2xl:grid-cols-4' : 'lg:grid-cols-4'}`}>
         <StatCard title="Active Now"     value={unknown ? '—' : activeTotal}       change={unknown ? 'Unavailable' : activeTotal > 0 ? 'Needs action' : 'All clear'} changeType={!unknown && activeTotal > 0 ? 'down' : 'neutral'} icon={Shield}        gradient="pink"  loading={!loaded} />
         <StatCard title="Resolved"       value={unknown ? '—' : counts.resolved}    change="All time"   changeType={unknown ? 'neutral' : 'up'} icon={CheckCircle}   gradient="green" loading={!loaded} />
         <StatCard title="False Alarms"   value={unknown ? '—' : counts.false_alarm} change="All time"   changeType="neutral" icon={AlertTriangle} gradient="amber" loading={!loaded} />
@@ -255,7 +260,7 @@ export default function SOSPage() {
               return (
                 <div
                   key={sos.id}
-                  className="bg-surface rounded-2xl border border-danger/20 p-5 shadow-card"
+                  className={`bg-surface rounded-2xl border p-5 shadow-card ${detailId === sos.id ? 'border-primary ring-2 ring-primary/30' : 'border-danger/20'}`}
                   style={{ background: 'rgba(239,68,68,0.04)' }}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -324,7 +329,7 @@ export default function SOSPage() {
                       onClick={() => setDetailId(sos.id)}
                       className="ml-auto px-4 py-2 text-sm font-semibold border border-primary/40 text-primary rounded-xl hover:bg-primary/5 transition-colors"
                     >
-                      Details &amp; map
+                      Live map
                     </button>
                     <button
                       onClick={() => router.push(`/rides/${sos.ride_id}`)}
@@ -418,6 +423,20 @@ export default function SOSPage() {
         )}
       </div>
 
+      </div>
+      {detailId && (
+        <div className="order-first xl:order-none min-w-0">
+        <SosLivePanel
+          id={detailId}
+          busy={actingId === detailId}
+          onClose={() => setDetailId(null)}
+          onAcknowledge={id => void acknowledge(id)}
+          onResolve={(id, kind) => { setDialogError(null); setPending({ id, kind }) }}
+        />
+        </div>
+      )}
+      </div>
+
       <SosNoteDialog
         open={pending !== null}
         kind={pending?.kind ?? 'resolved'}
@@ -426,7 +445,6 @@ export default function SOSPage() {
         onCancel={() => setPending(null)}
         onConfirm={note => void resolve(note)}
       />
-      <SosDetailPanel id={detailId} onClose={() => setDetailId(null)} />
       <SuccessToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   )
