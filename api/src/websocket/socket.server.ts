@@ -448,7 +448,7 @@ export const socketEvents = {
     getIO().to(`user:${userId}`).emit('ride:status_update', data)
   },
 
-  sendDriverLocation: (rideId: string, data: { lat: number; lng: number; heading: number; speed_kmph: number }) => {
+  sendDriverLocation: (rideId: string, data: { rideId?: string; lat: number; lng: number; heading: number; speed_kmph: number }) => {
     getIO().to(`ride:${rideId}`).emit('driver:location', data)
   },
 

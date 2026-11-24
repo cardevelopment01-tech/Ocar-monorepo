@@ -328,6 +328,17 @@ export async function getAdminTokens(roles?: string[]): Promise<string[]> {
   return res.rows.map(r => r.token)
 }
 
+export async function getAdminTokensForIds(ids: bigint[]): Promise<string[]> {
+  if (ids.length === 0) return []
+  const res = await pool.query<{ token: string }>(
+    `SELECT dt.token FROM device_tokens dt
+       JOIN admins a ON a.id = dt.owner_id
+      WHERE dt.owner_type = 'admin' AND a.is_active = true AND a.id = ANY($1::bigint[])`,
+    [ids.map(String)]
+  )
+  return res.rows.map(r => r.token)
+}
+
 export async function getAllAdminIds(roles?: string[]): Promise<bigint[]> {
   const res = roles
     ? await pool.query<{ id: string }>(

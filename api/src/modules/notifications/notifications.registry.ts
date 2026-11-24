@@ -51,6 +51,8 @@ export const NOTIFICATION_TYPES = {
   ride_force_assigned: { channelId: 'ride_updates_v1', ttlSeconds: 60, collapse: 'ride_type' },
   stop_added:        { channelId: 'ride_updates_v1', ttlSeconds: 1800, collapse: 'ride_type' },
   pickup_updated:    { channelId: 'ride_updates_v1', ttlSeconds: 1800, collapse: 'ride_type' },
+  // ── Safety ──
+  sos_acknowledged:  { channelId: 'ride_updates_v1', ttlSeconds: HOUR, collapse: 'type' },
   // ── Driver account ──
   document_rejected: { channelId: 'account_alerts_v1', ttlSeconds: 7 * DAY, collapse: 'none' },
   document_expiring: { channelId: 'account_alerts_v1', ttlSeconds: 7 * DAY, collapse: 'none' },

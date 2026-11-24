@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { activeCount, elapsedLabel, handledBy, hasLocation, totalCount } from '../sos-model'
+import { activeCount, elapsedLabel, handledBy, hasLocation, liveEventFor, mergeTrail, signalState, timeline, totalCount, unannounced, waitingClock, waitingTone } from '../sos-model'
 
 const NOW = Date.parse('2026-11-24T12:00:00Z')
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString()
@@ -45,4 +45,75 @@ describe('counts', () => {
   const c = { triggered: 2, acknowledged: 1, responding: 0, resolved: 7, false_alarm: 3 }
   it('active is the three open states', () => expect(activeCount(c)).toBe(3))
   it('total is everything', () => expect(totalCount(c)).toBe(13))
+})
+
+describe('waiting clock and tone', () => {
+  it('counts up as m:ss then h:mm:ss', () => {
+    expect(waitingClock(ago(0), NOW)).toBe('0:00')
+    expect(waitingClock(new Date(NOW - 252_000).toISOString(), NOW)).toBe('4:12')
+    expect(waitingClock(new Date(NOW - 3_725_000).toISOString(), NOW)).toBe('1:02:05')
+  })
+  it('is ok under a minute, late to five, overdue after', () => {
+    expect(waitingTone(ago(0.5), NOW)).toBe('ok')
+    expect(waitingTone(ago(1), NOW)).toBe('late')
+    expect(waitingTone(ago(4.9), NOW)).toBe('late')
+    expect(waitingTone(ago(5), NOW)).toBe('overdue')
+  })
+})
+
+describe('unannounced', () => {
+  const a = (id: string, status = 'triggered') => ({ id, status })
+  it('stays silent on the first load but remembers what is there', () => {
+    const r = unannounced(null, [a('1'), a('2')])
+    expect(r.ids).toEqual([])
+    expect([...r.seen]).toEqual(['1', '2'])
+  })
+  it('reports only new, still-unacknowledged alerts, once', () => {
+    const first = unannounced(null, [a('1')])
+    const second = unannounced(first.seen, [a('1'), a('2'), a('3', 'acknowledged')])
+    expect(second.ids).toEqual(['2'])
+    expect(unannounced(second.seen, [a('1'), a('2')]).ids).toEqual([])
+  })
+})
+
+describe('timeline', () => {
+  it('tells the story oldest first', () => {
+    const t = timeline({
+      created_at: ago(10), acknowledged_at: ago(8), acknowledged_by_email: 'a@x.com', resolved_at: ago(2),
+      resolved_by_email: 'b@x.com', status: 'false_alarm', resolution_note: 'pressed by mistake', triggered_by_driver: null,
+    })
+    expect(t.map(e => e.text)).toEqual(['Rider pressed SOS', 'Acknowledged by a@x.com', 'Dismissed as a false alarm by b@x.com: pressed by mistake'])
+  })
+})
+
+describe('signalState', () => {
+  const t = (secs: number) => new Date(NOW - secs * 1000).toISOString()
+  it('is live under 20 s, delayed to a minute, then no signal, with the age in the words', () => {
+    expect(signalState(t(5), NOW)).toEqual({ tone: 'live', label: 'Live · updated 5s ago' })
+    expect(signalState(t(20), NOW)).toEqual({ tone: 'delayed', label: 'Delayed · last seen 20s ago' })
+    expect(signalState(t(59), NOW).tone).toBe('delayed')
+    expect(signalState(t(60), NOW)).toEqual({ tone: 'lost', label: 'No signal · last seen 1 min ago' })
+    expect(signalState(t(600), NOW).label).toBe('No signal · last seen 10 min ago')
+  })
+  it('says nothing was received when there is no position or a bad time', () => {
+    expect(signalState(null, NOW).tone).toBe('none')
+    expect(signalState('nope', NOW).tone).toBe('none')
+  })
+})
+
+describe('live position helpers', () => {
+  const trail = [{ lat: 1, lng: 1, recorded_at: new Date(NOW - 10_000).toISOString(), speed_kmph: 30 }]
+  it('adds live points newer than the last server ping, and drops ones the server has caught up with', () => {
+    const live = [{ lat: 2, lng: 2, speed_kmph: null, at: NOW - 20_000 }, { lat: 3, lng: 3, speed_kmph: 40, at: NOW - 1_000 }]
+    expect(mergeTrail(trail, live).map(p => p.lat)).toEqual([1, 3])
+    expect(mergeTrail([], live).map(p => p.lat)).toEqual([2, 3])
+  })
+  it('accepts an event only for the watched ride and with real numbers', () => {
+    expect(liveEventFor('11', { rideId: '11', lat: 20, lng: 85, speed_kmph: 0 }, NOW)).toEqual({ lat: 20, lng: 85, speed_kmph: null, at: NOW })
+    expect(liveEventFor('11', { rideId: '22', lat: 20, lng: 85 }, NOW)).toBeNull()
+    expect(liveEventFor('11', { lat: 20, lng: 85 }, NOW)).toBeNull()
+    expect(liveEventFor(null, { rideId: '11', lat: 20, lng: 85 }, NOW)).toBeNull()
+    expect(liveEventFor('11', { rideId: '11', lat: NaN, lng: 85 }, NOW)).toBeNull()
+    expect(liveEventFor('11', { rideId: 11, lat: 20, lng: 85 }, NOW)?.lat).toBe(20)
+  })
 })

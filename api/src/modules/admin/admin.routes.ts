@@ -118,6 +118,9 @@ router.patch('/drivers/:id/package/balance', requireAdmin('super_admin'), contro
 
 // ─── Safety — SOS ─────────────────────────────────────────────────────────────
 router.get('/safety/sos',                    controller.getAdminSosAlerts)
+router.get('/safety/sos/on-call',            controller.getAdminSosOnCall)
+router.put('/safety/sos/on-call',            requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.setAdminSosOnCall)
+router.get('/safety/sos/:id',                controller.getAdminSosDetail)
 router.patch('/safety/sos/:id/acknowledge',  requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.acknowledgeAdminSos)
 router.patch('/safety/sos/:id/resolve',      requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.resolveAdminSos)
 

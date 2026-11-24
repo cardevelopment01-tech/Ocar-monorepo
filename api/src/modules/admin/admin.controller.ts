@@ -1070,6 +1070,40 @@ export async function getAdminSosAlerts(
   }
 }
 
+export async function getAdminSosOnCall(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json(await sosService.getOnCall(req.admin!.id));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// An admin sets only their own duty status.
+export async function setAdminSosOnCall(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (typeof req.body?.onCall !== "boolean") {
+      throw httpError(422, "onCall must be true or false", AppErrors.VALIDATION_ERROR.code);
+    }
+    res.json(await sosService.setOnCall(req.admin!.id, req.body.onCall, req.ip ?? null));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getAdminSosDetail(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const rawId = req.params["id"]!;
+    if (!/^\d+$/.test(rawId)) throw createHttpError(AppErrors.NOT_FOUND);
+    res.json(await sosService.getSosAlertDetail(BigInt(rawId)));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function acknowledgeAdminSos(
   req: Request,
   res: Response,

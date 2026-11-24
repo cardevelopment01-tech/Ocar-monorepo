@@ -4,13 +4,19 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { SosAlert } from '@/lib/safety-api'
 
-const api = vi.hoisted(() => ({ getSosAlerts: vi.fn(), acknowledgeSos: vi.fn(), resolveSos: vi.fn() }))
+const api = vi.hoisted(() => ({ getSosAlerts: vi.fn(), acknowledgeSos: vi.fn(), resolveSos: vi.fn(), getSosOnCall: vi.fn(), setSosOnCall: vi.fn() }))
 // The page subscribes to 'sos:alert'; the test fires it by hand.
 const socket = vi.hoisted(() => ({ handlers: {} as Record<string, () => void> }))
 vi.mock('@/lib/safety-api', () => ({ safetyApi: api }))
 vi.mock('@/lib/socket', () => ({
   getAdminSocket: () => ({ on: (e: string, fn: () => void) => { socket.handlers[e] = fn }, off: vi.fn() }),
 }))
+const alarm = vi.hoisted(() => ({ soundAlarm: vi.fn(), notifyDesktop: vi.fn() }))
+vi.mock('@/lib/sos-alarm', () => ({
+  soundAlarm: alarm.soundAlarm, notifyDesktop: alarm.notifyDesktop, primeAlarm: vi.fn(), askDesktopPermission: vi.fn(),
+  isAlarmMuted: () => false, setAlarmMuted: vi.fn(), desktopPermission: () => 'granted',
+}))
+vi.mock('../SosLivePanel', () => ({ default: ({ id }: { id: string }) => <div>live panel for {id}</div> }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 
 import SOSPage from '../page'
@@ -38,7 +44,7 @@ const respond = (open: SosAlert[], recent: SosAlert[] = open, counts = COUNTS) =
 const conflict = (code: string, error: string) =>
   Object.assign(new Error('x'), { isAxiosError: true, response: { status: 409, data: { code, error } } })
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => { vi.clearAllMocks(); api.getSosOnCall.mockResolvedValue({ admins: [], me: false }) })
 
 describe('SOS page', () => {
   it('never says "all clear" when the alerts could not be loaded', async () => {
@@ -52,26 +58,26 @@ describe('SOS page', () => {
   it('keeps the last alerts on screen, with a warning, when a later refresh fails', async () => {
     respond([alert()])
     render(<SOSPage />)
-    expect(await screen.findByText(/waiting for someone to acknowledge/i)).toBeTruthy()
+    expect(await screen.findByText(/waiting to be acknowledged/i)).toBeTruthy()
     // a new-alert push from the socket makes the page reload; this time the server is unreachable
     api.getSosAlerts.mockRejectedValue(new Error('network'))
     act(() => { socket.handlers['sos:alert']!() })
     expect(await screen.findByText(/can.t reach the server/i)).toBeTruthy()
-    expect(screen.getByText(/waiting for someone to acknowledge/i)).toBeTruthy()
+    expect(screen.getByText(/waiting to be acknowledged/i)).toBeTruthy()
     expect(screen.queryByText(/no active sos alerts/i)).toBeNull()
   })
 
   it('shows an active alert with the waiting line, and a warning when there is no location', async () => {
     respond([alert({ location_lat: null, location_lng: null })])
     render(<SOSPage />)
-    expect(await screen.findByText(/waiting for someone to acknowledge/i)).toBeTruthy()
+    expect(await screen.findByText(/waiting to be acknowledged/i)).toBeTruthy()
     expect(screen.getByText(/no location shared/i)).toBeTruthy()
   })
 
   it('counts the stat cards from the server totals, not from the rows on screen', async () => {
     respond([alert()], [alert()])
     render(<SOSPage />)
-    await screen.findByText(/waiting for someone/i)
+    await screen.findByText(/waiting to be acknowledged/i)
     // 1 + 0 + 0 open, 7 in total, though only one row was returned
     await waitFor(() => expect(screen.getByText('7')).toBeTruthy())
   })
@@ -133,5 +139,59 @@ describe('SOS page', () => {
     render(<SOSPage />)
     expect(await screen.findByText('Resolved by ops@ocar.in')).toBeTruthy()
     expect(screen.getByText('“Rider safe”')).toBeTruthy()
+  })
+
+  it('sounds the alarm for an alert that arrives after the page opened, never for the ones already there', async () => {
+    respond([alert({ id: '7' })])
+    render(<SOSPage />)
+    await screen.findByText(/waiting to be acknowledged/i)
+    expect(alarm.soundAlarm).not.toHaveBeenCalled()
+    respond([alert({ id: '7' }), alert({ id: '8', user_name: 'Bikash Nayak' })])
+    act(() => { socket.handlers['sos:alert']!() })
+    await waitFor(() => expect(alarm.soundAlarm).toHaveBeenCalledTimes(1))
+    expect(alarm.notifyDesktop).toHaveBeenCalledWith('New SOS alert', expect.stringContaining('Bikash Nayak'))
+    // the same alert on the next refresh is not announced twice
+    act(() => { socket.handlers['sos:alert']!() })
+    await waitFor(() => expect(api.getSosAlerts.mock.calls.length).toBeGreaterThanOrEqual(6))
+    expect(alarm.soundAlarm).toHaveBeenCalledTimes(1)
+  })
+
+  it('a filter tab asks the server for that status', async () => {
+    respond([alert()])
+    const user = userEvent.setup()
+    render(<SOSPage />)
+    await user.click(await screen.findByRole('tab', { name: 'Resolved' }))
+    await waitFor(() => expect(api.getSosAlerts).toHaveBeenCalledWith({ limit: 25, status: 'resolved' }))
+  })
+
+  it('shows who is on call and lets an admin start and end their own duty', async () => {
+    respond([alert()])
+    api.getSosOnCall.mockResolvedValue({ admins: [{ id: '9', email: 'ops@ocar.in' }], me: false })
+    api.setSosOnCall.mockResolvedValue({ admins: [{ id: '9', email: 'ops@ocar.in' }, { id: '1', email: 'me@ocar.in' }], me: true })
+    const user = userEvent.setup()
+    render(<SOSPage />)
+    expect((await screen.findByTestId('on-call-line')).textContent).toContain('On call: ops@ocar.in')
+    await user.click(screen.getByRole('button', { name: 'Start my on-call' }))
+    await waitFor(() => expect(api.setSosOnCall).toHaveBeenCalledWith(true))
+    expect(await screen.findByRole('button', { name: /I am on call/ })).toBeTruthy()
+    expect(screen.getByTestId('on-call-line').textContent).toContain('me@ocar.in')
+  })
+
+  it('says every admin is reminded when nobody is on call', async () => {
+    respond([alert()])
+    render(<SOSPage />)
+    expect((await screen.findByTestId('on-call-line')).textContent).toContain('Nobody is on call')
+  })
+
+  it('opens the live view of the longest-waiting alert by itself, and switches when another card is chosen', async () => {
+    const older = alert({ id: '7', user_name: 'Asha Rider', created_at: new Date(Date.now() - 9 * 60_000).toISOString() })
+    const newer = alert({ id: '8', user_name: 'Bikash Nayak', created_at: new Date(Date.now() - 2 * 60_000).toISOString() })
+    respond([older, newer])
+    const user = userEvent.setup()
+    render(<SOSPage />)
+    expect(await screen.findByText('live panel for 7')).toBeTruthy()
+    const buttons = await screen.findAllByRole('button', { name: 'Live map' })
+    await user.click(buttons[1]!)
+    expect(await screen.findByText('live panel for 8')).toBeTruthy()
   })
 })

@@ -101,12 +101,11 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '0 4 * * *' }, removeOnComplete: true, removeOnFail: true }
   )
-  // §03.4: page all admins for SOS alerts still unacknowledged 5+ minutes
-  // after being triggered.
+  // §03.4: remind the on-call admin (1 min) and then every admin (3 min) about SOS alerts nobody has acknowledged.
   await schedulerQueue.add(
     'sweep_stale_sos',
     {},
-    { repeat: { every: 5 * 60 * 1000 }, removeOnComplete: true, removeOnFail: true }
+    { repeat: { every: 30 * 1000 }, removeOnComplete: true, removeOnFail: true }
   )
   // §03.4: page all admins for disputes past their sla_due_at that haven't
   // been resolved/withdrawn.
