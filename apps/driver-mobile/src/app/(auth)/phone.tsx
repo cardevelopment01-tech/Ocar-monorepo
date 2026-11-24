@@ -268,7 +268,7 @@ export default function PhoneScreen() {
                   onPress={handlePhoneSubmit}
                   loading={loading}
                   disabled={phone.length !== 10}
-                  keepLookWhenDisabled={false}
+                  flatDisabled
                 />
                 <Text style={styles.consent}>
                   By continuing you agree to our{' '}
@@ -303,7 +303,7 @@ export default function PhoneScreen() {
                   gap={8}
                 />
                 <OtpStatusLine status={waitStatus} />
-                <Button variant="cta" label="Verify" onPress={handleOtpSubmit} loading={verifying} success={verified} disabled={otp.length !== 6 || wrong} />
+                <Button variant="cta" flatDisabled label="Verify" onPress={handleOtpSubmit} loading={verifying} success={verified} disabled={otp.length !== 6 || wrong} />
                 {verifying || verified ? (
                   <View style={styles.resendSpacer} />
                 ) : (

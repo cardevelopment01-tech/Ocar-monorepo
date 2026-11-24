@@ -24,9 +24,11 @@ export type ButtonProps = Omit<PressableProps, 'style'> & {
   strikeLabel?: string
   // 'cta' only: stay at full strength while disabled. For a button that is only waiting a moment (a price loading), so it does not dim and brighten on every change.
   keepLookWhenDisabled?: boolean
+  // 'cta' only: when disabled, show a flat pale teal instead of the dimmed button (the login screens).
+  flatDisabled?: boolean
 }
 
-export function Button({ label, variant = 'primary', loading = false, success = false, icon, strikeLabel, keepLookWhenDisabled = false, disabled = false, ...pressableProps }: ButtonProps) {
+export function Button({ label, variant = 'primary', loading = false, success = false, icon, strikeLabel, keepLookWhenDisabled = false, flatDisabled = false, disabled = false, ...pressableProps }: ButtonProps) {
   const isDisabled = !!disabled || loading || success
   // Loading/success still read as "the brand button, mid-action" -- only an
   // explicit `disabled` prop should gray the gradient out.
@@ -52,6 +54,7 @@ export function Button({ label, variant = 'primary', loading = false, success = 
   if (variant === 'cta' || variant === 'soft') {
     const cta = variant === 'cta'
     const dim = !!disabled && !loading && !success && !keepLookWhenDisabled
+    const flat = dim && flatDisabled && cta
     return (
       <Pressable
         accessibilityRole="button"
@@ -59,9 +62,9 @@ export function Button({ label, variant = 'primary', loading = false, success = 
         disabled={isDisabled}
         style={({ pressed }) => [
           cta ? styles.cta : styles.soft,
-          { backgroundColor: success && cta ? h.liveInk : cta ? h.tealCta : h.tealWash },
+          { backgroundColor: flat ? '#DCEBEE' : success && cta ? h.liveInk : cta ? h.tealCta : h.tealWash },
           cta && !dim ? { boxShadow: success ? '0 12px 24px rgba(22,128,90,0.28)' : '0 12px 24px rgba(14,143,163,0.30)' } : null,
-          dim ? styles.disabled : null,
+          dim && !flat ? styles.disabled : null,
           pressed && !isDisabled ? styles.pressed : null,
         ]}
         {...pressableProps}
@@ -74,7 +77,7 @@ export function Button({ label, variant = 'primary', loading = false, success = 
         ) : loading ? <ActivityIndicator color={cta ? '#fff' : h.tealText} /> : (
           <View style={styles.row}>
             {icon ? <Feather name={icon} size={17} color={cta ? '#fff' : h.tealText} /> : null}
-            <Text style={[styles.ctaLabel, { color: cta ? '#fff' : h.tealText }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{label}</Text>
+            <Text style={[styles.ctaLabel, { color: flat ? '#7FA4AB' : cta ? '#fff' : h.tealText }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{label}</Text>
             {strikeLabel ? <Text style={styles.ctaStrike}>{strikeLabel}</Text> : null}
           </View>
         )}
