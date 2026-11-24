@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { activeCount, elapsedLabel, handledBy, hasLocation, signalState, timeline, totalCount, unannounced, waitingClock, waitingTone } from '../sos-model'
+import { activeCount, elapsedLabel, handledBy, hasLocation, liveEventFor, mergeTrail, signalState, timeline, totalCount, unannounced, waitingClock, waitingTone } from '../sos-model'
 
 const NOW = Date.parse('2026-11-24T12:00:00Z')
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString()
@@ -98,5 +98,22 @@ describe('signalState', () => {
   it('says nothing was received when there is no position or a bad time', () => {
     expect(signalState(null, NOW).tone).toBe('none')
     expect(signalState('nope', NOW).tone).toBe('none')
+  })
+})
+
+describe('live position helpers', () => {
+  const trail = [{ lat: 1, lng: 1, recorded_at: new Date(NOW - 10_000).toISOString(), speed_kmph: 30 }]
+  it('adds live points newer than the last server ping, and drops ones the server has caught up with', () => {
+    const live = [{ lat: 2, lng: 2, speed_kmph: null, at: NOW - 20_000 }, { lat: 3, lng: 3, speed_kmph: 40, at: NOW - 1_000 }]
+    expect(mergeTrail(trail, live).map(p => p.lat)).toEqual([1, 3])
+    expect(mergeTrail([], live).map(p => p.lat)).toEqual([2, 3])
+  })
+  it('accepts an event only for the watched ride and with real numbers', () => {
+    expect(liveEventFor('11', { rideId: '11', lat: 20, lng: 85, speed_kmph: 0 }, NOW)).toEqual({ lat: 20, lng: 85, speed_kmph: null, at: NOW })
+    expect(liveEventFor('11', { rideId: '22', lat: 20, lng: 85 }, NOW)).toBeNull()
+    expect(liveEventFor('11', { lat: 20, lng: 85 }, NOW)).toBeNull()
+    expect(liveEventFor(null, { rideId: '11', lat: 20, lng: 85 }, NOW)).toBeNull()
+    expect(liveEventFor('11', { rideId: '11', lat: NaN, lng: 85 }, NOW)).toBeNull()
+    expect(liveEventFor('11', { rideId: 11, lat: 20, lng: 85 }, NOW)?.lat).toBe(20)
   })
 })
