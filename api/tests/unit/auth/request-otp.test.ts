@@ -55,7 +55,16 @@ describe('requestOtp', () => {
     expect(notificationsQueue.add).toHaveBeenCalledTimes(1)
     expect(notificationsQueue.add).toHaveBeenCalledWith(
       'otp_sms',
-      { phone: '9876543210', otp: '1234', type: 'auth' },
+      { phone: '9876543210', otp: '1234', type: 'auth', role: 'driver', autoRead: false },
+      expect.objectContaining({ attempts: 3 })
+    )
+  })
+
+  it('passes along that the app can auto-read, so the worker can pick the Android SMS layout', async () => {
+    await requestOtp('9876543210', 'user', 'login', true)
+    expect(notificationsQueue.add).toHaveBeenCalledWith(
+      'otp_sms',
+      { phone: '9876543210', otp: '1234', type: 'auth', role: 'user', autoRead: true },
       expect.objectContaining({ attempts: 3 })
     )
   })

@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.ocar.smsretriever'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.smsretriever"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  // Google's SMS Retriever API: reads ONE verification SMS addressed to this app (by its hash) with no READ_SMS permission and no prompt.
+  implementation "com.google.android.gms:play-services-auth-api-phone:18.1.0"
+}

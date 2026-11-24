@@ -109,7 +109,8 @@ async function replaceDriverSession(driverId: bigint, sid: string, ttlSec: numbe
 export async function requestOtp(
   phone: string,
   role: 'user' | 'driver',
-  purpose: 'login'
+  purpose: 'login',
+  autoRead = false
 ): Promise<OtpRequestResult> {
   const principalRole = role === 'user' ? PrincipalRole.USER : PrincipalRole.DRIVER
   const otpPurpose = OtpPurpose.LOGIN
@@ -136,7 +137,7 @@ export async function requestOtp(
   if (!isReviewAccount) {
     await notificationsQueue.add(
       'otp_sms',
-      { phone, otp, type: 'auth' },
+      { phone, otp, type: 'auth', role, autoRead },
       { attempts: 3, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: true, removeOnFail: 50 }
     )
   }

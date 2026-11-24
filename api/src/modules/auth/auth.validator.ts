@@ -8,6 +8,8 @@ export const requestOtpSchema = z.object({
   phone: indianPhone,
   role: z.enum(['user', 'driver']),
   purpose: z.enum(['login']).default('login'),
+  // The app can read an SMS in the Android auto-read layout (see lib/otp-sms.ts). Absent from older apps: they get the usual SMS.
+  autoRead: z.boolean().optional(),
 })
 
 export const verifyOtpSchema = z.object({

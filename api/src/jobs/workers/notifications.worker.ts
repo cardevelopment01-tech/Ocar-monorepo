@@ -1,4 +1,5 @@
 import { Worker } from 'bullmq'
+import { chooseLoginOtpSms } from '@/lib/otp-sms'
 import { QUEUE_NAMES, redisConnection } from '@/jobs/queues'
 import { config } from '@/config'
 import { sendSms } from '@/providers/sms.provider'
@@ -93,6 +94,8 @@ export const notificationsWorker = new Worker(
         phone: string
         otp: string
         type: 'auth' | 'trip_start' | 'trip_end'
+        role?: 'user' | 'driver'
+        autoRead?: boolean
       }
       // The OTP itself is never persisted: notification_logs is long-lived and readable by anyone with DB access.
       const { otp: _otp, ...loggable } = data
@@ -100,12 +103,24 @@ export const notificationsWorker = new Worker(
       if (data.phone) lp.recipientPhone = data.phone
       const logId = await notifService.logNotification(lp)
       try {
-        const slug = data.type === 'trip_start' ? 'otp_trip_start' : data.type === 'trip_end' ? 'otp_trip_end' : 'otp_auth'
-        const { body: message } = await renderTemplate(slug, 'sms', { otp: data.otp })
-        // DLT template 193042 is approved for login OTP wording only — ride
+        // A login OTP is the original wording, or the Android auto-read layout for an app that asked for it (lib/otp-sms.ts).
+        let login = data.type === 'auth' ? chooseLoginOtpSms(data.otp, data.role, data.autoRead, config) : null
+        let slug = login ? login.slug : data.type === 'trip_start' ? 'otp_trip_start' : 'otp_trip_end'
+        let message: string
+        try {
+          ;({ body: message } = await renderTemplate(slug, 'sms', login ? login.context : { otp: data.otp }))
+        } catch (err) {
+          // The auto-read template row missing or switched off must never cost someone their login code: send the original wording.
+          if (!login || login.slug === 'otp_auth') throw err
+          log.warn({ err }, 'otp_auth_retriever template unavailable, sending the original wording')
+          login = chooseLoginOtpSms(data.otp, data.role, false, config)
+          slug = login.slug
+          ;({ body: message } = await renderTemplate(slug, 'sms', login.context))
+        }
+        // DLT templates are approved for login OTP wording only — ride
         // start/end OTPs tell the rider to share the code with their driver,
-        // which this template's "do not share" text would contradict.
-        const templateId = slug === 'otp_auth' ? (config.BULKSMSPLANS_OTP_TEMPLATE_ID || undefined) : undefined
+        // which a login template's "do not share" text would contradict.
+        const templateId = login ? login.templateId : undefined
         const sms = await sendSms(data.phone, message, templateId)
         await notifService.markSent(logId, sms)
       } catch (err) {

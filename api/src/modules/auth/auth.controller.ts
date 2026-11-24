@@ -13,7 +13,7 @@ export async function requestOtp(req: Request, res: Response, next: NextFunction
       role: 'user' | 'driver'
       purpose: 'login'
     }
-    const result = await authService.requestOtp(phone, role, purpose)
+    const result = await authService.requestOtp(phone, role, purpose, (req.body as { autoRead?: boolean }).autoRead === true)
     // Return OTP in non-production so tests and development work without SMS.
     // DEMO_MODE must never override this in a real production deployment —
     // it only widens the leak within non-production environments (e.g. a
