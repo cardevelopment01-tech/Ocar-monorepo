@@ -46,3 +46,45 @@ export function handledBy(a: Pick<SosAlert, 'status' | 'acknowledged_by_email' |
   }
   return a.acknowledged_by_email ? `Acknowledged by ${a.acknowledged_by_email}` : ''
 }
+
+/** "04:12" / "1:02:05": a live stopwatch for an alert nobody has picked up yet. */
+export function waitingClock(iso: string, now: number = Date.now()): string {
+  const s = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000))
+  const h = Math.floor(s / 3600)
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(h > 0 ? 2 : 1, '0')
+  const ss = String(s % 60).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+}
+
+/** How late an unacknowledged alert is: ok under a minute (the target), late to five minutes (the server then pages every admin), overdue after. */
+export const ACK_TARGET_MS = 60_000
+export const ACK_OVERDUE_MS = 5 * 60_000
+export function waitingTone(iso: string, now: number = Date.now()): 'ok' | 'late' | 'overdue' {
+  const ms = now - new Date(iso).getTime()
+  return ms >= ACK_OVERDUE_MS ? 'overdue' : ms >= ACK_TARGET_MS ? 'late' : 'ok'
+}
+
+/** Alerts in `current` the page has not announced yet. The first load only records what is already there, so opening the page never sounds the alarm for old alerts. */
+export function unannounced(seen: Set<string> | null, current: { id: string; status: string }[]): { ids: string[]; seen: Set<string> } {
+  const next = new Set(seen ?? [])
+  const fresh = current.filter(a => a.status === 'triggered' && !next.has(a.id)).map(a => a.id)
+  for (const a of current) next.add(a.id)
+  return { ids: seen === null ? [] : fresh, seen: next }
+}
+
+export type SosFilter = 'all' | 'active' | 'resolved' | 'false_alarm'
+export const SOS_FILTERS: { key: SosFilter; label: string }[] = [
+  { key: 'all', label: 'All' }, { key: 'active', label: 'Open' }, { key: 'resolved', label: 'Resolved' }, { key: 'false_alarm', label: 'False alarms' },
+]
+
+export type TimelineEntry = { at: string; text: string; tone: 'danger' | 'info' | 'success' }
+/** The alert's own story, oldest first, from the stamps on the alert. */
+export function timeline(a: Pick<SosAlert, 'created_at' | 'acknowledged_at' | 'acknowledged_by_email' | 'resolved_at' | 'resolved_by_email' | 'status' | 'resolution_note' | 'triggered_by_driver'>): TimelineEntry[] {
+  const out: TimelineEntry[] = [{ at: a.created_at, text: a.triggered_by_driver ? 'Driver pressed SOS' : 'Rider pressed SOS', tone: 'danger' }]
+  if (a.acknowledged_at) out.push({ at: a.acknowledged_at, text: `Acknowledged${a.acknowledged_by_email ? ` by ${a.acknowledged_by_email}` : ''}`, tone: 'info' })
+  if (a.resolved_at) {
+    const verb = a.status === 'false_alarm' ? 'Dismissed as a false alarm' : 'Resolved'
+    out.push({ at: a.resolved_at, text: `${verb}${a.resolved_by_email ? ` by ${a.resolved_by_email}` : ''}${a.resolution_note ? `: ${a.resolution_note}` : ''}`, tone: 'success' })
+  }
+  return out
+}

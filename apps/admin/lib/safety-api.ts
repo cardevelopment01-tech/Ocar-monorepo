@@ -28,6 +28,18 @@ export type SosAlert = {
 /** Whole-table totals by status, from the server (not counted from the rows on screen). */
 export type SosCounts = Record<'triggered' | 'acknowledged' | 'responding' | 'resolved' | 'false_alarm', number>
 
+export type SosDetail = SosAlert & {
+  ride_status: string
+  pickup_lat: number | null
+  pickup_lng: number | null
+  rider_name: string | null
+  rider_phone: string | null
+  number_plate: string | null
+  vehicle_name: string | null
+  previous_alerts: number
+  trail: { lat: number; lng: number; recorded_at: string; speed_kmph: number | null }[]
+}
+
 export type Dispute = {
   id: string
   ride_id: string
@@ -77,6 +89,9 @@ export const safetyApi = {
   // status: 'active' = every still-open alert; or one exact status.
   getSosAlerts: (params?: { status?: string; limit?: number; offset?: number }) =>
     api.get<{ alerts: SosAlert[]; total: number; counts: SosCounts }>('/api/v1/admin/safety/sos', { params }).then(r => r.data),
+
+  getSosDetail: (id: string) =>
+    api.get<SosDetail>(`/api/v1/admin/safety/sos/${id}`).then(r => r.data),
 
   acknowledgeSos: (id: string) =>
     api.patch<SosAlert>(`/api/v1/admin/safety/sos/${id}/acknowledge`).then(r => r.data),
