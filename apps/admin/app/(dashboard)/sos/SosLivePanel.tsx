@@ -5,7 +5,8 @@ import { Map as GoogleMap, AdvancedMarker, Polyline, useMap } from '@vis.gl/reac
 import { Phone, Car, History, ExternalLink, MapPinOff, X, LocateFixed, WifiOff } from 'lucide-react'
 import { safetyApi, type SosDetail } from '@/lib/safety-api'
 import { extractErrorMessage } from '@/lib/http-errors'
-import { ACTIVE_STATUSES, LIVE_REFRESH_MS, absoluteTime, hasLocation, signalState, timeline, waitingClock } from '@/lib/sos-model'
+import { getAdminSocket } from '@/lib/socket'
+import { ACTIVE_STATUSES, LIVE_POINTS_MAX, LIVE_REFRESH_MS, absoluteTime, hasLocation, liveEventFor, mergeTrail, signalState, timeline, waitingClock, type LivePoint } from '@/lib/sos-model'
 
 const FALLBACK_CENTER = { lat: 20.2961, lng: 85.8245 }
 const TONE = { danger: 'bg-danger', info: 'bg-primary', success: 'bg-success' } as const
@@ -61,6 +62,9 @@ export default function SosLivePanel({ id, busy, onClose, onAcknowledge, onResol
   const [error, setError] = useState<string | null>(null)
   const [refreshFailed, setRefreshFailed] = useState(false)
   const [follow, setFollow] = useState(true)
+  const [live, setLive] = useState<LivePoint[]>([])
+  const lastLiveAt = useRef(0)
+  const rideIdRef = useRef<string | null>(null)
   const [, setTick] = useState(0)
   const latest = useRef(0)
   const openNow = useRef(true)
@@ -86,15 +90,52 @@ export default function SosLivePanel({ id, busy, onClose, onAcknowledge, onResol
     setDetail(null)
     setError(null)
     setFollow(true)
+    setLive([])
+    lastLiveAt.current = 0
+    rideIdRef.current = null
     openNow.current = true
     void read()
-    const poll = setInterval(() => { if (openNow.current && !document.hidden) void read() }, LIVE_REFRESH_MS)
+    // While live positions are arriving over the socket the detail is only re-read now and then (status, timeline, who acknowledged);
+    // when the socket is quiet it is read every few seconds, so the position still moves.
+    let skipped = 0
+    const poll = setInterval(() => {
+      if (!openNow.current || document.hidden) return
+      if (Date.now() - lastLiveAt.current < 10_000 && ++skipped < 6) return
+      skipped = 0
+      void read()
+    }, LIVE_REFRESH_MS)
     const clock = setInterval(() => setTick(t => t + 1), 1_000)
     return () => { clearInterval(poll); clearInterval(clock); latest.current++ }
   }, [id, read])
 
+  // Real time: once the alert's ride is known, join that ride's room (admins may) and draw each position as it is sent. Only the ride
+  // being watched is joined; leaving on switch/close/unmount means nothing is received for any other ride.
+  const rideId = detail?.ride_id ?? null
+  const isOpen = !!detail && ACTIVE_STATUSES.has(detail.status)
+  useEffect(() => {
+    if (!rideId || !isOpen) return
+    rideIdRef.current = rideId
+    const socket = getAdminSocket()
+    const join = () => socket.emit('join:ride', rideId)
+    const onLocation = (e: { rideId?: unknown; lat?: unknown; lng?: unknown; speed_kmph?: unknown }) => {
+      const p = liveEventFor(rideIdRef.current, e)
+      if (!p) return
+      lastLiveAt.current = p.at
+      setLive(prev => [...prev, p].slice(-LIVE_POINTS_MAX))
+    }
+    join()
+    socket.on('connect', join) // a reconnect starts with no rooms: join again
+    socket.on('driver:location', onLocation)
+    return () => {
+      rideIdRef.current = null
+      socket.off('connect', join)
+      socket.off('driver:location', onLocation)
+      socket.emit('leave:ride', rideId)
+    }
+  }, [rideId, isOpen])
+
   const sos = detail
-  const trail = sos?.trail ?? []
+  const trail = mergeTrail(sos?.trail ?? [], live)
   const last = trail[trail.length - 1]
   const point = sos && hasLocation(sos) ? { lat: parseFloat(sos.location_lat!), lng: parseFloat(sos.location_lng!) } : null
   const car = last ? { lat: last.lat, lng: last.lng } : null

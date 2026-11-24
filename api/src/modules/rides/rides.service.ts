@@ -594,6 +594,8 @@ export async function updateLocation(driverId: bigint, data: {
 
   const current = { lat: data.lat, lng: data.lng }
   socketEvents.sendDriverLocation(rideId, {
+    // Which ride this is, so a listener that moves between ride rooms (the admin SOS view) can drop a late event from the one it left.
+    rideId:     String(rideId),
     lat:        current.lat,
     lng:        current.lng,
     heading:    heading ?? 0,

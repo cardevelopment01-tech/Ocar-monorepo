@@ -104,3 +104,21 @@ export function signalState(lastIso: string | null | undefined, now: number = Da
 
 /** How often the open alert's detail is re-read while the alert is still open. */
 export const LIVE_REFRESH_MS = 5_000
+
+export type TrailPoint = { lat: number; lng: number; recorded_at: string; speed_kmph: number | null }
+export type LivePoint = { lat: number; lng: number; speed_kmph: number | null; at: number }
+export const LIVE_POINTS_MAX = 120
+
+/** The server's trail plus the live points that arrived after its last ping, oldest first. Live points the server trail has caught up with are dropped. */
+export function mergeTrail(trail: TrailPoint[], live: LivePoint[]): TrailPoint[] {
+  const lastServer = trail.length > 0 ? new Date(trail[trail.length - 1]!.recorded_at).getTime() : -Infinity
+  const extra = live.filter(p => p.at > lastServer).map(p => ({ lat: p.lat, lng: p.lng, recorded_at: new Date(p.at).toISOString(), speed_kmph: p.speed_kmph }))
+  return [...trail, ...extra]
+}
+
+/** A live event is only for the ride being watched: events from a room just left can still arrive, and must never be drawn on the next alert. */
+export function liveEventFor(rideId: string | null, e: { rideId?: unknown; lat?: unknown; lng?: unknown; speed_kmph?: unknown }, now: number = Date.now()): LivePoint | null {
+  if (!rideId || String(e.rideId) !== rideId) return null
+  if (typeof e.lat !== 'number' || typeof e.lng !== 'number' || !Number.isFinite(e.lat) || !Number.isFinite(e.lng)) return null
+  return { lat: e.lat, lng: e.lng, speed_kmph: typeof e.speed_kmph === 'number' && e.speed_kmph > 0 ? e.speed_kmph : null, at: now }
+}
