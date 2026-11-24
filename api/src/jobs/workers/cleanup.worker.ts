@@ -23,6 +23,7 @@ import {
   SESSION_POSITION_HARD_LIMIT_SECONDS,
 } from '@/constants/limits'
 import { createWorkerLogger } from '@/lib/worker-logger'
+import { alertSilentDrivers } from '@/modules/rides/silent-drivers'
 
 const log = createWorkerLogger('cleanup')
 
@@ -47,6 +48,9 @@ export const cleanupWorker = new Worker(
         socketEvents.sendStuckRideFlagged(ride.id, { reason: 'gps_stale' })
       }
     }
+
+    // Page ops (and nudge the driver) as soon as an on-trip driver's GPS goes quiet, well before the 10-minute flag above.
+    await alertSilentDrivers().catch((err: unknown) => log.error({ err }, 'silent-driver alerts failed'))
 
     // Orphaned rides that never reached in_progress at all — broadcast job
     // died mid-flight, or driver accepted/arrived and the flow was

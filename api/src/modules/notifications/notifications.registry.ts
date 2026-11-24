@@ -49,6 +49,9 @@ export const NOTIFICATION_TYPES = {
   // ── Ride lifecycle (driver) ──
   ride_manual_request: { channelId: 'ride_requests_v2', ttlSeconds: 30, collapse: 'ride_type' },
   ride_force_assigned: { channelId: 'ride_updates_v1', ttlSeconds: 60, collapse: 'ride_type' },
+  // Visible nudge when the driver's GPS goes silent mid-trip. Short life on purpose: a phone with no signal would get it late, after
+  // tracking is already back, and "location stopped" would then be wrong.
+  location_paused:   { channelId: 'ride_updates_v1', ttlSeconds: 180, collapse: 'type' },
   stop_added:        { channelId: 'ride_updates_v1', ttlSeconds: 1800, collapse: 'ride_type' },
   pickup_updated:    { channelId: 'ride_updates_v1', ttlSeconds: 1800, collapse: 'ride_type' },
   // ── Safety ──
