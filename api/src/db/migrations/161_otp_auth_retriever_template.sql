@@ -1,4 +1,4 @@
--- 160_otp_auth_retriever_template.sql
+-- 161_otp_auth_retriever_template.sql
 -- Login OTP in the Android auto-read (SMS Retriever) layout: the code first, the app's 11-character hash alone on the last line
 -- ({{appHash}}, from ANDROID_SMS_HASH_RIDER / ANDROID_SMS_HASH_DRIVER). This exact wording has to be registered as a new DLT template
 -- (with the code and the hash as the two variables) and its id set in BULKSMSPLANS_OTP_AUTOREAD_TEMPLATE_ID; until then the server keeps

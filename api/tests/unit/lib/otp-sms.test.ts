@@ -37,7 +37,7 @@ describe('chooseLoginOtpSms', () => {
 
   it('the rendered auto-read message is under the 140 byte limit and ends with the hash on its own line', () => {
     // The real wording, read from the migration that inserts it, with a full-length code and hash.
-    const sql = readFileSync(join(__dirname, '../../../src/db/migrations/160_otp_auth_retriever_template.sql'), 'utf8')
+    const sql = readFileSync(join(__dirname, '../../../src/db/migrations/161_otp_auth_retriever_template.sql'), 'utf8')
     const template = /E'(<#>[^']*)'/.exec(sql)![1]!.replace('\\n', '\n')
     const body = template.replace('{{otp}}', '123456').replace('{{appHash}}', 'RiderHash+/1')
     expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(140)
