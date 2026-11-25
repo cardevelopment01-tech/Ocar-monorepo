@@ -1,34 +1,23 @@
 import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import { pool } from '@/db/client'
-import type { AuditLogJobData } from '@/lib/audit-log'
+import { insertAuditRow, type AuditLogJobData } from '@/lib/audit-log'
 import { createWorkerLogger } from '@/lib/worker-logger'
+import { auditWriteFailuresTotal } from '@/observability/metrics'
 
 const log = createWorkerLogger('audit')
 
+// Only the fallback path: recordAuditLog() inserts directly and queues a row here when that insert failed.
 export const auditWorker = new Worker(
   QUEUE_NAMES.AUDIT,
   async job => {
-    const data = job.data as AuditLogJobData
-    await pool.query(
-      `INSERT INTO admin_audit_log
-         (admin_id, action, target_table, target_id, before_state, after_state, ip_address, reason)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        data.adminId,
-        data.action,
-        data.targetTable,
-        data.targetId,
-        data.beforeState ? JSON.stringify(data.beforeState) : null,
-        data.afterState ? JSON.stringify(data.afterState) : null,
-        data.ipAddress,
-        data.reason,
-      ]
-    )
+    await insertAuditRow(pool, job.data as AuditLogJobData)
   },
   { connection: redisConnection }
 )
 
 auditWorker.on('failed', (job, err) => {
-  log.error({ err, jobId: job?.id }, 'audit job failed')
+  const final = job !== undefined && job.attemptsMade >= (job.opts.attempts ?? 1)
+  if (final) auditWriteFailuresTotal.inc({ stage: 'queue' })
+  log.error({ err, jobId: job?.id, final }, 'audit job failed')
 })

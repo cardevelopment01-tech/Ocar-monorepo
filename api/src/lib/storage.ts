@@ -55,6 +55,11 @@ export async function uploadPublicImage(body: Buffer, contentType: 'image/jpeg' 
   return `${publicImageBaseUrl()}/${key}`
 }
 
+/** Writes one object to the private documents bucket at an exact key (used for the nightly audit-log archive). */
+export async function putPrivateObject(key: string, body: Buffer, contentType: string): Promise<void> {
+  await s3.send(new PutObjectCommand({ Bucket: config.S3_BUCKET_NAME, Key: key, Body: body, ContentType: contentType }))
+}
+
 export function extractS3Key(url: string): string | null {
   return url.match(S3_URL_PATTERN)?.[1] ?? null
 }

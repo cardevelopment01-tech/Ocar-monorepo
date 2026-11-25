@@ -2,6 +2,28 @@ import { Request, Response, NextFunction } from 'express'
 import * as authService from './auth.service'
 import * as repo from './auth.repository'
 import { logSecurityEvent, phoneTail, errorCode } from '@/observability/security-events'
+import { recordAuditLog } from '@/lib/audit-log'
+
+// Admin sign-ins are security events the audit page must show: who, from where, and every refused attempt.
+async function auditAdminAuth(
+  req: Request, action: string, outcome: 'success' | 'failure', adminId: bigint | null,
+  extra: Record<string, unknown> = {}, lookupEmail?: string,
+): Promise<void> {
+  try {
+    let id = adminId
+    if (id === null && lookupEmail) {
+      const row = await repo.findAdminByEmail(lookupEmail)
+      if (row) id = BigInt(row.id)
+    }
+    await recordAuditLog({
+      adminId: id, action, targetTable: 'admins', targetId: id, outcome, source: 'auth',
+      afterState: extra, ipAddress: req.ip ?? null, requestId: req.requestId,
+      userAgent: (req.headers?.['user-agent'] as string | undefined) ?? null,
+    })
+  } catch {
+    // A sign-in must never fail because its audit row could not be written.
+  }
+}
 
 // Every handler below writes one security-event line per outcome (observability/security-events.ts). Failures are
 // logged before next(err) so the error response and the event share a request id.
@@ -59,10 +81,13 @@ export async function adminLogin(req: Request, res: Response, next: NextFunction
       admin_email: email,
       totp_required: pending,
     })
+    const id = pending ? null : BigInt((result as { admin: { id: string | number | bigint } }).admin.id)
+    await auditAdminAuth(req, 'auth.admin.login', 'success', id, { email, totp_required: pending }, pending ? email : undefined)
     res.status(200).json(result)
   } catch (err) {
     const email = (req.body as { email?: unknown } | undefined)?.email
     logSecurityEvent(req, 'auth.admin.login', 'failure', { role: 'admin', admin_email: typeof email === 'string' ? email : undefined, code: errorCode(err) })
+    await auditAdminAuth(req, 'auth.admin.login', 'failure', null, { email: typeof email === 'string' ? email.slice(0, 200) : null, code: errorCode(err) }, typeof email === 'string' ? email : undefined)
     next(err)
   }
 }
@@ -72,9 +97,11 @@ export async function adminTotpVerify(req: Request, res: Response, next: NextFun
     const { pendingToken, code } = req.body as { pendingToken: string; code: string }
     const result = await authService.verifyAdminTotp(pendingToken, code, req.ip ?? null)
     logSecurityEvent(req, 'auth.admin.totp', 'success', { role: 'admin', actor_id: String(result.admin.id) })
+    await auditAdminAuth(req, 'auth.admin.totp', 'success', BigInt(result.admin.id))
     res.status(200).json(result)
   } catch (err) {
     logSecurityEvent(req, 'auth.admin.totp', 'failure', { role: 'admin', code: errorCode(err) })
+    await auditAdminAuth(req, 'auth.admin.totp', 'failure', null, { code: errorCode(err) })
     next(err)
   }
 }

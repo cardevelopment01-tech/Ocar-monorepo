@@ -1088,8 +1088,17 @@ export async function adjustDriverPackageBalance(driverId: bigint, amount: numbe
   if (!reason || !reason.trim()) throw createHttpError(AppErrors.VALIDATION_ERROR)
   if (isNaN(amount) || amount === 0) throw createHttpError(AppErrors.VALIDATION_ERROR)
   const { adjustPackageBalance } = await import('@/modules/packages/packages.service')
+  const before = await repo.getDriverPackageWallet(driverId)
   await adjustPackageBalance(driverId, amount, reason, adminId)
-  return repo.getDriverPackageWallet(driverId)
+  const after = await repo.getDriverPackageWallet(driverId)
+  // Money moved by hand: keep the wallet before and after, the amount and the admin's stated reason.
+  await recordAuditLog({
+    adminId, action: 'drivers.package.balance', targetTable: 'drivers', targetId: driverId,
+    beforeState: before as unknown as Record<string, unknown> | null,
+    afterState: { ...(after as unknown as Record<string, unknown> | null), adjustment: amount },
+    reason,
+  })
+  return after
 }
 
 export async function getDashboardStats() {

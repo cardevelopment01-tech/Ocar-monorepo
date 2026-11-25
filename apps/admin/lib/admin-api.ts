@@ -144,6 +144,9 @@ export interface DriverAuditLogEntry {
   after_state: Record<string, unknown> | null
   ip_address: string | null
   reason: string | null
+  outcome?: 'success' | 'failure' | 'denied'
+  summary?: string | null
+  occurred_at?: string
   created_at: string
 }
 

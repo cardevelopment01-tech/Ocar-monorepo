@@ -220,6 +220,9 @@ for exact allow-listed shapes (`{json}|<date>|` strings can never equal a key-pr
 `system_config.mobile_payments_enabled` (`'true'` to enable; default off). Test builds must not talk to live PayU:
 `EXPO_PUBLIC_PAYU_ENV` is set per EAS profile and the app refuses a mismatching server `environment`.
 
+### Admin audit trail
+Every admin write is audited: `middleware/admin-activity.middleware.ts` records any `/admin/*` POST/PUT/PATCH/DELETE a handler did not audit itself, and handlers that know before/after state call `recordAuditLog()` (`lib/audit-log.ts`, pass `client` to write in the same transaction). `admin_audit_log` is append-only and hash-chained by trigger (migration 162): never UPDATE/DELETE/TRUNCATE it, never edit a migration that touches it, and put any new secret-looking field name in `lib/audit-redact.ts` (rows cannot be redacted later). See `docs/OPS_RUNBOOK.md` "Admin audit trail".
+
 ### `exactOptionalPropertyTypes: true`
 Cannot pass `field: value | undefined` where `field?: value` is expected.
 **Pattern:** build the object first, then conditionally set optional fields:

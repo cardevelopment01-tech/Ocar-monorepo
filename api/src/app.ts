@@ -20,6 +20,7 @@ import authRouter from '@/modules/auth/auth.routes'
 import driversRouter from '@/modules/drivers/drivers.routes'
 import vehiclesRouter from '@/modules/vehicles/vehicles.routes'
 import adminRouter from '@/modules/admin/admin.routes'
+import { adminActivity } from '@/middleware/admin-activity.middleware'
 import geoRouter from '@/modules/geo/geo.routes'
 import pricingRouter from '@/modules/pricing/pricing.routes'
 import ridesRouter from '@/modules/rides/rides.routes'
@@ -170,6 +171,8 @@ export function createApp(): Application {
   apiRouter.use('/auth', authRouter) // per-route auth limiters live in auth.routes.ts
   apiRouter.use('/drivers', driversRouter)
   apiRouter.use('/vehicles', vehiclesRouter)
+  // Opens the audit context and records every admin write the handlers don't audit themselves (see middleware).
+  apiRouter.use('/admin', adminActivity)
   // Registered before '/admin' — admin.routes.ts applies authenticate() to
   // every request under '/admin' via router.use(), which would otherwise
   // 401 the public POST /admin/invites/redeem route before it's ever reached.
