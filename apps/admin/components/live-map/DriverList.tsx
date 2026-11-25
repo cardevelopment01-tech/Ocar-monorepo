@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { Search } from 'lucide-react'
 import type { ActiveDriverSession } from '@/lib/admin-api'
 import { STAGES, STAGE_META, type Stage, type StageFilter } from '@/lib/live-map-model'
@@ -49,34 +50,41 @@ export function DriverList({ rows, total, counts, query, onQuery, filter, onFilt
         {rows.length === 0 && (
           <li className="p-4 text-sm text-text-muted">{total === 0 ? 'No drivers are online.' : 'No driver matches.'}</li>
         )}
-        {rows.map(({ d, stage }) => {
-          const meta = STAGE_META[stage]
-          return (
-            <li key={d.driver_id}>
-              <button
-                type="button"
-                onClick={() => onSelect(d.driver_id)}
-                aria-current={selectedId === d.driver_id}
-                className={cn('flex w-full items-start gap-2.5 border-b border-border px-3 py-2.5 text-left hover:bg-surface-2', selectedId === d.driver_id && 'bg-surface-2')}
-              >
-                <span className="mt-1.5 h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ background: meta.color }} aria-hidden />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-text-primary">{d.driver_name ?? 'Driver'}</span>
-                  <span className="block truncate text-xs text-text-muted">
-                    {meta.label}
-                    {stage === 'no_location' ? ` · last seen ${ago(d.location_updated_at, nowMs) || 'a long time ago'}` : ''}
-                    {d.ride_id ? ` · ride ${d.ride_id}` : ''}
-                    {d.number_plate ? ` · ${d.number_plate}` : ''}
-                  </span>
-                </span>
-              </button>
-            </li>
-          )
-        })}
+        {rows.map(({ d, stage }) => (
+          <Row key={d.driver_id} d={d} stage={stage} selected={selectedId === d.driver_id} nowMs={stage === 'no_location' ? nowMs : 0} onSelect={onSelect} />
+        ))}
       </ul>
     </aside>
   )
 }
+
+// One row. Memoized: a flush re-renders the list, and only the rows whose driver changed (or whose "last seen" clock ticked) should redraw.
+// `nowMs` is passed only to rows that show it, so the clock tick leaves the others alone. `content-visibility: auto` makes the browser skip
+// layout and paint for rows scrolled out of view.
+const Row = memo(function Row({ d, stage, selected, nowMs, onSelect }: { d: ActiveDriverSession; stage: Stage; selected: boolean; nowMs: number; onSelect: (driverId: string) => void }) {
+  const meta = STAGE_META[stage]
+  return (
+    <li style={{ contentVisibility: 'auto', containIntrinsicSize: '0 57px' }}>
+      <button
+        type="button"
+        onClick={() => onSelect(d.driver_id)}
+        aria-current={selected}
+        className={cn('flex w-full items-start gap-2.5 border-b border-border px-3 py-2.5 text-left hover:bg-surface-2', selected && 'bg-surface-2')}
+      >
+        <span className="mt-1.5 h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ background: meta.color }} aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-text-primary">{d.driver_name ?? 'Driver'}</span>
+          <span className="block truncate text-xs text-text-muted">
+            {meta.label}
+            {stage === 'no_location' ? ` · last seen ${ago(d.location_updated_at, nowMs) || 'a long time ago'}` : ''}
+            {d.ride_id ? ` · ride ${d.ride_id}` : ''}
+            {d.number_plate ? ` · ${d.number_plate}` : ''}
+          </span>
+        </span>
+      </button>
+    </li>
+  )
+})
 
 function Chip({ label, active, onClick, color }: { label: string; active: boolean; onClick: () => void; color?: string }) {
   return (
