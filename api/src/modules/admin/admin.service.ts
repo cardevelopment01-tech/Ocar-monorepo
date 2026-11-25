@@ -602,6 +602,9 @@ export async function createAdminRateCard(data: Parameters<typeof repo.createAdm
   if (data.pickupWaitPerMin !== undefined && (!Number.isFinite(data.pickupWaitPerMin) || data.pickupWaitPerMin < 0 || data.pickupWaitPerMin > 999)) {
     throw createHttpError(AppErrors.VALIDATION_ERROR)
   }
+  if (data.nightAllowancePerNight !== undefined && (!Number.isFinite(data.nightAllowancePerNight) || data.nightAllowancePerNight < 0 || data.nightAllowancePerNight > 99999)) {
+    throw createHttpError(AppErrors.VALIDATION_ERROR)
+  }
   if (data.baseFare !== undefined && (!Number.isFinite(data.baseFare) || data.baseFare < 0 || data.baseFare > 99999)) {
     throw createHttpError(AppErrors.VALIDATION_ERROR)
   }

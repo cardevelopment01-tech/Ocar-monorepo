@@ -52,6 +52,8 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
 
   // An airport toll is part of the cash the driver collects and is paid on to them, not taken as commission.
   const tollFare = ride.tollCharge != null ? parseFloat(ride.tollCharge) : 0
+  // The night allowance (11 PM to 6 AM) is the same: part of the cash collected, paid on to the driver, no commission.
+  const nightFare = ride.nightAllowance != null ? parseFloat(ride.nightAllowance) : 0
 
   return (
     <View style={styles.wrap}>
@@ -113,6 +115,12 @@ export function TripCompletionCard({ ride, collectedCash, driverRating, onBackTo
             // Already inside the fare above: a caption, not another amount to add up.
             <Text style={styles.overtimeNote}>
               Airport toll · {fmt(tollFare)} · paid to you, no commission
+            </Text>
+          ) : null}
+          {nightFare > 0 ? (
+            // Already inside the fare above: a caption, not another amount to add up.
+            <Text style={styles.overtimeNote}>
+              Night allowance · {ride.nightCount ?? 1} {(ride.nightCount ?? 1) === 1 ? 'night' : 'nights'} · {fmt(nightFare)} · paid to you, no commission
             </Text>
           ) : null}
           {pickupWaitFare > 0 && !rentalLines ? (

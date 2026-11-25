@@ -25,7 +25,7 @@ type InvoiceSource = Pick<RideDetail,
   'baseFare' | 'distanceFare' | 'timeFare' | 'stopFare' | 'hourSurcharge' | 'overageFare' | 'surgeFare' |
   'surgeMultiplier' | 'actualKm' | 'actualMin' | 'totalFinal' | 'totalEstimated'> &
   Partial<Pick<RideDetail, 'tripHours' | 'waitingFare' | 'overtimeMin' | 'overtimeFare' | 'overtimeGraceMin' | 'discountAmount' |
-    'pickupWaitMin' | 'pickupFreeWaitMin' | 'pickupWaitCharge' | 'tollCharge' | 'tollDetail' | 'stops' |
+    'pickupWaitMin' | 'pickupFreeWaitMin' | 'pickupWaitCharge' | 'tollCharge' | 'tollDetail' | 'nightAllowance' | 'nightCount' | 'stops' |
     'rideType' | 'overageKm' | 'overageMin' | 'rentalExtraPerKm' | 'rentalExtraPerMin' | 'rentalKmLimit' | 'rentalDurationMinutes'>>
 
 // Only components that were actually charged (> 0), each labelled with its quantity. If the
@@ -51,9 +51,11 @@ export function buildInvoiceRows(r: InvoiceSource): { rows: InvoiceRow[]; total:
   const below: InvoiceRow[] = [
     { key: 'toll', label: 'Airport toll', ...(r.tollDetail?.length && { detail: r.tollDetail.map((t) => t.zone).join(', ') }), amount: num(r.tollCharge) },
     ...(rental ? rental.filter((x) => x.key !== 'package') : []),
+    { key: 'overtime', label: 'Extra time', detail: `${num(r.overtimeMin)} min${grace ? `, after ${grace} free minutes` : ''}`, amount: overtime },
     // Round trips: the driver's per-day allowance. Not surged on this line; the surge on it stays inside Ride fare.
     { key: 'allowance', label: 'Driver allowance', amount: num(r.hourSurcharge) },
-    { key: 'overtime', label: 'Extra time', detail: `${num(r.overtimeMin)} min${grace ? `, after ${grace} free minutes` : ''}`, amount: overtime },
+    // One-way (Return Cab included) and round trips driven between 11 PM and 6 AM: a flat amount for every night, not surged.
+    { key: 'night', label: 'Night allowance', ...(num(r.nightCount) > 0 && { detail: `${num(r.nightCount)} ${num(r.nightCount) === 1 ? 'night' : 'nights'} × ${formatMoney(num(r.nightAllowance) / num(r.nightCount))}` }), amount: num(r.nightAllowance) },
   ].filter((c) => c.amount > 0).map((c) => ({ ...c, amount: r2(c.amount) }))
 
   const stops = r.stops ?? []

@@ -73,6 +73,20 @@ describe('receipt fare rows', () => {
     expect(sum(daily.rows)).toBe(daily.payable)
   })
 
+  it('a night allowance is listed last, below the Ride fare, with its nights and rate, and everything still adds up', () => {
+    const ride = { ...F.ROUND_DAILY, total_final: '6112', night_allowance: '300', night_count: 1 } // 5812 + 300
+    const { rows, payable } = buildFareRows(ride, [])
+    expect(rows.map((r) => [r.label, r.amount])).toEqual([['Ride fare', 4792], ['Airport toll', 220], ['Driver allowance', 800], ['Night allowance', 300]])
+    expect(rows.at(-1)?.detail).toBe('1 night × ₹300')
+    expect(sum(rows)).toBe(payable)
+  })
+
+  it('two nights read "2 nights", and a ride with none shows no night line', () => {
+    const two = buildFareRows({ ...F.ROUND_DAILY, total_final: '6412', night_allowance: '600', night_count: 2 }, [])
+    expect(two.rows.at(-1)).toMatchObject({ label: 'Night allowance', amount: 600, detail: '2 nights × ₹300' })
+    expect(buildFareRows(F.ROUND_DAILY, []).rows.some((r) => r.label === 'Night allowance')).toBe(false)
+  })
+
   it('whatever the settled total is, the Ride fare takes it up, so the rows always match it', () => {
     for (const total of ['230', '217.4', '150']) {
       const { rows, payable } = buildFareRows({ ...F.CITY_RIDE, total_final: total }, [])

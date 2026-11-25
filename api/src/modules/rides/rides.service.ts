@@ -63,6 +63,7 @@ import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowW
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
+import { nightAllowanceFor } from '@/lib/night-allowance'
 import { calculateFare, isHourlyRoundTrip, pickupWaitCharge, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
 import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { insertGpsTracks } from '@/modules/geo/geo.repository'
@@ -1351,6 +1352,24 @@ async function settleToll(rideId: bigint): Promise<number> {
     return total
   } catch (err) {
     log.error({ err, rideId }, 'airport toll not settled')
+    return 0
+  }
+}
+
+// The night allowance for a finished ride: the rate on the card the ride was quoted on, once for every night (11 PM to 6 AM IST) the trip was
+// really driven in, from when it started to when it ended. One-way (which includes Return Cab) and round trip in standard mode only; 0
+// everywhere else, and 0 on any ride whose card has no allowance (every ride booked before it existed). Recorded on the ride and returned so
+// the caller can add it to the final fare. Never fails a completion: an error charges nothing and is logged.
+async function settleNightAllowance(rideId: bigint, endedAt: Date = new Date()): Promise<number> {
+  try {
+    const t = await repo.getNightTerms(rideId)
+    if (!t) return 0
+    const { amount, nights } = nightAllowanceFor(t, endedAt)
+    if (nights === 0) return 0
+    await repo.recordNightAllowance(rideId, amount, nights)
+    return amount
+  } catch (err) {
+    log.error({ err, rideId }, 'night allowance not settled')
     return 0
   }
 }
@@ -2775,7 +2794,7 @@ export async function forceResolveRide(
     try {
       const wait = ride.ride_type === 'one_way' ? await repo.getStopWaitTotal(rideId) : 0
       // The wait at the pickup (recorded when the trip started) and any airport toll are owed on every ride type, however the trip ends.
-      const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId))
+      const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId)) + (await settleNightAllowance(rideId))
       await pool.query(
         `UPDATE fare_snapshots
          SET total_final = round(total_estimated + $2::numeric + $3::numeric, 2),
@@ -3497,7 +3516,7 @@ export async function verifyEndOTP(
 
   // The wait at the pickup (recorded when the trip started) and any airport toll are their own lines on top of whatever was settled above, for every ride
   // type. Single winner: the status CAS above lets only one end-OTP submit reach this point, so it is added exactly once.
-  const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId))
+  const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId)) + (await settleNightAllowance(rideId))
   if (pickupWait > 0) {
     const upd = await pool.query<{ total_final: string }>(
       `UPDATE fare_snapshots

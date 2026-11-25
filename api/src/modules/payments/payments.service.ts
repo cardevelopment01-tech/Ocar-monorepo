@@ -90,7 +90,7 @@ export async function createPaymentRecord(
   await finaliseDiscount(q, rideId)
   const fareRes = await q.query(
     `SELECT fs.id AS fare_snapshot_id,
-            fs.total_final, fs.total_estimated, fs.discount_amount, fs.toll_charge,
+            fs.total_final, fs.total_estimated, fs.discount_amount, fs.toll_charge, fs.night_allowance,
             r.user_id, r.driver_id, r.billing_mode_snapshot
      FROM fare_snapshots fs
      JOIN rides r ON r.id = fs.ride_id
@@ -106,9 +106,9 @@ export async function createPaymentRecord(
   // A ride settled under a driver's prepaid package takes no commission: the package credit is the fee. Recording the percent here would
   // make reports count revenue the platform never earned.
   const commissionPct = fare.billing_mode_snapshot === 'package' ? 0 : await getCommissionPercent()
-  // An airport toll is a pass-through: the rider pays it and it goes on to the driver, so commission is taken on the fare without it.
-  const toll = parseFloat(fare.toll_charge ?? '0')
-  const commissionAmt = Math.round(Math.max(amount - toll, 0) * commissionPct) / 100
+  // An airport toll and the night allowance are pass-throughs: the rider pays them and they go on to the driver, so commission is taken on the fare without them.
+  const passThrough = parseFloat(fare.toll_charge ?? '0') + parseFloat(fare.night_allowance ?? '0')
+  const commissionAmt = Math.round(Math.max(amount - passThrough, 0) * commissionPct) / 100
   const driverEarning = Math.round((amount - commissionAmt) * 100) / 100
 
   const status = opts.status ?? 'completed'

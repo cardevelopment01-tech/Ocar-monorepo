@@ -835,6 +835,8 @@ const RIDE_SELECT_SQL = `SELECT
        fs.pickup_wait_min, fs.pickup_free_wait_min, fs.pickup_wait_per_min, fs.pickup_wait_charge,
        -- Airport toll charged on this ride (0 when none) and the zones it came from.
        fs.toll_charge, fs.toll_detail,
+       -- Night allowance charged on this ride (0 when none) and how many nights it was for.
+       fs.night_allowance, fs.night_count,
        hrc.hour_rate  AS round_trip_hour_rate,
        rc.reason      AS cancellation_reason,
        rc.reason_code AS cancellation_reason_code,
@@ -2389,6 +2391,25 @@ export async function recordToll(rideId: bigint, total: number, detail: Array<{ 
     'UPDATE fare_snapshots SET toll_charge = $2, toll_detail = $3::jsonb WHERE ride_id = $1',
     [rideId, total, JSON.stringify(detail)],
   )
+}
+
+// ── Night allowance ───────────────────────────────────────────
+
+/** What the night allowance needs from a ride: its type and mode, when the trip started, and the rate on the card it was quoted on. */
+export async function getNightTerms(rideId: bigint): Promise<{ ride_type: string; trip_mode: string; started_at: string | null; rate: number } | undefined> {
+  const res = await pool.query<{ ride_type: string; trip_mode: string; started_at: string | null; rate: number }>(
+    `SELECT r.ride_type, r.trip_mode, r.started_at, rc.night_allowance_per_night::float8 AS rate
+       FROM rides r
+       JOIN fare_snapshots fs ON fs.ride_id = r.id
+       JOIN rate_cards rc ON rc.id = fs.rate_card_id
+      WHERE r.id = $1`,
+    [rideId],
+  )
+  return res.rows[0]
+}
+
+export async function recordNightAllowance(rideId: bigint, amount: number, nights: number): Promise<void> {
+  await pool.query('UPDATE fare_snapshots SET night_allowance = $2, night_count = $3 WHERE ride_id = $1', [rideId, amount, nights])
 }
 
 // ── Receipt ───────────────────────────────────────────────────

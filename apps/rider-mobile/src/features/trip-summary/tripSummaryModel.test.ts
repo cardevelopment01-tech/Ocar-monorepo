@@ -77,7 +77,26 @@ describe('buildInvoiceRows: driver allowance', () => {
   })
   it('toll, extra distance, extra time and allowance all sit below the one Ride fare', () => {
     const { rows } = buildInvoiceRows({ ...base, hourSurcharge: '500.00', tollCharge: '40.00', overtimeMin: 10, overtimeFare: 20, totalFinal: '1990.00' })
-    expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Airport toll', 'Driver allowance', 'Extra time'])
+    expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Airport toll', 'Extra time', 'Driver allowance'])
+  })
+})
+
+describe('buildInvoiceRows: night allowance', () => {
+  it('lists the night allowance below the Ride fare with its nights and rate, and the rows add up to the total', () => {
+    const { rows, total } = buildInvoiceRows({ ...base, nightAllowance: '600.00', nightCount: 2, totalFinal: '2030.00' })
+    expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Night allowance'])
+    expect(rows[1]).toMatchObject({ amount: 600, detail: '2 nights × ₹300' })
+    expect(rows[0]!.amount).toBe(1430)
+    expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(total)
+  })
+  it('says "1 night" for one, and shows nothing when there is none', () => {
+    expect(buildInvoiceRows({ ...base, nightAllowance: '300.00', nightCount: 1, totalFinal: '1730.00' }).rows[1]!.detail).toBe('1 night × ₹300')
+    expect(buildInvoiceRows({ ...base, nightAllowance: '0.00', nightCount: 0 }).rows.some((r) => r.key === 'night')).toBe(false)
+    expect(buildInvoiceRows(base).rows.some((r) => r.key === 'night')).toBe(false)
+  })
+  it('sits last, after toll, extra time and driver allowance, in the order the client asked for', () => {
+    const { rows } = buildInvoiceRows({ ...base, tollCharge: '40.00', overtimeMin: 10, overtimeFare: 20, hourSurcharge: '500.00', nightAllowance: '300.00', nightCount: 1, totalFinal: '2290.00' })
+    expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Airport toll', 'Extra time', 'Driver allowance', 'Night allowance'])
   })
 })
 

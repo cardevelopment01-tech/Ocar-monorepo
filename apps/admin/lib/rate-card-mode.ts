@@ -18,6 +18,11 @@ export function isRentalCard(c: CardLike): boolean {
   return c.ride_type === 'rental'
 }
 
+/** Outstation cards only: one-way (Return Cab rides are one-way bookings) and round trip. City rides and rentals never charge it. */
+export function earnsNightAllowanceMode(mode: string): boolean {
+  return mode === 'one_way' || mode === 'round_trip'
+}
+
 export function modeToCardFields(mode: string): { ride_type: string; trip_mode: 'standard' | 'city' } {
   return mode === 'city' ? { ride_type: 'one_way', trip_mode: 'city' } : { ride_type: mode, trip_mode: 'standard' }
 }

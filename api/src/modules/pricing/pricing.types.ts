@@ -10,6 +10,8 @@ export interface RateCard {
   rate_per_min: number
   min_fare: number
   base_fare: number
+  /** Rupees per night driven between 11 PM and 6 AM (one-way and round trip); 0 = off. A numeric string from Postgres. */
+  night_allowance_per_night: string
   return_rate_per_km: number | null
   hour_rate: number | null
   km_per_day: number | null

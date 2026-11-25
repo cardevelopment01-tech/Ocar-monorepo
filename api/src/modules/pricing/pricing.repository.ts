@@ -61,7 +61,7 @@ export async function getAllCurrentRateCards() {
     `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type, rc.trip_mode,
             rc.city_id::int AS city_id, rc.rate_per_km, rc.rate_per_min, rc.min_fare,
             rc.return_rate_per_km, rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day,
-            rc.cancellation_fee, rc.stop_charge, rc.base_fare, rc.effective_from, rc.effective_to, rc.notes,
+            rc.cancellation_fee, rc.stop_charge, rc.base_fare, rc.night_allowance_per_night, rc.effective_from, rc.effective_to, rc.notes,
             rc.created_by::int AS created_by, rc.created_at,
             vc.display_name AS category_name,
             vc.slug AS category_slug,
@@ -316,6 +316,8 @@ export async function createRateCard(data: {
   driverAllowancePerDay?: number | null
   /** Flat fee per added stop. Omitted = carry the previous version's value forward (0 for a brand-new card). */
   stopCharge?: number
+  /** Rupees per night driven between 11 PM and 6 AM. Omitted = carry the previous version's value forward (0 for a brand-new card). */
+  nightAllowancePerNight?: number
   /** Flat base fare added to every fare. Omitted = carry the previous version's value forward (0 for a brand-new card). */
   baseFare?: number
   /** Free minutes and rupees per minute for waiting at the pickup. Omitted = carry the previous version's value forward (3 and 3 for a brand-new card). */
@@ -363,9 +365,9 @@ export async function createRateCard(data: {
       `INSERT INTO rate_cards
          (category_id, ride_type, rate_per_km, rate_per_min,
           min_fare, return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-          city_id, notes, created_by, stop_charge, cancellation_fee, base_fare, trip_mode,
+          city_id, notes, created_by, night_allowance_per_night, stop_charge, cancellation_fee, base_fare, trip_mode,
           pickup_free_wait_min, pickup_wait_per_min)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        RETURNING *`,
       [
         data.categoryId, data.rideType,
@@ -377,6 +379,9 @@ export async function createRateCard(data: {
         data.cityId ?? null,
         data.notes ?? null,
         data.adminId,
+        // Carry-forward for the night allowance (0 = off for a brand-new card). Placed before stop_charge so the parameters counted from the
+        // end (see the stop-charge tests) do not move.
+        data.nightAllowancePerNight ?? Number(expired.rows[0]?.night_allowance_per_night ?? 0),
         // A new version must not silently reset the stop price an admin set earlier.
         data.stopCharge ?? Number(expired.rows[0]?.stop_charge ?? 0),
         // Not editable in the admin form yet: carry the previous version's cancellation fee forward
