@@ -1529,6 +1529,11 @@ export async function unblacklistVehicle(vehicleId: bigint): Promise<void> {
 
 // ─── Vehicle documents ────────────────────────────────────────────────────────
 
+// Only drivers an admin can act on: submitted (pending_approval) or already reviewed (active, suspended, docs_rejected with a
+// re-upload). A driver still in pending_docs has not submitted yet, so their half-finished uploads are not review work; counting
+// them showed 613 of 643 "pending" documents on prd while no driver was waiting for approval. Banned/deleted drivers are not reviewable.
+const VEHICLE_DOC_QUEUE_STATUSES_SQL = `('pending_approval', 'active', 'suspended', 'docs_rejected')`;
+
 export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
   const res = await pool.query(
     `SELECT dvd.id, dvd.vehicle_id, dvd.doc_type, dvd.file_url, dvd.doc_number,
@@ -1539,6 +1544,8 @@ export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
      JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
      JOIN drivers d ON d.id = dv.driver_id
      WHERE dvd.status = 'pending'
+       AND ${sqlVehicleDocApplies('dv', 'dvd')}
+       AND d.status IN ${VEHICLE_DOC_QUEUE_STATUSES_SQL}
      ORDER BY dvd.created_at ASC`,
   );
   return res.rows.map((r) => ({

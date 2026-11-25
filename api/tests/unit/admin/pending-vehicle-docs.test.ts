@@ -22,4 +22,14 @@ describe('listPendingVehicleDocs', () => {
     expect(sql).toContain('updated_at')
     expect(rows[0]!.updated_at).toBe('t1')
   })
+
+  it('only lists drivers an admin can act on: not unsubmitted (pending_docs), banned or deleted ones', async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [] } as never)
+    await listPendingVehicleDocs()
+    const sql = vi.mocked(pool.query).mock.calls[0]![0] as unknown as string
+    expect(sql).toMatch(/d\.status IN \('pending_approval', 'active', 'suspended', 'docs_rejected'\)/)
+    expect(sql).not.toContain('pending_docs')
+    // same electric-vehicle exemption the drivers list and go-online use
+    expect(sql).toContain("COALESCE(dv.fuel_type, '') = 'electric'")
+  })
 })
