@@ -1664,6 +1664,18 @@ export async function getAdminStats(
   }
 }
 
+export async function getAdminLiveMapAttention(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    res.json(await service.getLiveMapAttention());
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function getAdminActiveSessions(
   _req: Request,
   res: Response,
