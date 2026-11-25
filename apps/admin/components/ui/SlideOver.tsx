@@ -11,6 +11,8 @@ interface SlideOverProps {
   title: string
   children: React.ReactNode
   width?: 'md' | 'lg'
+  /** The dimming layer behind the panel (default on). Off when the page behind must stay visible and usable, e.g. a map. */
+  backdrop?: boolean
 }
 
 export default function SlideOver({
@@ -19,6 +21,7 @@ export default function SlideOver({
   title,
   children,
   width = 'md',
+  backdrop = true,
 }: SlideOverProps) {
   const panelWidth = width === 'lg' ? '600px' : '480px'
   const [mounted, setMounted] = useState(false)
@@ -45,7 +48,7 @@ export default function SlideOver({
       {isOpen && (
         <>
           {/* Full-viewport backdrop */}
-          <motion.div
+          {backdrop && <motion.div
             key="backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -54,7 +57,7 @@ export default function SlideOver({
             className="fixed inset-0 bg-black/50"
             style={{ zIndex: 45 }}
             onClick={onClose}
-          />
+          />}
 
           {/* Slide-over panel */}
           <motion.div

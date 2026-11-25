@@ -10,7 +10,7 @@ vi.mock('next/link', () => ({ default: ({ href, children, ...rest }: { href: str
 const NOW = Date.parse('2026-11-25T10:10:00Z')
 const item = (over: Partial<AttentionItem> = {}): AttentionItem => ({
   key: 'sos:1', kind: 'sos', lat: 20.3, lng: 85.8, title: 'SOS · high', detail: 'triggered · ride 10 · rider Asha',
-  since: '2026-11-25T10:00:00Z', href: '/sos', linkLabel: 'Open SOS console', urgent: true, ...over,
+  since: '2026-11-25T10:00:00Z', href: '/sos', linkLabel: 'Open SOS console', urgent: true, rideId: '10', assignable: false, ...over,
 })
 
 describe('AttentionPanel', () => {
@@ -38,5 +38,26 @@ describe('AttentionPanel', () => {
     render(<AttentionPanel item={item()} nowMs={NOW} onClose={onClose} />)
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  describe('assigning a driver', () => {
+    const request = item({ kind: 'request', title: 'Waiting for a driver', detail: 'ride 30 · Airport', href: '/rides/30', linkLabel: 'Open ride', urgent: false, rideId: '30', assignable: true })
+
+    it('offers "Assign a driver" for an unmet request and passes its ride', async () => {
+      const onAssign = vi.fn()
+      render(<AttentionPanel item={request} nowMs={NOW} onClose={vi.fn()} onAssign={onAssign} />)
+      await userEvent.click(screen.getByRole('button', { name: 'Assign a driver' }))
+      expect(onAssign).toHaveBeenCalledWith('30')
+    })
+
+    it('has no assign button when the viewer cannot assign (no handler)', () => {
+      render(<AttentionPanel item={request} nowMs={NOW} onClose={vi.fn()} />)
+      expect(screen.queryByRole('button', { name: 'Assign a driver' })).toBeNull()
+    })
+
+    it('has no assign button for an SOS or a flagged ride, which already have a driver', () => {
+      render(<AttentionPanel item={item()} nowMs={NOW} onClose={vi.fn()} onAssign={vi.fn()} />)
+      expect(screen.queryByRole('button', { name: 'Assign a driver' })).toBeNull()
+    })
   })
 })

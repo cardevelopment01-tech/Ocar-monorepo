@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { Fragment, useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Map as GoogleMap, Polyline, useMap } from '@vis.gl/react-google-maps'
-import { adminLiveMapApi, adminSessionsApi, type ActiveDriverSession, type LiveMapAttention } from '@/lib/admin-api'
+import { adminLiveMapApi, adminSessionsApi, type ActiveDriverSession, type AssignCandidate, type LiveMapAttention } from '@/lib/admin-api'
 import { getAdminSocket } from '@/lib/socket'
 import api from '@/lib/api'
 import { decodePolyline } from '@/lib/polyline'
@@ -17,6 +17,11 @@ import { DriverDot } from '@/components/live-map/DriverDot'
 import { ClusterMarker } from '@/components/live-map/ClusterMarker'
 import { ViewportTracker, type Viewport } from '@/components/live-map/ViewportTracker'
 import { AttentionPanel } from '@/components/live-map/AttentionPanel'
+import { CandidateBadge } from '@/components/live-map/CandidateBadge'
+import DispatchPanel from '@/components/dispatch/DispatchPanel'
+import SuccessToast from '@/components/ui/SuccessToast'
+import { useAdminAuth } from '@/lib/auth-context'
+import { boundsAround, markedDrivers } from '@/lib/live-map-dispatch'
 import { ATTENTION_LAYERS, attentionCounts, toAttentionItems, type AttentionKind } from '@/lib/live-map-attention'
 import Link from 'next/link'
 
@@ -52,7 +57,9 @@ interface LocationUpdate {
 // ─── FlyTo helper (must be inside Map tree) ───────────────────────────────────
 
 // `follow`: keep the map centred on this point as it moves (the "follow driver" switch). Only pans, never changes the zoom.
-function MapController({ target, follow, fit }: { target: { lat: number; lng: number; zoom: number } | null; follow: { lat: number; lng: number } | null; fit: Bounds | null }) {
+export interface FitTarget { bounds: Bounds; /** Pixels kept clear around the box; the side that an open panel covers needs more. */ padding?: number | { top: number; right: number; bottom: number; left: number } }
+
+function MapController({ target, follow, fit }: { target: { lat: number; lng: number; zoom: number } | null; follow: { lat: number; lng: number } | null; fit: FitTarget | null }) {
   const map = useMap()
   useEffect(() => {
     if (!map || !target) return
@@ -65,7 +72,7 @@ function MapController({ target, follow, fit }: { target: { lat: number; lng: nu
   // A click on a cluster: zoom to show its drivers, but never past street level (a cluster of drivers at one spot would otherwise zoom to the maximum).
   useEffect(() => {
     if (!map || !fit) return
-    map.fitBounds(fit, 80)
+    map.fitBounds(fit.bounds, fit.padding ?? 80)
     const z = map.getZoom()
     if (z != null && z > MAX_FIT_ZOOM) map.setZoom(MAX_FIT_ZOOM)
   }, [map, fit])
@@ -98,7 +105,17 @@ export default function LiveMap() {
   const [following, setFollowing] = useState(false)
   // What part of the map is on screen and how far it is zoomed: drivers are merged into clusters when zoomed out, and only those in view are drawn.
   const [view, setView] = useState<Viewport | null>(null)
-  const [fitTarget, setFitTarget] = useState<Bounds | null>(null)
+  const [fitTarget, setFitTarget] = useState<FitTarget | null>(null)
+  // Dispatching from the map: the ride being assigned, the drivers the panel lists for it, and the nearest of those the map marks.
+  const { admin } = useAdminAuth()
+  const canAssign = admin?.role === 'super_admin' || admin?.role === 'ops_admin'
+  const [dispatchRideId, setDispatchRideId] = useState<string | null>(null)
+  const [candidates, setCandidates] = useState<AssignCandidate[]>([])
+  const [toast, setToast] = useState<string | null>(null)
+  const dismissToast = useCallback(() => setToast(null), [])
+  const marked = useMemo(() => markedDrivers(candidates), [candidates])
+  const markedIds = useMemo(() => new Set(marked.map(m => m.driverId)), [marked])
+  const fittedFor = useRef<string | null>(null)
   const onViewport = useCallback((v: Viewport) => setView(prev => (prev && prev.zoom === v.zoom && prev.bounds.north === v.bounds.north && prev.bounds.south === v.bounds.south && prev.bounds.east === v.bounds.east && prev.bounds.west === v.bounds.west ? prev : v)), [])
   const [attention, setAttention] = useState<LiveMapAttention | null>(null)
   const [layers, setLayers] = useState<Record<AttentionKind, boolean>>({ sos: true, flagged: true, request: true })
@@ -117,11 +134,12 @@ export default function LiveMap() {
   const zoom = view?.zoom ?? null
   const viewBounds = view?.bounds ?? null
   const rowById = useMemo(() => new Map(rows.map(r => [r.d.driver_id, r])), [rows])
+  const driverById = useMemo(() => new Map(drivers.map(d => [d.driver_id, d])), [drivers])
   const points = useMemo<ClusterPoint[]>(() => rows.flatMap(({ d, stage }) => (
     d.lat != null && d.lng != null
-      ? [{ id: d.driver_id, lat: d.lat, lng: d.lng, stage, pinned: d.driver_id === selectedId || (stage === 'no_location' && d.session_status === 'on_trip') }]
+      ? [{ id: d.driver_id, lat: d.lat, lng: d.lng, stage, pinned: d.driver_id === selectedId || markedIds.has(d.driver_id) || (stage === 'no_location' && d.session_status === 'on_trip') }]
       : []
-  )), [rows, selectedId])
+  )), [rows, selectedId, markedIds])
   const layout = useMemo(() => (zoom == null ? { singles: points.map(p => p.id), clusters: [] } : clusterPoints(points, zoom)), [points, zoom])
   const shownSingles = useMemo(() => layout.singles.flatMap(id => {
     const r = rowById.get(id)
@@ -187,6 +205,27 @@ export default function LiveMap() {
   const loadAttention = useCallback(async () => {
     try { setAttention(await adminLiveMapApi.getAttention()) } catch { /* keep what is on screen */ }
   }, [])
+
+  const dispatchItem = useMemo(() => (dispatchRideId ? items.find(i => i.kind === 'request' && i.rideId === dispatchRideId) ?? null : null), [items, dispatchRideId])
+  const openDispatch = useCallback((rideId: string) => {
+    // A search or filter would hide the very drivers about to be marked, so the list is reset first.
+    setQuery(''); setFilter('all'); setSelectedId(null); setFollowing(false)
+    fittedFor.current = null
+    setDispatchRideId(rideId)
+    const it = items.find(i => i.kind === 'request' && i.rideId === rideId)
+    if (it) setFlyTarget({ lat: it.lat, lng: it.lng, zoom: 14 })
+  }, [items])
+  const closeDispatch = useCallback(() => { setDispatchRideId(null); setCandidates([]); fittedFor.current = null }, [])
+  // Assigned, rescheduled or cancelled from the panel: say so, close, and refresh both what the map shows.
+  const afterDispatch = useCallback((message: string) => { setToast(message); closeDispatch(); selectItem(null); void loadAttention(); void reconcile() }, [closeDispatch, selectItem, loadAttention, reconcile])
+  // Once the nearest drivers are known, frame them and the pickup together, keeping the open panel's width clear on the right.
+  useEffect(() => {
+    if (!dispatchItem || marked.length === 0 || fittedFor.current === dispatchItem.rideId) return
+    const pts = marked.flatMap(m => { const d = driversRef.current.get(m.driverId); return d?.lat != null && d.lng != null ? [{ lat: d.lat, lng: d.lng }] : [] })
+    if (pts.length === 0) return
+    fittedFor.current = dispatchItem.rideId
+    setFitTarget({ bounds: boundsAround({ lat: dispatchItem.lat, lng: dispatchItem.lng }, pts), padding: { top: 110, right: 520, bottom: 90, left: 80 } })
+  }, [dispatchItem, marked, drivers])
   useEffect(() => {
     void loadAttention()
     const poll = setInterval(() => void loadAttention(), ATTENTION_MS)
@@ -345,7 +384,7 @@ export default function LiveMap() {
 
           {/* One AdvancedMarker per driver that passes the search and filter (the selected driver always stays) */}
           {shownClusters.map(c => (
-            <ClusterMarker key={c.key} cluster={c} onClick={() => setFitTarget({ ...c.bounds })} />
+            <ClusterMarker key={c.key} cluster={c} onClick={() => setFitTarget({ bounds: { ...c.bounds } })} />
           ))}
           {shownSingles.map(({ d: session, stage }) => (
             <DriverDot
@@ -356,6 +395,16 @@ export default function LiveMap() {
               onClick={() => selectDriver(session.driver_id)}
             />
           ))}
+          {dispatchItem && marked.map(m => {
+            const d = driverById.get(m.driverId)
+            if (d?.lat == null || d.lng == null) return null
+            return (
+              <Fragment key={`cand-${m.driverId}`}>
+                <Polyline path={[{ lat: dispatchItem.lat, lng: dispatchItem.lng }, { lat: d.lat, lng: d.lng }]} strokeColor={COLORS.purple} strokeOpacity={0.55} strokeWeight={2} zIndex={3} />
+                <CandidateBadge marked={m} lat={d.lat} lng={d.lng} />
+              </Fragment>
+            )
+          })}
           {shownItems.map(item => (
             <AttentionMarker key={item.key} item={item} selected={item.key === selectedItemKey} onClick={() => selectItem(item.key)} />
           ))}
@@ -366,7 +415,7 @@ export default function LiveMap() {
       </div>
       </div>
 
-      {selectedItem && layers[selectedItem.kind] && <AttentionPanel item={selectedItem} nowMs={nowMs} onClose={() => selectItem(null)} />}
+      {selectedItem && layers[selectedItem.kind] && !dispatchRideId && <AttentionPanel item={selectedItem} nowMs={nowMs} onClose={() => selectItem(null)} onAssign={canAssign ? openDispatch : undefined} />}
 
       {/* Driver detail panel */}
       {selected && (
@@ -426,6 +475,9 @@ export default function LiveMap() {
           </div>
         </div>
       )}
+
+      {canAssign && <DispatchPanel rideId={dispatchRideId} canAssign={canAssign} overMap onClose={closeDispatch} onAssigned={afterDispatch} onChanged={afterDispatch} onCandidates={setCandidates} />}
+      <SuccessToast message={toast} onDismiss={dismissToast} />
     </div>
   )
 }

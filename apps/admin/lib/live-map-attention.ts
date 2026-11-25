@@ -16,6 +16,9 @@ export interface AttentionItem {
   linkLabel: string
   /** Needs a person right now (an SOS nobody has acknowledged yet): drawn with a pulse. */
   urgent: boolean
+  /** The ride behind it, and whether a driver can be assigned to it from the map (a request nobody has taken). */
+  rideId: string | null
+  assignable: boolean
 }
 
 export interface AttentionCounts { sos: number; flagged: number; requests: number }
@@ -30,7 +33,7 @@ export function toAttentionItems(a: LiveMapAttention | null): AttentionItem[] {
     if (s.lat == null || s.lng == null) continue
     const who = [s.rider_name && `rider ${s.rider_name}`, s.driver_name && `driver ${s.driver_name}`].filter(Boolean).join(' · ')
     out.push({
-      key: `sos:${s.id}`, kind: 'sos', lat: s.lat, lng: s.lng, since: s.created_at, urgent: s.status === 'triggered',
+      key: `sos:${s.id}`, kind: 'sos', lat: s.lat, lng: s.lng, since: s.created_at, urgent: s.status === 'triggered', rideId: s.ride_id, assignable: false,
       title: `SOS · ${s.severity}`, detail: `${humanize(s.status)} · ride ${s.ride_id}${who ? ` · ${who}` : ''}`,
       href: '/sos', linkLabel: 'Open SOS console',
     })
@@ -38,7 +41,7 @@ export function toAttentionItems(a: LiveMapAttention | null): AttentionItem[] {
   for (const f of a.flagged) {
     if (f.lat == null || f.lng == null) continue
     out.push({
-      key: `flagged:${f.ride_id}`, kind: 'flagged', lat: f.lat, lng: f.lng, since: f.flagged_at, urgent: false,
+      key: `flagged:${f.ride_id}`, kind: 'flagged', lat: f.lat, lng: f.lng, since: f.flagged_at, urgent: false, rideId: f.ride_id, assignable: false,
       title: 'Ride flagged for review', detail: `ride ${f.ride_id}${f.driver_name ? ` · ${f.driver_name}` : ''}${f.reason ? ` · ${humanize(f.reason)}` : ''}`,
       href: `/rides/${f.ride_id}`, linkLabel: 'Open ride',
     })
@@ -46,7 +49,7 @@ export function toAttentionItems(a: LiveMapAttention | null): AttentionItem[] {
   for (const r of a.requests) {
     if (r.lat == null || r.lng == null) continue
     out.push({
-      key: `request:${r.ride_id}`, kind: 'request', lat: r.lat, lng: r.lng, since: r.created_at, urgent: false,
+      key: `request:${r.ride_id}`, kind: 'request', lat: r.lat, lng: r.lng, since: r.created_at, urgent: false, rideId: r.ride_id, assignable: true,
       title: r.kind === 'searching' ? 'Waiting for a driver' : 'No driver found',
       detail: `ride ${r.ride_id}${r.address ? ` · ${r.address}` : ''}`,
       href: `/rides/${r.ride_id}`, linkLabel: 'Open ride',

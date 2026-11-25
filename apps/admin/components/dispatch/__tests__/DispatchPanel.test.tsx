@@ -120,6 +120,40 @@ describe('DispatchPanel', () => {
   })
 })
 
+describe('DispatchPanel: opened over the live map', () => {
+  it('tells the map which drivers it lists, once they load', async () => {
+    api.getById.mockResolvedValue(detail({ status: 'requested', scheduled_for: null, dispatch_at: inMinutes(-2) }))
+    api.getAssignCandidates.mockResolvedValue([cand(), cand({ driver_id: '2', driver_name: 'Sita Nayak', distance_metres: 900 })])
+    const onCandidates = vi.fn()
+    render(<DispatchPanel rideId="77" canAssign onClose={() => {}} onAssigned={() => {}} onChanged={() => {}} onCandidates={onCandidates} overMap />)
+    await screen.findByText('Ravi Das')
+    const lastCall = onCandidates.mock.calls.at(-1)![0] as Array<{ driver_id: string }>
+    expect(lastCall.map(c => c.driver_id)).toEqual(['1', '2'])
+  })
+
+  it('tells the map there is nobody when the panel closes', async () => {
+    api.getById.mockResolvedValue(detail({ status: 'requested', scheduled_for: null, dispatch_at: inMinutes(-2) }))
+    api.getAssignCandidates.mockResolvedValue([cand()])
+    const onCandidates = vi.fn()
+    const { rerender } = render(<DispatchPanel rideId="77" canAssign onClose={() => {}} onAssigned={() => {}} onChanged={() => {}} onCandidates={onCandidates} overMap />)
+    await screen.findByText('Ravi Das')
+    rerender(<DispatchPanel rideId={null} canAssign onClose={() => {}} onAssigned={() => {}} onChanged={() => {}} onCandidates={onCandidates} overMap />)
+    await waitFor(() => expect(onCandidates.mock.calls.at(-1)![0]).toEqual([]))
+  })
+
+  it('leaves out the dimming layer so the map stays visible, and keeps it everywhere else', async () => {
+    api.getById.mockResolvedValue(detail())
+    api.getAssignCandidates.mockResolvedValue([cand()])
+    const { unmount } = render(<DispatchPanel rideId="77" canAssign onClose={() => {}} onAssigned={() => {}} onChanged={() => {}} overMap />)
+    await screen.findByText('Ravi Das')
+    expect(document.querySelector('[class~="bg-black/50"]')).toBeNull()
+    unmount()
+    render(<DispatchPanel rideId="77" canAssign onClose={() => {}} onAssigned={() => {}} onChanged={() => {}} />)
+    await screen.findByText('Ravi Das')
+    expect(document.querySelector('[class~="bg-black/50"]')).not.toBeNull()
+  })
+})
+
 describe('DispatchPanel: support actions on a ride', () => {
   const REASON = 'Rider called: flight cancelled'
 
