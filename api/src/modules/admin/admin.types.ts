@@ -384,6 +384,9 @@ export interface ActiveDriverSession {
   speed_kmph: number | null
   location_updated_at: string | null
   ride_id: string | null
+  /** Where the trip is: accepted (heading to pickup), driver_arrived (waiting), in_progress, returning. Null when no live ride. */
+  ride_status: string | null
+  rider_name: string | null
   origin_address: string | null
   destination_address: string | null
   origin_lat: number | null

@@ -3116,6 +3116,8 @@ export async function getActiveDriverSessions(): Promise<
       dls.speed_kmph,
       dls.updated_at                       AS location_updated_at,
       r.id::text                           AS ride_id,
+      r.status::text                       AS ride_status,
+      u.name                               AS rider_name,
       r.origin_address,
       r.destination_address,
       ST_Y(r.origin::geometry)             AS origin_lat,
@@ -3130,6 +3132,7 @@ export async function getActiveDriverSessions(): Promise<
     LEFT JOIN driver_location_snapshots dls ON dls.driver_id = ds.driver_id
     LEFT JOIN rides r ON r.driver_id = ds.driver_id
       AND r.status IN ('accepted', 'driver_arrived', 'in_progress', 'returning')
+    LEFT JOIN users u ON u.id = r.user_id
     LEFT JOIN driver_vehicles dv ON dv.driver_id = ds.driver_id
       AND dv.is_primary = true AND dv.status != 'blacklisted'
     LEFT JOIN vehicle_categories vc ON vc.id = dv.category_id
@@ -3151,6 +3154,8 @@ export async function getActiveDriverSessions(): Promise<
       r.speed_kmph != null ? parseFloat(r.speed_kmph as string) : null,
     location_updated_at: r.location_updated_at as string | null,
     ride_id: r.ride_id as string | null,
+    ride_status: r.ride_status as string | null,
+    rider_name: r.rider_name as string | null,
     origin_address: r.origin_address as string | null,
     destination_address: r.destination_address as string | null,
     origin_lat:
