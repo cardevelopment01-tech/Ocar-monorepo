@@ -26,7 +26,7 @@ function whyNot(c: AssignCandidate): string {
   return c.city_billing_mode === 'package' ? 'Package balance empty' : 'Below minimum balance'
 }
 
-export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, onChanged }: {
+export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, onChanged, onCandidates, overMap }: {
   rideId: string | null
   /** Only ops and super admins can assign; everyone else sees the ride and its history. */
   canAssign: boolean
@@ -34,6 +34,10 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
   onAssigned: (message: string) => void
   /** The ride's time was changed or the ride was cancelled by support. */
   onChanged: (message: string) => void
+  /** Called with the drivers shown in the list each time it loads (and with none when the panel closes): the live map marks the nearest ones. */
+  onCandidates?: (candidates: AssignCandidate[]) => void
+  /** Opened over a map: a narrower panel with no dimming layer, so the map stays visible and usable beside it. */
+  overMap?: boolean
 }) {
   const now = useNow(15_000)
   const [detail, setDetail] = useState<AdminRideDetail | null>(null)
@@ -75,6 +79,9 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
       .finally(() => { if (mySeq === seq.current) setLoading(false) })
   }, [rideId, debouncedQ])
   useEffect(() => { loadCandidates() }, [loadCandidates])
+  const onCandidatesRef = useRef(onCandidates)
+  onCandidatesRef.current = onCandidates
+  useEffect(() => { onCandidatesRef.current?.(rideId ? cands : []) }, [rideId, cands])
 
   const ctx = detail ? { status: detail.status as 'scheduled' | 'requested' | 'no_drivers', dispatch_at: detail.dispatch_at, scheduled_for: detail.scheduled_for } : null
   const state = ctx ? dispatchState(ctx, now) : null
@@ -103,7 +110,7 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
   const others = cands.filter(c => !c.eligible)
 
   return (
-    <SlideOver isOpen={!!rideId} onClose={onClose} title={rideId ? `Assign a driver: ride #${rideId}` : ''} width="lg">
+    <SlideOver isOpen={!!rideId} onClose={onClose} title={rideId ? `Assign a driver: ride #${rideId}` : ''} width={overMap ? 'md' : 'lg'} backdrop={!overMap}>
       <div className="p-5 space-y-4">
         {detailError && <p role="alert" className="text-xs text-danger font-semibold">Could not load this ride. Close and open it again.</p>}
 

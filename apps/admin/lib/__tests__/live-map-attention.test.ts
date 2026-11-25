@@ -45,4 +45,10 @@ describe('toAttentionItems', () => {
     expect(r[1]!.detail).toBe('ride 31')
   })
   it('gives every item a unique key', () => expect(new Set(items.map((i) => i.key)).size).toBe(items.length))
+
+  it('only an unmet request can have a driver assigned from the map, and carries its ride', () => {
+    expect(items.filter((i) => i.kind === 'request').every((i) => i.assignable && i.rideId != null)).toBe(true)
+    expect(items.filter((i) => i.kind !== 'request').every((i) => !i.assignable)).toBe(true)
+    expect(items.find((i) => i.key === 'request:30')!.rideId).toBe('30')
+  })
 })
