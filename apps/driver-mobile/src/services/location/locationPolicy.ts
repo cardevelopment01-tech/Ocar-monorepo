@@ -18,13 +18,14 @@ export function isAccurateEnough(accuracyM: number | null | undefined): boolean 
 // Indoors, in a parking garage or between tall buildings every fix can be worse than 80 m. Dropping all of them left the server with a
 // position that grew stale until matching ranked the driver by an old place and then paused them. So when no good fix has gone out for
 // DEGRADED_AFTER_MS, one rough fix (up to DEGRADED_MAX_ACCURACY_M) is sent as the live position instead: still near the driver, which is
-// far better than minutes old. The trip trail keeps the strict 80 m rule because fares are billed on it.
+// far better than minutes old. Never during a ride: every live ping on a ride is also stored as a breadcrumb that fares are billed on,
+// so a rough fix there could add phantom distance. The trip trail keeps the strict 80 m rule too.
 export const DEGRADED_AFTER_MS = 120_000
 export const DEGRADED_MAX_ACCURACY_M = 300
 
-export function shouldSendLivePosition(accuracyM: number | null | undefined, msSinceLastLive: number): boolean {
+export function shouldSendLivePosition(accuracyM: number | null | undefined, msSinceLastLive: number, hasActiveRide: boolean): boolean {
   if (isAccurateEnough(accuracyM)) return true
-  return accuracyM != null && accuracyM <= DEGRADED_MAX_ACCURACY_M && msSinceLastLive >= DEGRADED_AFTER_MS
+  return !hasActiveRide && accuracyM != null && accuracyM <= DEGRADED_MAX_ACCURACY_M && msSinceLastLive >= DEGRADED_AFTER_MS
 }
 
 export function intervalForRideState(hasActiveRide: boolean): number {

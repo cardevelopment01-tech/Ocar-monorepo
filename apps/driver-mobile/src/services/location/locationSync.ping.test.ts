@@ -79,6 +79,14 @@ describe('live position ping', () => {
     expect(api.post).not.toHaveBeenCalled()
   })
 
+  it('an HTTP 409 SESSION_ENDED makes the app forget the session instead of retrying it', async () => {
+    sock.mode = 'silent'
+    api.post.mockRejectedValue({ response: { status: 409, data: { code: 'SESSION_ENDED' } } })
+    await emitLocationTick(fix, deps)
+    expect(session.offline).toBe(1)
+    expect(disk.cleared).toBe(1)
+  })
+
   it('after an HTTP failure it backs off instead of stacking requests on every tick', async () => {
     sock.mode = 'silent'
     api.post.mockRejectedValue(new Error('network down'))

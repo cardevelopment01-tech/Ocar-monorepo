@@ -33,7 +33,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     void trail.add(trailFixes).catch(() => {})
     const latest = locations[locations.length - 1]
     if (!latest) return
-    if (!shouldSendLivePosition(latest.coords.accuracy, Date.now() - lastLiveSentAt)) return
+    if (!shouldSendLivePosition(latest.coords.accuracy, Date.now() - lastLiveSentAt, !!useDriverSessionStore.getState().activeRide)) return
     lastLiveSentAt = Date.now()
 
     // Real backend sync (Days 8-10) -- no-ops if the driver isn't online

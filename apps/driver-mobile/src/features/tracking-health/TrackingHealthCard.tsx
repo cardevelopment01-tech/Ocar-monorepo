@@ -7,22 +7,19 @@ import { ISSUE_COPY, type TrackingAction, type TrackingIssue } from './trackingH
 type Props = {
   issue: TrackingIssue | null
   recovered: boolean
-  /** Runs the Restart action (the card handles the two Settings actions itself). */
+  /** Runs the Restart action (the card handles the two Settings actions itself). Coming back from Settings re-reads state by itself (AppState). */
   onRestart: () => void
-  /** Called after the driver is sent to Settings; the app re-reads state when they come back. */
-  onOpenedSettings?: () => void
 }
 
-function run(action: TrackingAction, onRestart: () => void, onOpenedSettings?: () => void): void {
+function run(action: TrackingAction, onRestart: () => void): void {
   if (action === 'restart') { onRestart(); return }
-  onOpenedSettings?.()
   if (action === 'location_settings') Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(() => { void Linking.openSettings() })
   else void Linking.openSettings()
 }
 
 /** One calm card for everything that can stop the phone reporting the driver's location: what is wrong, why it matters (ride requests),
  *  and the single tap that fixes it. Eases in and out, and shows a brief "back" confirmation once it is fixed. */
-export function TrackingHealthCard({ issue, recovered, onRestart, onOpenedSettings }: Props) {
+export function TrackingHealthCard({ issue, recovered, onRestart }: Props) {
   if (!issue && !recovered) return null
   const entering = FadeIn.duration(220).reduceMotion(ReduceMotion.System)
   const exiting = FadeOut.duration(160).reduceMotion(ReduceMotion.System)
@@ -59,7 +56,7 @@ export function TrackingHealthCard({ issue, recovered, onRestart, onOpenedSettin
       </View>
       {c.action ? (
         <Pressable
-          onPress={() => run(c.action!, onRestart, onOpenedSettings)}
+          onPress={() => run(c.action!, onRestart)}
           accessibilityRole="button"
           accessibilityLabel={c.actionLabel}
           hitSlop={8}

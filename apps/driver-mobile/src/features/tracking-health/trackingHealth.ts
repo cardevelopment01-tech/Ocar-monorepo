@@ -19,8 +19,10 @@ export type TrackingSnapshot = {
   sinceOnlineMs: number
 }
 
-/** A quiet GPS is normal for a short while (a tunnel, a garage). Past this the driver should hear about it. */
-export const NO_SIGNAL_AFTER_MS = 90_000
+/** A quiet GPS is normal for a short while (a tunnel, a garage). Past this the driver should hear about it. Longer than the 2-minute rough-fix
+ *  fallback (locationPolicy DEGRADED_AFTER_MS) on purpose: a garage that still yields a rough fix every 2 minutes is not "no signal", and the
+ *  card must not flip between warning and "Location is back" every cycle. */
+export const NO_SIGNAL_AFTER_MS = 150_000
 
 /** Starting the tracking service takes a few seconds on a real phone, so "not running" is not reported until the driver has been online this long. */
 export const START_GRACE_MS = 30_000

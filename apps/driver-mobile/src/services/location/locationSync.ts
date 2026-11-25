@@ -142,7 +142,10 @@ export async function emitLocationTick(fix: LocationFix, deps?: PingDeps): Promi
     const res = await (deps?.api ?? getApi()).post('/api/v1/rides/sessions/location', { sessionId, ...fix }) as { data?: { sessionActive?: boolean } } | undefined
     httpBackoffMs = 0
     if (res?.data?.sessionActive === false) forgetSession()
-  } catch {
+  } catch (err) {
+    // The server answers an ended session with 409 SESSION_ENDED: stop reporting for it rather than retrying a dead session forever.
+    const failed = (err as { response?: { status?: number; data?: { code?: string } } } | null)?.response
+    if (failed?.status === 409 && failed.data?.code === 'SESSION_ENDED') { forgetSession(); return }
     // Best-effort, like the web driver app's fire-and-forget POST; a later tick retries once
     // the backoff has elapsed.
     httpBackoffMs = Math.min(httpBackoffMs ? httpBackoffMs * 2 : BACKOFF_START_MS, BACKOFF_MAX_MS)

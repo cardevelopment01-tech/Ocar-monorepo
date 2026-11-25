@@ -167,9 +167,10 @@ export function initSocketServer(httpServer: HttpServer): Server {
         speed?: unknown
         recordedAt?: unknown
       }, ack?: unknown) => {
-        // Optional ack (older apps pass none): lets the app tell a ping the server took from one lost on a half-dead connection, and
-        // resend it over HTTP. `sessionActive: false` means the session ended server-side.
-        const reply = (ok: boolean, sessionActive = true) => { if (typeof ack === 'function') (ack as (r: { ok: boolean; sessionActive: boolean }) => void)({ ok, sessionActive }) }
+        // Optional ack (older apps pass none): lets the app tell a ping the server received from one lost on a half-dead connection, and
+        // resend it over HTTP. Sent as soon as the ping is valid, NOT after the database work: a slow database must not make every app resend
+        // its ping over HTTP and double the load. (An ended session is told to the app separately, by updateLocation's own notice.)
+        const reply = (ok: boolean) => { if (typeof ack === 'function') (ack as (r: { ok: boolean }) => void)({ ok }) }
         const sessionId = parseId(data?.sessionId)
         const lat = finiteNum(data?.lat, -90, 90)
         const lng = finiteNum(data?.lng, -180, 180)
@@ -186,14 +187,14 @@ export function initSocketServer(httpServer: HttpServer): Server {
             ? data.recordedAt
             : new Date().toISOString(),
         }
+        reply(true)
         const heading = finiteNum(data?.heading, 0, 360)
         const speed   = finiteNum(data?.speed, 0, 400)
         if (heading !== null) input.heading = heading
         if (speed   !== null) input.speed   = speed
-        updateLocation(BigInt(user.sub), input).then(() => reply(true)).catch((err: unknown) => {
+        updateLocation(BigInt(user.sub), input).catch((err: unknown) => {
           // Expected: the driver's session was ended server-side and updateLocation has just told them so.
-          if ((err as { appCode?: string } | null)?.appCode === 'SESSION_ENDED') { reply(true, false); return }
-          reply(false)
+          if ((err as { appCode?: string } | null)?.appCode === 'SESSION_ENDED') return
           log.error({ err, sessionId: String(sessionId) }, 'location:update failed')
         })
       }))

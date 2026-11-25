@@ -112,6 +112,7 @@ export const cleanupWorker = new Worker(
     const quiet10 = await repo.findStaleOnlineDrivers(offlineSec)
     const posOldList = posCapSec === offlineSec ? quiet10 : await repo.findStaleOnlineDrivers(posCapSec)
     const posOld = new Set(posOldList.map((d) => d.driver_id))
+    const quiet10Set = new Set(quiet10.map((d) => d.driver_id))
     const quiet90Ids = quiet90.map((d) => d.driver_id)
     const hb90 = await lastHeartbeatMs(quiet90Ids)
     const conn90 = await connectedAmong(quiet90Ids.filter((id) => !posOld.has(id) && !((hb90.get(id) ?? 0) > Date.now() - pauseSec * 1000)))
@@ -125,7 +126,8 @@ export const cleanupWorker = new Worker(
       const pausedSession = await repo.pauseIfAvailable(BigInt(id))
       if (pausedSession) {
         await redis.set(driverSweepPausedKey(id), pausedSession, 'EX', 6 * 3600).catch(() => undefined)
-        await onIdleDriverPaused(id, pausedSession, posOld.has(id) && alive ? 'stale_position' : 'silent')
+        // Not awaited (it never throws): a push round-trip per driver must not slow the sweep that follows.
+        void onIdleDriverPaused(id, pausedSession, posOld.has(id) && alive ? 'stale_position' : 'silent', { nudge: !quiet10Set.has(id) })
       }
     }
     const quiet10Ids = quiet10.map((d) => d.driver_id)

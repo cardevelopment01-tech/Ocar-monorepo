@@ -59,14 +59,14 @@ export default function HomeScreen() {
   const trackingFailed = useDriverSessionStore((s) => s.trackingFailed)
   const setTrackingFailed = useDriverSessionStore((s) => s.setTrackingFailed)
   const retryingTracking = useRef(false)
-  function retryTracking() {
+  function retryTracking(onDone?: () => void) {
     if (retryingTracking.current) return
     retryingTracking.current = true
     const sid = useDriverSessionStore.getState().sessionId ?? undefined
     ensureBackgroundTracking()
       .then(() => setTrackingFailed(false, sid))
       .catch((err) => captureError(err, { where: 'home_retry_tracking' }))
-      .finally(() => { retryingTracking.current = false })
+      .finally(() => { retryingTracking.current = false; onDone?.() })
   }
   const walletGate = useWalletGate()
   const socketConnected = useSocketConnected()
@@ -268,7 +268,7 @@ export default function HomeScreen() {
         </View>
 
         {isOnline ? (
-          <TrackingHealthCard issue={trackingHealth.issue} recovered={trackingHealth.recovered} onRestart={retryTracking} onOpenedSettings={trackingHealth.recheck} />
+          <TrackingHealthCard issue={trackingHealth.issue} recovered={trackingHealth.recovered} onRestart={() => retryTracking(trackingHealth.recheck)} />
         ) : null}
 
         {isOnline && mode === 'return_cab' ? (

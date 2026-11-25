@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/modules/notifications/notifications.service', () => ({ notifyOwner: vi.fn() }))
-vi.mock('@/db/redis', () => ({ client: { set: vi.fn() } }))
+vi.mock('@/db/redis', () => ({ client: { set: vi.fn(), del: vi.fn() } }))
 vi.mock('@/observability/metrics', () => ({ driverIdlePausedTotal: { inc: vi.fn() } }))
 
 import { notifyOwner } from '@/modules/notifications/notifications.service'
@@ -13,6 +13,7 @@ describe('onIdleDriverPaused', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(redis.set).mockResolvedValue('OK' as never)
+    vi.mocked(redis.del).mockResolvedValue(1 as never)
     vi.mocked(notifyOwner).mockResolvedValue(undefined)
   })
 
@@ -36,5 +37,18 @@ describe('onIdleDriverPaused', () => {
     vi.mocked(redis.set).mockResolvedValue('OK' as never)
     vi.mocked(notifyOwner).mockRejectedValue(new Error('push down'))
     await expect(onIdleDriverPaused('615', '900', 'silent')).resolves.toBeUndefined()
+  })
+
+  it('does not nudge a driver who is being ended in the same sweep, but still counts the pause', async () => {
+    await onIdleDriverPaused('615', '900', 'silent', { nudge: false })
+    expect(driverIdlePausedTotal.inc).toHaveBeenCalledWith({ cause: 'silent' })
+    expect(redis.set).not.toHaveBeenCalled()
+    expect(notifyOwner).not.toHaveBeenCalled()
+  })
+
+  it('releases the window when the push fails, so the next sweep can try again', async () => {
+    vi.mocked(notifyOwner).mockRejectedValue(new Error('push down'))
+    await onIdleDriverPaused('615', '900', 'silent')
+    expect(redis.del).toHaveBeenCalledWith('driver:idle-nudge:900')
   })
 })

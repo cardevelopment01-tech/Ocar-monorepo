@@ -120,9 +120,9 @@ describe('cleanup worker — idle heartbeat sweep', () => {
     expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(7))
     expect(goOffline).toHaveBeenCalledTimes(1)
     expect(goOffline).toHaveBeenCalledWith(BigInt(7), 'stale_heartbeat')
-    // One "you're paused" nudge from the short tier and one "you went offline" from the long tier: two different messages, one each.
-    expect(notifyOwner).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(notifyOwner).mock.calls.map((c) => c[0].type).sort()).toEqual(['idle_paused', 'session_ended_stale'])
+    // Already past the long tier: the driver is ended with its own message, so no "you're paused" first.
+    expect(notifyOwner).toHaveBeenCalledTimes(1)
+    expect(notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ type: 'session_ended_stale' }))
   })
 })
 

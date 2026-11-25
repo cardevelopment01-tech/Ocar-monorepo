@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEGRADED_AFTER_MS } from '@/services/location/locationPolicy'
 import { assessTracking, ISSUE_COPY, NEEDS_CONFIRMATION, NO_SIGNAL_AFTER_MS, START_GRACE_MS, type TrackingSnapshot } from './trackingHealth'
 
 const healthy: TrackingSnapshot = {
@@ -25,13 +26,16 @@ describe('assessTracking', () => {
     expect(assessTracking({ ...healthy, taskRunning: false, lastFixAgeMs: null, sinceOnlineMs: START_GRACE_MS - 1 })).toBeNull()
     expect(assessTracking({ ...healthy, taskRunning: false, lastFixAgeMs: null, sinceOnlineMs: START_GRACE_MS })).toBe('not_running')
   })
+  it('waits longer than the rough-fix fallback, so a garage with rough fixes is not flagged between them', () => {
+    expect(NO_SIGNAL_AFTER_MS).toBeGreaterThan(DEGRADED_AFTER_MS)
+  })
   it('a quiet GPS is only reported after the grace period', () => {
     expect(assessTracking({ ...healthy, lastFixAgeMs: NO_SIGNAL_AFTER_MS - 1 })).toBeNull()
     expect(assessTracking({ ...healthy, lastFixAgeMs: NO_SIGNAL_AFTER_MS })).toBe('no_signal')
   })
   it('with no fix yet, counts the quiet from when the driver went online', () => {
     expect(assessTracking({ ...healthy, lastFixAgeMs: null, sinceOnlineMs: 30_000 })).toBeNull()
-    expect(assessTracking({ ...healthy, lastFixAgeMs: null, sinceOnlineMs: 120_000 })).toBe('no_signal')
+    expect(assessTracking({ ...healthy, lastFixAgeMs: null, sinceOnlineMs: NO_SIGNAL_AFTER_MS })).toBe('no_signal')
   })
 })
 

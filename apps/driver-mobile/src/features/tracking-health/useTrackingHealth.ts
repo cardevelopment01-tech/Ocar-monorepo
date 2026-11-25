@@ -30,7 +30,13 @@ export function useTrackingHealth(isOnline: boolean, startFailed: boolean): Trac
   const startFailedRef = useRef(startFailed)
   startFailedRef.current = startFailed
 
+  const checking = useRef(false)
+  const live = useRef(false)
+
   const check = useCallback(async () => {
+    // One read at a time: two overlapping reads (mount, AppState, the timer) must not count as "two checks in a row".
+    if (checking.current) return
+    checking.current = true
     try {
       const [fg, bg, services, running] = await Promise.all([
         Location.getForegroundPermissionsAsync(),
@@ -41,11 +47,15 @@ export function useTrackingHealth(isOnline: boolean, startFailed: boolean): Trac
       // A fix from before this online session says nothing about now (the store keeps the last one across sessions).
       const stored = useDriverPositionStore.getState().lastUpdatedAt
       const lastAt = stored != null && stored >= onlineSince.current ? stored : null
-      const found: TrackingIssue | null = startFailedRef.current ? 'not_running' : assessTracking({
+      // A failed start is usually a permission or the phone's Location switch: name that cause first, and fall back to "not running" (Restart)
+      // only when nothing more specific is wrong.
+      const assessed = assessTracking({
         foregroundGranted: fg.granted, backgroundGranted: bg.granted, servicesEnabled: services, taskRunning: running,
         lastFixAgeMs: lastAt == null ? null : Date.now() - lastAt, sinceOnlineMs: Date.now() - onlineSince.current,
       })
+      const found: TrackingIssue | null = assessed ?? (startFailedRef.current ? 'not_running' : null)
       // A soft issue must be seen twice in a row; a hard one (permission, the phone's switch, a failed start) shows at once.
+      if (!live.current) return // the driver went offline while this read was in flight
       const confirmed = found === null || !NEEDS_CONFIRMATION.has(found) || startFailedRef.current || pending.current === found
       pending.current = found
       if (!confirmed) return
@@ -60,10 +70,13 @@ export function useTrackingHealth(isOnline: boolean, startFailed: boolean): Trac
       setIssue(found)
     } catch {
       // A failed read says nothing about the driver's location: keep what is shown.
+    } finally {
+      checking.current = false
     }
   }, [])
 
   useEffect(() => {
+    live.current = isOnline
     if (!isOnline) {
       pending.current = null
       shown.current = null
@@ -72,7 +85,6 @@ export function useTrackingHealth(isOnline: boolean, startFailed: boolean): Trac
       return
     }
     onlineSince.current = Date.now()
-    void check()
     const timer = setInterval(() => { if (AppState.currentState === 'active') void check() }, CHECK_EVERY_MS)
     const sub = AppState.addEventListener('change', (st) => { if (st === 'active') void check() })
     return () => {
@@ -82,7 +94,7 @@ export function useTrackingHealth(isOnline: boolean, startFailed: boolean): Trac
     }
   }, [isOnline, check])
 
-  // A start failure that was just reported (or cleared) should show (or clear) without waiting for the next tick.
+  // The first read on going online, and again whenever a start failure is reported or cleared, without waiting for the next tick.
   useEffect(() => { if (isOnline) void check() }, [startFailed, isOnline, check])
 
   return { issue, recovered, recheck: () => { void check() } }
