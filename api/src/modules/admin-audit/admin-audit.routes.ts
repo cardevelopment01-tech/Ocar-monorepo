@@ -8,5 +8,8 @@ const router: IRouter = Router()
 router.use(authenticate(), requireAdmin('super_admin'))
 
 router.get('/', controller.getAuditLog)
+router.get('/facets', controller.getFacets)
+router.get('/verify', controller.getVerify)
+router.get('/export.csv', controller.getExport)
 
 export default router

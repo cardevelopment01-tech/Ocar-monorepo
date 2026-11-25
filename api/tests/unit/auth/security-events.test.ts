@@ -10,6 +10,7 @@ vi.mock('@/modules/auth/auth.service', () => ({
   logout: vi.fn(),
 }))
 vi.mock('@/modules/auth/auth.repository', () => ({}))
+vi.mock('@/lib/audit-log', () => ({ recordAuditLog: vi.fn() }))
 
 import * as authService from '@/modules/auth/auth.service'
 import * as controller from '@/modules/auth/auth.controller'
