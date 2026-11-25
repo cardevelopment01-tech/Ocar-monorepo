@@ -74,7 +74,7 @@ describe.skipIf(!url)('night allowance on a real database', () => {
     return id
   }
 
-  it('migration 162 is applied: rate cards default to 0 (off) and snapshots start at 0 nights', async () => {
+  it('migration 163 is applied: rate cards default to 0 (off) and snapshots start at 0 nights', async () => {
     const rc = await pool.query("SELECT count(*)::int AS n FROM rate_cards WHERE night_allowance_per_night IS NULL OR night_allowance_per_night < 0")
     expect(rc.rows[0].n).toBe(0)
     const old = await pool.query("SELECT count(*)::int AS n FROM rate_cards WHERE effective_to IS NULL AND night_allowance_per_night > 0 AND created_by IS NULL")
