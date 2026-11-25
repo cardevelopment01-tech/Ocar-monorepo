@@ -638,6 +638,23 @@ export interface ActiveDriverSession {
   number_plate: string | null
 }
 
+export interface LiveMapSos {
+  id: string; ride_id: string; severity: string; status: 'triggered' | 'acknowledged' | 'responding'
+  lat: number | null; lng: number | null; created_at: string; driver_name: string | null; rider_name: string | null
+}
+export interface LiveMapFlaggedRide {
+  ride_id: string; ride_status: string; reason: string | null; flagged_at: string; driver_name: string | null; lat: number | null; lng: number | null
+}
+/** A pickup nobody has taken: still searching, or ended with no driver in the last 30 minutes. */
+export interface LiveMapRequest {
+  ride_id: string; kind: 'searching' | 'no_drivers'; address: string | null; created_at: string; lat: number | null; lng: number | null
+}
+export interface LiveMapAttention { sos: LiveMapSos[]; flagged: LiveMapFlaggedRide[]; requests: LiveMapRequest[] }
+
+export const adminLiveMapApi = {
+  getAttention: async (): Promise<LiveMapAttention> => (await api.get('/api/v1/admin/live-map/attention')).data as LiveMapAttention,
+}
+
 export const adminSessionsApi = {
   getActive: async (): Promise<ActiveDriverSession[]> => {
     const res = await api.get('/api/v1/admin/sessions/active')

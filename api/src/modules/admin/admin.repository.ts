@@ -34,6 +34,7 @@ import type {
   AdminCity,
   AdminDashboardStats,
   ActiveDriverSession,
+  LiveMapAttention,
   AdminRentalPackage,
   AdminAccountListItem,
   UpdateDriverProfilePayload,
@@ -3168,6 +3169,56 @@ export async function getActiveDriverSessions(): Promise<
     vehicle_name: r.vehicle_name as string | null,
     number_plate: r.number_plate as string | null,
   }));
+}
+
+// ─── Live map: things that need attention ────────────────────────────────────
+
+// Open SOS alerts, live rides a sweep flagged for review, and pickups nobody has taken. Each list is capped: the map is for what needs a
+// person now, not for history. The no-driver window filters on requested_at because that is what rides_no_drivers_idx covers. A position falls back from the alert's own fix to the driver's last position to the pickup point.
+const ATTENTION_LIMIT = 200
+const NO_DRIVERS_WINDOW_MINUTES = 30
+
+export async function getLiveMapAttention(): Promise<LiveMapAttention> {
+  const [sos, flagged, requests] = await Promise.all([
+    pool.query(
+      `SELECT a.id::text, a.ride_id::text, a.severity::text, a.status::text, a.created_at,
+              COALESCE(a.location_lat::float8, ST_Y(dls.location::geometry), ST_Y(r.origin::geometry)) AS lat,
+              COALESCE(a.location_lng::float8, ST_X(dls.location::geometry), ST_X(r.origin::geometry)) AS lng,
+              d.full_name AS driver_name, u.name AS rider_name
+         FROM sos_alerts a
+         JOIN rides r ON r.id = a.ride_id
+         LEFT JOIN drivers d ON d.id = r.driver_id
+         LEFT JOIN users u ON u.id = r.user_id
+         LEFT JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
+        WHERE a.status IN ('triggered', 'acknowledged', 'responding')
+        ORDER BY a.created_at DESC LIMIT ${ATTENTION_LIMIT}`),
+    pool.query(
+      `SELECT r.id::text AS ride_id, r.status::text AS ride_status, r.review_reason AS reason, r.review_flagged_at AS flagged_at,
+              d.full_name AS driver_name,
+              COALESCE(ST_Y(dls.location::geometry), ST_Y(r.origin::geometry)) AS lat,
+              COALESCE(ST_X(dls.location::geometry), ST_X(r.origin::geometry)) AS lng
+         FROM rides r
+         LEFT JOIN drivers d ON d.id = r.driver_id
+         LEFT JOIN driver_location_snapshots dls ON dls.driver_id = r.driver_id
+        -- Two arms on purpose: the live-ride partial indexes are split (accepted/arrived/in_progress vs in_progress/returning), and only this form lets the planner use both.
+        WHERE r.review_flagged_at IS NOT NULL AND (r.status IN ('accepted', 'driver_arrived') OR r.status IN ('in_progress', 'returning'))
+        ORDER BY r.review_flagged_at DESC LIMIT ${ATTENTION_LIMIT}`),
+    pool.query(
+      `SELECT r.id::text AS ride_id,
+              CASE WHEN r.status = 'requested' THEN 'searching' ELSE 'no_drivers' END AS kind,
+              r.origin_address AS address, r.requested_at AS created_at,
+              ST_Y(r.origin::geometry) AS lat, ST_X(r.origin::geometry) AS lng
+         FROM rides r
+        WHERE r.status = 'requested'
+           OR (r.status = 'no_drivers' AND r.requested_at > now() - interval '${NO_DRIVERS_WINDOW_MINUTES} minutes')
+        ORDER BY r.requested_at DESC LIMIT ${ATTENTION_LIMIT}`),
+  ])
+  const num = (v: unknown) => (v == null ? null : Number(v))
+  return {
+    sos: sos.rows.map((r) => ({ ...r, lat: num(r.lat), lng: num(r.lng) })) as LiveMapAttention['sos'],
+    flagged: flagged.rows.map((r) => ({ ...r, lat: num(r.lat), lng: num(r.lng) })) as LiveMapAttention['flagged'],
+    requests: requests.rows.map((r) => ({ ...r, lat: num(r.lat), lng: num(r.lng) })) as LiveMapAttention['requests'],
+  }
 }
 
 // ─── Package tiers (city billing_mode = 'package') ────────────────────────────

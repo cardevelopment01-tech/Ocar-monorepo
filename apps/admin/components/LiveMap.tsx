@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
 import { Map as GoogleMap, AdvancedMarker, Polyline, useMap } from '@vis.gl/react-google-maps'
-import { adminSessionsApi, type ActiveDriverSession } from '@/lib/admin-api'
+import { adminLiveMapApi, adminSessionsApi, type ActiveDriverSession, type LiveMapAttention } from '@/lib/admin-api'
 import { getAdminSocket } from '@/lib/socket'
 import api from '@/lib/api'
 import { decodePolyline } from '@/lib/polyline'
@@ -11,6 +11,9 @@ import { isStale } from '@/lib/driver-staleness'
 import { ago } from '@/lib/ride-situation'
 import { STAGE_META, stageCounts, stageOf, visibleDrivers, type Stage, type StageFilter } from '@/lib/live-map-model'
 import { DriverList } from '@/components/live-map/DriverList'
+import { AttentionMarker } from '@/components/live-map/AttentionMarker'
+import { AttentionPanel } from '@/components/live-map/AttentionPanel'
+import { ATTENTION_LAYERS, attentionCounts, toAttentionItems, type AttentionKind } from '@/lib/live-map-attention'
 import Link from 'next/link'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -22,6 +25,8 @@ const RECONCILE_MS = 30_000
 const RECONCILE_SOON_MS = 1_500
 // Location pings are applied to the list at most this often (hundreds of drivers ping every few seconds; one render per ping would be too much).
 const FLUSH_MS = 1_000
+// SOS, flagged rides and unmet requests are refetched this often, and a moment after a live SOS or flag event.
+const ATTENTION_MS = 15_000
 
 const CITIES = [
   { label: 'Bhubaneswar', lat: 20.2961, lng: 85.8245, zoom: 13 },
@@ -148,11 +153,20 @@ export default function LiveMap() {
   const [query,     setQuery]     = useState('')
   const [filter,    setFilter]    = useState<StageFilter>('all')
   const [following, setFollowing] = useState(false)
+  const [attention, setAttention] = useState<LiveMapAttention | null>(null)
+  const [layers, setLayers] = useState<Record<AttentionKind, boolean>>({ sos: true, flagged: true, request: true })
+  const [selectedItemKey, setSelectedItemKey] = useState<string | null>(null)
+  const items = useMemo(() => toAttentionItems(attention), [attention])
+  const shownItems = useMemo(() => items.filter(i => layers[i.kind]), [items, layers])
+  const selectedItem = useMemo(() => items.find(i => i.key === selectedItemKey) ?? null, [items, selectedItemKey])
+  const attentionTotals = useMemo(() => attentionCounts(attention), [attention])
   const rows   = useMemo(() => visibleDrivers(drivers, query, filter, nowMs), [drivers, query, filter, nowMs])
   const counts = useMemo(() => stageCounts(drivers, nowMs), [drivers, nowMs])
 
   const selected = useMemo(() => drivers.find(d => d.driver_id === selectedId) ?? null, [drivers, selectedId])
-  const selectDriver = useCallback((driverId: string | null) => { setSelectedId(driverId); setFollowing(false) }, [])
+  const selectDriver = useCallback((driverId: string | null) => { setSelectedId(driverId); setFollowing(false); if (driverId) setSelectedItemKey(null) }, [])
+  // One thing is selected at a time: a driver or an item, never both panels.
+  const selectItem = useCallback((key: string | null) => { setSelectedItemKey(key); setFollowing(false); if (key) setSelectedId(null) }, [])
   // Picking a driver from the list flies the map to them. A new selection always starts with Follow off.
   const flyToDriver = useCallback((driverId: string) => {
     const d = driversRef.current.get(driverId)
@@ -205,6 +219,26 @@ export default function LiveMap() {
     if (soonRef.current) return
     soonRef.current = setTimeout(() => { soonRef.current = null; void reconcile() }, RECONCILE_SOON_MS)
   }, [reconcile])
+
+  const loadAttention = useCallback(async () => {
+    try { setAttention(await adminLiveMapApi.getAttention()) } catch { /* keep what is on screen */ }
+  }, [])
+  useEffect(() => {
+    void loadAttention()
+    const poll = setInterval(() => void loadAttention(), ATTENTION_MS)
+    // A live SOS or a ride flagged by the sweep shows within a second, not at the next poll.
+    let soon: ReturnType<typeof setTimeout> | null = null
+    const refresh = () => { if (!soon) soon = setTimeout(() => { soon = null; void loadAttention() }, 1_000) }
+    const socket = getAdminSocket()
+    socket.on('sos:alert', refresh)
+    socket.on('ride:stuck_flagged', refresh)
+    return () => {
+      clearInterval(poll)
+      if (soon) clearTimeout(soon)
+      socket.off('sos:alert', refresh)
+      socket.off('ride:stuck_flagged', refresh)
+    }
+  }, [loadAttention])
 
   useEffect(() => {
     void reconcile().then(() => setLoading(false))
@@ -265,6 +299,19 @@ export default function LiveMap() {
             <span className="text-xs font-semibold text-danger">Reconnecting… positions may be stale</span>
           </div>
         )}
+        <div className="flex items-center gap-1.5" role="group" aria-label="Map layers">
+          {ATTENTION_LAYERS.map(l => (
+            <button
+              key={l.kind}
+              type="button"
+              aria-pressed={layers[l.kind]}
+              onClick={() => setLayers(prev => ({ ...prev, [l.kind]: !prev[l.kind] }))}
+              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${layers[l.kind] ? 'border-primary bg-primary text-white' : 'border-border bg-surface text-text-secondary hover:bg-surface-2'} ${l.kind === 'sos' && attentionTotals.sos > 0 && !layers.sos ? 'ring-2 ring-danger' : ''}`}
+            >
+              {l.label} {attentionTotals[l.count]}
+            </button>
+          ))}
+        </div>
         <div className="flex-1" />
         {CITIES.map(c => (
           <button
@@ -341,12 +388,17 @@ export default function LiveMap() {
               onClick={() => selectDriver(session.driver_id)}
             />
           ))}
+          {shownItems.map(item => (
+            <AttentionMarker key={item.key} item={item} selected={item.key === selectedItemKey} onClick={() => selectItem(item.key)} />
+          ))}
           {selected && selected.lat != null && selected.lng != null && !rows.some(r => r.d.driver_id === selected.driver_id) && (
             <DriverDot key={selected.driver_id} session={selected} stage={stageOf(selected, nowMs)} selected onClick={() => selectDriver(selected.driver_id)} />
           )}
         </GoogleMap>
       </div>
       </div>
+
+      {selectedItem && layers[selectedItem.kind] && <AttentionPanel item={selectedItem} nowMs={nowMs} onClose={() => selectItem(null)} />}
 
       {/* Driver detail panel */}
       {selected && (

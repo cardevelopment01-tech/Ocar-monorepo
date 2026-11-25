@@ -1099,3 +1099,7 @@ export async function getDashboardStats() {
 export async function getActiveSessions() {
   return repo.getActiveDriverSessions()
 }
+
+export async function getLiveMapAttention() {
+  return repo.getLiveMapAttention()
+}

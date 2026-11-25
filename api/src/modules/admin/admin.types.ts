@@ -398,6 +398,46 @@ export interface ActiveDriverSession {
   number_plate: string | null
 }
 
+// ─── Live map: things that need attention ────────────────────────────────────
+
+export interface LiveMapSos {
+  id: string
+  ride_id: string
+  severity: string
+  status: 'triggered' | 'acknowledged' | 'responding'
+  lat: number | null
+  lng: number | null
+  created_at: string
+  driver_name: string | null
+  rider_name: string | null
+}
+
+export interface LiveMapFlaggedRide {
+  ride_id: string
+  ride_status: string
+  reason: string | null
+  flagged_at: string
+  driver_name: string | null
+  lat: number | null
+  lng: number | null
+}
+
+/** A pickup nobody has taken: still searching ('requested'), or ended with no driver in the last 30 minutes. */
+export interface LiveMapRequest {
+  ride_id: string
+  kind: 'searching' | 'no_drivers'
+  address: string | null
+  created_at: string
+  lat: number | null
+  lng: number | null
+}
+
+export interface LiveMapAttention {
+  sos: LiveMapSos[]
+  flagged: LiveMapFlaggedRide[]
+  requests: LiveMapRequest[]
+}
+
 // ─── Rental packages ──────────────────────────────────────────────────────────
 
 export interface AdminRentalPackage {

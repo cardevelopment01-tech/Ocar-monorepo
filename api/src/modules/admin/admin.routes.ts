@@ -39,6 +39,8 @@ router.post('/admins/:id/sign-out', requireAdmin('super_admin'), adminStepUpLimi
 
 // ─── Live map ─────────────────────────────────────────────────────────────────
 router.get('/sessions/active', controller.getAdminActiveSessions)
+// SOS, flagged rides and unmet requests for the map layers: the same people who can open the map.
+router.get('/live-map/attention', requireAdmin('super_admin', 'ops_admin'), controller.getAdminLiveMapAttention)
 
 // ─── Drivers ──────────────────────────────────────────────────────────────────
 router.get('/drivers',               controller.getDrivers)
