@@ -1,6 +1,6 @@
 import type { RequestHandler } from 'express'
 import { auditContext, type AuditContext } from '@/lib/audit-context'
-import { recordAuditLog } from '@/lib/audit-log'
+import { recordAdminActivity } from '@/lib/audit-log'
 import type { AuditOutcome } from '@/lib/audit-log'
 
 // Every non-GET request under /api/v1/admin is an admin action. Handlers that know the before/after state write
@@ -56,7 +56,7 @@ export const adminActivity: RequestHandler = (req, res, next) => {
     const outcome: AuditOutcome = status === 403 ? 'denied' : status >= 400 ? 'failure' : 'success'
     if (outcome === 'success' && ctx.recorded > 0) return
     const d = deriveAdminAction(req.method, adminPath)
-    void auditContext.run(ctx, () => recordAuditLog({
+    void Promise.resolve().then(() => auditContext.run(ctx, () => recordAdminActivity({
       adminId: admin.id,
       action: d.action,
       targetTable: d.targetTable,
@@ -65,7 +65,7 @@ export const adminActivity: RequestHandler = (req, res, next) => {
       outcome,
       source: 'http',
       http: { method: req.method, path: d.path, status },
-    })).catch(() => { /* recordAuditLog already handles its own failures */ })
+    }))).catch(() => { /* recordAdminActivity already handles its own failures */ })
   })
 
   auditContext.run(ctx, next)

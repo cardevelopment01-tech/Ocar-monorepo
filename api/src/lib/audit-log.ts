@@ -143,13 +143,13 @@ function alertRisky(d: AuditLogJobData): void {
 // Writes one audit row. Without `client` it never throws: the change it describes has already happened, so a failed
 // insert falls back to the retrying queue, and only if that also fails is it counted (audit_write_failures_total) and
 // logged. With `client` the row joins the caller's transaction and any error propagates so both roll back.
-export async function recordAuditLog(params: AuditEntry): Promise<void> {
+async function write(params: AuditEntry, countsAsOwnRow: boolean): Promise<void> {
   const ctx = auditContext.getStore()
   const row = buildAuditRow(params, ctx?.req)
 
   if (params.client) {
     await insertAuditRow(params.client, row)
-    if (ctx) ctx.recorded += 1
+    if (ctx && countsAsOwnRow) ctx.recorded += 1
     alertRisky(row)
     return
   }
@@ -166,6 +166,16 @@ export async function recordAuditLog(params: AuditEntry): Promise<void> {
       log.error({ err: qerr, row }, 'AUDIT ROW LOST: direct insert and queue both failed')
     }
   }
-  if (ctx) ctx.recorded += 1
+  if (ctx && countsAsOwnRow) ctx.recorded += 1
   alertRisky(row)
+}
+
+/** A handler's own audit row (with before/after and reason). Tells the admin-activity middleware not to add a generic one. */
+export function recordAuditLog(params: AuditEntry): Promise<void> {
+  return write(params, true)
+}
+
+/** The middleware's catch-all row. Same storage, but does not count as the handler having audited itself. */
+export function recordAdminActivity(params: AuditEntry): Promise<void> {
+  return write(params, false)
 }

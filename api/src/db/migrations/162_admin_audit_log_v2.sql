@@ -2,6 +2,10 @@
 -- admin_audit_log stays append-only (042). ADD COLUMN is allowed; old rows are never rewritten, so
 -- the new columns are nullable / defaulted and old rows simply have no chain position (chain_seq IS NULL).
 
+-- An audit row must outlive the admin it names (the actor's email and role are snapshotted below), so the foreign key
+-- to admins goes: it blocked deleting an admin, and ON DELETE SET NULL cannot work on an append-only table.
+ALTER TABLE admin_audit_log DROP CONSTRAINT IF EXISTS admin_audit_log_admin_id_fkey;
+
 ALTER TABLE admin_audit_log
   ALTER COLUMN target_id DROP NOT NULL,                    -- creates and list-level actions have no single target
   ADD COLUMN occurred_at    TIMESTAMPTZ DEFAULT now(),     -- when the action happened; created_at is when the row was stored
