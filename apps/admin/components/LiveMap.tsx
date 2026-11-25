@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
-import { Map as GoogleMap, AdvancedMarker, Polyline, useMap } from '@vis.gl/react-google-maps'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { Map as GoogleMap, Polyline, useMap } from '@vis.gl/react-google-maps'
 import { adminLiveMapApi, adminSessionsApi, type ActiveDriverSession, type LiveMapAttention } from '@/lib/admin-api'
 import { getAdminSocket } from '@/lib/socket'
 import api from '@/lib/api'
@@ -9,9 +9,13 @@ import { decodePolyline } from '@/lib/polyline'
 import { COLORS } from '@/lib/colors'
 import { isStale } from '@/lib/driver-staleness'
 import { ago } from '@/lib/ride-situation'
-import { STAGE_META, stageCounts, stageOf, visibleDrivers, type Stage, type StageFilter } from '@/lib/live-map-model'
+import { STAGE_META, stageCounts, stageOf, visibleDrivers, type StageFilter } from '@/lib/live-map-model'
+import { clusterPoints, inView, type Bounds, type ClusterPoint } from '@/lib/live-map-cluster'
 import { DriverList } from '@/components/live-map/DriverList'
 import { AttentionMarker } from '@/components/live-map/AttentionMarker'
+import { DriverDot } from '@/components/live-map/DriverDot'
+import { ClusterMarker } from '@/components/live-map/ClusterMarker'
+import { ViewportTracker, type Viewport } from '@/components/live-map/ViewportTracker'
 import { AttentionPanel } from '@/components/live-map/AttentionPanel'
 import { ATTENTION_LAYERS, attentionCounts, toAttentionItems, type AttentionKind } from '@/lib/live-map-attention'
 import Link from 'next/link'
@@ -27,6 +31,7 @@ const RECONCILE_SOON_MS = 1_500
 const FLUSH_MS = 1_000
 // SOS, flagged rides and unmet requests are refetched this often, and a moment after a live SOS or flag event.
 const ATTENTION_MS = 15_000
+const MAX_FIT_ZOOM = 17
 
 const CITIES = [
   { label: 'Bhubaneswar', lat: 20.2961, lng: 85.8245, zoom: 13 },
@@ -44,79 +49,10 @@ interface LocationUpdate {
   speed: number
 }
 
-// ─── Smoothed position (glides between socket fixes instead of snapping) ──────
-
-const GLIDE_MS = 2_500
-
-function useSmoothedLatLng(lat: number, lng: number): { lat: number; lng: number } {
-  const [display, setDisplay] = useState({ lat, lng })
-  const liveRef = useRef({ lat, lng })
-  const rafRef  = useRef<number | null>(null)
-
-  useEffect(() => {
-    const from = liveRef.current
-    if (from.lat === lat && from.lng === lng) return
-
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-    const start = performance.now()
-    const tick = (now: number) => {
-      const t = Math.min((now - start) / GLIDE_MS, 1)
-      const next = { lat: from.lat + (lat - from.lat) * t, lng: from.lng + (lng - from.lng) * t }
-      liveRef.current = next
-      setDisplay(next)
-      rafRef.current = t < 1 ? requestAnimationFrame(tick) : null
-    }
-    rafRef.current = requestAnimationFrame(tick)
-  }, [lat, lng])
-
-  useEffect(() => () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current) }, [])
-
-  return display
-}
-
-// ─── Driver dot marker ────────────────────────────────────────────────────────
-
-// Memoized on `session` identity only (ignores `onClick`, which is a fresh
-// closure every parent render but always resolves to the same session data) —
-// otherwise every driver marker re-renders on every OTHER driver's location
-// update, since `onClick`'s identity would defeat the default shallow compare.
-const DriverDot = memo(function DriverDot({ session, stage, selected, onClick }: { session: ActiveDriverSession; stage: Stage; selected: boolean; onClick: () => void }) {
-  // The colour says where the driver is (same colours as the list chips). A driver who stopped sending location is grey and dimmed
-  // so a frozen dot is never mistaken for a live one.
-  const stale = stage === 'no_location'
-  // On a trip with no location is the case ops must not miss: a red ring, not a dimmed dot. A silent idle driver just fades.
-  const alarm = stale && session.session_status === 'on_trip'
-  const color = STAGE_META[stage].color
-  const pos = useSmoothedLatLng(session.lat!, session.lng!)
-
-  return (
-    <AdvancedMarker
-      position={pos}
-      onClick={onClick}
-      zIndex={selected ? 1000 : alarm ? 500 : stale ? 0 : 1}
-    >
-      <div style={{ position: 'relative', width: 28, height: 28, cursor: 'pointer', opacity: stale && !alarm ? 0.65 : 1, outline: selected ? `3px solid ${COLORS.primary}` : alarm ? `3px solid ${COLORS.danger}` : undefined, outlineOffset: 3, borderRadius: '50%' }}>
-        {/* Halo */}
-        <div style={{
-          position: 'absolute', inset: -6, borderRadius: '50%',
-          background: color, opacity: 0.18,
-        }} />
-        {/* Solid dot */}
-        <div style={{
-          width: 28, height: 28, borderRadius: '50%',
-          background: color, border: '2.5px solid #ffffff',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.22)',
-          position: 'relative',
-        }} />
-      </div>
-    </AdvancedMarker>
-  )
-}, (prev, next) => prev.session === next.session && prev.stage === next.stage && prev.selected === next.selected)
-
 // ─── FlyTo helper (must be inside Map tree) ───────────────────────────────────
 
 // `follow`: keep the map centred on this point as it moves (the "follow driver" switch). Only pans, never changes the zoom.
-function MapController({ target, follow }: { target: { lat: number; lng: number; zoom: number } | null; follow: { lat: number; lng: number } | null }) {
+function MapController({ target, follow, fit }: { target: { lat: number; lng: number; zoom: number } | null; follow: { lat: number; lng: number } | null; fit: Bounds | null }) {
   const map = useMap()
   useEffect(() => {
     if (!map || !target) return
@@ -126,6 +62,13 @@ function MapController({ target, follow }: { target: { lat: number; lng: number;
   useEffect(() => {
     if (map && follow) map.panTo(follow)
   }, [map, follow])
+  // A click on a cluster: zoom to show its drivers, but never past street level (a cluster of drivers at one spot would otherwise zoom to the maximum).
+  useEffect(() => {
+    if (!map || !fit) return
+    map.fitBounds(fit, 80)
+    const z = map.getZoom()
+    if (z != null && z > MAX_FIT_ZOOM) map.setZoom(MAX_FIT_ZOOM)
+  }, [map, fit])
   return null
 }
 
@@ -153,6 +96,10 @@ export default function LiveMap() {
   const [query,     setQuery]     = useState('')
   const [filter,    setFilter]    = useState<StageFilter>('all')
   const [following, setFollowing] = useState(false)
+  // What part of the map is on screen and how far it is zoomed: drivers are merged into clusters when zoomed out, and only those in view are drawn.
+  const [view, setView] = useState<Viewport | null>(null)
+  const [fitTarget, setFitTarget] = useState<Bounds | null>(null)
+  const onViewport = useCallback((v: Viewport) => setView(prev => (prev && prev.zoom === v.zoom && prev.bounds.north === v.bounds.north && prev.bounds.south === v.bounds.south && prev.bounds.east === v.bounds.east && prev.bounds.west === v.bounds.west ? prev : v)), [])
   const [attention, setAttention] = useState<LiveMapAttention | null>(null)
   const [layers, setLayers] = useState<Record<AttentionKind, boolean>>({ sos: true, flagged: true, request: true })
   const [selectedItemKey, setSelectedItemKey] = useState<string | null>(null)
@@ -164,6 +111,23 @@ export default function LiveMap() {
   const counts = useMemo(() => stageCounts(drivers, nowMs), [drivers, nowMs])
 
   const selected = useMemo(() => drivers.find(d => d.driver_id === selectedId) ?? null, [drivers, selectedId])
+
+  // Which markers to draw. Cluster first, then keep only what is on screen (a cluster is decided on all drivers, so it does not change as the
+  // map is panned). The selected driver and an on-trip driver with no location are never merged into a cluster.
+  const zoom = view?.zoom ?? null
+  const viewBounds = view?.bounds ?? null
+  const rowById = useMemo(() => new Map(rows.map(r => [r.d.driver_id, r])), [rows])
+  const points = useMemo<ClusterPoint[]>(() => rows.flatMap(({ d, stage }) => (
+    d.lat != null && d.lng != null
+      ? [{ id: d.driver_id, lat: d.lat, lng: d.lng, stage, pinned: d.driver_id === selectedId || (stage === 'no_location' && d.session_status === 'on_trip') }]
+      : []
+  )), [rows, selectedId])
+  const layout = useMemo(() => (zoom == null ? { singles: points.map(p => p.id), clusters: [] } : clusterPoints(points, zoom)), [points, zoom])
+  const shownSingles = useMemo(() => layout.singles.flatMap(id => {
+    const r = rowById.get(id)
+    return r && inView(r.d.lat!, r.d.lng!, viewBounds) ? [r] : []
+  }), [layout, rowById, viewBounds])
+  const shownClusters = useMemo(() => layout.clusters.filter(c => inView(c.lat, c.lng, viewBounds)), [layout, viewBounds])
   const selectDriver = useCallback((driverId: string | null) => { setSelectedId(driverId); setFollowing(false); if (driverId) setSelectedItemKey(null) }, [])
   // One thing is selected at a time: a driver or an item, never both panels.
   const selectItem = useCallback((key: string | null) => { setSelectedItemKey(key); setFollowing(false); if (key) setSelectedId(null) }, [])
@@ -356,7 +320,8 @@ export default function LiveMap() {
           style={{ width: '100%', height: '100%' }}
           onDragstart={() => setFollowing(false)}
         >
-          <MapController target={flyTarget} follow={follow} />
+          <ViewportTracker onChange={onViewport} />
+          <MapController target={flyTarget} follow={follow} fit={fitTarget} />
 
           {/* Trip route for selected on_trip driver */}
           {tripRoutePath && tripRoutePath.length >= 2 && (
@@ -379,7 +344,10 @@ export default function LiveMap() {
           )}
 
           {/* One AdvancedMarker per driver that passes the search and filter (the selected driver always stays) */}
-          {rows.filter(({ d }) => d.lat != null && d.lng != null).map(({ d: session, stage }) => (
+          {shownClusters.map(c => (
+            <ClusterMarker key={c.key} cluster={c} onClick={() => setFitTarget({ ...c.bounds })} />
+          ))}
+          {shownSingles.map(({ d: session, stage }) => (
             <DriverDot
               key={session.driver_id}
               session={session}
