@@ -51,4 +51,10 @@ describe('onIdleDriverPaused', () => {
     await onIdleDriverPaused('615', '900', 'silent')
     expect(redis.del).toHaveBeenCalledWith('driver:idle-nudge:900')
   })
+
+  it('a metrics error never throws and does not stop the nudge', async () => {
+    vi.mocked(driverIdlePausedTotal.inc).mockImplementationOnce(() => { throw new Error('label error') })
+    await expect(onIdleDriverPaused('615', '900', 'silent')).resolves.toBeUndefined()
+    expect(notifyOwner).toHaveBeenCalledTimes(1)
+  })
 })

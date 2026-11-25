@@ -81,6 +81,7 @@ describe('cleanup worker — idle heartbeat sweep', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (cleanupWorker as any).__processor()
 
+    await new Promise((r) => setImmediate(r)) // the nudge is fired after the sweep and not awaited
     expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(7))
     expect(goOffline).not.toHaveBeenCalled()
     expect(notifyOwner).toHaveBeenCalledTimes(1)
@@ -120,6 +121,7 @@ describe('cleanup worker — idle heartbeat sweep', () => {
     expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(7))
     expect(goOffline).toHaveBeenCalledTimes(1)
     expect(goOffline).toHaveBeenCalledWith(BigInt(7), 'stale_heartbeat')
+    await new Promise((r) => setImmediate(r))
     // Already past the long tier: the driver is ended with its own message, so no "you're paused" first.
     expect(notifyOwner).toHaveBeenCalledTimes(1)
     expect(notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ type: 'session_ended_stale' }))

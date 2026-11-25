@@ -5,10 +5,12 @@ const sock = vi.hoisted(() => ({
   connected: true,
   mode: 'ack' as 'ack' | 'refuse' | 'silent' | 'ended',
   emitted: [] as Array<{ event: string; payload: unknown }>,
+  plain: [] as Array<{ event: string; payload: unknown }>,
 }))
 type Ack = (err: unknown, res?: { ok?: boolean; sessionActive?: boolean }) => void
 const socket = {
   get connected() { return sock.connected },
+  emit: (event: string, payload: unknown) => { sock.plain.push({ event, payload }) },
   timeout: () => ({
     emit: (event: string, payload: unknown, cb: Ack) => {
       sock.emitted.push({ event, payload })
@@ -34,7 +36,7 @@ const fix = { lat: 20.3, lng: 85.8, recordedAt: '2026-11-25T10:00:00.000Z' }
 beforeEach(() => {
   vi.clearAllMocks()
   resetLocationSyncForTests()
-  sock.connected = true; sock.mode = 'ack'; sock.emitted.length = 0
+  sock.connected = true; sock.mode = 'ack'; sock.emitted.length = 0; sock.plain.length = 0
   session.sessionId = '9'; session.offline = 0; disk.cleared = 0
   api.post.mockResolvedValue({ data: {} })
 })
@@ -85,6 +87,24 @@ describe('live position ping', () => {
     await emitLocationTick(fix, deps)
     expect(session.offline).toBe(1)
     expect(disk.cleared).toBe(1)
+  })
+
+  it('learns that an old server never acks: after 3 misses it stops waiting and stops duplicating over HTTP', async () => {
+    sock.mode = 'silent'
+    for (let i = 0; i < 3; i++) await emitLocationTick(fix, deps)
+    expect(api.post).toHaveBeenCalledTimes(3) // each of the three misses was resent over HTTP
+    api.post.mockClear()
+    await emitLocationTick(fix, deps)
+    expect(sock.plain).toEqual([{ event: 'location:update', payload: { sessionId: '9', ...fix } }])
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('once a server has acked, a later miss is a lost ping and still goes over HTTP', async () => {
+    await emitLocationTick(fix, deps) // acked
+    sock.mode = 'silent'
+    for (let i = 0; i < 5; i++) await emitLocationTick(fix, deps)
+    expect(sock.plain).toHaveLength(0)
+    expect(api.post).toHaveBeenCalled()
   })
 
   it('after an HTTP failure it backs off instead of stacking requests on every tick', async () => {

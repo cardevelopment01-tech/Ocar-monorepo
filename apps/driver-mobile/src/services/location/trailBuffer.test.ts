@@ -26,6 +26,18 @@ const settle = () => new Promise((r) => setTimeout(r, 0)) // let the upload add(
 describe('trail buffer', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
+  it('knows from disk whether a trip is under way (right in a bare background process)', async () => {
+    const a = make()
+    expect(await a.buf.hasRide()).toBe(false)
+    await a.buf.start('101')
+    expect(await a.buf.hasRide()).toBe(true)
+    // a fresh buffer over the same disk (a restarted process) still knows
+    const b = make({ saved: a.disk.value })
+    expect(await b.buf.hasRide()).toBe(true)
+    await a.buf.end()
+    expect(await a.buf.hasRide()).toBe(false)
+  })
+
   it('keeps nothing until a trip has started', async () => {
     const { buf, posts } = make()
     await buf.add(fixes(5))

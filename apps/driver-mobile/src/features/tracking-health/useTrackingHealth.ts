@@ -45,7 +45,7 @@ export function useTrackingHealth(isOnline: boolean, startFailed: boolean): Trac
         isCurrentlyTracking(),
       ])
       // A fix from before this online session says nothing about now (the store keeps the last one across sessions).
-      const stored = useDriverPositionStore.getState().lastUpdatedAt
+      const stored = useDriverPositionStore.getState().lastFixSeenAt
       const lastAt = stored != null && stored >= onlineSince.current ? stored : null
       // A failed start is usually a permission or the phone's Location switch: name that cause first, and fall back to "not running" (Restart)
       // only when nothing more specific is wrong.
@@ -53,10 +53,11 @@ export function useTrackingHealth(isOnline: boolean, startFailed: boolean): Trac
         foregroundGranted: fg.granted, backgroundGranted: bg.granted, servicesEnabled: services, taskRunning: running,
         lastFixAgeMs: lastAt == null ? null : Date.now() - lastAt, sinceOnlineMs: Date.now() - onlineSince.current,
       })
-      const found: TrackingIssue | null = assessed ?? (startFailedRef.current ? 'not_running' : null)
+      const soft = assessed === null || NEEDS_CONFIRMATION.has(assessed)
+      const found: TrackingIssue | null = startFailedRef.current && soft ? 'not_running' : assessed
       // A soft issue must be seen twice in a row; a hard one (permission, the phone's switch, a failed start) shows at once.
       if (!live.current) return // the driver went offline while this read was in flight
-      const confirmed = found === null || !NEEDS_CONFIRMATION.has(found) || startFailedRef.current || pending.current === found
+      const confirmed = found === null || !NEEDS_CONFIRMATION.has(found) || (startFailedRef.current && found === 'not_running') || pending.current === found
       pending.current = found
       if (!confirmed) return
       if (found === null && shown.current !== null) {

@@ -111,11 +111,17 @@ export function resetHeartbeatForTests(): void { lastHeartbeatAtMs = 0; heartbea
 const PING_ACK_TIMEOUT_MS = 4000
 
 type PingDeps = {
-  socket: Pick<ReturnType<typeof getSocket>, 'connected' | 'timeout'>
+  socket: Pick<ReturnType<typeof getSocket>, 'connected' | 'timeout' | 'emit'>
   api: Pick<ReturnType<typeof getApi>, 'post'>
 }
 
-export function resetLocationSyncForTests(): void { disconnectedSinceMs = null; httpInFlight = false; httpBackoffMs = 0; httpRetryAt = 0 }
+// An API from before the ack was added never answers a ping. After this many misses in a row with no ack EVER seen, assume that server and
+// send pings without waiting (and without an HTTP duplicate each time). One ack seen, and the app treats a later miss as a lost ping.
+const LEGACY_AFTER_MISSES = 3
+let ackEverSeen = false
+let ackMisses = 0
+
+export function resetLocationSyncForTests(): void { disconnectedSinceMs = null; httpInFlight = false; httpBackoffMs = 0; httpRetryAt = 0; ackEverSeen = false; ackMisses = 0 }
 
 // `deps` is for tests only; the app resolves the socket and API lazily (see the file header).
 export async function emitLocationTick(fix: LocationFix, deps?: PingDeps): Promise<void> {
@@ -125,10 +131,12 @@ export async function emitLocationTick(fix: LocationFix, deps?: PingDeps): Promi
   const socket = deps?.socket ?? getSocket()
   if (socket.connected) {
     disconnectedSinceMs = null
+    if (!ackEverSeen && ackMisses >= LEGACY_AFTER_MISSES) { socket.emit('location:update', { sessionId, ...fix }); return }
     const reply = await new Promise<{ ok?: boolean; sessionActive?: boolean } | null>((resolve) => {
       socket.timeout(PING_ACK_TIMEOUT_MS).emit('location:update', { sessionId, ...fix }, (err: unknown, res?: { ok?: boolean; sessionActive?: boolean }) => resolve(!err && res?.ok === true ? res : null))
     })
-    if (reply) { if (reply.sessionActive === false) forgetSession(); return }
+    if (reply) { ackEverSeen = true; ackMisses = 0; if (reply.sessionActive === false) forgetSession(); return }
+    ackMisses += 1
     // No ack (or the server refused it): try HTTP once, below. An older server that never acks lands here too and gets a duplicate
     // position over HTTP, which it treats as just another fix.
   } else {

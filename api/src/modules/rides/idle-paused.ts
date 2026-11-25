@@ -14,8 +14,12 @@ export type IdlePauseCause = 'silent' | 'stale_position'
 /** The silence sweep just paused an idle driver. Count it, and tell the driver once per session window so they can open the app: a
  *  paused driver sees no ride requests and, until now, was told nothing until the session was ended an hour later. Never throws. */
 export async function onIdleDriverPaused(driverId: string, sessionId: string, cause: IdlePauseCause, opts: { nudge?: boolean } = {}): Promise<void> {
-  driverIdlePausedTotal.inc({ cause })
-  log.info({ driverId, sessionId, cause }, 'idle driver paused: no usable location')
+  try {
+    driverIdlePausedTotal.inc({ cause })
+    log.info({ driverId, sessionId, cause }, 'idle driver paused: no usable location')
+  } catch (err) {
+    log.warn({ err }, 'idle pause metric failed') // a metrics error must never stop the nudge, or become an unhandled rejection
+  }
   // A driver already past the offline threshold is ended in the same sweep with its own message; "you're paused" first would only confuse.
   if (opts.nudge === false) return
   const nudgeKey = driverIdleNudgeKey(sessionId)

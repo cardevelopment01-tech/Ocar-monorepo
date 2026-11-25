@@ -12,6 +12,9 @@ export const STALE_AFTER_MS = 15_000
 interface DriverPositionState {
   position: DriverPosition | null
   lastUpdatedAt: number | null
+  /** When the OS last delivered ANY fix (even a rough one that is not sent), for "is GPS working at all" (tracking-health). */
+  lastFixSeenAt: number | null
+  noteFixSeen: () => void
   isStale: boolean
   _staleTimer: ReturnType<typeof setTimeout> | null
   setPosition: (position: DriverPosition) => void
@@ -25,6 +28,8 @@ interface DriverPositionState {
 export const useDriverPositionStore = create<DriverPositionState>()((set, get) => ({
   position: null,
   lastUpdatedAt: null,
+  lastFixSeenAt: null,
+  noteFixSeen: () => set({ lastFixSeenAt: Date.now() }),
   isStale: false,
   _staleTimer: null,
 
@@ -53,6 +58,6 @@ export const useDriverPositionStore = create<DriverPositionState>()((set, get) =
   reset: () => {
     const { _staleTimer } = get()
     if (_staleTimer) clearTimeout(_staleTimer)
-    set({ position: null, lastUpdatedAt: null, isStale: false, _staleTimer: null })
+    set({ position: null, lastUpdatedAt: null, lastFixSeenAt: null, isStale: false, _staleTimer: null })
   },
 }))
