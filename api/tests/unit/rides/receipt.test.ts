@@ -68,7 +68,8 @@ describe('receipt fare rows', () => {
     expect(sum(hourly.rows)).toBe(hourly.payable)
     const daily = buildFareRows(F.ROUND_DAILY, [])
     // its overage_fare is the quoted figure (settlement reprices the total, not that column), so it is not itemised: all of it stays in the Ride fare
-    expect(daily.rows.map((r) => [r.label, r.amount])).toEqual([['Ride fare', 5592], ['Airport toll', 220]])
+    // the per-day driver allowance (hour_surcharge 800) is listed below the Ride fare, not inside it
+    expect(daily.rows.map((r) => [r.label, r.amount])).toEqual([['Ride fare', 4792], ['Airport toll', 220], ['Driver allowance', 800]])
     expect(sum(daily.rows)).toBe(daily.payable)
   })
 
