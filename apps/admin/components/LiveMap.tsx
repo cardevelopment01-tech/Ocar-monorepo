@@ -117,7 +117,9 @@ export default function LiveMap() {
   const driversRef  = useRef<SessionMap>(new Map())
 
   const [drivers,     setDrivers]     = useState<ActiveDriverSession[]>([])
-  const [selected,    setSelected]    = useState<ActiveDriverSession | null>(null)
+  // Only the id is kept: the panel reads the driver's current record from `drivers`, so its position and "last seen" follow live updates
+  // instead of showing the copy taken at click time.
+  const [selectedId,  setSelectedId]  = useState<string | null>(null)
   const [loading,     setLoading]     = useState(true)
   const [onlineCount, setOnlineCount] = useState(0)
   const [tripCount,   setTripCount]   = useState(0)
@@ -129,27 +131,23 @@ export default function LiveMap() {
   useEffect(() => { const t = setInterval(() => setNowMs(Date.now()), 15_000); return () => clearInterval(t) }, [])
   const silentCount = drivers.filter(d => d.session_status === 'on_trip' && isStale(d.location_updated_at, nowMs)).length
 
-  // Fetch trip route when selected on_trip driver changes
+  const selected = useMemo(() => drivers.find(d => d.driver_id === selectedId) ?? null, [drivers, selectedId])
+
+  // Fetch trip route when the selected driver's trip changes. Plain values in the dependencies (not the driver object, which is replaced
+  // on every location update) so the route is fetched once per trip, not once per ping.
+  const onTrip = selected?.session_status === 'on_trip'
+  const oLat = selected?.origin_lat ?? null, oLng = selected?.origin_lng ?? null
+  const dLat = selected?.dest_lat ?? null,   dLng = selected?.dest_lng ?? null
   useEffect(() => {
     setTripRoute(null)
-    if (
-      !selected ||
-      selected.session_status !== 'on_trip' ||
-      selected.origin_lat == null || selected.origin_lng == null ||
-      selected.dest_lat   == null || selected.dest_lng   == null
-    ) return
+    if (!onTrip || oLat == null || oLng == null || dLat == null || dLng == null) return
 
     api.get<{ polyline: string }>('/api/v1/geo/route', {
-      params: {
-        originLat: selected.origin_lat,
-        originLng: selected.origin_lng,
-        destLat:   selected.dest_lat,
-        destLng:   selected.dest_lng,
-      },
+      params: { originLat: oLat, originLng: oLng, destLat: dLat, destLng: dLng },
     })
       .then(r => { if (r.data.polyline) setTripRoute(decodePolyline(r.data.polyline)) })
       .catch(() => {})
-  }, [selected])
+  }, [onTrip, oLat, oLng, dLat, dLng])
 
   const syncDrivers = useCallback((next: SessionMap) => {
     driversRef.current = next
@@ -280,7 +278,7 @@ export default function LiveMap() {
               key={session.driver_id}
               session={session}
               stale={isStale(session.location_updated_at, nowMs)}
-              onClick={() => setSelected(session)}
+              onClick={() => setSelectedId(session.driver_id)}
             />
           ))}
         </GoogleMap>
@@ -295,7 +293,7 @@ export default function LiveMap() {
               <p className="text-text-muted text-xs">{selected.driver_code} · {selected.driver_phone}</p>
             </div>
             <button
-              onClick={() => setSelected(null)}
+              onClick={() => setSelectedId(null)}
               className="text-text-muted hover:text-text-primary text-lg leading-none"
             >×</button>
           </div>
