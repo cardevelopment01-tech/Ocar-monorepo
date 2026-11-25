@@ -3126,6 +3126,9 @@ export async function getActiveDriverSessions(): Promise<
       ST_Y(r.destination::geometry)        AS dest_lat,
       ST_X(r.destination::geometry)        AS dest_lng,
       vc.display_name                      AS vehicle_category,
+      vc.id                                AS category_id,
+      d.city_id                            AS city_id,
+      ci.name                              AS city_name,
       dv.vehicle_name,
       dv.number_plate
     FROM driver_sessions ds
@@ -3137,6 +3140,7 @@ export async function getActiveDriverSessions(): Promise<
     LEFT JOIN driver_vehicles dv ON dv.driver_id = ds.driver_id
       AND dv.is_primary = true AND dv.status != 'blacklisted'
     LEFT JOIN vehicle_categories vc ON vc.id = dv.category_id
+    LEFT JOIN cities ci ON ci.id = d.city_id
     WHERE ds.status IN ('online', 'on_trip')
     ORDER BY ds.went_online_at DESC
   `);
@@ -3166,6 +3170,9 @@ export async function getActiveDriverSessions(): Promise<
     dest_lat: r.dest_lat != null ? parseFloat(r.dest_lat as string) : null,
     dest_lng: r.dest_lng != null ? parseFloat(r.dest_lng as string) : null,
     vehicle_category: r.vehicle_category as string | null,
+    category_id: r.category_id != null ? Number(r.category_id) : null,
+    city_id: r.city_id != null ? Number(r.city_id) : null,
+    city_name: r.city_name as string | null,
     vehicle_name: r.vehicle_name as string | null,
     number_plate: r.number_plate as string | null,
   }));

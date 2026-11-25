@@ -55,3 +55,37 @@ export function stageCounts(drivers: ActiveDriverSession[], nowMs: number): Reco
   for (const d of drivers) out[stageOf(d, nowMs)]++
   return out
 }
+
+// City and vehicle filters. An empty list means "everyone"; drivers with no city or vehicle on file only show when that filter is off.
+export interface FleetFilter { cities: string[]; categories: string[] }
+export const NO_FLEET_FILTER: FleetFilter = { cities: [], categories: [] }
+
+export function filterFleet(drivers: ActiveDriverSession[], f: FleetFilter): ActiveDriverSession[] {
+  if (f.cities.length === 0 && f.categories.length === 0) return drivers
+  return drivers.filter((d) =>
+    (f.cities.length === 0 || (d.city_id != null && f.cities.includes(String(d.city_id)))) &&
+    (f.categories.length === 0 || (d.category_id != null && f.categories.includes(String(d.category_id)))))
+}
+
+export interface Facet { value: string; label: string; count: number }
+
+// The options the filters offer: only cities and vehicle types that have a driver online right now, biggest first. Counts follow the OTHER
+// filter (picking a city shows how many of each vehicle type are in it), so an option never promises drivers it will not show.
+export function fleetFacets(drivers: ActiveDriverSession[], f: FleetFilter): { cities: Facet[]; categories: Facet[] } {
+  const tally = (list: ActiveDriverSession[], id: (d: ActiveDriverSession) => number | null, name: (d: ActiveDriverSession) => string | null) => {
+    const m = new Map<string, Facet>()
+    for (const d of list) {
+      const v = id(d)
+      if (v == null) continue
+      const key = String(v)
+      const hit = m.get(key)
+      if (hit) hit.count++
+      else m.set(key, { value: key, label: name(d) ?? `#${key}`, count: 1 })
+    }
+    return [...m.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+  }
+  return {
+    cities: tally(filterFleet(drivers, { ...f, cities: [] }), (d) => d.city_id, (d) => d.city_name),
+    categories: tally(filterFleet(drivers, { ...f, categories: [] }), (d) => d.category_id, (d) => d.vehicle_category),
+  }
+}

@@ -14,7 +14,7 @@ export const ClusterMarker = memo(function ClusterMarker({ cluster, onClick }: {
       <div
         role="button"
         aria-label={`${cluster.count} drivers`}
-        className={`flex items-center justify-center rounded-full border-[3px] border-white font-bold text-[13px] shadow-md cursor-pointer ${cluster.stage === 'waiting' ? 'text-text-primary' : 'text-white'}`}
+        className={`flex items-center justify-center rounded-full border-[3px] border-white font-display font-bold text-[13px] tabular-nums shadow-lg ring-4 ring-white/40 cursor-pointer ${cluster.stage === 'waiting' ? 'text-text-primary' : 'text-white'}`}
         style={{ width: size, height: size, background: color }}
       >
         {cluster.count}

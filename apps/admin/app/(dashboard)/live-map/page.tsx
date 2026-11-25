@@ -8,7 +8,8 @@ const LiveMap = dynamic(() => import('@/components/LiveMap'), {
 
 export default function LiveMapPage() {
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
+    // The layout pads the page by 1.5rem on every side, so the card is that much shorter than the space under the top bar.
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-card" style={{ height: 'calc(100vh - 64px - 3rem)' }}>
       <LiveMap />
     </div>
   )
