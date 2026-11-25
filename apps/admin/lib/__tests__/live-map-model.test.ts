@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { ActiveDriverSession } from '../admin-api'
-import { stageOf, matchesQuery, visibleDrivers, stageCounts } from '../live-map-model'
+import { stageOf, matchesQuery, visibleDrivers, stageCounts, filterFleet, fleetFacets, NO_FLEET_FILTER } from '../live-map-model'
 
 const NOW = Date.parse('2026-11-25T10:00:00Z')
 const fresh = new Date(NOW - 10_000).toISOString()
@@ -10,7 +10,7 @@ const base: ActiveDriverSession = {
   session_id: '1', driver_id: '1', driver_name: 'Asha', driver_phone: '+919811100101', driver_code: 'DRV001',
   session_status: 'online', lat: 20.3, lng: 85.8, heading: 0, speed_kmph: 0, location_updated_at: fresh,
   ride_id: null, ride_status: null, rider_name: null, origin_address: null, destination_address: null,
-  origin_lat: null, origin_lng: null, dest_lat: null, dest_lng: null, vehicle_category: null, vehicle_name: null, number_plate: 'OD02 AB-1101',
+  origin_lat: null, origin_lng: null, dest_lat: null, dest_lng: null, vehicle_category: null, category_id: null, city_id: null, city_name: null, vehicle_name: null, number_plate: 'OD02 AB-1101',
 }
 const d = (over: Partial<ActiveDriverSession>): ActiveDriverSession => ({ ...base, ...over })
 
@@ -56,4 +56,30 @@ describe('visibleDrivers and stageCounts', () => {
   it('filters by stage', () => expect(visibleDrivers(all, '', 'idle', NOW).map((v) => v.d.driver_id)).toEqual(['a', 'b']))
   it('combines search and filter', () => expect(visibleDrivers(all, 'zed', 'no_location', NOW).map((v) => v.d.driver_id)).toEqual(['s']))
   it('counts every stage', () => expect(stageCounts(all, NOW)).toEqual({ idle: 2, to_pickup: 0, waiting: 1, on_trip: 1, no_location: 2 }))
+})
+
+describe('filterFleet', () => {
+  const fleet = [
+    d({ driver_id: 'a', city_id: 1, city_name: 'Bhubaneswar', category_id: 2, vehicle_category: 'Sedan' }),
+    d({ driver_id: 'b', city_id: 1, city_name: 'Bhubaneswar', category_id: 3, vehicle_category: 'SUV' }),
+    d({ driver_id: 'c', city_id: 2, city_name: 'Cuttack', category_id: 2, vehicle_category: 'Sedan' }),
+    d({ driver_id: 'x' }), // no city, no vehicle on file
+  ]
+  const ids = (l: ActiveDriverSession[]) => l.map((x) => x.driver_id)
+  it('no filter keeps everyone, including drivers with nothing on file', () => expect(ids(filterFleet(fleet, NO_FLEET_FILTER))).toEqual(['a', 'b', 'c', 'x']))
+  it('a city keeps that city only', () => expect(ids(filterFleet(fleet, { cities: ['1'], categories: [] }))).toEqual(['a', 'b']))
+  it('several cities are an OR', () => expect(ids(filterFleet(fleet, { cities: ['1', '2'], categories: [] }))).toEqual(['a', 'b', 'c']))
+  it('city and vehicle together are an AND', () => expect(ids(filterFleet(fleet, { cities: ['1'], categories: ['2'] }))).toEqual(['a']))
+  it('a driver with no city is hidden once a city is picked', () => expect(ids(filterFleet(fleet, { cities: ['2'], categories: [] }))).not.toContain('x'))
+
+  it('facets list what is online, biggest first, and ignore drivers with nothing on file', () => {
+    const f = fleetFacets(fleet, NO_FLEET_FILTER)
+    expect(f.cities).toEqual([{ value: '1', label: 'Bhubaneswar', count: 2 }, { value: '2', label: 'Cuttack', count: 1 }])
+    expect(f.categories).toEqual([{ value: '2', label: 'Sedan', count: 2 }, { value: '3', label: 'SUV', count: 1 }])
+  })
+  it('each facet is counted under the other filter, not its own', () => {
+    const f = fleetFacets(fleet, { cities: ['1'], categories: ['2'] })
+    expect(f.cities.map((c) => [c.label, c.count])).toEqual([['Bhubaneswar', 1], ['Cuttack', 1]]) // vehicle=Sedan: one in each city
+    expect(f.categories.map((c) => [c.label, c.count])).toEqual([['Sedan', 1], ['SUV', 1]])        // city=Bhubaneswar: one of each
+  })
 })

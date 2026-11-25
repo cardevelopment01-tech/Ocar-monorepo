@@ -8,8 +8,7 @@ import api from '@/lib/api'
 import { decodePolyline } from '@/lib/polyline'
 import { COLORS } from '@/lib/colors'
 import { isStale } from '@/lib/driver-staleness'
-import { ago } from '@/lib/ride-situation'
-import { STAGE_META, stageCounts, stageOf, visibleDrivers, type StageFilter } from '@/lib/live-map-model'
+import { NO_FLEET_FILTER, filterFleet, fleetFacets, stageCounts, stageOf, visibleDrivers, type FleetFilter, type StageFilter } from '@/lib/live-map-model'
 import { clusterPoints, inView, type Bounds, type ClusterPoint } from '@/lib/live-map-cluster'
 import { DriverList } from '@/components/live-map/DriverList'
 import { AttentionMarker } from '@/components/live-map/AttentionMarker'
@@ -17,13 +16,14 @@ import { DriverDot } from '@/components/live-map/DriverDot'
 import { ClusterMarker } from '@/components/live-map/ClusterMarker'
 import { ViewportTracker, type Viewport } from '@/components/live-map/ViewportTracker'
 import { AttentionPanel } from '@/components/live-map/AttentionPanel'
+import { DriverCard } from '@/components/live-map/DriverCard'
+import { LayerControl, StatusBar } from '@/components/live-map/MapControls'
 import { CandidateBadge } from '@/components/live-map/CandidateBadge'
 import DispatchPanel from '@/components/dispatch/DispatchPanel'
 import SuccessToast from '@/components/ui/SuccessToast'
 import { useAdminAuth } from '@/lib/auth-context'
 import { boundsAround, markedDrivers } from '@/lib/live-map-dispatch'
-import { ATTENTION_LAYERS, attentionCounts, toAttentionItems, type AttentionKind } from '@/lib/live-map-attention'
-import Link from 'next/link'
+import { attentionCounts, toAttentionItems, type AttentionKind } from '@/lib/live-map-attention'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -37,12 +37,6 @@ const FLUSH_MS = 1_000
 // SOS, flagged rides and unmet requests are refetched this often, and a moment after a live SOS or flag event.
 const ATTENTION_MS = 15_000
 const MAX_FIT_ZOOM = 17
-
-const CITIES = [
-  { label: 'Bhubaneswar', lat: 20.2961, lng: 85.8245, zoom: 13 },
-  { label: 'Cuttack',     lat: 20.4625, lng: 85.8830, zoom: 13 },
-  { label: 'Puri',        lat: 19.8135, lng: 85.8312, zoom: 13 },
-]
 
 type SessionMap = Map<string, ActiveDriverSession>
 
@@ -90,15 +84,22 @@ export default function LiveMap() {
   // instead of showing the copy taken at click time.
   const [selectedId,  setSelectedId]  = useState<string | null>(null)
   const [loading,     setLoading]     = useState(true)
-  const [onlineCount, setOnlineCount] = useState(0)
-  const [tripCount,   setTripCount]   = useState(0)
   const [tripRoute,   setTripRoute]   = useState<[number, number][] | null>(null)
   const [flyTarget,   setFlyTarget]   = useState<{ lat: number; lng: number; zoom: number } | null>(null)
   const [socketLive,  setSocketLive]  = useState(true)
   // Re-evaluated every 15 s so a dot turns grey on its own when its driver goes quiet, without waiting for a refetch.
   const [nowMs, setNowMs] = useState(() => Date.now())
   useEffect(() => { const t = setInterval(() => setNowMs(Date.now()), 15_000); return () => clearInterval(t) }, [])
-  const silentCount = drivers.filter(d => d.session_status === 'on_trip' && isStale(d.location_updated_at, nowMs)).length
+
+  // City and vehicle filters narrow everything at once: the list, the markers, the counts. (SOS, flagged rides and unmet requests are never
+  // hidden by them: an alert in another city is still an alert.)
+  const [fleet, setFleet] = useState<FleetFilter>(NO_FLEET_FILTER)
+  const [panelOpen, setPanelOpen] = useState(true)
+  const scoped = useMemo(() => filterFleet(drivers, fleet), [drivers, fleet])
+  const facets = useMemo(() => fleetFacets(drivers, fleet), [drivers, fleet])
+  const onlineCount = useMemo(() => scoped.filter(d => d.session_status === 'online').length, [scoped])
+  const tripCount = scoped.length - onlineCount
+  const silentCount = useMemo(() => scoped.filter(d => d.session_status === 'on_trip' && isStale(d.location_updated_at, nowMs)).length, [scoped, nowMs])
 
   const [query,     setQuery]     = useState('')
   const [filter,    setFilter]    = useState<StageFilter>('all')
@@ -124,8 +125,8 @@ export default function LiveMap() {
   const shownItems = useMemo(() => items.filter(i => layers[i.kind]), [items, layers])
   const selectedItem = useMemo(() => items.find(i => i.key === selectedItemKey) ?? null, [items, selectedItemKey])
   const attentionTotals = useMemo(() => attentionCounts(attention), [attention])
-  const rows   = useMemo(() => visibleDrivers(drivers, query, filter, nowMs), [drivers, query, filter, nowMs])
-  const counts = useMemo(() => stageCounts(drivers, nowMs), [drivers, nowMs])
+  const rows   = useMemo(() => visibleDrivers(scoped, query, filter, nowMs), [scoped, query, filter, nowMs])
+  const counts = useMemo(() => stageCounts(scoped, nowMs), [scoped, nowMs])
 
   const selected = useMemo(() => drivers.find(d => d.driver_id === selectedId) ?? null, [drivers, selectedId])
 
@@ -176,12 +177,21 @@ export default function LiveMap() {
       .catch(() => {})
   }, [onTrip, oLat, oLng, dLat, dLng])
 
+  // Picking a city or vehicle frames the drivers it leaves. Only on a change of the filter itself, never as drivers move.
+  const fleetKey = `${fleet.cities.join(',')}|${fleet.categories.join(',')}`
+  const lastFleetKey = useRef(fleetKey)
+  useEffect(() => {
+    if (lastFleetKey.current === fleetKey) return
+    lastFleetKey.current = fleetKey
+    if (fleetKey === '|') return
+    const pts = filterFleet(Array.from(driversRef.current.values()), fleet).flatMap(d => (d.lat != null && d.lng != null ? [{ lat: d.lat, lng: d.lng }] : []))
+    const first = pts[0]
+    if (!first) return
+    setFitTarget({ bounds: boundsAround(first, pts), padding: { top: 90, right: 90, bottom: 90, left: 90 } })
+  }, [fleetKey, fleet])
+
   const syncDrivers = useCallback((next: SessionMap) => {
     driversRef.current = next
-    let online = 0, onTrip = 0
-    next.forEach(d => { if (d.session_status === 'online') online++; else onTrip++ })
-    setOnlineCount(online)
-    setTripCount(onTrip)
     // Drivers with no position at all stay in the list (as "No location"); only the map skips them.
     setDrivers(Array.from(next.values()))
   }, [])
@@ -209,7 +219,7 @@ export default function LiveMap() {
   const dispatchItem = useMemo(() => (dispatchRideId ? items.find(i => i.kind === 'request' && i.rideId === dispatchRideId) ?? null : null), [items, dispatchRideId])
   const openDispatch = useCallback((rideId: string) => {
     // A search or filter would hide the very drivers about to be marked, so the list is reset first.
-    setQuery(''); setFilter('all'); setSelectedId(null); setFollowing(false)
+    setQuery(''); setFilter('all'); setFleet(NO_FLEET_FILTER); setSelectedId(null); setFollowing(false)
     fittedFor.current = null
     setDispatchRideId(rideId)
     const it = items.find(i => i.kind === 'request' && i.rideId === rideId)
@@ -278,59 +288,17 @@ export default function LiveMap() {
   )
 
   return (
-    <div className="relative w-full h-full flex flex-col">
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-surface border-b border-border flex-shrink-0">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-          <span className="text-xs font-semibold text-text-secondary">{onlineCount} online</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-          <span className="text-xs font-semibold text-text-secondary">{tripCount} on trip</span>
-        </div>
-        {silentCount > 0 && (
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-danger" />
-            <span className="text-xs font-semibold text-danger">{silentCount} on trip with no location</span>
-          </div>
-        )}
-        {!socketLive && (
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-danger" />
-            <span className="text-xs font-semibold text-danger">Reconnecting… positions may be stale</span>
-          </div>
-        )}
-        <div className="flex items-center gap-1.5" role="group" aria-label="Map layers">
-          {ATTENTION_LAYERS.map(l => (
-            <button
-              key={l.kind}
-              type="button"
-              aria-pressed={layers[l.kind]}
-              onClick={() => setLayers(prev => ({ ...prev, [l.kind]: !prev[l.kind] }))}
-              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${layers[l.kind] ? 'border-primary bg-primary text-white' : 'border-border bg-surface text-text-secondary hover:bg-surface-2'} ${l.kind === 'sos' && attentionTotals.sos > 0 && !layers.sos ? 'ring-2 ring-danger' : ''}`}
-            >
-              {l.label} {attentionTotals[l.count]}
-            </button>
-          ))}
-        </div>
-        <div className="flex-1" />
-        {CITIES.map(c => (
-          <button
-            key={c.label}
-            onClick={() => setFlyTarget({ lat: c.lat, lng: c.lng, zoom: c.zoom })}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors hover:bg-surface-2 text-primary"
-          >
-            {c.label}
-          </button>
-        ))}
-      </div>
+    <div className="relative w-full h-full flex flex-col bg-canvas">
 
       <div className="flex flex-1 min-h-0">
-      <DriverList
+      {panelOpen && <DriverList
+        live={socketLive}
+        fleet={fleet}
+        onFleet={setFleet}
+        facets={facets}
+        onCollapse={() => setPanelOpen(false)}
         rows={rows}
-        total={drivers.length}
+        total={scoped.length}
         counts={counts}
         query={query}
         onQuery={setQuery}
@@ -339,7 +307,7 @@ export default function LiveMap() {
         selectedId={selectedId}
         onSelect={flyToDriver}
         nowMs={nowMs}
-      />
+      />}
 
       {/* Map */}
       <div className="relative flex-1" style={{ minHeight: 500 }}>
@@ -348,6 +316,9 @@ export default function LiveMap() {
             <div className="text-sm text-text-muted font-medium">Loading map…</div>
           </div>
         )}
+
+        <StatusBar online={onlineCount} onTrip={tripCount} silent={silentCount} socketLive={socketLive} panelOpen={panelOpen} onOpenPanel={() => setPanelOpen(true)} filtered={fleet.cities.length + fleet.categories.length > 0} onClearFilters={() => setFleet(NO_FLEET_FILTER)} />
+        <LayerControl layers={layers} totals={attentionTotals} onToggle={k => setLayers(prev => ({ ...prev, [k]: !prev[k] }))} />
 
         <GoogleMap
           defaultCenter={DEFAULT_CENTER}
@@ -412,69 +383,10 @@ export default function LiveMap() {
             <DriverDot key={selected.driver_id} session={selected} stage={stageOf(selected, nowMs)} selected onClick={() => selectDriver(selected.driver_id)} />
           )}
         </GoogleMap>
+        {selectedItem && layers[selectedItem.kind] && !dispatchRideId && <AttentionPanel item={selectedItem} nowMs={nowMs} onClose={() => selectItem(null)} onAssign={canAssign ? openDispatch : undefined} />}
+        {selected && <DriverCard driver={selected} nowMs={nowMs} following={following} onFollow={() => setFollowing(f => !f)} onClose={() => selectDriver(null)} />}
       </div>
       </div>
-
-      {selectedItem && layers[selectedItem.kind] && !dispatchRideId && <AttentionPanel item={selectedItem} nowMs={nowMs} onClose={() => selectItem(null)} onAssign={canAssign ? openDispatch : undefined} />}
-
-      {/* Driver detail panel */}
-      {selected && (
-        <div className="absolute bottom-4 left-4 md:left-[21rem] z-[1000] w-72 bg-surface rounded-2xl border border-border p-4 shadow-card">
-          <div className="flex items-start justify-between mb-2">
-            <div>
-              <p className="font-bold text-text-primary text-sm">{selected.driver_name ?? 'Driver'}</p>
-              <p className="text-text-muted text-xs">{selected.driver_code} · {selected.driver_phone}</p>
-            </div>
-            <button
-              onClick={() => selectDriver(null)}
-              aria-label="Close"
-              className="text-text-muted hover:text-text-primary text-lg leading-none"
-            >×</button>
-          </div>
-          <span
-            className="inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-full mb-2 bg-surface-2 text-text-secondary"
-          >
-            <span className="h-2 w-2 rounded-full" style={{ background: STAGE_META[stageOf(selected, nowMs)].color }} aria-hidden />
-            {STAGE_META[stageOf(selected, nowMs)].label}
-          </span>
-          <p className="text-xs text-text-secondary">
-            {selected.vehicle_category ?? selected.vehicle_name
-              ? `${selected.vehicle_category ?? ''}${selected.vehicle_category && selected.vehicle_name ? ' · ' : ''}${selected.vehicle_name ?? ''}`
-              : 'No vehicle on file'}
-            {selected.number_plate ? ` · ${selected.number_plate}` : ''}
-          </p>
-          {selected.ride_id && (
-            <div className="mt-1 text-xs text-text-secondary space-y-0.5">
-              {selected.rider_name && <p className="truncate"><span className="font-medium">Rider:</span> {selected.rider_name}</p>}
-              <p className="truncate"><span className="font-medium">From:</span> {selected.origin_address ?? '—'}</p>
-              <p className="truncate"><span className="font-medium">To:</span> {selected.destination_address ?? '—'}</p>
-            </div>
-          )}
-          {selected.lat != null && (
-            <p className={`text-xs mt-1.5 ${isStale(selected.location_updated_at, nowMs) ? 'text-danger font-semibold' : 'text-text-muted'}`}>
-              {isStale(selected.location_updated_at, nowMs)
-                ? `Last seen ${ago(selected.location_updated_at, nowMs) || 'a long time ago'}, not live · `
-                : 'Live · '}
-              {selected.lat.toFixed(5)}, {selected.lng?.toFixed(5)}
-              {selected.speed_kmph != null ? ` · ${selected.speed_kmph} km/h` : ''}
-            </p>
-          )}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <a href={`tel:${selected.driver_phone}`} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary hover:bg-surface-2">Call driver</a>
-            {selected.ride_id && (
-              <Link href={`/rides/${selected.ride_id}`} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary hover:bg-surface-2">Open ride</Link>
-            )}
-            {selected.lat != null && <button
-              type="button"
-              onClick={() => setFollowing(f => !f)}
-              aria-pressed={following}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${following ? 'border-primary bg-primary text-white' : 'border-border text-primary hover:bg-surface-2'}`}
-            >
-              {following ? 'Following' : 'Follow'}
-            </button>}
-          </div>
-        </div>
-      )}
 
       {canAssign && <DispatchPanel rideId={dispatchRideId} canAssign={canAssign} overMap onClose={closeDispatch} onAssigned={afterDispatch} onChanged={afterDispatch} onCandidates={setCandidates} />}
       <SuccessToast message={toast} onDismiss={dismissToast} />

@@ -14,7 +14,7 @@ const mk = (over: Partial<ActiveDriverSession>): ActiveDriverSession => ({
   session_id: '1', driver_id: '1', driver_name: 'Asha', driver_phone: '+919811100101', driver_code: 'D1', session_status: 'online',
   lat: 20.3, lng: 85.8, heading: 0, speed_kmph: 0, location_updated_at: fresh, ride_id: null, ride_status: null, rider_name: null,
   origin_address: null, destination_address: null, origin_lat: null, origin_lng: null, dest_lat: null, dest_lng: null,
-  vehicle_category: null, vehicle_name: null, number_plate: 'OD02AB1101', ...over,
+  vehicle_category: null, category_id: null, city_id: null, city_name: null, vehicle_name: null, number_plate: 'OD02AB1101', ...over,
 })
 
 function setup(drivers: ActiveDriverSession[], over: Partial<Parameters<typeof DriverList>[0]> = {}) {
@@ -68,5 +68,37 @@ describe('DriverList', () => {
     unmount()
     render(<DriverList rows={[]} total={3} counts={stageCounts([], NOW)} query="zzz" onQuery={vi.fn()} filter="all" onFilter={vi.fn()} selectedId={null} onSelect={vi.fn()} nowMs={NOW} />)
     expect(screen.getByText('No driver matches.')).toBeTruthy()
+  })
+
+  describe('city and vehicle filters', () => {
+    const a = mk({ driver_id: '1', city_id: 1, city_name: 'Bhubaneswar', category_id: 2, vehicle_category: 'Sedan' })
+    const b = mk({ driver_id: '3', driver_name: 'Biswa', city_id: 2, city_name: 'Cuttack', category_id: 3, vehicle_category: 'SUV' })
+    const facets = { cities: [{ value: '1', label: 'Bhubaneswar', count: 1 }, { value: '2', label: 'Cuttack', count: 1 }], categories: [{ value: '2', label: 'Sedan', count: 1 }, { value: '3', label: 'SUV', count: 1 }] }
+
+    it('offers a city and a vehicle filter, and reports what is picked', async () => {
+      const onFleet = vi.fn()
+      setup([a, b], { fleet: { cities: [], categories: [] }, onFleet, facets })
+      await userEvent.click(screen.getByRole('button', { name: 'City' }))
+      await userEvent.click(await screen.findByRole('checkbox', { name: /Cuttack/ }))
+      expect(onFleet).toHaveBeenCalledWith({ cities: ['2'], categories: [] })
+    })
+
+    it('shows how many are picked and clears them all with one button', async () => {
+      const onFleet = vi.fn()
+      setup([a], { fleet: { cities: ['1'], categories: ['2'] }, onFleet, facets })
+      expect(screen.getByRole('button', { name: 'City, 1 selected' })).toBeTruthy()
+      await userEvent.click(screen.getByRole('button', { name: /Clear/ }))
+      expect(onFleet).toHaveBeenCalledWith({ cities: [], categories: [] })
+    })
+
+    it('says the filters are why nobody shows', () => {
+      setup([], { rows: [], total: 0, fleet: { cities: ['9'], categories: [] }, onFleet: vi.fn(), facets })
+      expect(screen.getByText('No driver matches these filters.')).toBeTruthy()
+    })
+
+    it('has no filter row when the panel is not given filters', () => {
+      setup([a])
+      expect(screen.queryByRole('button', { name: 'City' })).toBeNull()
+    })
   })
 })

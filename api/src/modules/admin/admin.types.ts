@@ -394,6 +394,11 @@ export interface ActiveDriverSession {
   dest_lat: number | null
   dest_lng: number | null
   vehicle_category: string | null
+  /** For the live map's vehicle filter. */
+  category_id: number | null
+  /** The driver's home city, for the live map's city filter. */
+  city_id: number | null
+  city_name: string | null
   vehicle_name: string | null
   number_plate: string | null
 }
