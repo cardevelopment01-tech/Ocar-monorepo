@@ -26,7 +26,7 @@ import { normalizeCode, reserveRedemption } from '@/modules/offers/offers.reposi
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
 import { expireRideRequests } from '@/modules/rides/request-expiry'
-import { tellBooked, tellNoDrivers, keepSearchingAdvance, broadcastDataFor } from '@/modules/rides/advance.service'
+import { tellBooked, tellNoDrivers, keepSearchingAdvance, broadcastDataFor, redispatchAfterDriverCancel } from '@/modules/rides/advance.service'
 import { getAdvancePolicy, lateCancelFee, lateCancelSummary } from '@/lib/advance-policy'
 import { advanceBookingEventsTotal } from '@/observability/metrics'
 import { enqueueBreadcrumb, flushBreadcrumbs } from '@/lib/gps-buffer'
@@ -2467,6 +2467,13 @@ export async function cancelRideAsDriver(
   }
   if (!CANCELLABLE_BY_DRIVER.has(ride.status)) {
     throw Object.assign(new Error('Ride cannot be cancelled at this stage'), { httpStatus: 409 })
+  }
+
+  // An advance booking is a promise of a pickup time: when its driver drops out, it goes back to being searched for instead of being
+  // cancelled on the rider (see redispatchAfterDriverCancel). Any other ride, or one whose pickup time is long gone, cancels as before.
+  if (await redispatchAfterDriverCancel(ride, driverId, reasonCode, reason)) {
+    void callMasking.releaseForRide(rideId).catch((err: unknown) => log.error({ err, rideId }, 'call-masking release failed'))
+    return { success: true, redispatched: true }
   }
 
   const stage = cancelStageFor(ride.status)

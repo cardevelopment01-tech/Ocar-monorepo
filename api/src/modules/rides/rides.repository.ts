@@ -1614,6 +1614,15 @@ export async function getBusyDriverIds(rideId: bigint): Promise<bigint[]> {
   return res.rows.map((r) => BigInt(r.driver_id))
 }
 
+/** Drivers who took this ride and then dropped out before the trip started (the history row redispatchAfterDriverCancel writes). They must not be offered it again. */
+export async function getDriversWhoLeftRide(rideId: bigint): Promise<bigint[]> {
+  const res = await pool.query<{ driver_id: string }>(
+    `SELECT DISTINCT actor_id::text AS driver_id FROM ride_status_history
+      WHERE ride_id = $1 AND actor = 'driver' AND from_status IN ('accepted', 'driver_arrived') AND to_status = 'requested' AND actor_id IS NOT NULL`,
+    [rideId])
+  return res.rows.map((r) => BigInt(r.driver_id))
+}
+
 export async function getDeclinedDriverIds(rideId: bigint): Promise<bigint[]> {
   const res = await pool.query<{ driver_id: string }>(
     `SELECT driver_id::text FROM ride_assignments WHERE ride_id = $1 AND status = 'declined'`, [rideId])

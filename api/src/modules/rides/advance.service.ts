@@ -25,7 +25,7 @@ const httpErr = (status: number, message: string, code?: string) => Object.assig
 // ── Messages to the rider ───────────────────────────────────────────────────
 // Plain and short: what happened, the time, what they can do. Times are IST. Built in code (not templates) so a missing template row cannot lose them.
 
-type AdvanceNotice = Extract<NotificationType, 'advance_booked' | 'advance_reminder' | 'advance_rescheduled' | 'advance_searching' | 'advance_no_drivers' | 'advance_cancelled'>
+type AdvanceNotice = Extract<NotificationType, 'advance_booked' | 'advance_reminder' | 'advance_rescheduled' | 'advance_searching' | 'advance_no_drivers' | 'advance_cancelled' | 'advance_driver_cancelled'>
 
 async function tell(type: AdvanceNotice, userId: bigint, rideId: bigint, title: string, body: string): Promise<void> {
   try {
@@ -53,6 +53,10 @@ export const advanceMessages = {
   searching: (pickup: Date) => ({
     title: 'Still finding your driver',
     body: `We are still looking for a driver for your ${fmtClock(pickup)} pickup and will keep trying. You can change the time or cancel any time.`,
+  }),
+  driverCancelled: (pickup: Date) => ({
+    title: 'Finding you another driver',
+    body: `Your driver can no longer take your ${fmtPickup(pickup)} ride. We are finding you another one right now. Your booking and fare are unchanged, and you do not need to do anything.`,
   }),
   noDrivers: (pickup: Date) => ({
     title: 'No driver found',
@@ -158,6 +162,80 @@ export async function rescheduleAdvanceRide(rideId: bigint, scheduledFor: string
     })
   }
   return { scheduledFor: when.toISOString(), reschedulesLeft: actor.type === 'user' ? Math.max(policy.rescheduleMax - (meta.reschedule_count + 1), 0) : null }
+}
+
+// ── A driver drops out of an accepted advance ride ──────────────────────────
+
+/** Ride columns this needs; getRideCoreById returns all of them. */
+export interface RedispatchRide {
+  id: string | number | bigint; user_id: string | number | bigint; status: string; scheduled_for: string | Date | null
+  category_id: string | number | bigint; origin_lat: number; origin_lng: number; ride_type: string; is_return_cab: boolean
+  dest_lat?: number | null; dest_lng?: number | null; trip_hours?: string | number | null
+}
+
+/**
+ * The rider booked a pickup TIME, not a one-off request: when the driver who took the ride drops out before the trip starts, the booking is
+ * still good, so the ride goes back to being searched for (fresh rounds, the same fare and offer, the cancelling driver left out) instead of
+ * being cancelled with the rider told to start again. Used while the pickup is still ahead, or within the admin's search grace after it.
+ *
+ * Returns true when the ride was put back to searching. False when it does not apply (not an advance ride, no driver on it yet, or the pickup
+ * time is already too far gone to be worth searching for), so the caller cancels exactly as it always did.
+ */
+export async function redispatchAfterDriverCancel(ride: RedispatchRide, driverId: bigint, reasonCode?: string, reason?: string): Promise<boolean> {
+  if (!ride.scheduled_for || (ride.status !== 'accepted' && ride.status !== 'driver_arrived')) return false
+  const pickup = new Date(ride.scheduled_for)
+  const policy = await getAdvancePolicy()
+  if (Date.now() >= pickup.getTime() + policy.searchGraceMin * 60_000) return false
+
+  const rideId = BigInt(ride.id)
+  const note = `Driver ${driverId} cancelled${reasonCode ? ` (${reasonCode})` : ''}${reason ? `: ${reason}` : ''}. Looking for another driver.`
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    // Same shape as the force-assign revert: no driver on the ride, back to requested. The fare, the offer reservation and the booking stay.
+    const upd = await client.query(
+      `UPDATE rides SET status = 'requested', driver_id = NULL, accepted_at = NULL, driver_arrived_at = NULL,
+              force_assign_grace_job_id = NULL, updated_at = now()
+        WHERE id = $1 AND driver_id = $2 AND status = $3 RETURNING id`,
+      [rideId, driverId, ride.status],
+    )
+    if ((upd.rowCount ?? 0) === 0) throw httpErr(409, 'Ride status changed — please refresh')
+    await client.query(`UPDATE ride_assignments SET status = 'cancelled', cancelled_at = now() WHERE ride_id = $1 AND driver_id = $2 AND status = 'accepted'`, [rideId, driverId])
+    await client.query(`UPDATE driver_sessions SET status = 'online' WHERE driver_id = $1 AND status = 'on_trip'`, [driverId])
+    await client.query(`UPDATE driver_location_snapshots SET is_available = true WHERE driver_id = $1`, [driverId])
+    await client.query(`UPDATE ride_advance_meta SET status = 'dispatched', search_until = NULL, search_alerted_at = NULL WHERE ride_id = $1`, [rideId])
+    // This history row is also how the next rounds know to leave this driver out (repo.getDriversWhoLeftRide), and the audit trail of it.
+    await client.query(
+      `INSERT INTO ride_status_history (ride_id, from_status, to_status, actor, actor_id, note) VALUES ($1, $2, 'requested', 'driver', $3, $4)`,
+      [rideId, ride.status, driverId, note],
+    )
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw err
+  } finally {
+    client.release()
+  }
+
+  count('driver_cancel_redispatch')
+  socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'requested', reason: 'driver_cancelled_redispatch' })
+  const m = advanceMessages.driverCancelled(pickup)
+  await tell('advance_driver_cancelled', BigInt(ride.user_id), rideId, m.title, m.body)
+  await notifyAllAdmins({
+    type: 'advance_driver_cancelled', title: 'Driver dropped an advance ride',
+    body: `Ride #${rideId} (pickup ${fmtPickup(pickup)}): driver ${driverId} cancelled${reasonCode ? ` (${reasonCode})` : ''}. Searching for another driver; assign one from the Dispatch desk if it takes long.`, rideId,
+  }).catch(() => undefined)
+
+  // Fresh rounds, the way the first dispatch ran them. Job ids carry how many drivers have dropped out, so they never clash with the earlier rounds.
+  const dropped = (await repo.getDriversWhoLeftRide(rideId)).length
+  const data = broadcastDataFor(ride)
+  await Promise.all([1, 2, 3].map((round, i) =>
+    queues[QUEUE_NAMES.DISPATCH].add(
+      'broadcast_ride', { ...data, broadcastRound: round },
+      { jobId: `round-${rideId}-${round}-x${dropped}`, delay: i * 25_000, attempts: round === 1 ? 2 : 1, removeOnComplete: true },
+    ),
+  ))
+  return true
 }
 
 // ── Admin cancel ────────────────────────────────────────────────────────────

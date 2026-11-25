@@ -272,6 +272,12 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     }
   }
 
+  // A driver who took this advance ride and then dropped out is never offered it again, whatever the dispatch variant or round.
+  if (ride.scheduled_for && drivers.length > 0) {
+    const left = new Set((await repo.getDriversWhoLeftRide(rideId)).map((id) => id.toString()))
+    if (left.size > 0) drivers = drivers.filter((d) => !left.has(d.driver_id.toString()))
+  }
+
   // What this round skipped, for the record (spread also skips busy drivers and those already offered).
   const skippedCounts = { liveSkipped: liveDriverIds.length, declinedSkipped: declinedDriverIds.length, otherSkipped: spread ? new Set([...busyDriverIds, ...offeredBefore.map((o) => o.driver_id)].map(String)).size : 0 }
 
