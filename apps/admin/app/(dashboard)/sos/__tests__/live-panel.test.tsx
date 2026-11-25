@@ -45,7 +45,13 @@ const props = (id: string) => ({ id, busy: false, onClose: vi.fn(), onAcknowledg
 const carAt = () => document.querySelector('[title="Car"]')!.parentElement!
 const fire = (e: unknown) => act(() => { sock.fire('driver:location', e) })
 const joins = () => sock.emitted.filter(([e]) => e === 'join:ride' || e === 'leave:ride').map(([e, p]) => `${e}:${p}`)
-const title = (name: string) => screen.findByText(name, { selector: 'p.font-bold' })
+// The name shows as soon as the alert has loaded, but the panel joins its ride room and listens for positions in an effect that React runs just
+// after that render. Flush it before the test looks at what the socket got, or on a slow machine the test reads the socket a moment too early.
+const title = async (name: string) => {
+  const el = await screen.findByText(name, { selector: 'p.font-bold' })
+  await act(async () => {})
+  return el
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
