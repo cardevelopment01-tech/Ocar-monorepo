@@ -2299,14 +2299,16 @@ export async function insertEtaShadow(row: {
  */
 export async function getPickupWaitMinutes(
   rideId: bigint, arrivedAt: Date, pickupLat: number, pickupLng: number, radiusM: number,
+  /** An advance booking's pickup time: the clock never starts before it (see lib/pickup-wait-floor). */
+  notBefore?: Date | null,
 ): Promise<number | null> {
   const res = await pool.query<{ minutes: string | null }>(
     `SELECT CASE WHEN count(*) = 0 THEN NULL
-                 ELSE EXTRACT(EPOCH FROM (now() - GREATEST($2::timestamptz, MIN(recorded_at)))) / 60.0 END::text AS minutes
+                 ELSE EXTRACT(EPOCH FROM (now() - GREATEST($2::timestamptz, COALESCE($6::timestamptz, $2::timestamptz), MIN(recorded_at)))) / 60.0 END::text AS minutes
      FROM gps_tracks
      WHERE ride_id = $1
        AND ST_DWithin(location, ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography, $5)`,
-    [rideId, arrivedAt, pickupLat, pickupLng, radiusM],
+    [rideId, arrivedAt, pickupLat, pickupLng, radiusM, notBefore ?? null],
   )
   const m = res.rows[0]?.minutes
   return m != null ? Math.max(0, parseFloat(m)) : null
@@ -2340,13 +2342,15 @@ export async function getPickupWaitCharge(rideId: bigint): Promise<number> {
  */
 export async function getPickupWaitStartedAt(
   rideId: bigint, arrivedAt: Date, pickupLat: number, pickupLng: number, radiusM: number,
+  /** An advance booking's pickup time: the clock never starts before it (see lib/pickup-wait-floor). */
+  notBefore?: Date | null,
 ): Promise<string | null> {
   const res = await pool.query<{ started_at: Date | null }>(
-    `SELECT CASE WHEN count(*) = 0 THEN NULL ELSE GREATEST($2::timestamptz, MIN(recorded_at)) END AS started_at
+    `SELECT CASE WHEN count(*) = 0 THEN NULL ELSE GREATEST($2::timestamptz, COALESCE($6::timestamptz, $2::timestamptz), MIN(recorded_at)) END AS started_at
      FROM gps_tracks
      WHERE ride_id = $1
        AND ST_DWithin(location, ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography, $5)`,
-    [rideId, arrivedAt, pickupLat, pickupLng, radiusM],
+    [rideId, arrivedAt, pickupLat, pickupLng, radiusM, notBefore ?? null],
   )
   const at = res.rows[0]?.started_at
   return at ? new Date(at).toISOString() : null

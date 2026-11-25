@@ -29,6 +29,7 @@ import { expireRideRequests } from '@/modules/rides/request-expiry'
 import { tellBooked, tellNoDrivers, keepSearchingAdvance, broadcastDataFor, redispatchAfterDriverCancel } from '@/modules/rides/advance.service'
 import { getAdvancePolicy, lateCancelFee, lateCancelSummary } from '@/lib/advance-policy'
 import { advanceBookingEventsTotal } from '@/observability/metrics'
+import { pickupWaitFloor } from '@/lib/pickup-wait-floor'
 import { enqueueBreadcrumb, flushBreadcrumbs } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
 import { publishNearbyCar } from '@/websocket/nearby-bus'
@@ -692,13 +693,13 @@ export function publicDriverRef(driverId: string): string {
  */
 export async function withPickupWait<T extends {
   id?: unknown; status?: string; driver_arrived_at?: string | Date | null
-  origin_lat?: number | null; origin_lng?: number | null; pickup_free_wait_min?: number | null
+  origin_lat?: number | null; origin_lng?: number | null; pickup_free_wait_min?: number | null; scheduled_for?: string | Date | null
 }>(ride: T): Promise<T & { pickup_wait_started_at?: string | null }> {
   if (ride.status !== 'driver_arrived' || ride.pickup_free_wait_min == null || !ride.driver_arrived_at
     || ride.origin_lat == null || ride.origin_lng == null) return ride
   try {
     const startedAt = await repo.getPickupWaitStartedAt(
-      BigInt(ride.id as string | number | bigint), new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+      BigInt(ride.id as string | number | bigint), new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES, ...pickupWaitFloor(ride))
     return { ...ride, pickup_wait_started_at: startedAt }
   } catch (err) {
     log.warn({ err }, 'pickup wait start not added to the ride')
@@ -1476,13 +1477,13 @@ export async function startReturn(driverId: bigint, rideId: bigint) {
 // free window (terms pinned at booking; none for a ride booked before waiting charges existed). Never blocks the trip from starting.
 async function recordPickupWaitAtStart(
   rideId: bigint,
-  ride: { driver_arrived_at: string | null; origin_lat: number; origin_lng: number },
+  ride: { driver_arrived_at: string | null; origin_lat: number; origin_lng: number; scheduled_for?: string | Date | null },
 ): Promise<void> {
   try {
     const terms = await repo.getPickupWaitTerms(rideId)
     if (!terms || !ride.driver_arrived_at) return
     await flushBreadcrumbs().catch(() => undefined)
-    const minutes = await repo.getPickupWaitMinutes(rideId, new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+    const minutes = await repo.getPickupWaitMinutes(rideId, new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES, ...pickupWaitFloor(ride))
     if (minutes === null) {
       log.warn({ rideId }, 'no position recorded at the pickup: no waiting charge')
       return

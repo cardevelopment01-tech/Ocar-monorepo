@@ -227,5 +227,6 @@ export const BROADCAST_PUSH_RETRY_PAUSE_MS = 2000
 export const BROADCAST_JOB_ATTEMPTS = 3
 
 // Waiting at the pickup counts only from the moment the driver is really there: the later of their "arrived" tap and the first
-// recorded position within this distance of the pickup, so tapping "arrived" from far away cannot start the meter.
+// recorded position within this distance of the pickup, so tapping "arrived" from far away cannot start the meter. For an advance booking
+// it also cannot start before the pickup time the rider booked (lib/pickup-wait-floor.ts): a driver who is early has not made anyone wait.
 export const PICKUP_WAIT_RADIUS_METRES = 150
