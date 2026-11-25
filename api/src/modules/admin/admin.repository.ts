@@ -2888,7 +2888,7 @@ export async function createAdminRateCard(data: {
   /** Free minutes and rupees per minute for waiting at the pickup. Omitted = carry the previous version's value forward (3 and 3 for a brand-new card). */
   pickupFreeWaitMin?: number;
   pickupWaitPerMin?: number;
-  /** Rupees per night driven between 11 PM and 6 AM. Omitted = carry the previous version's value forward (0 for a brand-new card). */
+  /** Rupees per night driven between 11 PM and 6 AM. Omitted = carry the previous version's value forward (0 for a brand-new card); send 0 to switch it off. */
   nightAllowancePerNight?: number;
   cityId?: number | null;
   notes?: string | null;

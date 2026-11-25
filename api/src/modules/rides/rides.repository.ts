@@ -2408,10 +2408,6 @@ export async function getNightTerms(rideId: bigint): Promise<{ ride_type: string
   return res.rows[0]
 }
 
-export async function recordNightAllowance(rideId: bigint, amount: number, nights: number): Promise<void> {
-  await pool.query('UPDATE fare_snapshots SET night_allowance = $2, night_count = $3 WHERE ride_id = $1', [rideId, amount, nights])
-}
-
 // ── Receipt ───────────────────────────────────────────────────
 
 /**

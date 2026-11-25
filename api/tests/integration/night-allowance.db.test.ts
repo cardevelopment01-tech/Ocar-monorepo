@@ -105,7 +105,7 @@ describe.skipIf(!url)('night allowance on a real database', () => {
     expect(terms).toMatchObject({ ride_type: 'one_way', trip_mode: 'standard', rate: 300 })
     const { amount, nights } = night.nightAllowanceFor(terms, new Date('2026-11-26T03:00:00+05:30'))
     expect({ amount, nights }).toEqual({ amount: 300, nights: 1 })
-    await repo.recordNightAllowance(id, amount, nights)
+    await pool.query('UPDATE fare_snapshots SET night_allowance = $2, night_count = $3 WHERE ride_id = $1', [id, amount, nights])
     const fs = (await pool.query('SELECT night_allowance::float8 AS a, night_count AS n FROM fare_snapshots WHERE ride_id = $1', [id])).rows[0]
     expect(fs).toEqual({ a: 300, n: 1 })
   })
@@ -141,7 +141,7 @@ describe.skipIf(!url)('night allowance on a real database', () => {
   it('the ride the apps read carries the allowance and its nights', async () => {
     const rc = await card('one_way', 300)
     const id = await ride('one_way', rc, '2026-11-25T22:00:00')
-    await repo.recordNightAllowance(id, 300, 1)
+    await pool.query('UPDATE fare_snapshots SET night_allowance = 300, night_count = 1 WHERE ride_id = $1', [id])
     const r = (await repo.getRideById(id)) as unknown as { night_allowance: string; night_count: number }
     expect(Number(r.night_allowance)).toBe(300)
     expect(r.night_count).toBe(1)
@@ -150,7 +150,7 @@ describe.skipIf(!url)('night allowance on a real database', () => {
   it('commission is taken on the fare without the night allowance, and the driver earns it on top', async () => {
     const rc = await card('one_way', 300)
     const id = await ride('one_way', rc, '2026-11-25T22:00:00')
-    await repo.recordNightAllowance(id, 300, 1)
+    await pool.query('UPDATE fare_snapshots SET night_allowance = 300, night_count = 1 WHERE ride_id = $1', [id])
     await pool.query("UPDATE fare_snapshots SET total_final = 1700, status = 'final' WHERE ride_id = $1", [id]) // fare 1400 + night 300
     await payments.createPaymentRecord(id, 'cash_direct')
     const p = (await pool.query('SELECT amount::float8 AS amount, commission_percent::float8 AS pct, commission_amount::float8 AS commission, driver_earning::float8 AS earning FROM payments WHERE ride_id = $1', [id])).rows[0]

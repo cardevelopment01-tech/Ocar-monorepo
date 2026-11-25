@@ -13,6 +13,8 @@ vi.mock('@/modules/rides/rides.repository', () => ({
   getPickupWaitCharge: vi.fn(async () => 0),
   getTollForRide: vi.fn(async () => ({ total: 0, detail: [] as Array<{ zone: string; amount: number }>, trailOnly: false })),
   recordToll: vi.fn(async () => undefined),
+  // A ride that would owe nights if it had a real end time (started days ago on a card with an allowance).
+  getNightTerms: vi.fn(async () => ({ ride_type: 'one_way', trip_mode: 'standard', started_at: '2026-11-20T20:00:00+05:30', rate: 300 })),
   flagRideForReview: vi.fn(async () => undefined),
   markStopStatus:   vi.fn(async () => ({ sequence: 1, status: 'reached', reached_at: null })),
 }))
@@ -90,6 +92,15 @@ describe('stuck-ride stop handling', () => {
     expect(repo.recordToll).toHaveBeenCalledWith(RIDE_ID, 40, [{ zone: 'Biju Patnaik Airport', amount: 40 }])
     const fare = pool.query.mock.calls.find((c: unknown[]) => (c[0] as string).includes('UPDATE fare_snapshots'))
     expect(fare?.[1]).toEqual([RIDE_ID, 12.5, 58]) // stop wait, then pickup wait 18 + toll 40
+  })
+
+  it('force-complete never bills a night allowance: a stuck ride has no real end time, so nights up to "now" would be charged for time nobody drove', async () => {
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(ride('in_progress'))
+    await forceResolveRide(RIDE_ID, 'completed', 'admin', undefined, BigInt(1))
+    expect(repo.getNightTerms).not.toHaveBeenCalled()
+    const fare = pool.query.mock.calls.find((c: unknown[]) => (c[0] as string).includes('UPDATE fare_snapshots'))
+    expect(fare?.[1]).toEqual([RIDE_ID, 12.5, 0]) // stop wait only
+    expect(fare?.[0]).not.toContain('night_allowance')
   })
 
   it('a toll earned by the GPS trail alone is charged and flagged for ops; a failing flag never drops it', async () => {

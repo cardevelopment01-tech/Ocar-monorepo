@@ -748,7 +748,7 @@ function CreateRateCardDialog({
         driver_allowance_per_day: form.driver_allowance_per_day ? parseFloat(form.driver_allowance_per_day) : null,
         stop_charge: form.stop_charge !== '' ? parseFloat(form.stop_charge) : 0, // default: stops are free
         base_fare: form.ride_type !== 'rental' && form.base_fare !== '' ? parseFloat(form.base_fare) : 0, // default: no base fare; rentals are priced from the package fare
-        // Blank = no night allowance (the server stores 0). One-way and round-trip cards only.
+        // Blank = keep the current card's night allowance (0 for a brand-new card); 0 = switch it off. One-way and round-trip cards only.
         ...(form.night_allowance_per_night !== '' && earnsNightAllowanceMode(form.ride_type) ? { night_allowance_per_night: parseFloat(form.night_allowance_per_night) } : {}),
         // Blank = the default of 3 free minutes and ₹3 a minute (the server applies it).
         ...(form.pickup_free_wait_min !== '' ? { pickup_free_wait_min: parseInt(form.pickup_free_wait_min, 10) } : {}),
@@ -848,7 +848,7 @@ function CreateRateCardDialog({
               <label className={labelCls}>Night allowance (₹ per night)</label>
               <input type="number" step="0.01" min="0" value={form.night_allowance_per_night}
                 onChange={e => set('night_allowance_per_night', e.target.value)} className={`${inputCls} font-mono`} placeholder="0" />
-              <p className="text-xs text-text-muted mt-1">0 = none. Added once for every night the trip is driven between 11 PM and 6 AM, not surged. Paid on to the driver.</p>
+              <p className="text-xs text-text-muted mt-1">Blank keeps the current card's value (0 for a new card). 0 = none. Added once for every night the trip is driven between 11 PM and 6 AM, not surged. Paid on to the driver.</p>
             </div>
             )}
             <div>

@@ -1357,20 +1357,17 @@ async function settleToll(rideId: bigint): Promise<number> {
 }
 
 // The night allowance for a finished ride: the rate on the card the ride was quoted on, once for every night (11 PM to 6 AM IST) the trip was
-// really driven in, from when it started to when it ended. One-way (which includes Return Cab) and round trip in standard mode only; 0
+// really driven in, from when it started to when it ended (not computed for a force-resolved ride, which has no real end time). One-way (which includes Return Cab) and round trip in standard mode only; 0
 // everywhere else, and 0 on any ride whose card has no allowance (every ride booked before it existed). Recorded on the ride and returned so
-// the caller can add it to the final fare. Never fails a completion: an error charges nothing and is logged.
-async function settleNightAllowance(rideId: bigint, endedAt: Date = new Date()): Promise<number> {
+// the caller can add it to the final fare. Not written here: the caller records it in the same UPDATE that adds it to total_final, so the
+// two can never disagree. Never fails a completion: an error charges nothing and is logged.
+async function computeNightAllowance(rideId: bigint, endedAt: Date = new Date()): Promise<{ amount: number; nights: number }> {
   try {
     const t = await repo.getNightTerms(rideId)
-    if (!t) return 0
-    const { amount, nights } = nightAllowanceFor(t, endedAt)
-    if (nights === 0) return 0
-    await repo.recordNightAllowance(rideId, amount, nights)
-    return amount
+    return t ? nightAllowanceFor(t, endedAt) : { amount: 0, nights: 0 }
   } catch (err) {
     log.error({ err, rideId }, 'night allowance not settled')
-    return 0
+    return { amount: 0, nights: 0 }
   }
 }
 
@@ -2794,7 +2791,9 @@ export async function forceResolveRide(
     try {
       const wait = ride.ride_type === 'one_way' ? await repo.getStopWaitTotal(rideId) : 0
       // The wait at the pickup (recorded when the trip started) and any airport toll are owed on every ride type, however the trip ends.
-      const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId)) + (await settleNightAllowance(rideId))
+      // No night allowance here: this trip has no real end time (a stuck ride can be resolved days later), so billing nights up to the moment
+      // an admin clicked resolve would charge for time nobody drove. Ops can add it by hand if the trip really ran through a night.
+      const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId))
       await pool.query(
         `UPDATE fare_snapshots
          SET total_final = round(total_estimated + $2::numeric + $3::numeric, 2),
@@ -3516,16 +3515,20 @@ export async function verifyEndOTP(
 
   // The wait at the pickup (recorded when the trip started) and any airport toll are their own lines on top of whatever was settled above, for every ride
   // type. Single winner: the status CAS above lets only one end-OTP submit reach this point, so it is added exactly once.
-  const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId)) + (await settleNightAllowance(rideId))
+  const night = await computeNightAllowance(rideId)
+  const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId)) + night.amount
   if (pickupWait > 0) {
+    // The night allowance is recorded in this same statement as the total it is added to.
     const upd = await pool.query<{ total_final: string }>(
       `UPDATE fare_snapshots
-       SET total_final  = round(COALESCE(total_final, total_estimated) + $2::numeric, 2),
-           status       = 'final',
-           finalised_at = COALESCE(finalised_at, now())
+       SET total_final     = round(COALESCE(total_final, total_estimated) + $2::numeric, 2),
+           night_allowance = $3::numeric,
+           night_count     = $4::int,
+           status          = 'final',
+           finalised_at    = COALESCE(finalised_at, now())
        WHERE ride_id = $1
        RETURNING total_final`,
-      [rideId, pickupWait]
+      [rideId, pickupWait, night.amount, night.nights]
     )
     if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
     await finaliseDiscount(pool, rideId)

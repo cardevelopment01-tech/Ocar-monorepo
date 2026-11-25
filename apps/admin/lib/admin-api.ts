@@ -359,6 +359,9 @@ export interface AdminRideFareBreakdown {
   pickup_wait_charge?: string | null
   toll_charge?: string | null
   toll_detail?: Array<{ zone: string; amount: number }> | null
+  /** Night allowance charged (11 PM to 6 AM, per night) and how many nights it was for. */
+  night_allowance?: string | null
+  night_count?: number | null
   refund_amount: string | null
 }
 

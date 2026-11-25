@@ -444,6 +444,7 @@ export default function RideDetail({ rideId }: { rideId: string }) {
                     ['Surge', r.surge_fare ?? null, r.surge_multiplier && parseFloat(r.surge_multiplier) > 1 ? `×${r.surge_multiplier}` : ''],
                     ['Extra time', r.overtimeFare != null ? String(r.overtimeFare) : null],
                     ['Airport toll', r.toll_charge ?? null, r.toll_detail?.length ? `(${r.toll_detail.map(t => t.zone).join(', ')})` : ''],
+                    ['Night allowance', r.night_allowance ?? null, r.night_count ? `(${r.night_count} ${r.night_count === 1 ? 'night' : 'nights'})` : ''],
                     ['Waiting at pickup', r.pickup_wait_charge ?? null, r.pickup_wait_min ? `(${Math.round(parseFloat(r.pickup_wait_min))} min${r.pickup_free_wait_min != null ? `, ${r.pickup_free_wait_min} free` : ''})` : ''],
                   ]
                   const shown = parts.filter(([, v]) => v && parseFloat(v) > 0)
