@@ -73,7 +73,7 @@ describe('cleanup worker — in-progress ride sweep', () => {
 describe('cleanup worker — idle heartbeat sweep', () => {
   beforeEach(() => { vi.clearAllMocks(); vi.mocked(repo.isDriverStale).mockResolvedValue(true); vi.mocked(repo.hasActiveRide).mockResolvedValue(false); vi.mocked(repo.pauseIfAvailable).mockResolvedValue('55' as never) })
 
-  it('pauses a driver stale past the short tier without ending their session', async () => {
+  it('pauses a driver stale past the short tier without ending their session, and tells them (once) so they can open the app', async () => {
     vi.mocked(repo.findStaleInProgressRides).mockResolvedValue([])
     vi.mocked(repo.findStaleOnlineDrivers).mockImplementation((async (secs: number) => (secs === IDLE_HEARTBEAT_PAUSE_SECONDS ? [{ driver_id: '7' }] : [])) as never)
 
@@ -83,7 +83,8 @@ describe('cleanup worker — idle heartbeat sweep', () => {
 
     expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(7))
     expect(goOffline).not.toHaveBeenCalled()
-    expect(notifyOwner).not.toHaveBeenCalled()
+    expect(notifyOwner).toHaveBeenCalledTimes(1)
+    expect(notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ ownerId: BigInt(7), type: 'idle_paused' }))
   })
 
   it('ends the session and notifies the driver once past the long tier', async () => {
@@ -119,7 +120,9 @@ describe('cleanup worker — idle heartbeat sweep', () => {
     expect(repo.pauseIfAvailable).toHaveBeenCalledWith(BigInt(7))
     expect(goOffline).toHaveBeenCalledTimes(1)
     expect(goOffline).toHaveBeenCalledWith(BigInt(7), 'stale_heartbeat')
-    expect(notifyOwner).toHaveBeenCalledTimes(1)
+    // One "you're paused" nudge from the short tier and one "you went offline" from the long tier: two different messages, one each.
+    expect(notifyOwner).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(notifyOwner).mock.calls.map((c) => c[0].type).sort()).toEqual(['idle_paused', 'session_ended_stale'])
   })
 })
 

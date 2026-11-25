@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AppState, Dimensions, Linking, Pressable, StyleSheet, View } from 'react-native'
+import { Dimensions, Pressable, StyleSheet, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -15,6 +15,8 @@ import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { walletBlockMessage } from '@/features/go-online/walletGateMessage'
 import { useSocketConnected } from '@/features/go-online/useSocketConnected'
 import { ensureBackgroundTracking } from '@/services/location/backgroundTask'
+import { useTrackingHealth } from '@/features/tracking-health/useTrackingHealth'
+import { TrackingHealthCard } from '@/features/tracking-health/TrackingHealthCard'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
 import { useNotificationPrimer } from '@/features/notifications/usePushSetup'
 import { fetchEarningsSummary } from '@/features/earnings/api'
@@ -99,20 +101,9 @@ export default function HomeScreen() {
   // hadn't been in a while, with nothing on screen indicating it was stale.
   const live = useDriverLivePosition(isOnline)
 
-  // Location can be switched off in system settings while online; the server keeps the session alive but no
-  // position reaches it, so the driver must be told rather than left on "ride requests incoming".
-  const [locationOff, setLocationOff] = useState(false)
-  useEffect(() => {
-    if (!isOnline) { setLocationOff(false); return }
-    const check = () => {
-      Location.getForegroundPermissionsAsync()
-        .then(({ granted }) => setLocationOff(!granted))
-        .catch(() => {})
-    }
-    check()
-    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') check() })
-    return () => sub.remove()
-  }, [isOnline])
+  // Location can stop reaching the server while the driver still looks Online (permission or the phone's Location switch turned off, the
+  // tracking service stopped, or no GPS). The card says which and offers the one fix, instead of leaving "ride requests incoming".
+  const trackingHealth = useTrackingHealth(isOnline, trackingFailed)
 
   useEffect(() => {
     Location.requestForegroundPermissionsAsync()
@@ -269,26 +260,16 @@ export default function HomeScreen() {
           <View style={styles.headerText}>
             <Text style={styles.date}>{todayLabel}</Text>
             <Text style={styles.greeting}>Hi, {firstName}</Text>
-            {isOnline && locationOff ? (
-              <Pressable onPress={() => void Linking.openSettings()}>
-                <Text style={[styles.subtext, { color: colors.error }]}>
-                  Location is off, so you won't get ride requests. Tap to turn it on in Settings.
-                </Text>
-              </Pressable>
-            ) : isOnline && trackingFailed ? (
-              <Pressable onPress={retryTracking}>
-                <Text style={[styles.subtext, { color: colors.error }]}>
-                  Location tracking did not start, so you may miss ride requests. Tap to try again.
-                </Text>
-              </Pressable>
-            ) : (
-              <Text style={styles.subtext}>
-                {isOnline ? "You're live, ride requests incoming" : 'Go online to start earning'}
-              </Text>
-            )}
+            <Text style={styles.subtext}>
+              {isOnline ? (trackingHealth.issue ? "You're online, but we can't see your location" : "You're live, ride requests incoming") : 'Go online to start earning'}
+            </Text>
           </View>
           <OnlineToggle isOnline={isOnline} onToggle={() => void handleToggle()} disabled={toggleDisabled} />
         </View>
+
+        {isOnline ? (
+          <TrackingHealthCard issue={trackingHealth.issue} recovered={trackingHealth.recovered} onRestart={retryTracking} onOpenedSettings={trackingHealth.recheck} />
+        ) : null}
 
         {isOnline && mode === 'return_cab' ? (
           <View style={styles.returnCabBanner}>

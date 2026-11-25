@@ -91,6 +91,10 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
       return link ? (BROADCAST_ROUTES[link] ?? null) : null
     }
 
+    // "You're paused": the home screen is where the tracking card says what is wrong and how to fix it.
+    case 'idle_paused':
+      return '/(tabs)/home'
+
     default:
       return null
   }

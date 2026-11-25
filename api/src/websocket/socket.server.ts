@@ -166,11 +166,14 @@ export function initSocketServer(httpServer: HttpServer): Server {
         heading?: unknown
         speed?: unknown
         recordedAt?: unknown
-      }) => {
+      }, ack?: unknown) => {
+        // Optional ack (older apps pass none): lets the app tell a ping the server took from one lost on a half-dead connection, and
+        // resend it over HTTP. `sessionActive: false` means the session ended server-side.
+        const reply = (ok: boolean, sessionActive = true) => { if (typeof ack === 'function') (ack as (r: { ok: boolean; sessionActive: boolean }) => void)({ ok, sessionActive }) }
         const sessionId = parseId(data?.sessionId)
         const lat = finiteNum(data?.lat, -90, 90)
         const lng = finiteNum(data?.lng, -180, 180)
-        if (sessionId === null || lat === null || lng === null) return
+        if (sessionId === null || lat === null || lng === null) { reply(false); return }
         // The device clock is not trusted, but a wrong one must not silence the driver either: updateLocation
         // replaces an implausible recordedAt with server time (this used to drop the ping, so a phone with a
         // bad clock never updated its location and was swept offline). Anything that isn't a string is stamped now.
@@ -187,9 +190,10 @@ export function initSocketServer(httpServer: HttpServer): Server {
         const speed   = finiteNum(data?.speed, 0, 400)
         if (heading !== null) input.heading = heading
         if (speed   !== null) input.speed   = speed
-        updateLocation(BigInt(user.sub), input).catch((err: unknown) => {
+        updateLocation(BigInt(user.sub), input).then(() => reply(true)).catch((err: unknown) => {
           // Expected: the driver's session was ended server-side and updateLocation has just told them so.
-          if ((err as { appCode?: string } | null)?.appCode === 'SESSION_ENDED') return
+          if ((err as { appCode?: string } | null)?.appCode === 'SESSION_ENDED') { reply(true, false); return }
+          reply(false)
           log.error({ err, sessionId: String(sessionId) }, 'location:update failed')
         })
       }))

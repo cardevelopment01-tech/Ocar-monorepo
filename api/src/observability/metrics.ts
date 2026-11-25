@@ -149,3 +149,13 @@ new Gauge({
     }
   },
 })
+
+// An idle online driver pulled out of matching because their phone went quiet. `cause` is bounded: 'silent' (no fix and no sign of life
+// from the app) or 'stale_position' (the app still says it is here, but the last position is too old to rank by, e.g. GPS dead or fixes
+// all rejected for accuracy). Tells ops which kind of tracking loss is happening in the field.
+export const driverIdlePausedTotal = new Counter({
+  name: 'driver_idle_paused_total',
+  help: 'Idle online drivers paused by the silence sweep, by cause',
+  labelNames: ['cause'],
+  registers: [register],
+})

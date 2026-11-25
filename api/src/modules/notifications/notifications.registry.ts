@@ -52,6 +52,9 @@ export const NOTIFICATION_TYPES = {
   // Visible nudge when the driver's GPS goes silent mid-trip. Short life on purpose: a phone with no signal would get it late, after
   // tracking is already back, and "location stopped" would then be wrong.
   location_paused:   { channelId: 'ride_updates_v1', ttlSeconds: 180, collapse: 'type' },
+  // Visible nudge when an idle (no ride) driver is pulled out of matching because their phone went quiet. Short life (3 min) for the same
+  // reason as location_paused: a phone in a dead zone gets it late, after tracking is back, and "you are paused" would then be wrong.
+  idle_paused:       { channelId: 'ride_updates_v1', ttlSeconds: 180, collapse: 'type' },
   stop_added:        { channelId: 'ride_updates_v1', ttlSeconds: 1800, collapse: 'ride_type' },
   pickup_updated:    { channelId: 'ride_updates_v1', ttlSeconds: 1800, collapse: 'ride_type' },
   // ── Safety ──

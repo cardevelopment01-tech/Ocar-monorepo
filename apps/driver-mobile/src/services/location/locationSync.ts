@@ -106,25 +106,42 @@ export async function emitHeartbeat(nowMs: number = Date.now(), deps?: Heartbeat
 
 export function resetHeartbeatForTests(): void { lastHeartbeatAtMs = 0; heartbeatHttpInFlight = false; heartbeatBackoffMs = 0; nextHeartbeatAtMs = 0 }
 
-export async function emitLocationTick(fix: LocationFix): Promise<void> {
+// A live ping over a socket that says "connected" can still be lost (a half-dead connection, a sleeping radio). The server acks each ping;
+// no ack within this window means it did not arrive, and the same fix goes out over HTTP instead of being silently dropped.
+const PING_ACK_TIMEOUT_MS = 4000
+
+type PingDeps = {
+  socket: Pick<ReturnType<typeof getSocket>, 'connected' | 'timeout'>
+  api: Pick<ReturnType<typeof getApi>, 'post'>
+}
+
+export function resetLocationSyncForTests(): void { disconnectedSinceMs = null; httpInFlight = false; httpBackoffMs = 0; httpRetryAt = 0 }
+
+// `deps` is for tests only; the app resolves the socket and API lazily (see the file header).
+export async function emitLocationTick(fix: LocationFix, deps?: PingDeps): Promise<void> {
   const sessionId = await resolveSessionId()
   if (!sessionId) return // not online -- nothing to report against
 
-  const socket = getSocket()
+  const socket = deps?.socket ?? getSocket()
   if (socket.connected) {
     disconnectedSinceMs = null
-    socket.emit('location:update', { sessionId, ...fix })
-    return
+    const reply = await new Promise<{ ok?: boolean; sessionActive?: boolean } | null>((resolve) => {
+      socket.timeout(PING_ACK_TIMEOUT_MS).emit('location:update', { sessionId, ...fix }, (err: unknown, res?: { ok?: boolean; sessionActive?: boolean }) => resolve(!err && res?.ok === true ? res : null))
+    })
+    if (reply) { if (reply.sessionActive === false) forgetSession(); return }
+    // No ack (or the server refused it): try HTTP once, below. An older server that never acks lands here too and gets a duplicate
+    // position over HTTP, which it treats as just another fix.
+  } else {
+    if (disconnectedSinceMs === null) disconnectedSinceMs = Date.now()
+    if (Date.now() - disconnectedSinceMs < FALLBACK_DEBOUNCE_MS) return
   }
-
-  if (disconnectedSinceMs === null) disconnectedSinceMs = Date.now()
-  if (Date.now() - disconnectedSinceMs < FALLBACK_DEBOUNCE_MS) return
 
   if (httpInFlight || Date.now() < httpRetryAt) return
   httpInFlight = true
   try {
-    await getApi().post('/api/v1/rides/sessions/location', { sessionId, ...fix })
+    const res = await (deps?.api ?? getApi()).post('/api/v1/rides/sessions/location', { sessionId, ...fix }) as { data?: { sessionActive?: boolean } } | undefined
     httpBackoffMs = 0
+    if (res?.data?.sessionActive === false) forgetSession()
   } catch {
     // Best-effort, like the web driver app's fire-and-forget POST; a later tick retries once
     // the backoff has elapsed.

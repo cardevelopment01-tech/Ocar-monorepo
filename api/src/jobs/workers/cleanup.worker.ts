@@ -24,6 +24,7 @@ import {
 } from '@/constants/limits'
 import { createWorkerLogger } from '@/lib/worker-logger'
 import { alertSilentDrivers } from '@/modules/rides/silent-drivers'
+import { onIdleDriverPaused } from '@/modules/rides/idle-paused'
 
 const log = createWorkerLogger('cleanup')
 
@@ -122,7 +123,10 @@ export const cleanupWorker = new Worker(
       // Pauses only a driver who is currently available, and leaves a marker only then, so a heartbeat can resume exactly the drivers the
       // sweep paused (never one who paused on purpose).
       const pausedSession = await repo.pauseIfAvailable(BigInt(id))
-      if (pausedSession) await redis.set(driverSweepPausedKey(id), pausedSession, 'EX', 6 * 3600).catch(() => undefined)
+      if (pausedSession) {
+        await redis.set(driverSweepPausedKey(id), pausedSession, 'EX', 6 * 3600).catch(() => undefined)
+        await onIdleDriverPaused(id, pausedSession, posOld.has(id) && alive ? 'stale_position' : 'silent')
+      }
     }
     const quiet10Ids = quiet10.map((d) => d.driver_id)
     const hb10 = await lastHeartbeatMs(quiet10Ids)

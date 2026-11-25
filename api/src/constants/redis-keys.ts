@@ -9,6 +9,8 @@ export const driverSweepPausedKey = (driverId: string): string => `driver:sweep-
 
 /** One silence episode of an on-trip driver, identified by the time of their last fix: it is alerted once, and a driver who recovers and
  *  goes quiet again has a newer last fix, so a new key and a fresh page. */
+/** One "you are paused" nudge per online session per window, so a driver whose phone flaps is not buzzed every minute. */
+export const driverIdleNudgeKey = (sessionId: string): string => `driver:idle-nudge:${sessionId}`
 export const driverSilentAlertKey = (rideId: string, lastFixEpochSec: number): string => `ride:gps-silent:${rideId}:${lastFixEpochSec}`
 
 export const rideAckKey = (rideId: string, driverId: string): string =>

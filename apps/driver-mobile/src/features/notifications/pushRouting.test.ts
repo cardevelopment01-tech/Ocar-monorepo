@@ -44,6 +44,7 @@ describe('resolvePushRoute (driver-mobile)', () => {
     expect(resolvePushRoute({ type: 'account_suspended' })).toBeNull()
     expect(resolvePushRoute({ type: 'driver_warning' })).toBeNull()
     expect(resolvePushRoute({ type: 'session_ended_stale' })).toBeNull()
+    expect(resolvePushRoute({ type: 'idle_paused' })).toBe('/(tabs)/home')
   })
 
   it('returns null for an unknown or missing type instead of throwing', () => {

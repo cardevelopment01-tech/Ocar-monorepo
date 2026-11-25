@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   ACTIVE_RIDE_INTERVAL_MS,
   IDLE_INTERVAL_MS,
+  DEGRADED_AFTER_MS,
   MAX_ACCURACY_M,
+  shouldSendLivePosition,
   intervalForRideState,
   isAccurateEnough,
   trackingProfileForRideState,
@@ -47,5 +49,23 @@ describe('trackingProfileForRideState', () => {
   })
   it('uses High accuracy at 30s while idle-online (Balanced gave ~100 m fixes that failed the 80 m check)', () => {
     expect(trackingProfileForRideState(false)).toEqual({ intervalMs: 30_000, distanceMeters: 0, highAccuracy: true })
+  })
+})
+
+describe('shouldSendLivePosition', () => {
+  it('always sends an accurate fix, and one with no accuracy figure', () => {
+    expect(shouldSendLivePosition(12, 0)).toBe(true)
+    expect(shouldSendLivePosition(80, 0)).toBe(true)
+    expect(shouldSendLivePosition(null, 0)).toBe(true)
+  })
+  it('holds a rough fix back while a good one went out recently', () => {
+    expect(shouldSendLivePosition(150, 30_000)).toBe(false)
+  })
+  it('sends one rough fix once nothing good has gone out for 2 minutes', () => {
+    expect(shouldSendLivePosition(150, DEGRADED_AFTER_MS)).toBe(true)
+    expect(shouldSendLivePosition(300, DEGRADED_AFTER_MS)).toBe(true)
+  })
+  it('never sends a hopeless fix (worse than 300 m), however long it has been', () => {
+    expect(shouldSendLivePosition(301, 10 * 60_000)).toBe(false)
   })
 })
