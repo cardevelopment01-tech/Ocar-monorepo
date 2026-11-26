@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AppState, Dimensions, Linking, Pressable, StyleSheet, View } from 'react-native'
+import { AppState, Dimensions, Linking, Pressable, StyleSheet, Vibration, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -28,7 +28,8 @@ import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosit
 import { INITIAL_RECENTER, nextRecenter, type RecenterState } from '@/features/map/recenter'
 import { useReservations } from '@/features/reservations/useReservations'
 import { UpcomingBookingCard } from '@/features/reservations/UpcomingBookingCard'
-import { bookingThatStarted } from '@/features/reservations/format'
+import { bookingThatStarted, stageOf } from '@/features/reservations/format'
+import { confirmReservation, startReservation } from '@/features/reservations/api'
 import { fetchActiveRideForRelaunch } from '@/features/active-ride/relaunchApi'
 
 // Same fallback center as the web driver app's Home.tsx (Bhubaneswar) -- shown
@@ -76,6 +77,33 @@ export default function HomeScreen() {
   const nextBooking = bookings.reservations[0] ?? null
   // When the next booking vanishes from the list right at its pickup time it has been handed to this driver: open the ride instead of leaving them on Home.
   const lastBooking = useRef<{ rideId: string; pickupMs: number } | null>(null)
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
+  // One short vibration the moment it is time to head out (the push carries the sound), only while the app is open.
+  const lastStage = useRef<string | null>(null)
+  const stageNow = nextBooking ? stageOf(nextBooking, bookings.now) : null
+  useEffect(() => {
+    if (stageNow === 'headout' && lastStage.current !== 'headout' && lastStage.current !== 'opens') Vibration.vibrate(250)
+    lastStage.current = stageNow
+  }, [stageNow])
+  function startBooking() {
+    if (!nextBooking || starting) return
+    const id = nextBooking.rideId
+    setStarting(true); setStartError(null)
+    startReservation(id)
+      .then(() => { lastBooking.current = null; router.push(`/active-ride/${id}`) })
+      .catch((err: Error) => setStartError(err.message))
+      .finally(() => setStarting(false))
+  }
+  function confirmBooking() {
+    if (!nextBooking) return
+    confirmReservation(nextBooking.rideId).then(() => bookings.refresh()).catch((err) => captureError(err, { where: 'home_confirm_booking' }))
+  }
+  function navigateToPickup() {
+    if (nextBooking?.pickupLat == null || nextBooking.pickupLng == null) return
+    const { pickupLat: lat, pickupLng: lng } = nextBooking
+    Linking.openURL(`google.navigation:q=${lat},${lng}&mode=d`).catch(() => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`).catch(() => {}))
+  }
   useEffect(() => {
     const started = bookingThatStarted(lastBooking.current, bookings.reservations, Date.now())
     lastBooking.current = nextBooking ? { rideId: nextBooking.rideId, pickupMs: new Date(nextBooking.pickupAt).getTime() } : lastBooking.current
@@ -348,6 +376,11 @@ export default function HomeScreen() {
             extra={bookings.reservations.length - 1}
             now={bookings.now}
             onPress={() => router.push('/reservations')}
+            onStart={startBooking}
+            onNavigate={navigateToPickup}
+            onConfirm={confirmBooking}
+            starting={starting}
+            startError={startError}
           />
         ) : null}
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bookingThatStarted, guidance, inLabel, phaseOf, whenLabel } from './format'
+import { bookingThatStarted, clockOf, countdown, driveLine, guidance, inLabel, phaseOf, stageOf, whenLabel } from './format'
 
 const MIN = 60_000
 const now = new Date(2026, 10, 26, 14, 0, 0) // 26 Nov 2026, 2:00 PM local
@@ -64,5 +64,36 @@ describe('bookingThatStarted', () => {
   it('is nothing for a booking that left long before its time (handed back or taken off) or long after', () => {
     expect(bookingThatStarted({ rideId: '7', pickupMs: t + 3 * 60 * MIN }, [], t)).toBeNull()
     expect(bookingThatStarted({ rideId: '7', pickupMs: t - 3 * 60 * MIN }, [], t)).toBeNull()
+  })
+})
+
+describe('stageOf', () => {
+  const t = now.getTime()
+  // pickup 10:45 (t+60), goes live 15 min before (t+45), leave by 27 min before (t+33)
+  const r = { leaveBy: new Date(t + 33 * MIN).toISOString(), opensAt: new Date(t + 45 * MIN).toISOString() }
+  it('moves from later, to the leave-by time, to head out, to the countdown', () => {
+    expect(stageOf(r, t)).toBe('later')                         // 33 min to leave-by: not yet within the half hour
+    expect(stageOf(r, t + 4 * MIN)).toBe('leaveby')             // 29 min to leave-by
+    expect(stageOf(r, t + 33 * MIN)).toBe('headout')
+    expect(stageOf(r, t + 39 * MIN)).toBe('headout')
+    expect(stageOf(r, t + 40 * MIN)).toBe('opens')              // 5 min before it goes live
+    expect(stageOf(r, t + 50 * MIN)).toBe('opens')
+  })
+  it('a driver close to the pickup skips straight to the countdown (leave-by is after the lead-in starts)', () => {
+    const near = { leaveBy: new Date(t + 44 * MIN).toISOString(), opensAt: new Date(t + 45 * MIN).toISOString() }
+    expect(stageOf(near, t + 41 * MIN)).toBe('opens')
+  })
+})
+
+describe('countdown, clockOf, driveLine', () => {
+  it('counts down in m:ss and stops at zero', () => {
+    expect(countdown(1_000_000 + 252_000, 1_000_000)).toBe('4:12')
+    expect(countdown(1_000_000 + 9_000, 1_000_000)).toBe('0:09')
+    expect(countdown(1_000_000, 1_000_000 + 5_000)).toBe('0:00')
+  })
+  it('reads a clock and a drive in plain words', () => {
+    expect(clockOf(new Date(2026, 10, 26, 10, 27).toISOString())).toBe('10:27 AM')
+    expect(driveLine(18)).toBe('The pickup is about 18 min away')
+    expect(driveLine(null)).toMatch(/about 30 min/)
   })
 })

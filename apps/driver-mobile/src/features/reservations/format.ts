@@ -55,3 +55,32 @@ export function guidance(phase: BookingPhase, confirmed: boolean): string {
   if (!confirmed) return phase === 'soon' ? 'Please confirm now so we know you will be there.' : 'Confirm when you are sure you can make it.'
   return 'You are set. Until then you get only rides that finish in time.'
 }
+
+/**
+ * Where a booking is on its way to going live, as the driver should see it. 'opens' is the last 5 minutes before the ride opens by itself, 'headout' is from
+ * the time to set off, 'leaveby' is the half hour before that (the time to leave is shown), 'later' is everything earlier.
+ */
+export type BookingStage = 'later' | 'leaveby' | 'headout' | 'opens'
+
+export function stageOf(r: { leaveBy: string; opensAt: string }, nowMs: number): BookingStage {
+  if (nowMs >= new Date(r.opensAt).getTime() - 5 * MIN) return 'opens'
+  const leave = new Date(r.leaveBy).getTime()
+  if (nowMs >= leave) return 'headout'
+  return leave - nowMs <= 30 * MIN ? 'leaveby' : 'later'
+}
+
+/** "4:12" for the seconds left until a moment; "0:00" once it has passed. */
+export function countdown(untilMs: number, nowMs: number): string {
+  const secs = Math.max(0, Math.ceil((untilMs - nowMs) / 1000))
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`
+}
+
+/** "10:27 AM" in the phone's local time, the same way the other clocks here read. */
+export function clockOf(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s/g, ' ').toUpperCase()
+}
+
+/** "The pickup is an 18 min drive" / "Allow about 30 min to reach the pickup" when the position is not known. */
+export function driveLine(driveMin: number | null): string {
+  return driveMin == null ? 'Allow about 30 min to reach the pickup' : `The pickup is about ${driveMin} min away`
+}

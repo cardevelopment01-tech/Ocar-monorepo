@@ -7,7 +7,7 @@ import { Button, EmptyState, ErrorState, PulseDot, Text, captureError, colors, f
 import { BottomSheet } from '@/features/go-online/components/BottomSheet'
 import { useReservations } from '@/features/reservations/useReservations'
 import { confirmReservation, declineReservation } from '@/features/reservations/api'
-import { guidance, inLabel, phaseOf, whenLabel } from '@/features/reservations/format'
+import { clockOf, driveLine, guidance, inLabel, phaseOf, whenLabel } from '@/features/reservations/format'
 import type { Reservation } from '@/features/reservations/types'
 
 /**
@@ -117,6 +117,7 @@ function BookingCard({ r, now, busy, onConfirm, onGiveBack }: { r: Reservation; 
         <Text style={styles.meta}>{label}</Text>
         {r.estimatedFare != null ? <Text style={styles.fare}>₹{r.estimatedFare.toLocaleString('en-IN')}</Text> : null}
       </View>
+      <Text style={styles.meta}>Leave by {clockOf(r.leaveBy)}. {driveLine(r.driveMin)}.</Text>
       <Text style={[styles.hint, urgent ? styles.hintUrgent : null]}>{guidance(phase, r.confirmed)}</Text>
       <View style={styles.actions}>
         {r.confirmed ? (

@@ -21,6 +21,10 @@ export const RESERVATION_CONFIRM_BY_MIN = 60
 export const RESERVATION_READY_MIN = 30
 /** Handing a booking back inside this window is recorded as a late release (a warning for ops, not a penalty). */
 export const RESERVATION_LATE_RELEASE_MIN = 60
+/** The driver is nudged to set off this long before the latest moment they could still reach the pickup on time. */
+export const HEAD_OUT_BUFFER_MIN = 10
+/** "Start now" is only offered inside this window before the pickup. */
+export const START_NOW_WINDOW_MIN = 60
 /** Used only to turn "distance to the pickup" into minutes for the fit check; deliberately slow so the check errs on the safe side. */
 export const RESERVATION_PICKUP_SPEED_KMH = 25
 /** A ride with no estimate is assumed to take this long. */
@@ -126,6 +130,7 @@ export const reservationMessages = {
   confirmAsk: (pickup: Date) => ({ title: 'Please confirm your booking', body: `Your booking at ${fmtClock(pickup)} is in about an hour. Tap to confirm you will be there.` }),
   confirmedSoon: (pickup: Date) => ({ title: 'Booking in about an hour', body: `Your booking is at ${fmtClock(pickup)}. We only send rides that finish before it.` }),
   ready: (pickup: Date) => ({ title: 'Get ready for your booking', body: `Booking at ${fmtClock(pickup)} is in about 30 minutes. Be online and near the pickup.` }),
+  headOut: (pickup: Date, driveMin: number | null) => ({ title: 'Head to the pickup now', body: `Your booking is at ${fmtClock(pickup)}.${driveMin != null ? ` The pickup is about ${driveMin} min away.` : ''} Tap to open your booking.` }),
   released: (pickup: Date) => ({ title: 'Booking taken off you', body: `The ${fmtPickup(pickup)} booking was given to another driver.` }),
 }
 
@@ -189,7 +194,7 @@ export async function reserveDriver(rideId: bigint, driverId: bigint, adminId: b
   const replaced = ride.prev !== null && ride.prev !== driverId.toString()
   const upd = await pool.query(
     `UPDATE ride_advance_meta SET claimed_by_driver_id = $2, claimed_by_admin_id = $3, claimed_at = now(), reservation_confirmed_at = NULL,
-            reservation_remind_60_at = NULL, reservation_remind_30_at = NULL, reservation_risk_alerted_at = NULL
+            reservation_remind_60_at = NULL, reservation_remind_30_at = NULL, reservation_risk_alerted_at = NULL, reservation_headout_at = NULL
       WHERE ride_id = $1 AND EXISTS (SELECT 1 FROM rides WHERE id = $1 AND status = 'scheduled')`,
     [rideId, driverId, adminId],
   )
@@ -231,7 +236,7 @@ export async function releaseReservation(
           AND ($2::bigint IS NULL OR ram.claimed_by_driver_id = $2)
           FOR UPDATE OF ram)
      UPDATE ride_advance_meta ram SET claimed_by_driver_id = NULL, claimed_by_admin_id = NULL, claimed_at = NULL, reservation_confirmed_at = NULL,
-            reservation_remind_60_at = NULL, reservation_remind_30_at = NULL, reservation_risk_alerted_at = NULL
+            reservation_remind_60_at = NULL, reservation_remind_30_at = NULL, reservation_risk_alerted_at = NULL, reservation_headout_at = NULL
        FROM prev WHERE ram.id = prev.id
      RETURNING prev.driver_id::text AS driver_id, prev.scheduled_for`,
     [rideId, opts.expectDriverId ?? null],
@@ -269,26 +274,45 @@ export async function releaseReservation(
 export interface DriverReservation {
   rideId: string; pickupAt: string; pickup: string | null; drop: string | null; rideType: string; isReturnCab: boolean
   estimatedFare: number | null; confirmed: boolean; confirmBy: string; readyBy: string; canConfirm: boolean; handBackIsLate: boolean
+  /** Where the pickup is, for "Navigate". */
+  pickupLat: number | null; pickupLng: number | null
+  /** Minutes to drive from the driver's last known position to the pickup; null when the position is not known. */
+  driveMin: number | null
+  /** The time to set off: pickup minus the drive (or an assumed 30 min) minus a 10 min buffer. */
+  leaveBy: string
+  /** When the booking goes live and the ride opens by itself. */
+  opensAt: string
 }
 
 export async function listDriverReservations(driverId: bigint): Promise<DriverReservation[]> {
-  const res = await pool.query<{ ride_id: string; scheduled_for: Date; origin_address: string | null; destination_address: string | null; ride_type: string; is_return_cab: boolean; fare: string | null; confirmed_at: Date | null }>(
+  const res = await pool.query<{ ride_id: string; scheduled_for: Date; origin_address: string | null; destination_address: string | null; ride_type: string; is_return_cab: boolean; fare: string | null; confirmed_at: Date | null; lat: number | null; lng: number | null; dist: string | null; buffer_min: number }>(
     `SELECT r.id::text AS ride_id, r.scheduled_for, r.origin_address, r.destination_address, r.ride_type, r.is_return_cab,
-            fs.total_estimated::text AS fare, ram.reservation_confirmed_at AS confirmed_at
+            fs.total_estimated::text AS fare, ram.reservation_confirmed_at AS confirmed_at, ram.dispatch_buffer_minutes AS buffer_min,
+            ST_Y(r.origin::geometry) AS lat, ST_X(r.origin::geometry) AS lng, ST_Distance(r.origin, s.location)::text AS dist
        FROM ride_advance_meta ram JOIN rides r ON r.id = ram.ride_id LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+       LEFT JOIN driver_location_snapshots s ON s.driver_id = ram.claimed_by_driver_id
       WHERE ram.claimed_by_driver_id = $1 AND r.status = 'scheduled' AND r.scheduled_for > now() - interval '1 hour'
       ORDER BY r.scheduled_for LIMIT 20`, [driverId])
   const now = Date.now()
   return res.rows.map((r) => {
     const at = new Date(r.scheduled_for)
+    const driveMin = r.dist == null ? null : Math.ceil(travelMinutes(Number(r.dist)))
     return {
       rideId: r.ride_id, pickupAt: at.toISOString(), pickup: r.origin_address, drop: r.destination_address, rideType: r.ride_type, isReturnCab: r.is_return_cab,
       estimatedFare: r.fare == null ? null : Math.round(Number(r.fare)), confirmed: r.confirmed_at != null,
       confirmBy: new Date(at.getTime() - RESERVATION_CONFIRM_BY_MIN * 60_000).toISOString(),
       readyBy: new Date(at.getTime() - RESERVATION_READY_MIN * 60_000).toISOString(),
       canConfirm: r.confirmed_at == null, handBackIsLate: at.getTime() - now < RESERVATION_LATE_RELEASE_MIN * 60_000,
+      pickupLat: r.lat, pickupLng: r.lng, driveMin,
+      leaveBy: leaveByFor(at, driveMin).toISOString(),
+      opensAt: new Date(at.getTime() - r.buffer_min * 60_000).toISOString(),
     }
   })
+}
+
+/** The time to set off for a pickup: the drive (or an assumed 30 min when the position is unknown) plus a buffer, before the pickup. */
+export function leaveByFor(pickup: Date, driveMin: number | null): Date {
+  return new Date(pickup.getTime() - ((driveMin ?? 30) + HEAD_OUT_BUFFER_MIN) * 60_000)
 }
 
 export async function confirmReservation(driverId: bigint, rideId: bigint): Promise<{ confirmed: true }> {
@@ -409,4 +433,61 @@ export async function sendReservationReminders(): Promise<{ confirmAsks: number;
     }
   }
   return out
+}
+
+// ── Head-out nudge (60 s sweep) ─────────────────────────────────────────────
+
+/**
+ * Tells a reserved driver to set off, once, when it is time (pickup minus drive minus buffer). Only for a booking that has not gone live yet:
+ * once it has, the ride opens by itself and the hand-off push says so.
+ */
+export async function sendHeadOutNudges(nowMs = Date.now()): Promise<number> {
+  const due = await pool.query<{ ride_id: string; driver_id: string; scheduled_for: Date; dist: string | null }>(
+    `SELECT ram.ride_id::text AS ride_id, ram.claimed_by_driver_id::text AS driver_id, r.scheduled_for, ST_Distance(r.origin, s.location)::text AS dist
+       FROM ride_advance_meta ram JOIN rides r ON r.id = ram.ride_id
+       LEFT JOIN driver_location_snapshots s ON s.driver_id = ram.claimed_by_driver_id
+      WHERE r.status = 'scheduled' AND ram.claimed_by_driver_id IS NOT NULL AND ram.reservation_headout_at IS NULL
+        AND r.scheduled_for > now() AND r.scheduled_for <= now() + interval '3 hours'
+      LIMIT 200`)
+  let sent = 0
+  for (const row of due.rows) {
+    const at = new Date(row.scheduled_for)
+    const driveMin = row.dist == null ? null : Math.ceil(travelMinutes(Number(row.dist)))
+    if (leaveByFor(at, driveMin).getTime() > nowMs) continue
+    const claimed = await pool.query(
+      `UPDATE ride_advance_meta SET reservation_headout_at = now() WHERE ride_id = $1 AND reservation_headout_at IS NULL AND claimed_by_driver_id = $2`,
+      [row.ride_id, row.driver_id])
+    if ((claimed.rowCount ?? 0) === 0) continue
+    const m = reservationMessages.headOut(at, driveMin)
+    await tellDriver('advance_reserve_reminder', BigInt(row.driver_id), BigInt(row.ride_id), m.title, m.body)
+    sent++
+  }
+  if (sent > 0) count('headout_nudge')
+  return sent
+}
+
+// ── "Start now" ─────────────────────────────────────────────────────────────
+
+/**
+ * The driver taps "Start now": it confirms the booking and opens the ride straight away instead of waiting for the go-live time, so the rider sees the
+ * driver on the way. `dispatch` runs the normal dispatch of a booking (passed in so this file does not import the job). Allowed inside the last hour,
+ * and only for a driver who is online and not on another ride, because anything else would release the booking.
+ */
+export async function startReservation(driverId: bigint, rideId: bigint, dispatch: (rideId: string) => Promise<void>): Promise<{ started: true }> {
+  const m = await pool.query<{ scheduled_for: Date }>(
+    `SELECT r.scheduled_for FROM ride_advance_meta ram JOIN rides r ON r.id = ram.ride_id
+      WHERE ram.ride_id = $1 AND ram.claimed_by_driver_id = $2 AND r.status = 'scheduled'`, [rideId, driverId])
+  if (!m.rows[0]) throw httpErr(409, 'This booking is no longer yours', 'RESERVATION_GONE')
+  if (new Date(m.rows[0].scheduled_for).getTime() - Date.now() > START_NOW_WINDOW_MIN * 60_000) throw httpErr(409, 'It is too early to start this booking', 'TOO_EARLY')
+  const st = await pool.query<{ online: boolean; live: string | null }>(
+    `SELECT EXISTS (SELECT 1 FROM driver_sessions WHERE driver_id = $1 AND status = 'online') AS online,
+            (SELECT id::text FROM rides WHERE driver_id = $1 AND status IN ('accepted', 'driver_arrived', 'in_progress', 'returning') LIMIT 1) AS live`, [driverId])
+  if (st.rows[0]?.live) throw httpErr(409, 'Finish your current ride first', 'DRIVER_BUSY')
+  if (!st.rows[0]?.online) throw httpErr(409, 'Go online first, then start the booking', 'DRIVER_OFFLINE')
+  await confirmReservation(driverId, rideId)
+  await dispatch(rideId.toString())
+  const after = await pool.query<{ driver_id: string | null }>(`SELECT driver_id::text FROM rides WHERE id = $1 AND status = 'accepted'`, [rideId])
+  if (after.rows[0]?.driver_id !== driverId.toString()) throw httpErr(409, 'Could not start this booking right now', 'START_FAILED')
+  count('reservation_started_early')
+  return { started: true }
 }
