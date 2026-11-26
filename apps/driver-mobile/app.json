@@ -4,7 +4,7 @@
                  "slug":  "ocar-driver",
                  "scheme":  "ocardriver",
     "experiments": { "reactCompiler": true },
-                 "version":  "1.5.0",
+                 "version":  "1.5.1",
   "runtimeVersion": { "policy": "fingerprint" },
   "updates": { "fallbackToCacheTimeout": 0 },
                  "orientation":  "portrait",
@@ -12,7 +12,7 @@
                  "icon":  "./assets/brand/app-icon.png",
                  "android":  {
                                  "package":  "com.ocarindia.driver",
-                                 "versionCode":  7,
+                                 "versionCode":  8,
                                  "googleServicesFile":  "./google-services.json",
                                  "icon":  "./assets/brand/app-icon.png",
                                  "adaptiveIcon":  {
