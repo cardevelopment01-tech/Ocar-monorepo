@@ -28,7 +28,7 @@ describe('Onboarding follow-up page', () => {
     render(<DriverOnboardingPage />)
     await waitFor(() => expect(screen.getByText('Driver 1')).toBeTruthy())
     const table = within(screen.getByRole('table'))
-    expect(table.getByText('Reached the device')).toBeTruthy()
+    expect(table.getAllByText('Reached the device')).toHaveLength(2) // drivers 1 and 3
     expect(table.getByText('No device, in-app only')).toBeTruthy()
     expect(table.getByText('Came back')).toBeTruthy()
     expect(table.getByText('Nothing sent')).toBeTruthy()
