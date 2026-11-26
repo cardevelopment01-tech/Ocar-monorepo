@@ -26,7 +26,7 @@ export const TRACKING_NOTICE: Record<TrackingIssue, TrackingNoticeCopy> = {
   },
   background_permission: {
     tone: 'blocker',
-    row: { title: 'Allow all the time', message: 'Needed with screen off' },
+    row: { title: "Don't miss rides", message: 'Set location to Always' },
     sheet: {
       icon: 'shield', title: 'Keep requests coming',
       description: "Without 'Allow all the time', your phone stops sharing your location when the screen turns off.",

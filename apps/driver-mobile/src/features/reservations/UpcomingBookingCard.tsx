@@ -43,7 +43,7 @@ export function UpcomingBookingCard({ reservation, extra, now, onPress, onStart,
   const needsConfirm = !reservation.confirmed
 
   if (stage === 'later') {
-    const message = extra > 0 ? `Next booking · ${extra} more after this` : needsConfirm ? 'Next booking · confirm when you are sure' : `Next booking · ${reservation.pickup ?? 'confirmed'}`
+    const message = extra > 0 ? `Next booking · ${extra} more after this` : needsConfirm ? 'Tap to confirm' : `Next booking · ${reservation.pickup ?? 'confirmed'}`
     return (
       <NoticeRow
         tone={needsConfirm ? 'attention' : 'ok'}
