@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Users, UserRound } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
+import { useCsvExport, ExportStatus, OPS_ROLES, FINANCE_ROLES } from '@/lib/use-csv-export'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -30,6 +31,7 @@ export default function UsersPage() {
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const exp = useCsvExport('/api/v1/admin/users/export.csv', OPS_ROLES)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
@@ -134,6 +136,7 @@ export default function UsersPage() {
             search={search}
             onSearch={setSearch}
             searchPlaceholder="Search by name, phone or email…"
+            {...(exp.allowed ? { onExport: () => void exp.run({ status: statusFilter, search: debouncedSearch }, 'user'), exporting: exp.exporting } : {})}
             filters={[{
               key: 'status', label: 'All Statuses',
               options: [
@@ -144,6 +147,7 @@ export default function UsersPage() {
               onChange: (v) => { setStatusFilter(v); setPage(1) },
             }]}
           />
+          <ExportStatus result={exp.result} />
         </div>
         <DataTable
           isLoading={loading}

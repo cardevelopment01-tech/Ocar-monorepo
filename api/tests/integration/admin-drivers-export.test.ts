@@ -85,6 +85,14 @@ describe('GET /api/v1/admin/drivers/export.csv', () => {
     expect(row.rows[0]!.after_state.filters.status).toBe('active')
   })
 
+  it('lets the browser read the row count and the filename (CORS exposes them)', async () => {
+    const res = await exportCsv(superToken).set('Origin', 'http://localhost:3002')
+    const exposed = String(res.headers['access-control-expose-headers'] ?? '').toLowerCase()
+    expect(exposed).toContain('x-export-rows')
+    expect(exposed).toContain('x-export-truncated')
+    expect(exposed).toContain('content-disposition')
+  })
+
   it('is closed to support admins (the list is open to them, the whole-book copy is not)', async () => {
     const res = await exportCsv(supportToken)
     expect(res.status).toBe(403)

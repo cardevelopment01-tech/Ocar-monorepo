@@ -44,3 +44,18 @@ export async function sendCsvExport<T>(
   res.setHeader('X-Export-Rows', String(opts.rows.length))
   res.send(csv)
 }
+
+/**
+ * Collects up to EXPORT_MAX_ROWS + 1 rows from a paged list query (so an over-cap result is detected, not cut), reusing the
+ * list's own repository function: the file always means exactly what the screen means by its filters.
+ */
+export async function collectRows<T>(fetchPage: (limit: number, offset: number) => Promise<T[]>): Promise<T[]> {
+  const PAGE = 1000
+  const out: T[] = []
+  while (out.length <= EXPORT_MAX_ROWS) {
+    const page = await fetchPage(Math.min(PAGE, EXPORT_MAX_ROWS + 1 - out.length), out.length)
+    out.push(...page)
+    if (page.length < PAGE) break
+  }
+  return out
+}

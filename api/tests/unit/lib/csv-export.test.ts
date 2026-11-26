@@ -1,0 +1,53 @@
+import { describe, it, expect, vi } from 'vitest'
+
+const audit = vi.hoisted(() => ({ recordAuditLog: vi.fn(async () => undefined) }))
+vi.mock('@/lib/audit-log', () => audit)
+import { collectRows, sendCsvExport, EXPORT_MAX_ROWS } from '@/lib/csv-export'
+
+function fakeRes() {
+  const r = { status: vi.fn(), json: vi.fn(), setHeader: vi.fn(), send: vi.fn() }
+  r.status.mockReturnValue(r)
+  return r
+}
+const req = { admin: { id: 7n } } as never
+const columns = [{ header: 'N', value: (r: { n: number }) => r.n }]
+
+describe('collectRows', () => {
+  it('pages through a list until a short page and returns every row', async () => {
+    const all = Array.from({ length: 2500 }, (_, i) => i)
+    const calls: number[] = []
+    const out = await collectRows(async (limit, offset) => { calls.push(offset); return all.slice(offset, offset + limit) })
+    expect(out).toHaveLength(2500)
+    expect(calls).toEqual([0, 1000, 2000])
+  })
+
+  it('stops one row past the cap, so the caller can tell the result was too big', async () => {
+    const out = await collectRows(async (limit) => Array.from({ length: limit }, () => 1))
+    expect(out).toHaveLength(EXPORT_MAX_ROWS + 1)
+  })
+
+  it('an empty list is an empty result', async () => {
+    expect(await collectRows(async () => [])).toEqual([])
+  })
+})
+
+describe('sendCsvExport', () => {
+  it('refuses a result over the cap with 422 and writes no audit row or file', async () => {
+    const res = fakeRes()
+    audit.recordAuditLog.mockClear()
+    await sendCsvExport(req, res as never, { entity: 'x', targetTable: 't', filters: {}, columns, rows: Array.from({ length: EXPORT_MAX_ROWS + 1 }, (_, n) => ({ n })) })
+    expect(res.status).toHaveBeenCalledWith(422)
+    expect(res.json.mock.calls[0]![0].code).toBe('EXPORT_TOO_LARGE')
+    expect(res.send).not.toHaveBeenCalled()
+    expect(audit.recordAuditLog).not.toHaveBeenCalled()
+  })
+
+  it('sends the CSV, the row count header, and audits "<entity>.export"', async () => {
+    const res = fakeRes()
+    audit.recordAuditLog.mockClear()
+    await sendCsvExport(req, res as never, { entity: 'x', targetTable: 't', filters: { a: 1 }, columns, rows: [{ n: 1 }, { n: 2 }] })
+    expect(res.setHeader).toHaveBeenCalledWith('X-Export-Rows', '2')
+    expect(res.send.mock.calls[0]![0]).toContain('N\r\n1\r\n2')
+    expect(audit.recordAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: 'x.export', afterState: { filters: { a: 1 }, rows: 2 } }))
+  })
+})
