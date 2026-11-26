@@ -18,6 +18,10 @@ vi.mock('@/lib/sos-alarm', () => ({
 }))
 vi.mock('../SosLivePanel', () => ({ default: ({ id }: { id: string }) => <div>live panel for {id}</div> }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+const me = vi.hoisted(() => ({ role: 'ops_admin' }))
+vi.mock('@/lib/auth-context', () => ({ useAdminAuth: () => ({ admin: { role: me.role } }) }))
+const dl = vi.hoisted(() => ({ downloadCsv: vi.fn() }))
+vi.mock('@/lib/csv-download', () => dl)
 
 import SOSPage from '../page'
 
@@ -193,5 +197,25 @@ describe('SOS page', () => {
     const buttons = await screen.findAllByRole('button', { name: 'Live map' })
     await user.click(buttons[1]!)
     expect(await screen.findByText('live panel for 8')).toBeTruthy()
+  })
+
+  it('Export CSV asks for the status tab you are on and says how many rows it saved', async () => {
+    api.getSosAlerts.mockResolvedValue({ alerts: [alert()], total: 1, counts: COUNTS })
+    dl.downloadCsv.mockResolvedValue({ filename: 'x.csv', rows: 3 })
+    const user = userEvent.setup()
+    render(<SOSPage />)
+    await screen.findAllByText('Asha Rider')
+    await user.click(screen.getByRole('button', { name: /export csv/i }))
+    expect(dl.downloadCsv).toHaveBeenCalledWith('/api/v1/admin/safety/sos/export.csv', { status: undefined })
+    expect(await screen.findByText(/Exported 3 alerts/)).toBeInTheDocument()
+  })
+
+  it('support admins get no Export button', async () => {
+    me.role = 'support_admin'
+    api.getSosAlerts.mockResolvedValue({ alerts: [alert()], total: 1, counts: COUNTS })
+    render(<SOSPage />)
+    await screen.findAllByText('Asha Rider')
+    expect(screen.queryByRole('button', { name: /export csv/i })).toBeNull()
+    me.role = 'ops_admin'
   })
 })

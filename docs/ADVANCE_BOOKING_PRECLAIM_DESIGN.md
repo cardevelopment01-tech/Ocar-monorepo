@@ -228,3 +228,16 @@ alert if a reserved ride's priority offer is not created within 60 s of dispatch
 4. **Who can reserve**: super and ops admins (as assign today)?
 5. **Wallet rule**: warn at reservation and enforce at dispatch (proposed), or refuse reservation for an underfunded driver?
 6. **Phase 2 policy**: driver no-show consequence and rider compensation (blocks phase 2 only).
+
+---
+
+## As built (migration 164): reserve a driver without locking them
+
+The first design above held the ride for the driver. What shipped does not lock the driver at all:
+
+- **Reserve** (`POST /admin/dispatch/rides/:id/reserve`, `DELETE` to release): the ride stays `scheduled`, `ride_advance_meta.claimed_by_driver_id` holds the driver. Checks: active driver, same city, vehicle category (from the vehicle on file, so an offline driver works), wallet, no overlapping booking (override available).
+- **Overlap-aware offers** (`reservation.service.ts`): a driver with a reservation is only offered, or may only accept, a ride that fits before it: drive to the pickup (25 km/h) + the ride + `RESERVATION_BUFFER_MIN` (20). Applied in the broadcast processor, `acceptRide` and admin assignment (override with `overrideEligibility`). Fails open on a lookup error.
+- **Driver app**: Upcoming bookings screen + home card, confirm ("I will be there") or give back. Reminders at 60 min (confirm) and 30 min (be ready) from the 60 s sweep; the offer card shows the booked time.
+- **At dispatch time** the booking goes straight to the reserved driver through `acceptRide`. Offline or still on a ride: reservation released, recorded (`driver_reservation_events`), driver and ops told, normal search runs.
+- **Late hand-backs** (inside 60 min) are a warning for ops (count on the ride panel and the driver picker), not a penalty.
+- Rider copy is unchanged on purpose: "booked" until the driver is assigned; no driver name for a reservation.

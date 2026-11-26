@@ -6,6 +6,9 @@ vi.mock('@/websocket/socket.server', () => ({ socketEvents: { sendRideStatusUpda
 const add = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('@/jobs/queues', () => ({ queues: { dispatch: { add } }, QUEUE_NAMES: { DISPATCH: 'dispatch' } }))
 vi.mock('@/modules/pricing/pricing.service', () => ({ getFareEstimate: vi.fn() }))
+// No driver is reserved on these rides: dispatch goes to the normal search.
+vi.mock('@/modules/rides/reservation.service', () => ({ dispatchToReservedDriver: vi.fn().mockResolvedValue(false) }))
+vi.mock('@/modules/rides/rides.service', () => ({ acceptRide: vi.fn() }))
 vi.mock('@/modules/offers/settlement', () => ({ finaliseDiscount: vi.fn().mockResolvedValue(0) }))
 vi.mock('@/modules/rides/rides.repository', () => ({
   updateRideStatusCAS: vi.fn(),

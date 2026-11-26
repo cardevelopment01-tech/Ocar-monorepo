@@ -126,6 +126,18 @@ async function start(): Promise<void> {
     { name: 'admin_daily_digest', opts: { removeOnComplete: true, removeOnFail: true, attempts: 3, backoff: { type: 'exponential', delay: 60_000 } } }
   )
 
+  // Admin audit trail: verify the hash chain nightly (alerts super admins on a break), then archive yesterday's rows to S3.
+  await schedulerQueue.upsertJobScheduler(
+    'audit-verify-chain',
+    { pattern: '10 3 * * *', tz: 'Asia/Kolkata' },
+    { name: 'audit_verify_chain', opts: { removeOnComplete: true, removeOnFail: true, attempts: 3, backoff: { type: 'exponential', delay: 60_000 } } }
+  )
+  await schedulerQueue.upsertJobScheduler(
+    'audit-archive-day',
+    { pattern: '40 3 * * *', tz: 'Asia/Kolkata' },
+    { name: 'audit_archive_day', opts: { removeOnComplete: true, removeOnFail: true, attempts: 3, backoff: { type: 'exponential', delay: 5 * 60_000 } } }
+  )
+
   // GST commission invoices: runs every day at 02:30 IST and invoices any period that has ended and not been invoiced yet, so the monthly
   // run lands on the 1st and a missed day or an outage is caught up the next night. Idempotent, so every instance can register it.
   await schedulerQueue.upsertJobScheduler(

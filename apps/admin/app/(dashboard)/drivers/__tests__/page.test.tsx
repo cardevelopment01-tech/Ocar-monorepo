@@ -6,6 +6,10 @@ import type { DriverListItem, DriversResponse } from '@/lib/admin-api'
 
 const api = vi.hoisted(() => ({ list: vi.fn() }))
 vi.mock('@/lib/admin-api', () => ({ adminDriverApi: api }))
+const me = vi.hoisted(() => ({ role: 'super_admin' }))
+vi.mock('@/lib/auth-context', () => ({ useAdminAuth: () => ({ admin: { role: me.role } }) }))
+const dl = vi.hoisted(() => ({ downloadCsv: vi.fn() }))
+vi.mock('@/lib/csv-download', () => dl)
 vi.mock('@/lib/city-api', () => ({
   cityApi: { list: () => Promise.resolve([{ id: 1, name: 'Bhubaneswar' }, { id: 2, name: 'Cuttack' }]) },
 }))
@@ -82,6 +86,8 @@ beforeEach(() => {
   api.list.mockReset()
   nav.replace.mockReset(); nav.push.mockReset()
   nav.params = new URLSearchParams()
+  me.role = 'super_admin'
+  dl.downloadCsv.mockReset()
 })
 
 describe('Drivers page filters', () => {
@@ -258,5 +264,35 @@ describe('Drivers page filters', () => {
     api.list.mockImplementation(async () => resp([]))
     render(<DriversPage />)
     expect(await screen.findByText(/blocked by a document/)).toBeInTheDocument()
+  })
+
+  it('Export CSV downloads the list you are looking at: same tab, search and city', async () => {
+    nav.params = new URLSearchParams('status=suspended&q=asha&city=1')
+    api.list.mockImplementation(async () => resp([driver('1', 'Asha')]))
+    dl.downloadCsv.mockResolvedValue({ filename: 'x.csv', rows: 1 })
+    const user = userEvent.setup()
+    render(<DriversPage />)
+    await screen.findByText('Asha')
+    await user.click(screen.getByRole('button', { name: /export csv/i }))
+    expect(dl.downloadCsv).toHaveBeenCalledWith('/api/v1/admin/drivers/export.csv', { status: 'suspended', search: 'asha', city: '1', vehicle: '' })
+    expect(await screen.findByText('Exported 1 driver')).toBeInTheDocument()
+  })
+
+  it('shows the reason the server gave when an export is refused', async () => {
+    api.list.mockImplementation(async () => resp([driver('1', 'Asha')]))
+    dl.downloadCsv.mockRejectedValue(new Error('More than 20,000 rows match. Narrow the filters and try again.'))
+    const user = userEvent.setup()
+    render(<DriversPage />)
+    await screen.findByText('Asha')
+    await user.click(screen.getByRole('button', { name: /export csv/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Narrow the filters')
+  })
+
+  it('support admins do not get an Export button', async () => {
+    me.role = 'support_admin'
+    api.list.mockImplementation(async () => resp([driver('1', 'Asha')]))
+    render(<DriversPage />)
+    await screen.findByText('Asha')
+    expect(screen.queryByRole('button', { name: /export csv/i })).toBeNull()
   })
 })

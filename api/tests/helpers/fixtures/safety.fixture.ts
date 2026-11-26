@@ -47,10 +47,23 @@ export async function cleanupAdmins(pool: Pool, emails: string[]) {
   // admin_audit_log.admin_id FK has no ON DELETE action (NO ACTION), so any
   // recordAuditLog() call made during a test (e.g. vehicle/driver doc approval)
   // leaves a row that blocks deleting the admin. Clear those first.
-  await pool.query(
-    'DELETE FROM admin_audit_log WHERE admin_id = ANY(SELECT id FROM admins WHERE email = ANY($1))',
-    [emails]
-  )
+  // The table is append-only (triggers from 042/162 refuse DELETE), so tests clear their own rows with triggers
+  // switched off for this one transaction. Only possible because the test database user is a superuser.
+  const c = await pool.connect()
+  try {
+    await c.query('BEGIN')
+    await c.query("SET LOCAL session_replication_role = 'replica'")
+    await c.query(
+      'DELETE FROM admin_audit_log WHERE admin_id = ANY(SELECT id FROM admins WHERE email = ANY($1))',
+      [emails]
+    )
+    await c.query('COMMIT')
+  } catch (err) {
+    await c.query('ROLLBACK')
+    throw err
+  } finally {
+    c.release()
+  }
   // Same shape recurs across every table an admin writes to: nullable FKs with
   // no ON DELETE action, so a test that edits/creates a row through the admin
   // API leaves that admin as an unremovable creator/editor. Centralized here

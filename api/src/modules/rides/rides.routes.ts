@@ -9,6 +9,8 @@ import { withTripWindow } from '@/lib/trip-window'
 import { requireSupportedApp } from '@/modules/app-version/app-version.routes'
 import * as service from './rides.service'
 import { rescheduleAdvanceRide } from './advance.service'
+import { listDriverReservations, listStartedBookings, confirmReservation, declineReservation, startReservation } from './reservation.service'
+import { processDispatchScheduled } from '@/jobs/processors/dispatch-scheduled.processor'
 import * as repo from './rides.repository'
 import * as paymentsService from '@/modules/payments/payments.service'
 import { returnCabAvailability } from './return-cab-availability'
@@ -247,6 +249,10 @@ router.get('/nearby-drivers', authenticate(), async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// Bookings an admin reserved for this driver. Must sit above GET /:id.
+router.get('/reservations', authenticate(), onlyDriver, async (req, res, next) => {
+  try { res.json({ reservations: await listDriverReservations(req.driver!.id), started: await listStartedBookings(req.driver!.id) }) } catch (err) { next(err) }
+})
 router.get('/:id', authenticate(), async (req, res, next) => {
   try {
     const ride = await repo.getRideById(BigInt(req.params['id']!))
@@ -369,6 +375,17 @@ router.post('/:id/end-early', authenticate(), onlyDriver, async (req, res, next)
 })
 
 // ── Driver ride actions ───────────────────────────────────────
+
+// Bookings an admin reserved for this driver (advance rides), and the confirm / hand-back actions on them.
+router.post('/:id/reservation/confirm', authenticate(), onlyDriver, async (req, res, next) => {
+  try { res.json(await confirmReservation(req.driver!.id, BigInt(req.params['id']!))) } catch (err) { next(err) }
+})
+router.post('/:id/reservation/start', authenticate(), onlyDriver, async (req, res, next) => {
+  try { res.json(await startReservation(req.driver!.id, BigInt(req.params['id']!), (id) => processDispatchScheduled({ rideId: id }))) } catch (err) { next(err) }
+})
+router.post('/:id/reservation/decline', authenticate(), onlyDriver, async (req, res, next) => {
+  try { res.json(await declineReservation(req.driver!.id, BigInt(req.params['id']!))) } catch (err) { next(err) }
+})
 
 router.post('/:id/accept', authenticate(), onlyDriver, canTakeWork, async (req, res, next) => {
   try {

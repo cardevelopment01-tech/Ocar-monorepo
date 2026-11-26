@@ -215,7 +215,7 @@ export async function getSosAlerts(opts: {
      LEFT JOIN admins  aa ON aa.id = sa.acknowledged_by
      LEFT JOIN admins  ra ON ra.id = sa.resolved_by
      ${where}
-     ORDER BY sa.created_at ${opts.status === 'active' ? 'ASC' : 'DESC'}
+     ORDER BY sa.created_at ${opts.status === 'active' ? 'ASC' : 'DESC'}, sa.id ${opts.status === 'active' ? 'ASC' : 'DESC'}
      LIMIT $${lp - 1} OFFSET $${lp}`,
     params
   )
@@ -378,7 +378,7 @@ export async function getDisputes(opts: {
      LEFT JOIN admins  a  ON a.id   = d.assigned_to
      LEFT JOIN admins  ra ON ra.id  = d.resolved_by
      ${where}
-     ORDER BY d.priority DESC, d.sla_due_at ASC
+     ORDER BY d.priority DESC, d.sla_due_at ASC, d.id ASC
      LIMIT $${lp - 1} OFFSET $${lp}`,
     params
   )

@@ -20,6 +20,7 @@ import authRouter from '@/modules/auth/auth.routes'
 import driversRouter from '@/modules/drivers/drivers.routes'
 import vehiclesRouter from '@/modules/vehicles/vehicles.routes'
 import adminRouter from '@/modules/admin/admin.routes'
+import { adminActivity } from '@/middleware/admin-activity.middleware'
 import geoRouter from '@/modules/geo/geo.routes'
 import pricingRouter from '@/modules/pricing/pricing.routes'
 import ridesRouter from '@/modules/rides/rides.routes'
@@ -114,7 +115,8 @@ export function createApp(): Application {
       // Reports CSV export reads the filename from Content-Disposition in the browser. `Date` is not a
       // CORS-safelisted response header; the web driver and rider apps read it to correct a skewed
       // phone clock for the booked-time clock (native apps already can).
-      exposedHeaders: ['Content-Disposition', 'Date'],
+      // X-Export-Rows / X-Export-Truncated: the CSV exports report their row count and cap through these.
+      exposedHeaders: ['Content-Disposition', 'Date', 'X-Export-Rows', 'X-Export-Truncated'],
       // Without this browsers cache a preflight for ~5 s, so the admin's 30 s polls and every new request shape paid an extra
       // OPTIONS round trip (~60-80 ms). Chrome caps the value at 2 h, Firefox at 24 h.
       maxAge: 7200,
@@ -170,6 +172,8 @@ export function createApp(): Application {
   apiRouter.use('/auth', authRouter) // per-route auth limiters live in auth.routes.ts
   apiRouter.use('/drivers', driversRouter)
   apiRouter.use('/vehicles', vehiclesRouter)
+  // Opens the audit context and records every admin write the handlers don't audit themselves (see middleware).
+  apiRouter.use('/admin', adminActivity)
   // Registered before '/admin' — admin.routes.ts applies authenticate() to
   // every request under '/admin' via router.use(), which would otherwise
   // 401 the public POST /admin/invites/redeem route before it's ever reached.

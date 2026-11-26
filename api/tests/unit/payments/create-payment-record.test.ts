@@ -91,6 +91,19 @@ describe('createPaymentRecord', () => {
     expect(params).toContain(210)   // driver earning: 240 - 30 = fare share 170 + toll 40
   })
 
+  it('a night allowance is a pass-through like the toll: commission is taken without it, and with a toll too', async () => {
+    vi.mocked(pool.query).mockReset()
+    vi.mocked(pool.query)
+      .mockResolvedValueOnce({ rows: [{ ...FARE_ROW.rows[0], total_final: '540.00', toll_charge: '40.00', night_allowance: '300.00' }], rowCount: 1 } as never)
+      .mockResolvedValueOnce({ rows: [{ value: '15' }], rowCount: 1 } as never) // commission 15%
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 } as never)
+    await createPaymentRecord(BigInt(101), 'cash_direct')
+    const params = vi.mocked(pool.query).mock.calls.find(([sql]) => (sql as string).includes('INSERT INTO payments'))![1] as unknown[]
+    expect(params).toContain(540)   // the rider pays fare 200 + toll 40 + night allowance 300
+    expect(params).toContain(30)    // 15% of 200 only
+    expect(params).toContain(510)   // driver earning: 540 - 30
+  })
+
   it('a ride with no toll is unchanged (toll column 0 or absent)', async () => {
     vi.mocked(pool.query).mockReset()
     vi.mocked(pool.query)

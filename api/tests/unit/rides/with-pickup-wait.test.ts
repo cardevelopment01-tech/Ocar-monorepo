@@ -58,6 +58,14 @@ describe('withPickupWait: when the wait clock started, for the apps', () => {
     expect(repo.getPickupWaitStartedAt).toHaveBeenCalledWith(303n, new Date(ARRIVED), 20.3, 85.8, PICKUP_WAIT_RADIUS_METRES)
   })
 
+  it('an advance ride: the live clock the apps show also cannot start before the booked pickup time', async () => {
+    const booked = '2026-10-01T06:05:00.000Z'
+    vi.mocked(repo.getPickupWaitStartedAt).mockResolvedValue(booked)
+    const out = await withPickupWait(ride({ scheduled_for: booked }))
+    expect(out.pickup_wait_started_at).toBe(booked)
+    expect(repo.getPickupWaitStartedAt).toHaveBeenCalledWith(303n, new Date(ARRIVED), 20.3, 85.8, PICKUP_WAIT_RADIUS_METRES, new Date(booked))
+  })
+
   it('says the clock has not started (null) when no position was recorded at the pickup', async () => {
     vi.mocked(repo.getPickupWaitStartedAt).mockResolvedValue(null)
     expect((await withPickupWait(ride())).pickup_wait_started_at).toBeNull()

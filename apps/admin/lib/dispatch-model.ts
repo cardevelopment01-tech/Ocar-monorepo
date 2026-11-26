@@ -59,7 +59,21 @@ export function earlyAssignWarning(r: Pick<DispatchRow, 'status' | 'dispatch_at'
   if (r.status !== 'scheduled') return null
   const ahead = new Date(r.dispatch_at).getTime() - nowMs
   if (ahead <= EARLY_ASSIGN_MINUTES * MIN) return null
-  return `This ride is not due to dispatch for ${fmtDuration(ahead)}. Assigning now opens it for dispatch immediately, and the driver has to be online right now. Unless the pickup is close, automatic dispatch at the usual time is usually the better choice.`
+  return `This ride is not due to dispatch for ${fmtDuration(ahead)}. Asking or booking now opens it for dispatch immediately, the driver has to be online right now, and they cannot take other rides until it is done. To keep a driver for it without that, use Reserve.`
+}
+
+export type ReservationTone = 'ok' | 'warn' | 'danger'
+/** What to say about the driver reserved on a booking: who, whether they confirmed, and whether it needs a person. Null when nobody is reserved. */
+export function reservationNote(
+  r: { reserved_driver_name?: string | null; reserved_driver_id?: string | null; reservation_confirmed_at?: string | null; reservation_risk_alerted_at?: string | null; scheduled_for?: string | null },
+  nowMs: number,
+): { text: string; tone: ReservationTone } | null {
+  if (!r.reserved_driver_id) return null
+  const name = r.reserved_driver_name ?? 'Driver'
+  if (r.reservation_risk_alerted_at) return { text: `${name} reserved: at risk`, tone: 'danger' }
+  if (r.reservation_confirmed_at) return { text: `${name} reserved: confirmed`, tone: 'ok' }
+  const ahead = r.scheduled_for ? new Date(r.scheduled_for).getTime() - nowMs : Infinity
+  return { text: `${name} reserved: not confirmed yet`, tone: ahead <= 60 * MIN ? 'danger' : 'warn' }
 }
 
 /** Sort key for "needs a person first" ordering when rows from both lanes are mixed (not used by the API, which orders per lane). */

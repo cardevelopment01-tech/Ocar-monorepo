@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cardMode, MODE_LABEL, MODE_ORDER, isRentalCard, modeToCardFields, sameCard } from '../rate-card-mode'
+import { cardMode, earnsNightAllowanceMode, MODE_LABEL, MODE_ORDER, isRentalCard, modeToCardFields, sameCard } from '../rate-card-mode'
 
 describe('cardMode', () => {
   it('a one-way card with trip mode city is a City Ride card', () => {
@@ -39,5 +39,14 @@ describe('sameCard', () => {
     const city = { category_name: 'Sedan', ride_type: 'one_way', trip_mode: 'city', city_id: null }
     expect(sameCard(std, city)).toBe(false)
     expect(sameCard(std, { ...std })).toBe(true)
+  })
+})
+
+describe('earnsNightAllowanceMode', () => {
+  it('is on for one-way and round-trip cards only', () => {
+    expect(earnsNightAllowanceMode('one_way')).toBe(true)
+    expect(earnsNightAllowanceMode('round_trip')).toBe(true)
+    expect(earnsNightAllowanceMode('city')).toBe(false)
+    expect(earnsNightAllowanceMode('rental')).toBe(false)
   })
 })

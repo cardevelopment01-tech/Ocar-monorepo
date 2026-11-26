@@ -159,3 +159,16 @@ export const driverIdlePausedTotal = new Counter({
   labelNames: ['cause'],
   registers: [register],
 })
+
+export const auditWriteFailuresTotal = new Counter({
+  name: 'audit_write_failures_total',
+  help: 'Admin audit rows that could not be written directly (stage: direct = fell back to the queue, queue = lost)',
+  labelNames: ['stage'],
+  registers: [register],
+})
+
+export const auditChainBrokenGauge = new Gauge({
+  name: 'audit_chain_broken',
+  help: '1 when the last audit hash-chain verification found a break, else 0',
+  registers: [register],
+})

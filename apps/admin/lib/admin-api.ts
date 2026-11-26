@@ -144,6 +144,9 @@ export interface DriverAuditLogEntry {
   after_state: Record<string, unknown> | null
   ip_address: string | null
   reason: string | null
+  outcome?: 'success' | 'failure' | 'denied'
+  summary?: string | null
+  occurred_at?: string
   created_at: string
 }
 
@@ -356,6 +359,9 @@ export interface AdminRideFareBreakdown {
   pickup_wait_charge?: string | null
   toll_charge?: string | null
   toll_detail?: Array<{ zone: string; amount: number }> | null
+  /** Night allowance charged (11 PM to 6 AM, per night) and how many nights it was for. */
+  night_allowance?: string | null
+  night_count?: number | null
   refund_amount: string | null
 }
 
@@ -402,6 +408,13 @@ export type AdminRideDetail = AdminRideItem & AdminRideFareBreakdown & {
   scheduled_for: string | null
   /** When the ride is (or was) handed to drivers: pickup minus the dispatch buffer for an advance booking, booking time otherwise. */
   dispatch_at: string
+  /** The driver an admin reserved for this advance booking, if any. The ride stays scheduled until it dispatches. */
+  reserved_driver_id?: string | null
+  reserved_driver_name?: string | null
+  reserved_driver_phone?: string | null
+  reservation_confirmed_at?: string | null
+  reservation_risk_alerted_at?: string | null
+  reserved_driver_late_releases?: number
   user_id: string
   driver_id: string | null
   category_name: string | null
@@ -483,6 +496,11 @@ export interface AssignCandidate {
   wallet_ok: boolean
   distance_metres: number | null
   eligible: boolean
+  /** Reserved bookings this driver handed back late (or could not be ready for) in the last 30 days. */
+  late_releases?: number
+  /** Active vehicle on file, and whether a booking made ahead can be reserved on it (right vehicle, usable wallet; online or not). */
+  vehicle_category_name?: string | null
+  reservable?: boolean
 }
 
 export const adminRideApi = {

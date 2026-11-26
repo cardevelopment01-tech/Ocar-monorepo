@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Dimensions, Pressable, StyleSheet, View } from 'react-native'
+import { Dimensions, Linking, Pressable, StyleSheet, Vibration, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -28,10 +28,17 @@ import { MARKER_DP } from '@/features/map/vehicleKind'
 import { fetchReverseGeocode } from '@/features/map/api'
 import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosition'
 import { INITIAL_RECENTER, nextRecenter, type RecenterState } from '@/features/map/recenter'
+import { useReservations } from '@/features/reservations/useReservations'
+import { UpcomingBookingCard } from '@/features/reservations/UpcomingBookingCard'
+import { stageOf } from '@/features/reservations/format'
+import { confirmReservation, startReservation } from '@/features/reservations/api'
 
 // Same fallback center as the web driver app's Home.tsx (Bhubaneswar) -- shown
 // until a real fix comes in, or forever if location is denied.
 const DEFAULT_REGION = { latitude: 20.2961, longitude: 85.8245, latitudeDelta: 0.05, longitudeDelta: 0.05 }
+
+// Rides this app has already opened for the driver after a booking started. Module-level, so going back to Home (or Home remounting) never opens the same ride again.
+const openedBookingRides = new Set<string>()
 
 const WINDOW_HEIGHT = Dimensions.get('window').height
 // Room the "Reconnecting" strip takes at the top, so the wallet pill and bell move down instead of sitting under it.
@@ -69,6 +76,46 @@ export default function HomeScreen() {
       .finally(() => { retryingTracking.current = false; onDone?.() })
   }
   const walletGate = useWalletGate()
+  // Bookings an admin reserved for this driver: the next one is shown on this screen so it is never forgotten.
+  const bookings = useReservations()
+  const nextBooking = bookings.reservations[0] ?? null
+  // A booking that went live and was handed to this driver while they were on Home: open the ride, once per ride.
+  const openedRides = openedBookingRides
+  useEffect(() => {
+    for (const { rideId } of bookings.started) {
+      if (openedRides.has(rideId)) continue
+      openedRides.add(rideId)
+      router.push(`/active-ride/${rideId}`)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings.started])
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
+  // One short vibration the moment it is time to head out (the push carries the sound), only while the app is open.
+  const lastStage = useRef<string | null>(null)
+  const stageNow = nextBooking ? stageOf(nextBooking, bookings.now) : null
+  useEffect(() => {
+    if (stageNow === 'headout' && lastStage.current !== 'headout' && lastStage.current !== 'opens') Vibration.vibrate(250)
+    lastStage.current = stageNow
+  }, [stageNow])
+  function startBooking() {
+    if (!nextBooking || starting) return
+    const id = nextBooking.rideId
+    setStarting(true); setStartError(null)
+    startReservation(id)
+      .then(() => { openedRides.add(id); router.push(`/active-ride/${id}`) })
+      .catch((err: Error) => setStartError(err.message))
+      .finally(() => setStarting(false))
+  }
+  function confirmBooking() {
+    if (!nextBooking) return
+    confirmReservation(nextBooking.rideId).then(() => bookings.refresh()).catch((err) => captureError(err, { where: 'home_confirm_booking' }))
+  }
+  function navigateToPickup() {
+    if (nextBooking?.pickupLat == null || nextBooking.pickupLng == null) return
+    const { pickupLat: lat, pickupLng: lng } = nextBooking
+    Linking.openURL(`google.navigation:q=${lat},${lng}&mode=d`).catch(() => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`).catch(() => {}))
+  }
   const socketConnected = useSocketConnected()
   const showReconnecting = isOnline && !socketConnected
   const documentGate = useDocumentGate()
@@ -304,6 +351,20 @@ export default function HomeScreen() {
               <Feather name="chevron-right" size={14} color={colors.error} />
             </View>
           </Pressable>
+        ) : null}
+
+        {nextBooking ? (
+          <UpcomingBookingCard
+            reservation={nextBooking}
+            extra={bookings.reservations.length - 1}
+            now={bookings.now}
+            onPress={() => router.push('/reservations')}
+            onStart={startBooking}
+            onNavigate={navigateToPickup}
+            onConfirm={confirmBooking}
+            starting={starting}
+            startError={startError}
+          />
         ) : null}
 
         {flow.error ? (

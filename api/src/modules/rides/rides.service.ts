@@ -26,9 +26,12 @@ import { normalizeCode, reserveRedemption } from '@/modules/offers/offers.reposi
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
 import { expireRideRequests } from '@/modules/rides/request-expiry'
-import { tellBooked, tellNoDrivers, keepSearchingAdvance, broadcastDataFor } from '@/modules/rides/advance.service'
+import { tellBooked, tellNoDrivers, keepSearchingAdvance, broadcastDataFor, redispatchAfterDriverCancel } from '@/modules/rides/advance.service'
 import { getAdvancePolicy, lateCancelFee, lateCancelSummary } from '@/lib/advance-policy'
 import { advanceBookingEventsTotal } from '@/observability/metrics'
+import { pickupWaitFloor } from '@/lib/pickup-wait-floor'
+import { reservationClash, lateReleaseCounts } from '@/modules/rides/reservation.service'
+import { fmtClock } from '@/lib/ist-format'
 import { enqueueBreadcrumb, flushBreadcrumbs } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
 import { publishNearbyCar } from '@/websocket/nearby-bus'
@@ -63,6 +66,7 @@ import { notifyRidePaymentFailed, notifyAllAdmins, notifyOwner, notifyDriverLowW
 import { consumePackageBalance } from '@/modules/packages/packages.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { tripWindowFields, withTripWindow } from '@/lib/trip-window'
+import { nightAllowanceFor } from '@/lib/night-allowance'
 import { calculateFare, isHourlyRoundTrip, pickupWaitCharge, settleRentalFare, settleRoundTripOvertime } from '@/lib/fare'
 import { classifyTrip, findNearestCity, getRoute, snapTrailToRoads } from '@/modules/geo/geo.service'
 import { insertGpsTracks } from '@/modules/geo/geo.repository'
@@ -692,13 +696,13 @@ export function publicDriverRef(driverId: string): string {
  */
 export async function withPickupWait<T extends {
   id?: unknown; status?: string; driver_arrived_at?: string | Date | null
-  origin_lat?: number | null; origin_lng?: number | null; pickup_free_wait_min?: number | null
+  origin_lat?: number | null; origin_lng?: number | null; pickup_free_wait_min?: number | null; scheduled_for?: string | Date | null
 }>(ride: T): Promise<T & { pickup_wait_started_at?: string | null }> {
   if (ride.status !== 'driver_arrived' || ride.pickup_free_wait_min == null || !ride.driver_arrived_at
     || ride.origin_lat == null || ride.origin_lng == null) return ride
   try {
     const startedAt = await repo.getPickupWaitStartedAt(
-      BigInt(ride.id as string | number | bigint), new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+      BigInt(ride.id as string | number | bigint), new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES, ...pickupWaitFloor(ride))
     return { ...ride, pickup_wait_started_at: startedAt }
   } catch (err) {
     log.warn({ err }, 'pickup wait start not added to the ride')
@@ -1250,6 +1254,11 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
   }
   const billingMode = cityRes.rows[0].billing_mode
 
+  const clash = await reservationClash(driverId, rideId)
+  if (clash) {
+    throw httpError(409, `This ride would run into your booking at ${fmtClock(clash.at)}. Skip it so you are ready on time.`, 'RESERVATION_CLASH')
+  }
+
   const cancelledDriverIds = await repo.acceptAssignment(rideId, driverId, billingMode)
   if (cancelledDriverIds === false) {
     throw Object.assign(new Error('Ride no longer available'), { httpStatus: 409 })
@@ -1352,6 +1361,21 @@ async function settleToll(rideId: bigint): Promise<number> {
   } catch (err) {
     log.error({ err, rideId }, 'airport toll not settled')
     return 0
+  }
+}
+
+// The night allowance for a finished ride: the rate on the card the ride was quoted on, once for every night (11 PM to 6 AM IST) the trip was
+// really driven in, from when it started to when it ended (not computed for a force-resolved ride, which has no real end time). One-way (which includes Return Cab) and round trip in standard mode only; 0
+// everywhere else, and 0 on any ride whose card has no allowance (every ride booked before it existed). Recorded on the ride and returned so
+// the caller can add it to the final fare. Not written here: the caller records it in the same UPDATE that adds it to total_final, so the
+// two can never disagree. Never fails a completion: an error charges nothing and is logged.
+async function computeNightAllowance(rideId: bigint, endedAt: Date = new Date()): Promise<{ amount: number; nights: number }> {
+  try {
+    const t = await repo.getNightTerms(rideId)
+    return t ? nightAllowanceFor(t, endedAt) : { amount: 0, nights: 0 }
+  } catch (err) {
+    log.error({ err, rideId }, 'night allowance not settled')
+    return { amount: 0, nights: 0 }
   }
 }
 
@@ -1476,13 +1500,13 @@ export async function startReturn(driverId: bigint, rideId: bigint) {
 // free window (terms pinned at booking; none for a ride booked before waiting charges existed). Never blocks the trip from starting.
 async function recordPickupWaitAtStart(
   rideId: bigint,
-  ride: { driver_arrived_at: string | null; origin_lat: number; origin_lng: number },
+  ride: { driver_arrived_at: string | null; origin_lat: number; origin_lng: number; scheduled_for?: string | Date | null },
 ): Promise<void> {
   try {
     const terms = await repo.getPickupWaitTerms(rideId)
     if (!terms || !ride.driver_arrived_at) return
     await flushBreadcrumbs().catch(() => undefined)
-    const minutes = await repo.getPickupWaitMinutes(rideId, new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+    const minutes = await repo.getPickupWaitMinutes(rideId, new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES, ...pickupWaitFloor(ride))
     if (minutes === null) {
       log.warn({ rideId }, 'no position recorded at the pickup: no waiting charge')
       return
@@ -2469,6 +2493,13 @@ export async function cancelRideAsDriver(
     throw Object.assign(new Error('Ride cannot be cancelled at this stage'), { httpStatus: 409 })
   }
 
+  // An advance booking is a promise of a pickup time: when its driver drops out, it goes back to being searched for instead of being
+  // cancelled on the rider (see redispatchAfterDriverCancel). Any other ride, or one whose pickup time is long gone, cancels as before.
+  if (await redispatchAfterDriverCancel(ride, driverId, reasonCode, reason)) {
+    void callMasking.releaseForRide(rideId).catch((err: unknown) => log.error({ err, rideId }, 'call-masking release failed'))
+    return { success: true, redispatched: true }
+  }
+
   const stage = cancelStageFor(ride.status)
 
   const client = await pool.connect()
@@ -2775,6 +2806,8 @@ export async function forceResolveRide(
     try {
       const wait = ride.ride_type === 'one_way' ? await repo.getStopWaitTotal(rideId) : 0
       // The wait at the pickup (recorded when the trip started) and any airport toll are owed on every ride type, however the trip ends.
+      // No night allowance here: this trip has no real end time (a stuck ride can be resolved days later), so billing nights up to the moment
+      // an admin clicked resolve would charge for time nobody drove. Ops can add it by hand if the trip really ran through a night.
       const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId))
       await pool.query(
         `UPDATE fare_snapshots
@@ -2809,7 +2842,7 @@ export async function getRideAssignCandidates(
   const categoryIds = await repo.getEligibleDriverCategoryIds(ride.category_id)
   const minWalletBalance = await getMinWalletBalance()
 
-  return repo.getAssignCandidates({
+  const list = await repo.getAssignCandidates({
     cityId: ride.origin_city_id,
     rideLat: ride.origin_lat,
     rideLng: ride.origin_lng,
@@ -2817,6 +2850,9 @@ export async function getRideAssignCandidates(
     minWalletBalance,
     ...opts,
   })
+  // How often each driver handed a reserved booking back late in the last 30 days (a warning for ops, not a rule).
+  const late = await lateReleaseCounts(list.map((c) => BigInt(c.driver_id))).catch(() => new Map<string, number>())
+  return list.map((c) => ({ ...c, late_releases: late.get(c.driver_id) ?? 0 }))
 }
 
 export async function adminAssignDriver(
@@ -2845,6 +2881,12 @@ export async function adminAssignDriver(
   }
   if (!candidate.eligible && !overrideEligibility) {
     throw Object.assign(new Error('Driver is not eligible — pass overrideEligibility to force'), { httpStatus: 422 })
+  }
+
+  // Putting a driver on a ride that runs into their reserved booking is a decision for ops, so it needs the override.
+  if (!overrideEligibility) {
+    const clash = await reservationClash(driverId, rideId)
+    if (clash) throw httpError(409, `This driver is reserved for a booking at ${fmtClock(clash.at)} that this ride would run into`, 'RESERVATION_CLASH')
   }
 
   let workingRide = ride
@@ -3497,16 +3539,20 @@ export async function verifyEndOTP(
 
   // The wait at the pickup (recorded when the trip started) and any airport toll are their own lines on top of whatever was settled above, for every ride
   // type. Single winner: the status CAS above lets only one end-OTP submit reach this point, so it is added exactly once.
-  const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId))
+  const night = await computeNightAllowance(rideId)
+  const pickupWait = (await repo.getPickupWaitCharge(rideId)) + (await settleToll(rideId)) + night.amount
   if (pickupWait > 0) {
+    // The night allowance is recorded in this same statement as the total it is added to.
     const upd = await pool.query<{ total_final: string }>(
       `UPDATE fare_snapshots
-       SET total_final  = round(COALESCE(total_final, total_estimated) + $2::numeric, 2),
-           status       = 'final',
-           finalised_at = COALESCE(finalised_at, now())
+       SET total_final     = round(COALESCE(total_final, total_estimated) + $2::numeric, 2),
+           night_allowance = $3::numeric,
+           night_count     = $4::int,
+           status          = 'final',
+           finalised_at    = COALESCE(finalised_at, now())
        WHERE ride_id = $1
        RETURNING total_final`,
-      [rideId, pickupWait]
+      [rideId, pickupWait, night.amount, night.nights]
     )
     if (upd.rows[0]) finalFare = parseFloat(upd.rows[0].total_final)
     await finaliseDiscount(pool, rideId)

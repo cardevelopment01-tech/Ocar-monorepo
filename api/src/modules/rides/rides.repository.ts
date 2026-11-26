@@ -835,6 +835,8 @@ const RIDE_SELECT_SQL = `SELECT
        fs.pickup_wait_min, fs.pickup_free_wait_min, fs.pickup_wait_per_min, fs.pickup_wait_charge,
        -- Airport toll charged on this ride (0 when none) and the zones it came from.
        fs.toll_charge, fs.toll_detail,
+       -- Night allowance charged on this ride (0 when none) and how many nights it was for.
+       fs.night_allowance, fs.night_count,
        hrc.hour_rate  AS round_trip_hour_rate,
        rc.reason      AS cancellation_reason,
        rc.reason_code AS cancellation_reason_code,
@@ -1614,6 +1616,15 @@ export async function getBusyDriverIds(rideId: bigint): Promise<bigint[]> {
   return res.rows.map((r) => BigInt(r.driver_id))
 }
 
+/** Drivers who took this ride and then dropped out before the trip started (the history row redispatchAfterDriverCancel writes). They must not be offered it again. */
+export async function getDriversWhoLeftRide(rideId: bigint): Promise<bigint[]> {
+  const res = await pool.query<{ driver_id: string }>(
+    `SELECT DISTINCT actor_id::text AS driver_id FROM ride_status_history
+      WHERE ride_id = $1 AND actor = 'driver' AND from_status IN ('accepted', 'driver_arrived') AND to_status = 'requested' AND actor_id IS NOT NULL`,
+    [rideId])
+  return res.rows.map((r) => BigInt(r.driver_id))
+}
+
 export async function getDeclinedDriverIds(rideId: bigint): Promise<bigint[]> {
   const res = await pool.query<{ driver_id: string }>(
     `SELECT driver_id::text FROM ride_assignments WHERE ride_id = $1 AND status = 'declined'`, [rideId])
@@ -1694,7 +1705,7 @@ export async function getAssignCandidates(params: {
   if (params.onlineOnly) extra += ` AND ds.id IS NOT NULL`
   if (params.search) { values.push(`%${params.search}%`); extra += ` AND (d.full_name ILIKE $${values.length} OR d.phone ILIKE $${values.length})` }
   const limit = Math.min(Math.max(params.limit ?? 50, 1), 50)
-  const res = await pool.query<Omit<AssignCandidate, 'eligible'>>(
+  const res = await pool.query<Omit<AssignCandidate, 'eligible' | 'reservable'>>(
     `SELECT
        d.id::text AS driver_id,
        d.full_name AS driver_name,
@@ -1705,6 +1716,8 @@ export async function getAssignCandidates(params: {
        dc.billing_mode AS city_billing_mode,
        (ds.id IS NOT NULL AND ds.status = 'online' AND ds.mode = 'standard') AS is_online,
        (ds.category_id = ANY($4::bigint[])) AS category_ok,
+       dv.category_name AS vehicle_category_name,
+       COALESCE(dv.category_id = ANY($4::bigint[]), false) AS vehicle_category_ok,
        COALESCE(
          (dc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $5 AND NOT COALESCE(dw.is_frozen, false))
          OR
@@ -1722,6 +1735,10 @@ export async function getAssignCandidates(params: {
      LEFT JOIN driver_sessions ds ON ds.driver_id = d.id AND ds.status = 'online'
      LEFT JOIN driver_location_snapshots dls ON dls.session_id = ds.id
      LEFT JOIN vehicle_categories vc ON vc.id = ds.category_id
+     LEFT JOIN LATERAL (
+       SELECT v.category_id, c.display_name AS category_name FROM driver_vehicles v JOIN vehicle_categories c ON c.id = v.category_id
+        WHERE v.driver_id = d.id AND v.status = 'active' ORDER BY v.is_primary DESC LIMIT 1
+     ) dv ON true
      LEFT JOIN driver_wallets dw ON dw.driver_id = d.id
      LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = d.id
      WHERE d.city_id = $1 AND d.status = 'active'${extra}
@@ -1730,7 +1747,7 @@ export async function getAssignCandidates(params: {
      LIMIT ${limit}`,
     values
   )
-  return res.rows.map(r => ({ ...r, eligible: r.is_online && r.category_ok && r.wallet_ok }))
+  return res.rows.map(r => ({ ...r, eligible: r.is_online && r.category_ok && r.wallet_ok, reservable: r.vehicle_category_ok && r.wallet_ok }))
 }
 
 export async function setForceAssignGraceJob(rideId: bigint, jobId: string): Promise<void> {
@@ -2290,14 +2307,16 @@ export async function insertEtaShadow(row: {
  */
 export async function getPickupWaitMinutes(
   rideId: bigint, arrivedAt: Date, pickupLat: number, pickupLng: number, radiusM: number,
+  /** An advance booking's pickup time: the clock never starts before it (see lib/pickup-wait-floor). */
+  notBefore?: Date | null,
 ): Promise<number | null> {
   const res = await pool.query<{ minutes: string | null }>(
     `SELECT CASE WHEN count(*) = 0 THEN NULL
-                 ELSE EXTRACT(EPOCH FROM (now() - GREATEST($2::timestamptz, MIN(recorded_at)))) / 60.0 END::text AS minutes
+                 ELSE EXTRACT(EPOCH FROM (now() - GREATEST($2::timestamptz, COALESCE($6::timestamptz, $2::timestamptz), MIN(recorded_at)))) / 60.0 END::text AS minutes
      FROM gps_tracks
      WHERE ride_id = $1
        AND ST_DWithin(location, ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography, $5)`,
-    [rideId, arrivedAt, pickupLat, pickupLng, radiusM],
+    [rideId, arrivedAt, pickupLat, pickupLng, radiusM, notBefore ?? null],
   )
   const m = res.rows[0]?.minutes
   return m != null ? Math.max(0, parseFloat(m)) : null
@@ -2331,13 +2350,15 @@ export async function getPickupWaitCharge(rideId: bigint): Promise<number> {
  */
 export async function getPickupWaitStartedAt(
   rideId: bigint, arrivedAt: Date, pickupLat: number, pickupLng: number, radiusM: number,
+  /** An advance booking's pickup time: the clock never starts before it (see lib/pickup-wait-floor). */
+  notBefore?: Date | null,
 ): Promise<string | null> {
   const res = await pool.query<{ started_at: Date | null }>(
-    `SELECT CASE WHEN count(*) = 0 THEN NULL ELSE GREATEST($2::timestamptz, MIN(recorded_at)) END AS started_at
+    `SELECT CASE WHEN count(*) = 0 THEN NULL ELSE GREATEST($2::timestamptz, COALESCE($6::timestamptz, $2::timestamptz), MIN(recorded_at)) END AS started_at
      FROM gps_tracks
      WHERE ride_id = $1
        AND ST_DWithin(location, ST_SetSRID(ST_MakePoint($4::float8, $3::float8), 4326)::geography, $5)`,
-    [rideId, arrivedAt, pickupLat, pickupLng, radiusM],
+    [rideId, arrivedAt, pickupLat, pickupLng, radiusM, notBefore ?? null],
   )
   const at = res.rows[0]?.started_at
   return at ? new Date(at).toISOString() : null
@@ -2389,6 +2410,21 @@ export async function recordToll(rideId: bigint, total: number, detail: Array<{ 
     'UPDATE fare_snapshots SET toll_charge = $2, toll_detail = $3::jsonb WHERE ride_id = $1',
     [rideId, total, JSON.stringify(detail)],
   )
+}
+
+// ── Night allowance ───────────────────────────────────────────
+
+/** What the night allowance needs from a ride: its type and mode, when the trip started, and the rate on the card it was quoted on. */
+export async function getNightTerms(rideId: bigint): Promise<{ ride_type: string; trip_mode: string; started_at: string | null; rate: number } | undefined> {
+  const res = await pool.query<{ ride_type: string; trip_mode: string; started_at: string | null; rate: number }>(
+    `SELECT r.ride_type, r.trip_mode, r.started_at, rc.night_allowance_per_night::float8 AS rate
+       FROM rides r
+       JOIN fare_snapshots fs ON fs.ride_id = r.id
+       JOIN rate_cards rc ON rc.id = fs.rate_card_id
+      WHERE r.id = $1`,
+    [rideId],
+  )
+  return res.rows[0]
 }
 
 // ── Receipt ───────────────────────────────────────────────────

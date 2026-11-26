@@ -201,4 +201,9 @@ export interface AssignCandidate {
   wallet_ok: boolean
   distance_metres: number | null
   eligible: boolean
+  /** The active vehicle on file (not the live session): what a reservation is checked against, so an offline driver can be reserved. */
+  vehicle_category_name: string | null
+  vehicle_category_ok: boolean
+  /** Can be reserved for a booking later: right vehicle on file and a usable wallet. Online or not. */
+  reservable: boolean
 }

@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Shield, ShieldAlert, CheckCircle, Clock, AlertTriangle, ExternalLink, Phone, MapPin, MapPinOff, WifiOff, RefreshCw, Volume2, VolumeX, BellRing } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
+import { useCsvExport, ExportStatus, ExportButton, OPS_ROLES, FINANCE_ROLES } from '@/lib/use-csv-export'
 import SuccessToast from '@/components/ui/SuccessToast'
 import { safetyApi, type SosAlert, type SosCounts, type SosOnCall } from '@/lib/safety-api'
 import { getAdminSocket } from '@/lib/socket'
@@ -36,6 +37,7 @@ export default function SOSPage() {
   const [historyLimit, setHistoryLimit] = useState(HISTORY_STEP)
   const [historyTotal, setHistoryTotal] = useState(0)
   const [filter, setFilter] = useState<SosFilter>('all')
+  const exp = useCsvExport('/api/v1/admin/safety/sos/export.csv', OPS_ROLES)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [muted, setMuted] = useState(false)
   const [onCall, setOnCall] = useState<SosOnCall | null>(null)
@@ -358,6 +360,7 @@ export default function SOSPage() {
       <div className="admin-card">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="text-md font-bold text-text-primary">SOS Events</h2>
+          {exp.allowed && <ExportButton exporting={exp.exporting} onClick={() => void exp.run(filter === 'all' ? {} : { status: filter }, 'alert')} />}
           <div role="tablist" aria-label="Filter events" className="inline-flex gap-1 p-1 rounded-xl bg-surface-2">
             {SOS_FILTERS.map(f => (
               <button
@@ -372,6 +375,7 @@ export default function SOSPage() {
             ))}
           </div>
         </div>
+        <ExportStatus result={exp.result} />
         {!loaded ? (
           <table className="data-table w-full"><tbody>
             {Array.from({ length: 5 }).map((_, i) => (

@@ -70,7 +70,11 @@ export async function clearAllTables(): Promise<void> {
     )
     if (result.rows.length > 0) {
       const tables = result.rows.map((r) => `"${r.tablename}"`).join(', ')
+      // admin_audit_log refuses TRUNCATE unless the session opts in (migration 162); only tests do.
+      await client.query('BEGIN')
+      await client.query("SET LOCAL ocar.allow_audit_truncate = 'on'")
       await client.query(`TRUNCATE ${tables} CASCADE`)
+      await client.query('COMMIT')
     }
   } finally {
     client.release()

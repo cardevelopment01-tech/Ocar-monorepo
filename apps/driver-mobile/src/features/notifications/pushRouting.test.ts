@@ -9,6 +9,11 @@ describe('resolvePushRoute (driver-mobile)', () => {
 
   it('routes already-active-ride types straight to the active-ride screen', () => {
     expect(resolvePushRoute({ type: 'ride_force_assigned', rideId: '42' })).toBe('/active-ride/42')
+    // a reserved advance booking, its reminders and being taken off the driver all open the upcoming-bookings screen
+    for (const type of ['advance_reserved', 'advance_reserve_reminder', 'advance_reserve_released']) {
+      expect(resolvePushRoute({ type, rideId: '42' })).toBe('/reservations')
+      expect(resolveTapRoute({ type, rideId: '42' })).toBe('/reservations')
+    }
     expect(resolvePushRoute({ type: 'stop_added', rideId: '42' })).toBe('/active-ride/42')
     expect(resolvePushRoute({ type: 'pickup_updated', rideId: '42' })).toBe('/active-ride/42')
   })

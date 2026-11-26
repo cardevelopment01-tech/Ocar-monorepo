@@ -1223,11 +1223,11 @@ export default function DriverDetailPage() {
                 ) : (
                   <>
                     {auditEntries.map(a => {
-                      const diffs = diffFields(a.before_state, a.after_state)
+                      const diffs = a.before_state === null && a.after_state && 'request' in a.after_state ? [] : diffFields(a.before_state, a.after_state)
                       return (
                         <div key={a.id} className="bg-surface-2 rounded-xl px-4 py-3 border border-border-light mb-2">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-text-primary">{a.action.replace(/_/g, ' ')}</span>
+                            <span className="text-xs font-semibold text-text-primary">{a.action.replace(/_/g, ' ')}{a.outcome && a.outcome !== 'success' && <span className="ml-2 pill pill-warning text-[10px]">{a.outcome === 'denied' ? 'Blocked' : 'Failed'}</span>}</span>
                             <span className="text-xs text-text-muted">{fmt(a.created_at)}</span>
                           </div>
                           <p className="text-xs text-text-muted mt-0.5">{a.admin_email ?? 'system'}</p>

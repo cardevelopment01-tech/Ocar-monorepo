@@ -1,3 +1,4 @@
+import { sendReservationReminders, sendHeadOutNudges, dispatchReservedRidesDue } from '@/modules/rides/reservation.service'
 import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import * as repo from '@/modules/rides/rides.repository'
@@ -22,6 +23,7 @@ import { runAdminDigest } from '@/modules/analytics/admin-digest'
 import { sweepStaleSosAlerts, sweepBreachedDisputeSlas } from '@/modules/safety/safety.sweeps'
 import { endExpiredOffers, releaseStaleReservations } from '@/modules/offers/offers.worker'
 import { issueCommissionInvoices } from '@/modules/packages/package-invoice.service'
+import { verifyAuditChainJob, archiveAuditDayJob } from '@/jobs/processors/audit-maintenance.processor'
 
 const log = createWorkerLogger('scheduler')
 
@@ -63,6 +65,9 @@ export const schedulerWorker = new Worker(
       }
       // Reminders ride on the same minute sweep; a failure here must never stop dispatch above, so it is isolated.
       await sendAdvanceReminders().catch((err: unknown) => log.error({ err }, 'advance reminders failed'))
+      await dispatchReservedRidesDue((id) => processDispatchScheduled({ rideId: id })).catch((err: unknown) => log.error({ err }, 'early go-live failed'))
+      await sendReservationReminders().catch((err: unknown) => log.error({ err }, 'reservation reminders failed'))
+      await sendHeadOutNudges().catch((err: unknown) => log.error({ err }, 'head-out nudges failed'))
       return
     }
 
@@ -107,6 +112,16 @@ export const schedulerWorker = new Worker(
     // GST commission invoices: one consolidated invoice per driver for each period that has ended (monthly by default).
     if (job.name === 'issue_commission_invoices') {
       await issueCommissionInvoices()
+      return
+    }
+
+    // Admin audit trail: nightly hash-chain verification, then a copy of yesterday's rows to S3.
+    if (job.name === 'audit_verify_chain') {
+      await verifyAuditChainJob()
+      return
+    }
+    if (job.name === 'audit_archive_day') {
+      await archiveAuditDayJob()
       return
     }
   },

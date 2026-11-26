@@ -2,8 +2,9 @@ import { Router, IRouter } from 'express'
 import { authenticate } from '@/middleware/auth.middleware'
 import { requireAdmin } from '@/middleware/role.middleware'
 import { validate } from '@/middleware/validate.middleware'
-import { adminStepUpLimiter } from '@/middleware/rateLimit.middleware'
+import { adminStepUpLimiter, adminExportLimiter } from '@/middleware/rateLimit.middleware'
 import * as controller from './admin.controller'
+import * as exp from './admin-export.controller'
 import * as lifecycle from './admin-lifecycle.controller'
 import { changeRoleSchema, removeAdminSchema, stepUpSchema } from './admin-lifecycle.controller'
 import multer from 'multer'
@@ -44,6 +45,8 @@ router.get('/live-map/attention', requireAdmin('super_admin', 'ops_admin'), cont
 
 // ─── Drivers ──────────────────────────────────────────────────────────────────
 router.get('/drivers',               controller.getDrivers)
+// Whole-book copy of driver phone numbers: super + ops only, throttled, and audited (drivers.export). Must precede /drivers/:id.
+router.get('/drivers/export.csv',    requireAdmin('super_admin', 'ops_admin'), adminExportLimiter, controller.exportDriversCsv)
 router.get('/drivers/:id',           controller.getDriver)
 router.patch('/drivers/:id/status',  requireAdmin('super_admin', 'ops_admin'), controller.updateDriverStatus)
 router.patch('/drivers/:id/profile', requireAdmin('super_admin', 'ops_admin'), controller.updateDriverProfile)
@@ -70,6 +73,8 @@ router.post('/vehicles/models',      requireAdmin('super_admin', 'ops_admin'), c
 router.patch('/vehicles/models/:id', requireAdmin('super_admin', 'ops_admin'), controller.patchModel)
 
 // ─── Fleet ────────────────────────────────────────────────────────────────────
+// CSV export (audited, throttled, capped): registered before any /:id route
+router.get('/vehicles/fleet/export.csv', requireAdmin('super_admin', 'ops_admin'), adminExportLimiter, exp.exportFleet)
 router.get('/vehicles/fleet',                                    requireAdmin('super_admin', 'ops_admin'), controller.getFleet)
 router.patch('/vehicles/fleet/:vehicleId/blacklist',             requireAdmin('super_admin', 'ops_admin'), controller.blacklistVehicle)
 router.patch('/vehicles/fleet/:vehicleId/unblacklist',           requireAdmin('super_admin', 'ops_admin'), controller.unblacklistVehicle)
@@ -81,6 +86,8 @@ router.patch('/drivers/documents/:docId/reject',  requireAdmin('super_admin', 'o
 router.patch('/drivers/documents/:docId/expiry',  requireAdmin('super_admin', 'ops_admin'), controller.editDriverDocExpiry)
 
 // ─── Vehicle documents (static segments BEFORE :docId) ───────────────────────
+// CSV export (audited, throttled, capped): registered before any /:id route
+router.get('/vehicles/documents/pending/export.csv', requireAdmin('super_admin', 'ops_admin'), adminExportLimiter, exp.exportVehicleDocsPending)
 router.get('/vehicles/documents/pending',       requireAdmin('super_admin', 'ops_admin'), controller.getPendingVehicleDocs)
 router.get('/vehicles/documents/expiring',      requireAdmin('super_admin', 'ops_admin'), controller.getExpiringDocs)
 router.patch('/vehicles/documents/:docId/approve', requireAdmin('super_admin', 'ops_admin'), controller.approveVehicleDoc)
@@ -119,6 +126,8 @@ router.get('/drivers/:id/package',           requireAdmin('super_admin', 'ops_ad
 router.patch('/drivers/:id/package/balance', requireAdmin('super_admin'), controller.patchDriverPackageBalance)
 
 // ─── Safety — SOS ─────────────────────────────────────────────────────────────
+// CSV export (audited, throttled, capped): registered before any /:id route
+router.get('/safety/sos/export.csv', requireAdmin('super_admin', 'ops_admin'), adminExportLimiter, exp.exportSos)
 router.get('/safety/sos',                    controller.getAdminSosAlerts)
 router.get('/safety/sos/on-call',            controller.getAdminSosOnCall)
 router.put('/safety/sos/on-call',            requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.setAdminSosOnCall)
@@ -127,6 +136,8 @@ router.patch('/safety/sos/:id/acknowledge',  requireAdmin('super_admin', 'ops_ad
 router.patch('/safety/sos/:id/resolve',      requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.resolveAdminSos)
 
 // ─── Safety — Disputes ────────────────────────────────────────────────────────
+// CSV export (audited, throttled, capped): registered before any /:id route
+router.get('/safety/disputes/export.csv', requireAdmin('super_admin', 'ops_admin'), adminExportLimiter, exp.exportDisputes)
 router.get('/safety/disputes',           controller.getAdminDisputes)
 router.get('/safety/disputes/:id',       controller.getAdminDispute)
 router.get('/safety/disputes/:id/trip-replay', controller.getAdminDisputeTripReplay)
@@ -135,6 +146,8 @@ router.patch('/safety/disputes/:id/resolve', requireAdmin('super_admin', 'suppor
 
 // ─── Rides ────────────────────────────────────────────────────────────────────
 router.get('/rides/stats', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideStats)
+// CSV export (audited, throttled, capped): registered before any /:id route
+router.get('/rides/export.csv', requireAdmin('super_admin', 'ops_admin'), adminExportLimiter, exp.exportRides)
 router.get('/rides', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRides)
 router.get('/rides/upcoming', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getUpcomingScheduledRides)
 router.get('/rides/:id/trail', requireAdmin('super_admin', 'ops_admin', 'support_admin'), controller.getAdminRideTrail)
@@ -145,10 +158,14 @@ router.get('/rides/:id/assign-candidates', requireAdmin('super_admin', 'ops_admi
 router.post('/rides/:id/assign', requireAdmin('super_admin', 'ops_admin'), controller.assignDriverToRide)
 
 // ─── Users ────────────────────────────────────────────────────────────────────
+// CSV export (audited, throttled, capped): registered before any /:id route
+router.get('/users/export.csv', requireAdmin('super_admin', 'ops_admin'), adminExportLimiter, exp.exportUsers)
 router.get('/users',                controller.getAdminUsers)
 router.patch('/users/:id/status',   requireAdmin('super_admin', 'ops_admin'), controller.patchAdminUserStatus)
 
 // ─── Payments ─────────────────────────────────────────────────────────────────
+// CSV export (audited, throttled, capped): registered before any /:id route
+router.get('/payments/export.csv', requireAdmin('super_admin', 'finance_admin'), adminExportLimiter, exp.exportPayments)
 router.get('/payments', requireAdmin('super_admin', 'finance_admin'), controller.getAdminPayments)
 
 export default router
