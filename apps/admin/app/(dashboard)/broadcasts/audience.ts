@@ -8,6 +8,8 @@ export type AudienceForm = {
   categoryIds: string[]
   docIssues: boolean
   missingRcBack: boolean
+  /** Drivers who stopped partway through verification. Used alone: they have no city or vehicle yet. */
+  incompleteKyc: boolean
   /** '' = any rider. */
   bookedInLastDays: '' | '7' | '30' | '90'
   /** Specific people, one per line or separated by commas/spaces. Used alone: it replaces every other filter. */
@@ -16,7 +18,7 @@ export type AudienceForm = {
 }
 
 export const EMPTY_FORM: AudienceForm = {
-  role: 'driver', cityIds: [], categoryIds: [], docIssues: false, missingRcBack: false, bookedInLastDays: '', phonesText: '', usePhones: false,
+  role: 'driver', cityIds: [], categoryIds: [], docIssues: false, missingRcBack: false, incompleteKyc: false, bookedInLastDays: '', phonesText: '', usePhones: false,
 }
 
 /** '98610 03979', '9861003979', '+919861003979' and '919861003979' all become '+919861003979'; anything else is null. (Same rule as the API.) */
@@ -42,6 +44,7 @@ export const MAX_PHONES = 10
 
 export function buildAudience(form: AudienceForm): BroadcastAudience {
   if (form.usePhones) return { role: form.role, phones: parsePhones(form.phonesText).valid }
+  if (form.role === 'driver' && form.incompleteKyc) return { role: 'driver', incompleteKyc: true }
   const a: BroadcastAudience = { role: form.role }
   if (form.role === 'driver') {
     if (form.cityIds.length) a.cityIds = form.cityIds.map(Number)
@@ -70,6 +73,7 @@ export function describeAudience(a: BroadcastAudienceShown, names: Names): strin
   const parts: string[] = [a.role === 'driver' && !hasDriverFilter(a) ? 'All drivers' : a.role === 'rider' && !a.bookedInLastDays ? 'All riders' : who]
   if (a.cityIds?.length) parts.push(a.cityIds.map((id) => names.cities.get(id) ?? `City ${id}`).join(', '))
   if (a.categoryIds?.length) parts.push(a.categoryIds.map((id) => names.categories.get(id) ?? `Type ${id}`).join(', '))
+  if (a.incompleteKyc) parts.push('not finished verification')
   if (a.docIssues) parts.push('blocked by documents')
   if (a.missingRcBack) parts.push('missing the RC back')
   if (a.bookedInLastDays) parts.push(`booked in the last ${a.bookedInLastDays} days`)
@@ -77,5 +81,5 @@ export function describeAudience(a: BroadcastAudienceShown, names: Names): strin
 }
 
 function hasDriverFilter(a: BroadcastAudienceShown): boolean {
-  return !!(a.cityIds?.length || a.categoryIds?.length || a.docIssues || a.missingRcBack)
+  return !!(a.cityIds?.length || a.categoryIds?.length || a.docIssues || a.missingRcBack || a.incompleteKyc)
 }

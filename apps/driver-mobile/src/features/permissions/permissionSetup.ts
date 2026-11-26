@@ -7,7 +7,16 @@ import { setupPushNotifications } from '@/services/notifications'
 
 const SNOOZE_KEY = 'ocar_permission_setup_snoozed_at'
 
-export async function readPermissionRows(): Promise<PermissionRowModel[]> {
+// A driver still in onboarding is asked for notifications only: location is for going online, which comes after approval.
+const ONBOARDING_REASON = "Updates on your application, and ride requests once you're approved, even when Ocar is closed."
+
+export async function readPermissionRows(only?: 'notifications'): Promise<PermissionRowModel[]> {
+  const rows = await readAllRows()
+  if (only !== 'notifications') return rows
+  return rows.filter((r) => r.key === 'notifications').map((r) => ({ ...r, reason: ONBOARDING_REASON }))
+}
+
+async function readAllRows(): Promise<PermissionRowModel[]> {
   const [notifications, location, background] = await Promise.all([readNotificationStatus(), readLocationStatus(), readBackgroundLocationGranted()])
   // Android offers "all the time" only after "while using the app", so location is one row with two steps.
   const locationRow: PermissionRowModel = location !== 'granted'
@@ -38,16 +47,16 @@ export async function snoozeSetup(): Promise<void> {
 }
 
 /** 'checking' until the phone has answered; 'show' when a required permission is missing and "Not now" was not tapped today. */
-export function usePermissionGate(enabled: boolean): 'checking' | 'show' | 'skip' {
+export function usePermissionGate(enabled: boolean, only?: 'notifications'): 'checking' | 'show' | 'skip' {
   const [state, setState] = useState<'checking' | 'show' | 'skip'>('checking')
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
     void (async () => {
-      const [rows, raw] = await Promise.all([readPermissionRows(), AsyncStorage.getItem(SNOOZE_KEY).catch(() => null)])
+      const [rows, raw] = await Promise.all([readPermissionRows(only), AsyncStorage.getItem(SNOOZE_KEY).catch(() => null)])
       if (!cancelled) setState(shouldShowSetup(rows, raw ? Number(raw) : null, Date.now()) ? 'show' : 'skip')
     })().catch(() => { if (!cancelled) setState('skip') })
     return () => { cancelled = true }
-  }, [enabled])
+  }, [enabled, only])
   return state
 }

@@ -32,6 +32,8 @@ export const audienceSchema = z.object({
   missingRcBack: z.boolean().optional(),
   // Drivers: active drivers a document keeps from going online (expired, rejected, waiting for review, RC back missing).
   docIssues: z.boolean().optional(),
+  // Drivers: still in onboarding (never finished verification) and stalled for at least a day. Used alone: those drivers have no city or vehicle yet.
+  incompleteKyc: z.boolean().optional(),
   // Drivers: operating city / category of the primary vehicle.
   cityIds: idList.optional(),
   categoryIds: idList.optional(),
@@ -44,7 +46,8 @@ export const audienceSchema = z.object({
     return n ?? p
   })).min(1).max(10).optional(),
 }).strict().superRefine((a, ctx) => {
-  const driverOnly = !!(a.missingRcBack || a.docIssues || a.cityIds || a.categoryIds)
+  const driverOnly = !!(a.missingRcBack || a.docIssues || a.incompleteKyc || a.cityIds || a.categoryIds)
+  if (a.incompleteKyc && (a.missingRcBack || a.docIssues || a.cityIds || a.categoryIds)) ctx.addIssue({ code: 'custom', message: 'Incomplete KYC cannot be combined with other driver filters' })
   if (a.role === 'rider' && driverOnly) ctx.addIssue({ code: 'custom', message: 'Driver filters cannot be used for riders' })
   if (a.role === 'driver' && a.bookedInLastDays) ctx.addIssue({ code: 'custom', message: 'The booking filter is for riders only' })
   if (a.phones && (driverOnly || a.bookedInLastDays)) ctx.addIssue({ code: 'custom', message: 'Phone numbers cannot be combined with other filters' })
@@ -83,7 +86,7 @@ export const broadcastSchema = z.object({
 // older app does not know just opens the app.
 export const BROADCAST_LINKS = {
   rider: ['home', 'offers', 'trips'],
-  driver: ['home', 'wallet', 'earnings', 'documents'],
+  driver: ['home', 'wallet', 'earnings', 'documents', 'onboarding'],
 } as const
 
 export type Audience = z.infer<typeof audienceSchema>
@@ -115,6 +118,7 @@ function candidateQuery(audience: Audience, category: BroadcastInput['category']
                        WHERE v.driver_id = t.id AND v.is_primary AND x.doc_type = 'vehicle_rc_back')`)
     }
     if (audience.docIssues) filters.push(`AND ${docIssueExistsSql('t.id')}`)
+    if (audience.incompleteKyc) filters.push("AND t.updated_at <= now() - interval '1 day'")
     if (audience.cityIds?.length) filters.push(`AND t.city_id = ANY(${bind(audience.cityIds)}::bigint[])`)
     if (audience.categoryIds?.length) {
       filters.push(`AND EXISTS (SELECT 1 FROM driver_vehicles v WHERE v.driver_id = t.id AND v.is_primary AND v.category_id = ANY(${bind(audience.categoryIds)}::bigint[]))`)
@@ -144,7 +148,7 @@ function candidateQuery(audience: Audience, category: BroadcastInput['category']
              EXISTS (SELECT 1 FROM device_tokens dt
                      WHERE dt.owner_type = $1 AND dt.owner_id = t.id AND dt.last_seen_at > now() - make_interval(days => $3::int)) AS has_device
            FROM ${table} t ${recent}
-           WHERE t.status = 'active' ${filters.join(' ')}`,
+           WHERE t.status = ${audience.role === 'driver' && audience.incompleteKyc ? "'pending_docs'" : "'active'"} ${filters.join(' ')}`,
     values,
   }
 }

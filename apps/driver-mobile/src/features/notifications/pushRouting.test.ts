@@ -35,6 +35,7 @@ describe('resolvePushRoute (driver-mobile)', () => {
 
   it('routes document notifications to the documents screen', () => {
     expect(resolvePushRoute({ type: 'document_rejected' })).toBe('/documents')
+    expect(resolvePushRoute({ type: 'kyc_reminder' })).toBe('/') // opens the app root, which resumes the saved onboarding step
     expect(resolvePushRoute({ type: 'document_expiring' })).toBe('/documents')
     expect(resolvePushRoute({ type: 'document_expired' })).toBe('/documents')
   })

@@ -180,7 +180,9 @@ export async function notifyOwner(params: {
   tag?: string
   ttlSeconds?: number
   channelId?: string
-}): Promise<void> {
+  // Optional picture shown when the push is expanded (a public https link; a bad one is dropped by the provider, not fatal).
+  imageUrl?: string
+}): Promise<{ id: string }> {
   const item = await repo.createInAppNotification(params)
   const defaults = pushDefaults(params.type, params.rideId)
   const tag = params.tag ?? defaults.tag
@@ -204,6 +206,7 @@ export async function notifyOwner(params: {
       ttlSeconds: params.ttlSeconds ?? defaults.ttlSeconds,
       ...(tag !== undefined ? { tag } : {}),
       ...(channelId !== undefined ? { channelId } : {}),
+      ...(params.imageUrl ? { imageUrl: params.imageUrl } : {}),
     },
   }
 
@@ -226,6 +229,7 @@ export async function notifyOwner(params: {
   } catch (err) {
     log.error({ err }, 'notify socket leg failed')
   }
+  return { id: item.id }
 }
 
 export interface PushJobData {

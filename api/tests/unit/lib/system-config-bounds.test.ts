@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getConfigBounds, validateConfigBounds } from '@/lib/system-config-bounds'
+import { getConfigBounds, validateConfigBounds , kycDayOrderError } from '@/lib/system-config-bounds'
 
 describe('validateConfigBounds', () => {
   it('accepts values inside the range, including the edges', () => {
@@ -51,5 +51,33 @@ describe('idle driver settings', () => {
     expect(validateConfigBounds('driver_idle_pause_seconds', '9')).not.toBeNull()
     expect(validateConfigBounds('driver_idle_offline_minutes', '60')).toBeNull()
     expect(validateConfigBounds('driver_idle_offline_minutes', '6000')).not.toBeNull()
+  })
+})
+
+describe('onboarding reminder settings', () => {
+  const cur = { kyc_reminder_day_1: 1, kyc_reminder_day_2: 4, kyc_reminder_day_3: 8, kyc_pause_day: 10 }
+  it('bounds each day to 1..30 and the switch to true/false', () => {
+    expect(validateConfigBounds('kyc_reminder_day_2', '0')).not.toBeNull()
+    expect(validateConfigBounds('kyc_pause_day', '31')).not.toBeNull()
+    expect(validateConfigBounds('kyc_pause_day', '12')).toBeNull()
+    expect(validateConfigBounds('kyc_reminders_enabled', 'yes')).not.toBeNull()
+    expect(validateConfigBounds('kyc_reminders_enabled', 'true')).toBeNull()
+  })
+  it('keeps the days in order: first < second < third < pause day', () => {
+    expect(kycDayOrderError('kyc_reminder_day_2', '7', cur)).toBeNull()
+    expect(kycDayOrderError('kyc_reminder_day_2', '8', cur)).not.toBeNull() // equal to the third
+    expect(kycDayOrderError('kyc_reminder_day_1', '5', cur)).not.toBeNull() // after the second
+    expect(kycDayOrderError('kyc_pause_day', '8', cur)).not.toBeNull() // not after the third
+    expect(kycDayOrderError('commission_percent', '5', cur)).toBeNull() // other keys are not ours
+  })
+})
+
+describe('reminder picture folder', () => {
+  it('is empty or a public https folder with no trailing slash', () => {
+    expect(validateConfigBounds('kyc_banner_base_url', '')).toBeNull()
+    expect(validateConfigBounds('kyc_banner_base_url', 'https://ocarindia.com/push')).toBeNull()
+    expect(validateConfigBounds('kyc_banner_base_url', 'http://ocarindia.com/push')).not.toBeNull()
+    expect(validateConfigBounds('kyc_banner_base_url', 'https://ocarindia.com/push/')).not.toBeNull()
+    expect(validateConfigBounds('kyc_banner_base_url', 'https://localhost/push')).not.toBeNull()
   })
 })

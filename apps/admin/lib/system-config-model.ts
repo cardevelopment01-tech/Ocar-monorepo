@@ -9,7 +9,7 @@ import type { SystemConfig } from './system-config-api'
 // Numeric ranges are NOT duplicated here: the API owns them (api/src/lib/system-config-bounds.ts)
 // and returns min/max on each row.
 
-export type GroupId = 'payments' | 'payouts' | 'cash' | 'masking' | 'drivers' | 'rewards' | 'app' | 'other' | 'legacy'
+export type GroupId = 'payments' | 'payouts' | 'cash' | 'masking' | 'drivers' | 'onboarding' | 'rewards' | 'app' | 'other' | 'legacy'
 export type Kind = 'switch' | 'number' | 'text' | 'json'
 
 export interface Group { id: GroupId; title: string; blurb: string }
@@ -20,6 +20,7 @@ export const GROUPS: readonly Group[] = [
   { id: 'cash',     title: 'Cash collection',         blurb: 'Rules for rides paid in cash.' },
   { id: 'masking',  title: 'Call masking',            blurb: 'Private calls between riders and drivers.' },
   { id: 'drivers',  title: 'Driver conduct',          blurb: 'Warnings and automatic suspension.' },
+  { id: 'onboarding', title: 'Driver onboarding',    blurb: 'Reminders for drivers who stop partway through verification. See who was reached under Drivers > Onboarding follow-up.' },
   { id: 'rewards',  title: 'Rewards & referrals',     blurb: 'Cashback and sign-up bonuses.' },
   { id: 'app',      title: 'App updates',            blurb: 'Ask or require riders and drivers to update their app.' },
   { id: 'other',    title: 'Other',                   blurb: 'Settings without a dedicated group yet.' },
@@ -60,6 +61,13 @@ const META: Record<string, Meta> = {
   call_masking_enabled:            { group: 'masking', title: 'Masked calling', help: 'Kill switch. Keep off until bulksmsplans IVR credit is loaded and verified end to end.', critical: true },
   call_masking_max_calls_per_ride: { group: 'masking', title: 'Calls per ride', help: 'Maximum masked-call attempts for one ride, to blunt repeat-dial abuse.', suffix: ' calls' },
   call_masking_credit_floor:       { group: 'masking', title: 'Credit floor', help: 'If IVR credit drops below this, masking switches itself off until re-enabled.', prefix: '₹' },
+
+  kyc_reminders_enabled: { group: 'onboarding', kind: 'switch', title: 'Onboarding reminders', help: 'Sends up to three reminders, between 10:00 and 21:00 India time, to drivers who stopped partway through verification. Off until switched on.' },
+  kyc_reminder_day_1:    { group: 'onboarding', title: 'First reminder', help: 'Days after the driver’s last step. Must be before the second.', suffix: ' days' },
+  kyc_reminder_day_2:    { group: 'onboarding', title: 'Second reminder', help: 'Days after the driver’s last step. Must be before the third.', suffix: ' days' },
+  kyc_reminder_day_3:    { group: 'onboarding', title: 'Last reminder', help: 'Days after the driver’s last step. Must be before the pause day.', suffix: ' days' },
+  kyc_banner_base_url:   { group: 'onboarding', kind: 'text', title: 'Reminder picture folder', help: 'Public https folder holding kyc-step-0.png to kyc-step-3.png (no trailing slash). Leave empty to send reminders without a picture.' },
+  kyc_pause_day:         { group: 'onboarding', title: 'Pause the application', help: 'Days after the driver’s last step when reminders stop. Nothing is deleted; they can resume any time.', suffix: ' days' },
 
   driver_warning_suspend_threshold: { group: 'drivers', title: 'Warnings before auto-suspension', help: 'Warnings inside the window that automatically suspend a driver.', suffix: ' warnings' },
   driver_warning_window_days:       { group: 'drivers', title: 'Warning window', help: 'How far back warnings are counted.', suffix: ' days' },

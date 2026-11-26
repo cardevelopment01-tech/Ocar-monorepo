@@ -19,6 +19,7 @@ const BROADCAST_ROUTES: Record<string, string> = {
   wallet: '/wallet',
   earnings: '/(tabs)/earnings',
   documents: '/documents',
+  onboarding: '/', // the app root resumes the saved onboarding step
 }
 
 export function resolvePushRoute(data: Record<string, string> | undefined): string | null {
@@ -70,6 +71,10 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
 
     case 'wallet_low_balance':
       return '/wallet'
+
+    // Onboarding reminder: the app root resumes the driver at the step they saved.
+    case 'kyc_reminder':
+      return '/'
 
     case 'profile_corrected':
       return '/(tabs)/profile'
