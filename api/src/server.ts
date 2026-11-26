@@ -101,6 +101,12 @@ async function start(): Promise<void> {
     {},
     { repeat: { pattern: '0 4 * * *' }, removeOnComplete: true, removeOnFail: true }
   )
+  // Onboarding reminders for drivers who stalled in KYC: hourly, the sweep itself enforces the 10:00 to 21:00 India window and the admin switch.
+  await schedulerQueue.add(
+    'sweep_kyc_reminders',
+    {},
+    { repeat: { pattern: '0 * * * *' }, removeOnComplete: true, removeOnFail: true }
+  )
   // §03.4: remind the on-call admin (1 min) and then every admin (3 min) about SOS alerts nobody has acknowledged.
   await schedulerQueue.add(
     'sweep_stale_sos',

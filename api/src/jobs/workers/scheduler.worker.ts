@@ -1,3 +1,4 @@
+import { sendKycReminders } from '@/modules/drivers/kyc-reminders.service'
 import { sendReservationReminders, sendHeadOutNudges, dispatchReservedRidesDue } from '@/modules/rides/reservation.service'
 import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
@@ -68,6 +69,12 @@ export const schedulerWorker = new Worker(
       await dispatchReservedRidesDue((id) => processDispatchScheduled({ rideId: id })).catch((err: unknown) => log.error({ err }, 'early go-live failed'))
       await sendReservationReminders().catch((err: unknown) => log.error({ err }, 'reservation reminders failed'))
       await sendHeadOutNudges().catch((err: unknown) => log.error({ err }, 'head-out nudges failed'))
+      return
+    }
+
+    // Hourly: the onboarding reminders. They run only inside the India-time send window and only when the admin switch is on.
+    if (job.name === 'sweep_kyc_reminders') {
+      await sendKycReminders().catch((err: unknown) => log.error({ err }, 'onboarding reminders failed'))
       return
     }
 

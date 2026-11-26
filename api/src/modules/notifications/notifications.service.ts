@@ -180,7 +180,7 @@ export async function notifyOwner(params: {
   tag?: string
   ttlSeconds?: number
   channelId?: string
-}): Promise<void> {
+}): Promise<{ id: string }> {
   const item = await repo.createInAppNotification(params)
   const defaults = pushDefaults(params.type, params.rideId)
   const tag = params.tag ?? defaults.tag
@@ -226,6 +226,7 @@ export async function notifyOwner(params: {
   } catch (err) {
     log.error({ err }, 'notify socket leg failed')
   }
+  return { id: item.id }
 }
 
 export interface PushJobData {

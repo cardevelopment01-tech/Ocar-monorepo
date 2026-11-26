@@ -78,6 +78,8 @@ export const NOTIFICATION_TYPES = {
   wallet_low_balance: { channelId: 'account_alerts_v1', ttlSeconds: DAY, collapse: 'type' },
   session_ended_stale: { ttlSeconds: HOUR, collapse: 'type' },
   verification_required: { channelId: 'account_alerts_v1', ttlSeconds: DAY, collapse: 'type' },
+  // Onboarding follow-up: a newer reminder replaces an older one still sitting on the phone.
+  kyc_reminder:      { channelId: 'announcements_v1', ttlSeconds: 2 * DAY, collapse: 'type' },
   // ── Admin broadcasts (optional categories; see notification_preferences) ──
   announcement:      { channelId: 'announcements_v1', ttlSeconds: DAY, collapse: 'none' },
   offer:             { channelId: 'offers_v1', ttlSeconds: DAY, collapse: 'none' },
