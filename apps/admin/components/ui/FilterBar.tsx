@@ -1,5 +1,5 @@
 'use client'
-import { Search, Download } from 'lucide-react'
+import { Search, Download, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface FilterOption {
@@ -16,6 +16,8 @@ interface FilterBarProps {
   searchPlaceholder?: string
   filters?: FilterOption[]
   onExport?: () => void
+  /** disables the export button and shows a spinner while a download is running */
+  exporting?: boolean
   actions?: React.ReactNode
   /** controls rendered before the select filters (e.g. multi-select popovers) */
   leading?: React.ReactNode
@@ -25,7 +27,7 @@ interface FilterBarProps {
 
 export default function FilterBar({
   search, onSearch, searchPlaceholder = 'Search…',
-  filters = [], onExport, actions, leading, wrapSearch,
+  filters = [], onExport, exporting, actions, leading, wrapSearch,
 }: FilterBarProps) {
   return (
     <div className="flex items-center gap-3 flex-wrap">
@@ -63,10 +65,12 @@ export default function FilterBar({
       {/* Export */}
       {onExport && (
         <button
+          type="button"
           onClick={onExport}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-text-secondary border border-border rounded-xl hover:bg-surface-2 transition-colors ml-auto"
+          disabled={exporting}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-text-secondary border border-border rounded-xl hover:bg-surface-2 disabled:opacity-50 transition-colors ml-auto"
         >
-          <Download size={14} />
+          {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
           Export CSV
         </button>
       )}

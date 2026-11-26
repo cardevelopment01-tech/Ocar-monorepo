@@ -6,7 +6,7 @@ import SuccessToast from '@/components/ui/SuccessToast'
 import DispatchPanel from '@/components/dispatch/DispatchPanel'
 import DispatchPolicy from '@/components/dispatch/DispatchPolicy'
 import { dispatchApi, type DispatchLane, type DispatchRow, type DispatchSummary } from '@/lib/dispatch-api'
-import { dispatchState, relativeTo, type DispatchTone } from '@/lib/dispatch-model'
+import { dispatchState, relativeTo, reservationNote, type DispatchTone } from '@/lib/dispatch-model'
 import { cityApi, type AdminCity } from '@/lib/city-api'
 import { useAdminAuth } from '@/lib/auth-context'
 import { extractErrorMessage } from '@/lib/http-errors'
@@ -230,6 +230,7 @@ function DispatchContent() {
                     <span className="min-w-0">
                       <span className="block text-sm font-medium text-text-primary truncate">{r.user_name ?? r.user_phone}</span>
                       <span className="block text-xs text-text-muted truncate">{[r.category_name, r.city_name].filter(Boolean).join(' · ')} · <StatusPill status={cardMode(r)} className="!py-0 !text-[10px]" /></span>
+                      {(() => { const rv = reservationNote(r, now); return rv ? <span className={`block text-xs truncate font-medium ${rv.tone === 'danger' ? 'text-danger' : rv.tone === 'warn' ? 'text-warning' : 'text-success'}`}>{rv.text}</span> : null })()}
                     </span>
                     <span className="min-w-0 space-y-0.5">
                       <span className="flex items-center gap-1.5 text-xs text-text-secondary truncate"><MapPin className="w-3 h-3 text-success shrink-0" /><span className="truncate">{r.origin_address ?? '—'}</span></span>

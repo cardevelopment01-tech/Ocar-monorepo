@@ -4,6 +4,7 @@ import { httpError } from '@/lib/errors'
 import * as repo from './dispatch.repository'
 import { readPolicy, savePolicy } from './advance-policy.admin'
 import { adminCancelRide, rescheduleAdvanceRide } from '@/modules/rides/advance.service'
+import { reserveDriver, releaseReservation } from '@/modules/rides/reservation.service'
 
 // Dispatch desk API (read-only). Assigning a driver stays on POST /admin/rides/:id/assign.
 
@@ -88,6 +89,22 @@ router.post('/rides/:id/reschedule', ACT, async (req: Request, res: Response, ne
     if (typeof body.scheduledFor !== 'string') throw httpError(422, 'scheduledFor is required', 'VALIDATION_ERROR')
     const out = await rescheduleAdvanceRide(BigInt(req.params['id']!), body.scheduledFor, { type: 'admin', adminId: req.admin!.id, reason: reasonOf(body.reason), ip: req.ip ?? null })
     res.json(out)
+  } catch (err) { next(err) }
+})
+
+router.post('/rides/:id/reserve', ACT, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = req.body as { driverId?: unknown; override?: unknown }
+    if (typeof body.driverId !== 'string' || !/^\d+$/.test(body.driverId)) throw httpError(422, 'driverId is required', 'VALIDATION_ERROR')
+    res.json(await reserveDriver(BigInt(req.params['id']!), BigInt(body.driverId), req.admin!.id, req.ip ?? null, body.override === true))
+  } catch (err) { next(err) }
+})
+
+router.delete('/rides/:id/reserve', ACT, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const out = await releaseReservation(BigInt(req.params['id']!), 'admin', { actorId: req.admin!.id, reason: 'released by ops' })
+    if (!out.released) throw httpError(409, 'This booking has no reserved driver', 'NOT_RESERVED')
+    res.json({ success: true })
   } catch (err) { next(err) }
 })
 

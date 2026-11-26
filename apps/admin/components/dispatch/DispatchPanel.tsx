@@ -1,21 +1,21 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ChevronDown, Loader2, MapPin, Search, Zap, Send } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CheckCircle2, ChevronDown, Loader2, MapPin, Search, Zap, Send } from 'lucide-react'
 import SlideOver from '@/components/ui/SlideOver'
 import ReasonDialog from '@/components/ui/ReasonDialog'
 import RescheduleDialog from './RescheduleDialog'
 import { dispatchApi } from '@/lib/dispatch-api'
 import RideOffers, { offerSummary } from '@/components/rides/RideOffers'
 import { adminRideApi, type AdminRideDetail, type AssignCandidate } from '@/lib/admin-api'
-import { extractErrorMessage } from '@/lib/http-errors'
+import { extractErrorCode, extractErrorMessage } from '@/lib/http-errors'
 import { fmtIst } from '@/lib/ist'
 import { useNow } from '@/lib/use-now'
 import {
-  ASK_TIMEOUT_SECONDS, BOOK_GRACE_MINUTES, dispatchState, earlyAssignWarning, relativeTo, type DispatchTone,
+  ASK_TIMEOUT_SECONDS, BOOK_GRACE_MINUTES, dispatchState, earlyAssignWarning, relativeTo, reservationNote, type DispatchTone,
 } from '@/lib/dispatch-model'
 
-type Mode = 'ask' | 'book'
+type Mode = 'reserve' | 'ask' | 'book'
 
 const TONE_PILL: Record<DispatchTone, string> = { muted: 'pill-muted', info: 'pill-info', warning: 'pill-warning', danger: 'pill-danger' }
 
@@ -50,7 +50,8 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
   const [mode, setMode] = useState<Mode>('ask')
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [assignError, setAssignError] = useState<{ id: string; message: string } | null>(null)
+  const [assignError, setAssignError] = useState<{ id: string; message: string; overlap?: boolean } | null>(null)
+  const [releasing, setReleasing] = useState<'ask' | 'busy' | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const seq = useRef(0)
   const [action, setAction] = useState<'cancel' | 'reschedule' | null>(null)
@@ -62,7 +63,7 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
     setDetail(null); setDetailError(false); setQ(''); setDebouncedQ(''); setCands([]); setConfirmId(null); setAssignError(null); setMode('ask'); setShowHistory(false); setAction(null); setActionError('')
     if (!rideId) return
     let cancelled = false
-    adminRideApi.getById(rideId).then(d => { if (!cancelled) { setDetail(d); setShowHistory(d.offers?.length > 0 && d.status !== 'scheduled') } }).catch(() => { if (!cancelled) setDetailError(true) })
+    adminRideApi.getById(rideId).then(d => { if (!cancelled) { setDetail(d); setMode(d.status === 'scheduled' ? 'reserve' : 'ask'); setShowHistory(d.offers?.length > 0 && d.status !== 'scheduled') } }).catch(() => { if (!cancelled) setDetailError(true) })
     return () => { cancelled = true }
   }, [rideId])
 
@@ -73,11 +74,12 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
     if (!rideId) return
     const mySeq = ++seq.current
     setLoading(true); setCandError('')
-    adminRideApi.getAssignCandidates(rideId, debouncedQ ? { q: debouncedQ } : { online: true })
+    // Reserving is for later, so offline drivers are fine; asking or booking needs someone online right now.
+    adminRideApi.getAssignCandidates(rideId, debouncedQ ? { q: debouncedQ } : mode === 'reserve' ? {} : { online: true })
       .then(list => { if (mySeq === seq.current) setCands(list) })
       .catch(err => { if (mySeq === seq.current) setCandError(extractErrorMessage(err, 'Could not load drivers for this ride.')) })
       .finally(() => { if (mySeq === seq.current) setLoading(false) })
-  }, [rideId, debouncedQ])
+  }, [rideId, debouncedQ, mode])
   useEffect(() => { loadCandidates() }, [loadCandidates])
   const onCandidatesRef = useRef(onCandidates)
   onCandidatesRef.current = onCandidates
@@ -85,29 +87,52 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
 
   const ctx = detail ? { status: detail.status as 'scheduled' | 'requested' | 'no_drivers', dispatch_at: detail.dispatch_at, scheduled_for: detail.scheduled_for } : null
   const state = ctx ? dispatchState(ctx, now) : null
-  const warning = ctx ? earlyAssignWarning(ctx, now) : null
+  const warning = ctx && mode !== 'reserve' ? earlyAssignWarning(ctx, now) : null
+  const reserved = detail?.reserved_driver_id ? reservationNote({ ...detail, scheduled_for: detail.scheduled_for }, now) : null
   const assignable = !!ctx && ['scheduled', 'requested', 'no_drivers'].includes(ctx.status)
 
-  async function assign(c: AssignCandidate) {
+  async function assign(c: AssignCandidate, override = false) {
     if (!rideId) return
     setBusyId(c.driver_id); setAssignError(null)
     try {
-      await adminRideApi.assignDriver(rideId, c.driver_id, mode === 'ask' ? 'request' : 'force', !c.eligible)
-      onAssigned(mode === 'ask' ? `Request sent to ${c.driver_name}` : `Ride booked to ${c.driver_name}`)
+      if (mode === 'reserve') {
+        await dispatchApi.reserveDriver(rideId, c.driver_id, override)
+        onAssigned(`${c.driver_name ?? 'Driver'} reserved. They keep taking rides until then, and are reminded before the pickup.`)
+      } else {
+        await adminRideApi.assignDriver(rideId, c.driver_id, mode === 'ask' ? 'request' : 'force', !c.eligible)
+        onAssigned(mode === 'ask' ? `Request sent to ${c.driver_name}` : `Ride booked to ${c.driver_name}`)
+      }
     } catch (err) {
-      setAssignError({ id: c.driver_id, message: extractErrorMessage(err, 'Assignment failed. The ride may already have been taken: refresh the queue.') })
+      setAssignError({
+        id: c.driver_id,
+        message: extractErrorMessage(err, mode === 'reserve' ? 'Could not reserve this driver. The ride may have changed: refresh the queue.' : 'Assignment failed. The ride may already have been taken: refresh the queue.'),
+        overlap: extractErrorCode(err) === 'RESERVATION_OVERLAP',
+      })
     } finally { setBusyId(null); setConfirmId(null) }
   }
 
+  async function release() {
+    if (!rideId) return
+    setReleasing('busy')
+    try {
+      await dispatchApi.releaseReservation(rideId)
+      onChanged('Reservation released. The driver was told.')
+    } catch (err) {
+      setActionError(extractErrorMessage(err, 'Could not release the reservation. Close and reopen the ride.'))
+    } finally { setReleasing(null) }
+  }
+
   // Booking directly, an advance booking pulled forward, and overriding a failed check all need a second, explicit click.
-  const needsConfirm = (c: AssignCandidate) => mode === 'book' || !!warning || !c.eligible
+  // Asking or booking needs everything right now; a reservation only needs the right vehicle on file and a usable wallet.
+  const okFor = (c: AssignCandidate) => (mode === 'reserve' ? c.reservable ?? c.eligible : c.eligible)
+  const needsConfirm = (c: AssignCandidate) => mode !== 'reserve' && (mode === 'book' || !!warning || !c.eligible)
   function onPick(c: AssignCandidate) {
     if (needsConfirm(c) && confirmId !== c.driver_id) { setConfirmId(c.driver_id); return }
     void assign(c)
   }
 
-  const clean = cands.filter(c => c.eligible)
-  const others = cands.filter(c => !c.eligible)
+  const clean = cands.filter(okFor)
+  const others = cands.filter(c => !okFor(c))
 
   return (
     <SlideOver isOpen={!!rideId} onClose={onClose} title={rideId ? `Assign a driver: ride #${rideId}` : ''} width={overMap ? 'md' : 'lg'} backdrop={!overMap}>
@@ -150,6 +175,35 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
 
         {actionError && action === null && <p role="alert" className="text-xs text-danger font-semibold">{actionError}</p>}
 
+        {detail && detail.status === 'scheduled' && detail.reserved_driver_id && reserved && (
+          <div className={`rounded-2xl border p-4 space-y-2 ${reserved.tone === 'danger' ? 'border-danger/40 bg-danger-light' : reserved.tone === 'warn' ? 'border-warning/40 bg-warning-light' : 'border-success/40 bg-success-light'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-text-secondary flex items-center gap-1.5">
+                  {reserved.tone === 'ok' ? <CheckCircle2 className="w-3.5 h-3.5 text-success" /> : <CalendarClock className="w-3.5 h-3.5" />}Reserved driver
+                </p>
+                <Link href={`/drivers/${detail.reserved_driver_id}`} className="text-sm font-semibold text-text-primary hover:underline block truncate">{detail.reserved_driver_name ?? detail.reserved_driver_phone}</Link>
+                <p className="text-xs text-text-secondary">{detail.reserved_driver_phone}</p>
+              </div>
+              {canAssign && (releasing !== null ? (
+                <span className="flex items-center gap-1.5 flex-shrink-0">
+                  <button type="button" disabled={releasing === 'busy'} onClick={() => void release()} className="px-2.5 py-1 text-xs font-semibold rounded-full bg-danger text-white">Release</button>
+                  <button type="button" onClick={() => setReleasing(null)} className="px-2.5 py-1 text-xs font-semibold rounded-full border border-border text-text-secondary">Keep</button>
+                </span>
+              ) : (
+                <button type="button" onClick={() => setReleasing('ask')} className="px-3 py-1.5 text-xs font-semibold text-text-secondary border border-border rounded-lg hover:bg-surface transition-colors flex-shrink-0">Release</button>
+              ))}
+            </div>
+            <p className="text-xs text-text-primary">
+              {reserved.text.replace(/^.*?reserved: /, '').replace(/^./, ch => ch.toUpperCase())}.
+              {' '}This ride goes to them automatically {detail.dispatch_at ? `at ${fmtIst(detail.dispatch_at)}` : 'at dispatch time'}; if they are offline or still on a ride then, it is opened to everyone.
+            </p>
+            {(detail.reserved_driver_late_releases ?? 0) > 0 && (
+              <p className="text-xs font-semibold text-warning flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" />{detail.reserved_driver_late_releases} late hand-back{detail.reserved_driver_late_releases === 1 ? '' : 's'} in the last 30 days</p>
+            )}
+          </div>
+        )}
+
         {warning && (
           <div role="note" className="rounded-xl border border-warning/40 bg-warning-light px-3 py-2.5 text-xs text-text-primary flex gap-2">
             <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-px" />
@@ -170,11 +224,12 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
 
         {assignable && canAssign && (
           <>
-            <div role="radiogroup" aria-label="How to assign" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div role="radiogroup" aria-label="How to assign" className={`grid grid-cols-1 gap-2 ${detail?.status === 'scheduled' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
               {([
-                ['ask', 'Ask the driver', Send, `They get a request and ${ASK_TIMEOUT_SECONDS} seconds to accept. If they decline or do not answer, the ride goes back to open dispatch.`],
-                ['book', 'Book directly', Zap, `The driver is booked at once. If their app shows no activity within ${BOOK_GRACE_MINUTES} minutes the ride is released and offered to everyone again.`],
-              ] as const).map(([value, label, Icon, help]) => (
+                ...(detail?.status === 'scheduled' ? [['reserve', 'Reserve a driver', CalendarClock, 'Recommended for a booking made ahead. The driver keeps taking rides, only ones that finish in time, and is reminded and asked to confirm. The ride goes to them at dispatch time.'] as const] : []),
+                ['ask', 'Ask the driver', Send, `They get a request and ${ASK_TIMEOUT_SECONDS} seconds to accept. If they decline or do not answer, the ride goes back to open dispatch.`] as const,
+                ['book', 'Book directly', Zap, `The driver is booked at once. If their app shows no activity within ${BOOK_GRACE_MINUTES} minutes the ride is released and offered to everyone again.`] as const,
+              ]).map(([value, label, Icon, help]) => (
                 <button key={value} type="button" role="radio" aria-checked={mode === value} onClick={() => { setMode(value); setConfirmId(null) }}
                   className={`text-left rounded-xl border p-3 transition-colors ${mode === value ? 'border-primary bg-primary-light' : 'border-border bg-surface hover:bg-surface-2'}`}>
                   <span className="flex items-center gap-1.5 text-sm font-semibold text-text-primary"><Icon className="w-3.5 h-3.5" />{label}</span>
@@ -208,23 +263,26 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
               <ul className="space-y-1.5">
                 {[...clean, ...others].map(c => {
                   const isConfirm = confirmId === c.driver_id
-                  const blocked = !c.is_online
+                  // Asking or booking needs the driver online now; a reservation does not.
+                  const blocked = !c.is_online && mode !== 'reserve'
                   return (
-                    <li key={c.driver_id} className={`rounded-xl border px-3 py-2.5 ${c.eligible ? 'border-border-light' : 'border-border-light bg-surface-2/60'}`}>
+                    <li key={c.driver_id} className={`rounded-xl border px-3 py-2.5 ${okFor(c) ? 'border-border-light' : 'border-border-light bg-surface-2/60'}`}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <Link href={`/drivers/${c.driver_id}`} className="text-sm font-medium text-text-primary hover:underline truncate block">{c.driver_name ?? c.driver_phone}</Link>
                           <p className="text-xs text-text-muted flex items-center gap-1.5 flex-wrap">
-                            {c.category_name ?? 'No vehicle category'}
+                            {(mode === 'reserve' ? (c.vehicle_category_name ?? c.category_name) : c.category_name) ?? 'No vehicle category'}
                             {c.distance_metres != null && <span>· {(c.distance_metres / 1000).toFixed(1)} km from pickup</span>}
-                            {!c.eligible && <span className={blocked ? 'pill-muted' : 'pill-warning'}>{whyNot(c)}</span>}
+                            {mode === 'reserve' ? (!c.is_online && <span className="pill-muted">Offline now</span>) : null}
+                            {!okFor(c) && (mode === 'reserve' ? <span className="pill-warning">{c.reservable === false && c.wallet_ok ? 'No active vehicle of this type' : 'Wallet or package balance'}</span> : <span className={blocked ? 'pill-muted' : 'pill-warning'}>{whyNot(c)}</span>)}
+                            {(c.late_releases ?? 0) > 0 && <span className="pill-warning">{c.late_releases} late hand-back{c.late_releases === 1 ? '' : 's'}</span>}
                           </p>
                         </div>
                         <button disabled={blocked || busyId !== null} onClick={() => onPick(c)}
                           className={`px-3 py-1.5 text-xs font-semibold rounded-full flex-shrink-0 inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 ${
-                            c.eligible ? 'bg-primary text-white hover:bg-primary-dark' : 'bg-surface text-text-primary border border-border hover:bg-surface-2'}`}>
+                            okFor(c) ? 'bg-primary text-white hover:bg-primary-dark' : 'bg-surface text-text-primary border border-border hover:bg-surface-2'}`}>
                           {busyId === c.driver_id && <Loader2 size={12} className="animate-spin" />}
-                          {blocked ? 'Offline' : !c.eligible ? 'Assign anyway' : mode === 'ask' ? 'Ask' : 'Book'}
+                          {blocked ? 'Offline' : !okFor(c) ? (mode === 'reserve' ? 'Reserve anyway' : 'Assign anyway') : mode === 'reserve' ? 'Reserve' : mode === 'ask' ? 'Ask' : 'Book'}
                         </button>
                       </div>
                       {isConfirm && (
@@ -236,7 +294,12 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
                           <button disabled={busyId !== null} onClick={() => void assign(c)} className="px-2.5 py-1 rounded-full bg-warning text-white font-semibold flex-shrink-0">Confirm</button>
                         </div>
                       )}
-                      {assignError?.id === c.driver_id && <p role="alert" className="mt-1.5 text-xs text-danger">{assignError.message}</p>}
+                      {assignError?.id === c.driver_id && (
+                        <p role="alert" className="mt-1.5 text-xs text-danger">
+                          {assignError.message}
+                          {assignError.overlap && canAssign && <button type="button" disabled={busyId !== null} onClick={() => void assign(c, true)} className="ml-2 font-semibold underline">Reserve anyway</button>}
+                        </p>
+                      )}
                     </li>
                   )
                 })}

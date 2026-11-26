@@ -5,6 +5,8 @@ import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { logger } from '@/lib/logger'
 import * as service from './settlements.service'
+import { adminExportLimiter } from '@/middleware/rateLimit.middleware'
+import { exportPayouts } from '@/modules/admin/admin-export.controller'
 import * as bankAccounts from './bank-accounts.service'
 import { verifyDriverPan } from './tax-profile.service'
 
@@ -13,6 +15,9 @@ const log = logger.child({ module: 'settlements-admin-routes' })
 const router: IRouter = Router()
 
 router.use(authenticate(), requireAdmin('super_admin', 'finance_admin'))
+
+// CSV of the batch list, or one batch's driver lines with ?periodFrom&periodTo (audited, throttled).
+router.get('/export.csv', adminExportLimiter, exportPayouts)
 
 router.get('/batches', async (_req, res, next) => {
   try {

@@ -12,6 +12,8 @@ import {
 import { invalidate, cachedRead } from "@/lib/cache/reference-cache";
 import { RATE_CARD_CACHE_TTL_SECONDS } from "@/constants/limits";
 import { logger } from "@/lib/logger";
+import { RESERVED_DISPATCH_AT } from "./dispatch.repository";
+import { DRIVER_POSITION_FRESH_MIN } from "@/constants/limits";
 import { hasApprovedRequiredDocs, docIssueExistsSql } from "@/modules/drivers/drivers.repository";
 import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, sqlList, sqlVehicleDocApplies } from "@/modules/drivers/required-docs";
 import { invalidateSurgeCache } from "@/modules/pricing/pricing.repository";
@@ -342,6 +344,84 @@ export async function listDrivers(
   );
 
   return { rows, total: parseInt(totalRes.rows[0].total as string, 10), summary, facets };
+}
+
+export interface DriverExportRow {
+  code: string;
+  full_name: string | null;
+  phone: string;
+  email: string | null;
+  status: string;
+  onboarding_step: string;
+  city_name: string | null;
+  number_plate: string | null;
+  vehicle_name: string | null;
+  vehicle_category: string | null;
+  docs_submitted: number;
+  docs_approved: number;
+  docs_pending: number;
+  doc_issues: string;
+  created_at: string;
+  queued_at: string | null;
+}
+
+// Same WHERE as the list (so the file matches the screen), no paging. `max` is the caller's cap + 1.
+export async function exportDrivers(
+  filters: DriverListFilters,
+  max: number,
+): Promise<DriverExportRow[]> {
+  const main = buildDriverWhere(filters);
+  const res = await pool.query(
+    `SELECT d.id, d.code, d.phone, d.full_name, d.email, d.status, d.onboarding_step, d.created_at,
+            CASE WHEN d.status = 'pending_approval' THEN COALESCE(
+              (SELECT MAX(h.created_at) FROM driver_status_history h WHERE h.driver_id = d.id AND h.to_status = 'pending_approval'),
+              d.created_at) END AS queued_at,
+            c.name AS city_name, v.number_plate, v.vehicle_name, vc.display_name AS vehicle_category,
+            (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id) AS docs_submitted,
+            (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'approved') AS docs_approved,
+            ${docIssuesSql()} AS has_doc_issue,
+            CASE WHEN d.status IN ${DOCS_REVIEW_STATUSES_SQL} THEN
+              (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'pending'
+                 AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)}))
+              + (SELECT COUNT(*) FROM driver_vehicle_documents dvd JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+                 WHERE dv.driver_id = d.id AND dvd.status = 'pending' AND ${sqlVehicleDocApplies('dv', 'dvd')} AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)}))
+            ELSE 0 END AS docs_pending
+       ${DRIVER_LIST_FROM}
+       ${main.where}
+       ORDER BY ${filters.status === "pending_approval" ? "queued_at ASC, d.id ASC" : "d.created_at DESC"}
+       LIMIT $${main.params.length + 1}`,
+    [...main.params, max],
+  );
+
+  // Reasons only for the flagged rows. Chunks of 10, not all at once: "Blocked by docs" can flag thousands and the pool is small.
+  const reasons = new Map<number, string>();
+  const flagged = res.rows.flatMap((r, i) => (r.has_doc_issue ? [i] : []));
+  for (let k = 0; k < flagged.length; k += 10) {
+    await Promise.all(
+      flagged.slice(k, k + 10).map(async (i) => {
+        reasons.set(i, (await findDocIssues(BigInt(res.rows[i].id as string))).map((x) => x.short).join("; "));
+      }),
+    );
+  }
+
+  return res.rows.map((r, i) => ({
+    code: r.code as string,
+    full_name: r.full_name as string | null,
+    phone: r.phone as string,
+    email: r.email as string | null,
+    status: r.status as string,
+    onboarding_step: r.onboarding_step as string,
+    city_name: r.city_name as string | null,
+    number_plate: r.number_plate as string | null,
+    vehicle_name: r.vehicle_name as string | null,
+    vehicle_category: r.vehicle_category as string | null,
+    docs_submitted: parseInt(r.docs_submitted as string, 10),
+    docs_approved: parseInt(r.docs_approved as string, 10),
+    docs_pending: parseInt(r.docs_pending as string, 10),
+    doc_issues: reasons.get(i) ?? "",
+    created_at: r.created_at as string,
+    queued_at: (r.queued_at as string | null) ?? null,
+  }));
 }
 
 export async function getDriverById(
@@ -1529,6 +1609,11 @@ export async function unblacklistVehicle(vehicleId: bigint): Promise<void> {
 
 // ─── Vehicle documents ────────────────────────────────────────────────────────
 
+// Only drivers an admin can act on: submitted (pending_approval) or already reviewed (active, suspended, docs_rejected with a
+// re-upload). A driver still in pending_docs has not submitted yet, so their half-finished uploads are not review work; counting
+// them showed 613 of 643 "pending" documents on prd while no driver was waiting for approval. Banned/deleted drivers are not reviewable.
+const VEHICLE_DOC_QUEUE_STATUSES_SQL = `('pending_approval', 'active', 'suspended', 'docs_rejected')`;
+
 export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
   const res = await pool.query(
     `SELECT dvd.id, dvd.vehicle_id, dvd.doc_type, dvd.file_url, dvd.doc_number,
@@ -1539,6 +1624,8 @@ export async function listPendingVehicleDocs(): Promise<PendingVehicleDoc[]> {
      JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
      JOIN drivers d ON d.id = dv.driver_id
      WHERE dvd.status = 'pending'
+       AND ${sqlVehicleDocApplies('dv', 'dvd')}
+       AND d.status IN ${VEHICLE_DOC_QUEUE_STATUSES_SQL}
      ORDER BY dvd.created_at ASC`,
   );
   return res.rows.map((r) => ({
@@ -2388,7 +2475,11 @@ export async function getAdminRideById(rideId: bigint) {
        r.sos_triggered, r.sos_triggered_at,
        r.user_id::text AS user_id, r.driver_id::text AS driver_id,
        r.scheduled_for,
-       COALESCE(r.scheduled_for - (ram.dispatch_buffer_minutes * interval '1 minute'), r.requested_at) AS dispatch_at,
+       ${RESERVED_DISPATCH_AT} AS dispatch_at,
+       ram.claimed_by_driver_id::text AS reserved_driver_id, rdrv.full_name AS reserved_driver_name, rdrv.phone AS reserved_driver_phone,
+       ram.reservation_confirmed_at, ram.reservation_risk_alerted_at,
+       (SELECT count(*)::int FROM driver_reservation_events e WHERE e.driver_id = ram.claimed_by_driver_id
+          AND e.event IN ('released_late', 'dropped_busy', 'no_confirm') AND e.created_at > now() - interval '30 days') AS reserved_driver_late_releases,
        vc.display_name AS category_name, oc.name AS origin_city, dc.name AS destination_city,
        ST_Y(r.origin::geometry) AS origin_lat, ST_X(r.origin::geometry) AS origin_lng,
        ST_Y(r.destination::geometry) AS destination_lat, ST_X(r.destination::geometry) AS destination_lng,
@@ -2412,6 +2503,8 @@ export async function getAdminRideById(rideId: bigint) {
      LEFT JOIN drivers d ON d.id = r.driver_id
      LEFT JOIN driver_vehicles dv ON dv.id = r.vehicle_id
      LEFT JOIN ride_advance_meta ram ON ram.ride_id = r.id
+     LEFT JOIN drivers rdrv ON rdrv.id = ram.claimed_by_driver_id
+     LEFT JOIN driver_location_snapshots rsnap ON rsnap.driver_id = ram.claimed_by_driver_id AND rsnap.recorded_at > now() - make_interval(mins => ${DRIVER_POSITION_FRESH_MIN})
      LEFT JOIN vehicle_categories vc ON vc.id = r.category_id
      LEFT JOIN cities oc ON oc.id = r.origin_city_id
      LEFT JOIN cities dc ON dc.id = r.destination_city_id

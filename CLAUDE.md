@@ -223,6 +223,8 @@ for exact allow-listed shapes (`{json}|<date>|` strings can never equal a key-pr
 ### Admin audit trail
 Every admin write is audited: `middleware/admin-activity.middleware.ts` records any `/admin/*` POST/PUT/PATCH/DELETE a handler did not audit itself, and handlers that know before/after state call `recordAuditLog()` (`lib/audit-log.ts`, pass `client` to write in the same transaction). `admin_audit_log` is append-only and hash-chained by trigger (migration 162): never UPDATE/DELETE/TRUNCATE it, never edit a migration that touches it, and put any new secret-looking field name in `lib/audit-redact.ts` (rows cannot be redacted later). See `docs/OPS_RUNBOOK.md` "Admin audit trail".
 
+Admin list exports (`GET .../export.csv`) all go through `lib/csv-export.ts` `sendCsvExport`: same filters as the list, 20,000-row cap (422 `EXPORT_TOO_LARGE`, never a silent cut), formula-safe cells, an `<entity>.export` audit row (which the `RISKY` regex pushes to super admins), and `adminExportLimiter` (3/min/admin). Whole-book exports of personal data are super + ops only; client side is `lib/csv-download.ts` plus `FilterBar`'s `onExport`.
+
 ### `exactOptionalPropertyTypes: true`
 Cannot pass `field: value | undefined` where `field?: value` is expected.
 **Pattern:** build the object first, then conditionally set optional fields:

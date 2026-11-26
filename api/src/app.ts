@@ -115,7 +115,8 @@ export function createApp(): Application {
       // Reports CSV export reads the filename from Content-Disposition in the browser. `Date` is not a
       // CORS-safelisted response header; the web driver and rider apps read it to correct a skewed
       // phone clock for the booked-time clock (native apps already can).
-      exposedHeaders: ['Content-Disposition', 'Date'],
+      // X-Export-Rows / X-Export-Truncated: the CSV exports report their row count and cap through these.
+      exposedHeaders: ['Content-Disposition', 'Date', 'X-Export-Rows', 'X-Export-Truncated'],
       // Without this browsers cache a preflight for ~5 s, so the admin's 30 s polls and every new request shape paid an extra
       // OPTIONS round trip (~60-80 ms). Chrome caps the value at 2 h, Firefox at 24 h.
       maxAge: 7200,

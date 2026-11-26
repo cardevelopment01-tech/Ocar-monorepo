@@ -40,6 +40,13 @@ export const NOTIFICATION_TYPES = {
   advance_reminder:    { channelId: 'ride_updates_v1', ttlSeconds: 2 * HOUR, collapse: 'ride_type' },
   advance_rescheduled: { channelId: 'ride_updates_v1', ttlSeconds: DAY, collapse: 'ride_type' },
   advance_searching:   { channelId: 'ride_updates_v1', ttlSeconds: HOUR, collapse: 'ride_status' },
+  // The driver who took an advance ride dropped out before the trip started: another one is being looked for.
+  advance_driver_cancelled: { channelId: 'ride_updates_v1', ttlSeconds: HOUR, collapse: 'ride_status' },
+  // Admin reserved a driver for an advance ride: the driver's booking reminders and the ops alerts around it.
+  advance_reserved:         { channelId: 'ride_updates_v1', ttlSeconds: HOUR, collapse: 'ride_type' },
+  advance_reserve_reminder: { channelId: 'ride_updates_v1', ttlSeconds: HOUR, collapse: 'ride_type' },
+  advance_reserve_released: { channelId: 'ride_updates_v1', ttlSeconds: HOUR, collapse: 'ride_type' },
+  advance_reserve_alert:    { channelId: 'ride_updates_v1', ttlSeconds: HOUR, collapse: 'ride_type' },
   advance_no_drivers:  { channelId: 'ride_updates_v1', ttlSeconds: DAY, collapse: 'ride_status' },
   advance_cancelled:   { channelId: 'ride_updates_v1', ttlSeconds: DAY, collapse: 'ride_status' },
   // ── Ride lifecycle (rider and driver) ──

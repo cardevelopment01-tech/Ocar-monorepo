@@ -5,8 +5,9 @@ import userEvent from '@testing-library/user-event'
 
 const api = vi.hoisted(() => ({ getById: vi.fn(), getAssignCandidates: vi.fn(), assignDriver: vi.fn() }))
 vi.mock('@/lib/admin-api', () => ({ adminRideApi: api }))
-const dApi = vi.hoisted(() => ({ cancelRide: vi.fn(), rescheduleRide: vi.fn() }))
+const dApi = vi.hoisted(() => ({ cancelRide: vi.fn(), rescheduleRide: vi.fn(), reserveDriver: vi.fn(), releaseReservation: vi.fn() }))
 vi.mock('@/lib/dispatch-api', () => ({ dispatchApi: dApi }))
+vi.mock('@/lib/http-errors', async (orig) => ({ ...(await orig<object>()), extractErrorCode: (e: { code?: string }) => e?.code }))
 vi.mock('next/link', () => ({ default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a> }))
 
 import DispatchPanel from '../DispatchPanel'
@@ -49,9 +50,12 @@ describe('DispatchPanel', () => {
     await waitFor(() => expect(api.getAssignCandidates).toHaveBeenLastCalledWith('77', { q: 'sahoo' }))
   })
 
-  it('warns that assigning a far-off advance booking opens it for dispatch now', async () => {
-    setup()
-    expect(await screen.findByRole('note')).toHaveTextContent(/opens it for dispatch immediately/)
+  it('warns that asking or booking a far-off advance booking opens it for dispatch now, and points at Reserve', async () => {
+    const { user } = setup()
+    await user.click(await screen.findByRole('radio', { name: /Ask the driver/ }))
+    const note = await screen.findByRole('note')
+    expect(note).toHaveTextContent(/opens it for dispatch immediately/)
+    expect(note).toHaveTextContent(/use Reserve/)
   })
 
   it('stays quiet about timing for a ride already in dispatch', async () => {
@@ -62,6 +66,7 @@ describe('DispatchPanel', () => {
 
   it('needs a second click when the ride is being pulled forward, and sends the request only after Confirm', async () => {
     const { user, onAssigned } = setup()
+    await user.click(await screen.findByRole('radio', { name: /Ask the driver/ }))
     await user.click(await screen.findByRole('button', { name: 'Ask' }))
     expect(api.assignDriver).not.toHaveBeenCalled()
     await user.click(await screen.findByRole('button', { name: 'Confirm' }))
@@ -236,5 +241,53 @@ describe('DispatchPanel: support actions on a ride', () => {
     fireEvent.change(box, { target: { value: toIstInput(new Date(Date.now() + 9 * 86_400_000)) } })
     expect(within(dialog).getByRole('status')).toHaveTextContent(/at most 7 days/)
     expect(dApi.rescheduleRide).not.toHaveBeenCalled()
+  })
+
+  describe('reserving a driver for an advance booking', () => {
+    it('is the default for a booking made ahead, and offers it first', async () => {
+      const { user } = setup()
+      expect(await screen.findByRole('radio', { name: /Reserve a driver/ })).toHaveAttribute('aria-checked', 'true')
+      expect(screen.queryByRole('note')).toBeNull() // no "opens it for dispatch" warning: reserving does not
+      await user.click(await screen.findByRole('button', { name: 'Reserve' }))
+      expect(dApi.reserveDriver).toHaveBeenCalledWith('77', '1', false)
+      expect(api.assignDriver).not.toHaveBeenCalled()
+    })
+
+    it('is not offered for a ride that is already in dispatch', async () => {
+      setup(detail({ status: 'no_drivers', scheduled_for: null, dispatch_at: inMinutes(-30) }))
+      await screen.findByText('Ravi Das')
+      expect(screen.queryByRole('radio', { name: /Reserve a driver/ })).toBeNull()
+    })
+
+    it('can reserve a driver who is offline right now, and looks at every driver, not only the online ones', async () => {
+      const { user } = setup(detail(), [cand({ is_online: false, eligible: false })])
+      await waitFor(() => expect(api.getAssignCandidates).toHaveBeenLastCalledWith('77', {}))
+      const btn = await screen.findByRole('button', { name: 'Reserve anyway' })
+      expect(btn).toBeEnabled()
+      expect(screen.getByText('Offline now')).toBeInTheDocument()
+      await user.click(btn)
+      expect(dApi.reserveDriver).toHaveBeenCalledWith('77', '1', false)
+    })
+
+    it('says so when it overlaps the other booking the driver already holds, and can be overridden', async () => {
+      dApi.reserveDriver.mockRejectedValueOnce({ isAxiosError: true, code: 'RESERVATION_OVERLAP', response: { status: 409, data: { error: 'Driver already has a booking at 6:00 pm that overlaps this one', code: 'RESERVATION_OVERLAP' } } })
+      const { user } = setup()
+      await user.click(await screen.findByRole('button', { name: 'Reserve' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent(/overlaps/)
+      await user.click(screen.getByRole('button', { name: 'Reserve anyway' }))
+      expect(dApi.reserveDriver).toHaveBeenLastCalledWith('77', '1', true)
+    })
+
+    it('shows who is reserved and whether they confirmed, with their late hand-back count, and releases on a second click', async () => {
+      const { user, onChanged } = setup(detail({ reserved_driver_id: '1', reserved_driver_name: 'Ravi Das', reserved_driver_phone: '+919000000001', reservation_confirmed_at: null, reserved_driver_late_releases: 2 }))
+      expect(await screen.findByText('Reserved driver')).toBeInTheDocument()
+      expect(screen.getByText(/Not confirmed yet/)).toBeInTheDocument()
+      expect(screen.getByText(/2 late hand-backs in the last 30 days/)).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Release' }))
+      expect(dApi.releaseReservation).not.toHaveBeenCalled()
+      await user.click(screen.getByRole('button', { name: 'Release' }))
+      await waitFor(() => expect(dApi.releaseReservation).toHaveBeenCalledWith('77'))
+      await waitFor(() => expect(onChanged).toHaveBeenCalled())
+    })
   })
 })

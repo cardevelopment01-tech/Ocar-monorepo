@@ -22,6 +22,10 @@ export interface DispatchRow {
   city_name: string | null
   fare: string | null
   offers_count: number
+  reserved_driver_id?: string | null
+  reserved_driver_name?: string | null
+  reservation_confirmed_at?: string | null
+  reservation_risk_alerted_at?: string | null
 }
 
 export interface DispatchSummary {
@@ -61,6 +65,10 @@ export const dispatchApi = {
     ((await api.put('/api/v1/admin/dispatch/policy', { changes, reason })).data as { policy: AdvancePolicy }).policy,
   /** Support cancels a ride that has no driver yet. The reason is required and goes into the ride's history. */
   cancelRide: async (rideId: string, reason: string): Promise<void> => { await api.post(`/api/v1/admin/dispatch/rides/${rideId}/cancel`, { reason }) },
+  /** Reserves a driver for an advance booking. The ride stays scheduled and the driver stays free; `override` skips the overlap check. */
+  reserveDriver: async (rideId: string, driverId: string, override = false): Promise<void> => { await api.post(`/api/v1/admin/dispatch/rides/${rideId}/reserve`, { driverId, override }) },
+  /** Takes the reserved driver off a booking (the driver is told). */
+  releaseReservation: async (rideId: string): Promise<void> => { await api.delete(`/api/v1/admin/dispatch/rides/${rideId}/reserve`) },
   /** Moves an advance booking to a new pickup time (ISO). */
   rescheduleRide: async (rideId: string, scheduledFor: string, reason: string): Promise<void> => { await api.post(`/api/v1/admin/dispatch/rides/${rideId}/reschedule`, { scheduledFor, reason }) },
 }

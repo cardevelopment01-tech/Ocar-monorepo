@@ -9,6 +9,10 @@ import type { AdminPaymentItem } from '@/lib/admin-api'
 
 const api = vi.hoisted(() => ({ list: vi.fn() }))
 vi.mock('@/lib/admin-api', () => ({ adminPaymentApi: api }))
+const me = vi.hoisted(() => ({ role: 'finance_admin' }))
+vi.mock('@/lib/auth-context', () => ({ useAdminAuth: () => ({ admin: { role: me.role } }) }))
+const dl = vi.hoisted(() => ({ downloadCsv: vi.fn() }))
+vi.mock('@/lib/csv-download', () => dl)
 
 import PaymentsPage from '../page'
 import { grossOf } from '@/lib/payment-amounts'
@@ -53,5 +57,24 @@ describe('Payments: gross, discount and paid', () => {
   it('grossOf adds the discount and tolerates a missing one', () => {
     expect(grossOf({ amount: '363.20', discount_amount: '90.80' })).toBeCloseTo(454, 2)
     expect(grossOf({ amount: '250.00' })).toBe(250)
+  })
+})
+
+describe('Payments: export', () => {
+  it('finance can export, and the file follows the channel and search on screen', async () => {
+    dl.downloadCsv.mockResolvedValue({ filename: 'x.csv', rows: 3 })
+    const user = (await import('@testing-library/user-event')).default.setup()
+    render(<PaymentsPage />)
+    await screen.findByRole('columnheader', { name: 'Paid' })
+    await user.click(screen.getByRole('button', { name: /export csv/i }))
+    expect(dl.downloadCsv).toHaveBeenCalledWith('/api/v1/admin/payments/export.csv', { channel: '', search: '' })
+  })
+
+  it('ops admins get no export button (money stays with finance)', async () => {
+    me.role = 'ops_admin'
+    render(<PaymentsPage />)
+    await screen.findByRole('columnheader', { name: 'Paid' })
+    expect(screen.queryByRole('button', { name: /export csv/i })).toBeNull()
+    me.role = 'finance_admin'
   })
 })

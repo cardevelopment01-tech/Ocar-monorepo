@@ -17,6 +17,8 @@ export type RideRequestPayload = {
   destinationLat?: number
   destinationLng?: number
   returnAt?: string
+  // An advance booking being dispatched: the pickup time the rider booked (ISO). Absent for an ordinary ride.
+  scheduledFor?: string
   tripHours?: number
   stopCount?: number
   // cash | online | wallet, shown next to the fare

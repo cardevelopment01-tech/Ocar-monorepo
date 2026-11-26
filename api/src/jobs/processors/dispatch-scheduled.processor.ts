@@ -8,6 +8,8 @@ import { pool } from '@/db/client'
 import { finaliseDiscount } from '@/modules/offers/settlement'
 import { logger } from '@/lib/logger'
 import { advanceBookingEventsTotal } from '@/observability/metrics'
+import { dispatchToReservedDriver } from '@/modules/rides/reservation.service'
+import { acceptRide } from '@/modules/rides/rides.service'
 
 const FARE_DRIFT_DISCLOSURE_THRESHOLD = 0.10
 
@@ -84,6 +86,10 @@ export async function processDispatchScheduled(data: DispatchScheduledJobData): 
       logger.warn({ err, rideId: data.rideId }, 'scheduled ride: fare re-quote failed, dispatching on the booked quote')
     }
   }
+
+  // A driver reserved for this booking gets it straight away (no offer to race for). Offline or still busy: the reservation is released and ops told, and the
+  // normal search below runs.
+  if (await dispatchToReservedDriver(rideId, (driverId, id) => acceptRide(driverId, id), (a) => repo.createRideAssignment(a))) return
 
   const jobData: BroadcastJobData = {
     rideId:         data.rideId,
