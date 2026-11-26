@@ -171,7 +171,8 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
     })
 
     it('a single ride (accept tap, admin assignment) is judged the same way: refused when it would run into the reservation, fine when there is room', async () => {
-      await pool.query('UPDATE ride_advance_meta SET claimed_by_driver_id = NULL WHERE claimed_by_driver_id = $1', [driverB])
+      // Start clean: bookings other tests reserved for either driver would otherwise sit near the edge of the fit check.
+      await pool.query('UPDATE ride_advance_meta SET claimed_by_driver_id = NULL WHERE claimed_by_driver_id = ANY($1::bigint[])', [[String(driverA), String(driverB)]])
       const reserved = await booking(45)
       await svc.reserveDriver(reserved, driverB, adminId, null, true)
       const asap = await booking(1, 40)
@@ -459,6 +460,92 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
       await svc.reserveDriver(near, driverB, adminId, null, true)
       await svc.dispatchReservedRidesDue(dispatch)
       expect((await pool.query('SELECT status FROM rides WHERE id = $1', [near])).rows[0].status).toBe('scheduled')
+    })
+  })
+
+  describe('review fixes', () => {
+    const freeB = async () => {
+      await pool.query('UPDATE ride_advance_meta SET claimed_by_driver_id = NULL WHERE claimed_by_driver_id = $1', [driverB])
+      await pool.query("UPDATE ride_assignments SET status = 'cancelled' WHERE driver_id = $1 AND status IN ('accepted', 'offered')", [driverB])
+      await pool.query("UPDATE rides SET status = 'cancelled' WHERE driver_id = $1 AND status IN ('accepted', 'driver_arrived')", [driverB])
+      await pool.query('DELETE FROM driver_location_snapshots WHERE driver_id = $1', [driverB])
+    }
+    const onlineB = async () => {
+      await pool.query("UPDATE driver_sessions SET status = 'offline' WHERE driver_id = $1 AND status <> 'offline'", [driverB])
+      const veh = await pool.query<{ id: string }>('SELECT id FROM driver_vehicles WHERE driver_id = $1', [driverB])
+      return (await pool.query<{ id: string }>("INSERT INTO driver_sessions (driver_id, vehicle_id, category_id, mode, status) VALUES ($1, $2, 2, 'standard', 'online') RETURNING id", [driverB, veh.rows[0]!.id])).rows[0]!.id
+    }
+    const snapshot = (sid: string, lng: number, minutesAgo: number) => pool.query(
+      `INSERT INTO driver_location_snapshots (driver_id, session_id, location, is_available, recorded_at) VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3::float8, 20.3), 4326)::geography, true, now() - make_interval(mins => $4))
+       ON CONFLICT (driver_id) DO UPDATE SET session_id = EXCLUDED.session_id, location = EXCLUDED.location, recorded_at = EXCLUDED.recorded_at`, [driverB, sid, lng, minutesAgo])
+
+    it('a position older than 10 minutes (a driver who went offline far away) is ignored for the drive time and the early go-live', async () => {
+      await freeB()
+      const sid = await onlineB()
+      await snapshot(sid, 85.8 + 1.5, 60)                // about 160 km away, an hour ago
+      const id = await booking(120)
+      await svc.reserveDriver(id, driverB, adminId, null, true)
+      const r = (await svc.listDriverReservations(driverB)).find((x) => x.rideId === id.toString())!
+      expect(r.driveMin).toBeNull()                      // not 6 hours of driving
+      expect((new Date(r.pickupAt).getTime() - new Date(r.opensAt).getTime()) / 60_000).toBe(15)
+      const seen: string[] = []
+      await svc.dispatchReservedRidesDue(async (rid) => { seen.push(rid) })
+      expect(seen).not.toContain(id.toString())
+      await snapshot(sid, 85.8 + 0.09, 1)                // fresh again: counted
+      expect((await svc.listDriverReservations(driverB)).find((x) => x.rideId === id.toString())!.driveMin).toBeGreaterThan(20)
+    })
+
+    it('a driver with no recent position is assumed 30 minutes from an immediate ride, not zero', async () => {
+      await freeB()
+      const reserved = await booking(50)
+      await svc.reserveDriver(reserved, driverB, adminId, null, true)
+      const asap = await booking(1, 20)
+      await pool.query("UPDATE rides SET scheduled_for = NULL, status = 'requested' WHERE id = $1", [asap])
+      // 30 (assumed drive) + 20 (ride) + 20 (buffer) = 70 > 50: refused. With zero travel it would read 40 <= 50 and be accepted.
+      expect(await svc.reservationClash(driverB, asap)).toMatchObject({ rideId: reserved.toString() })
+      await pool.query("UPDATE rides SET status = 'cancelled' WHERE id = $1", [asap])
+    })
+
+    it('the offer filter judges an advance ride from its own booked time, like the accept check, not from now plus the drive', async () => {
+      await freeB()
+      const reserved = await booking(80)
+      await svc.reserveDriver(reserved, driverB, adminId, null, true)
+      const far = [{ driver_id: driverB, distance_metres: 25_000 }]   // about 60 min away
+      const now = Date.now()
+      // an immediate 10 min ride: 60 + 10 + 20 = 90 > 80, so the driver is held back
+      expect(await svc.dropReservationClashes(far, 10, undefined, now)).toHaveLength(0)
+      // an advance booking at +20 occupies the driver from +20 (they set off earlier): 20 + 10 + 20 = 50 <= 80, so they are offered it
+      expect(await svc.dropReservationClashes(far, 10, undefined, now, now + 20 * 60_000)).toHaveLength(1)
+    })
+
+    it('a failed hand-off cancels its own offer and releases the reservation, so no stale offer or reservation is left', async () => {
+      await freeB()
+      await onlineB()
+      const id = await booking(10)
+      await svc.reserveDriver(id, driverB, adminId, null, true)
+      await pool.query("UPDATE rides SET status = 'requested' WHERE id = $1", [id])
+      const boom = async () => { throw new Error('wallet below minimum') }
+      expect(await svc.dispatchToReservedDriver(id, boom, (a) => repo.createRideAssignment(a))).toBe(false)
+      expect((await reservedOn(id)).d).toBeNull()
+      expect((await pool.query('SELECT status FROM ride_assignments WHERE ride_id = $1 AND driver_id = $2', [id, driverB])).rows[0].status).toBe('cancelled')
+      expect((await pool.query('SELECT event FROM driver_reservation_events WHERE ride_id = $1', [id])).rows[0].event).toBe('dropped_busy')
+    })
+
+    it('a reserved driver who cancels after the booking started gives the reservation back and is counted, with ops told once', async () => {
+      await freeB()
+      await onlineB()
+      const { redispatchAfterDriverCancel } = await import('@/modules/rides/advance.service')
+      const { processDispatchScheduled } = await import('@/jobs/processors/dispatch-scheduled.processor')
+      const id = await booking(10)
+      await svc.reserveDriver(id, driverB, adminId, null, true)
+      await processDispatchScheduled({ rideId: id.toString() })
+      expect((await pool.query('SELECT status FROM rides WHERE id = $1', [id])).rows[0].status).toBe('accepted')
+      notify.notifyAllAdmins.mockClear()
+      const ride = await repo.getRideCoreById(id)
+      expect(await redispatchAfterDriverCancel(ride as never, driverB, 'vehicle_issue')).toBe(true)
+      expect((await reservedOn(id)).d).toBeNull()
+      expect((await pool.query('SELECT event FROM driver_reservation_events WHERE ride_id = $1', [id])).rows.map((r) => r.event)).toEqual(['released_late'])
+      expect(notify.notifyAllAdmins.mock.calls.filter((c) => (c[0] as { rideId: bigint }).rideId === id)).toHaveLength(1)
     })
   })
 })

@@ -230,3 +230,15 @@ export const BROADCAST_JOB_ATTEMPTS = 3
 // recorded position within this distance of the pickup, so tapping "arrived" from far away cannot start the meter. For an advance booking
 // it also cannot start before the pickup time the rider booked (lib/pickup-wait-floor.ts): a driver who is early has not made anyone wait.
 export const PICKUP_WAIT_RADIUS_METRES = 150
+
+// ── Reserved advance bookings (modules/rides/reservation.service.ts) ──
+// Kept here, not in the service, because SQL strings in other modules are built from them when the module loads.
+/** A far-off driver's booking goes live no earlier than this long before the pickup. */
+export const GO_LIVE_MAX_LEAD_MIN = 90
+/** The driver is nudged to set off this long before the latest moment they could still reach the pickup on time. */
+export const HEAD_OUT_BUFFER_MIN = 10
+/** Turns "distance to the pickup" into minutes for the fit and lead checks; deliberately slow so they err on the safe side. */
+export const RESERVATION_PICKUP_SPEED_KMH = 25
+/** A driver's last position only counts for drive-time maths when it is this recent; an older one (offline overnight) is ignored. */
+export const DRIVER_POSITION_FRESH_MIN = 10
+

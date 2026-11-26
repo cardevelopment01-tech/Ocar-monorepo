@@ -281,7 +281,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
 
   // A driver holding a reserved booking is only offered rides that finish (drive to the pickup + the ride + a buffer) before it.
   if (drivers.length > 0) {
-    drivers = await dropReservationClashes(drivers, rideDurationMin(ride), rideId)
+    drivers = await dropReservationClashes(drivers, rideDurationMin(ride), rideId, Date.now(), ride.scheduled_for ? new Date(ride.scheduled_for).getTime() : undefined)
   }
 
   // What this round skipped, for the record (spread also skips busy drivers and those already offered).

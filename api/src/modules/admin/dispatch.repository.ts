@@ -1,4 +1,4 @@
-import { GO_LIVE_MAX_LEAD_MIN, HEAD_OUT_BUFFER_MIN, RESERVATION_PICKUP_SPEED_KMH } from '@/modules/rides/reservation.service'
+import { GO_LIVE_MAX_LEAD_MIN, HEAD_OUT_BUFFER_MIN, RESERVATION_PICKUP_SPEED_KMH, DRIVER_POSITION_FRESH_MIN } from '@/constants/limits'
 import { pool } from '@/db/client'
 import { COUNT_CAP, capTotal } from './admin.repository'
 
@@ -96,7 +96,7 @@ export async function listDispatchQueue(f: DispatchFilters) {
      JOIN users u ON u.id = r.user_id
      LEFT JOIN ride_advance_meta ram ON ram.ride_id = r.id
      LEFT JOIN drivers rdrv ON rdrv.id = ram.claimed_by_driver_id
-     LEFT JOIN driver_location_snapshots rsnap ON rsnap.driver_id = ram.claimed_by_driver_id
+     LEFT JOIN driver_location_snapshots rsnap ON rsnap.driver_id = ram.claimed_by_driver_id AND rsnap.recorded_at > now() - make_interval(mins => ${DRIVER_POSITION_FRESH_MIN})
      LEFT JOIN vehicle_categories vc ON vc.id = r.category_id
      LEFT JOIN cities oc ON oc.id = r.origin_city_id
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id

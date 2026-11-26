@@ -13,6 +13,7 @@ import { MIN_ADVANCE_BOOKING_MINUTES, MAX_ADVANCE_BOOKING_DAYS } from '@/constan
 import { expireRideRequests } from '@/modules/rides/request-expiry'
 import type { BroadcastJobData } from '@/jobs/processors/broadcast.processor'
 import * as repo from './rides.repository'
+import { releaseReservation } from './reservation.service'
 
 const log = logger.child({ module: 'advance-bookings' })
 
@@ -218,6 +219,8 @@ export async function redispatchAfterDriverCancel(ride: RedispatchRide, driverId
   }
 
   count('driver_cancel_redispatch')
+  // If this driver was the one reserved for the booking, the reservation ends with their cancel and it counts as a hand-back (ops are told just below).
+  await releaseReservation(rideId, 'driver', { expectDriverId: driverId, reason: 'driver cancelled after the booking started', notifyOps: false }).catch((err: unknown) => log.error({ err, rideId: rideId.toString() }, 'reservation release after driver cancel failed'))
   socketEvents.sendRideStatusUpdate(rideId.toString(), { status: 'requested', reason: 'driver_cancelled_redispatch' })
   const m = advanceMessages.driverCancelled(pickup)
   await tell('advance_driver_cancelled', BigInt(ride.user_id), rideId, m.title, m.body)

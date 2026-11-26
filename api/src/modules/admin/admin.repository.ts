@@ -13,6 +13,7 @@ import { invalidate, cachedRead } from "@/lib/cache/reference-cache";
 import { RATE_CARD_CACHE_TTL_SECONDS } from "@/constants/limits";
 import { logger } from "@/lib/logger";
 import { RESERVED_DISPATCH_AT } from "./dispatch.repository";
+import { DRIVER_POSITION_FRESH_MIN } from "@/constants/limits";
 import { hasApprovedRequiredDocs, docIssueExistsSql } from "@/modules/drivers/drivers.repository";
 import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, sqlList, sqlVehicleDocApplies } from "@/modules/drivers/required-docs";
 import { invalidateSurgeCache } from "@/modules/pricing/pricing.repository";
@@ -2418,7 +2419,7 @@ export async function getAdminRideById(rideId: bigint) {
      LEFT JOIN driver_vehicles dv ON dv.id = r.vehicle_id
      LEFT JOIN ride_advance_meta ram ON ram.ride_id = r.id
      LEFT JOIN drivers rdrv ON rdrv.id = ram.claimed_by_driver_id
-     LEFT JOIN driver_location_snapshots rsnap ON rsnap.driver_id = ram.claimed_by_driver_id
+     LEFT JOIN driver_location_snapshots rsnap ON rsnap.driver_id = ram.claimed_by_driver_id AND rsnap.recorded_at > now() - make_interval(mins => ${DRIVER_POSITION_FRESH_MIN})
      LEFT JOIN vehicle_categories vc ON vc.id = r.category_id
      LEFT JOIN cities oc ON oc.id = r.origin_city_id
      LEFT JOIN cities dc ON dc.id = r.destination_city_id

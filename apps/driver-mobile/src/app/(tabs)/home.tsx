@@ -35,6 +35,9 @@ import { confirmReservation, startReservation } from '@/features/reservations/ap
 // until a real fix comes in, or forever if location is denied.
 const DEFAULT_REGION = { latitude: 20.2961, longitude: 85.8245, latitudeDelta: 0.05, longitudeDelta: 0.05 }
 
+// Rides this app has already opened for the driver after a booking started. Module-level, so going back to Home (or Home remounting) never opens the same ride again.
+const openedBookingRides = new Set<string>()
+
 const WINDOW_HEIGHT = Dimensions.get('window').height
 // Room the "Reconnecting" strip takes at the top, so the wallet pill and bell move down instead of sitting under it.
 const RECONNECT_STRIP_HEIGHT = 34
@@ -75,11 +78,11 @@ export default function HomeScreen() {
   const bookings = useReservations()
   const nextBooking = bookings.reservations[0] ?? null
   // A booking that went live and was handed to this driver while they were on Home: open the ride, once per ride.
-  const openedRides = useRef<Set<string>>(new Set())
+  const openedRides = openedBookingRides
   useEffect(() => {
     for (const { rideId } of bookings.started) {
-      if (openedRides.current.has(rideId)) continue
-      openedRides.current.add(rideId)
+      if (openedRides.has(rideId)) continue
+      openedRides.add(rideId)
       router.push(`/active-ride/${rideId}`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,7 +101,7 @@ export default function HomeScreen() {
     const id = nextBooking.rideId
     setStarting(true); setStartError(null)
     startReservation(id)
-      .then(() => { openedRides.current.add(id); router.push(`/active-ride/${id}`) })
+      .then(() => { openedRides.add(id); router.push(`/active-ride/${id}`) })
       .catch((err: Error) => setStartError(err.message))
       .finally(() => setStarting(false))
   }

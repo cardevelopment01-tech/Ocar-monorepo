@@ -7,7 +7,12 @@ import { notifyOwner, notifyAllAdmins } from '@/modules/notifications/notificati
 import * as repo from '@/modules/rides/rides.repository'
 import type { NotificationType } from '@/modules/notifications/notifications.registry'
 
+import { GO_LIVE_MAX_LEAD_MIN, HEAD_OUT_BUFFER_MIN, RESERVATION_PICKUP_SPEED_KMH, DRIVER_POSITION_FRESH_MIN } from '@/constants/limits'
+export { GO_LIVE_MAX_LEAD_MIN, HEAD_OUT_BUFFER_MIN, RESERVATION_PICKUP_SPEED_KMH }
+
 const log = logger.child({ module: 'advance-reservations' })
+/** SQL condition: the driver's position row is recent enough to use. `alias` is the snapshot table's alias. */
+const FRESH = (alias: string) => `${alias}.recorded_at > now() - make_interval(mins => ${DRIVER_POSITION_FRESH_MIN})`
 const count = (event: string) => advanceBookingEventsTotal.inc({ event })
 const httpErr = (status: number, message: string, code?: string) => Object.assign(new Error(message), { httpStatus: status, ...(code ? { code } : {}) })
 
@@ -21,14 +26,8 @@ export const RESERVATION_CONFIRM_BY_MIN = 60
 export const RESERVATION_READY_MIN = 30
 /** Handing a booking back inside this window is recorded as a late release (a warning for ops, not a penalty). */
 export const RESERVATION_LATE_RELEASE_MIN = 60
-/** The driver is nudged to set off this long before the latest moment they could still reach the pickup on time. */
-export const HEAD_OUT_BUFFER_MIN = 10
-/** A far-off driver's booking goes live no earlier than this long before the pickup. */
-export const GO_LIVE_MAX_LEAD_MIN = 90
 /** "Start now" is only offered inside this window before the pickup. */
 export const START_NOW_WINDOW_MIN = 60
-/** Used only to turn "distance to the pickup" into minutes for the fit check; deliberately slow so the check errs on the safe side. */
-export const RESERVATION_PICKUP_SPEED_KMH = 25
 /** A ride with no estimate is assumed to take this long. */
 const DEFAULT_RIDE_MIN = 60
 
@@ -73,7 +72,7 @@ export async function nextReservations(driverIds: bigint[], excludeRideId?: bigi
  * ride fits before it (see fitsBeforeReservation). Fails open: if the lookup breaks, nobody is dropped (an offer is worth more than a perfect check).
  */
 export async function dropReservationClashes<T extends { driver_id: bigint; distance_metres: number }>(
-  drivers: T[], durationMin: number, excludeRideId?: bigint, nowMs = Date.now(),
+  drivers: T[], durationMin: number, excludeRideId?: bigint, nowMs = Date.now(), advanceStartMs?: number,
 ): Promise<T[]> {
   if (drivers.length === 0) return drivers
   let next: Map<string, ReservedSlot>
@@ -82,7 +81,12 @@ export async function dropReservationClashes<T extends { driver_id: bigint; dist
   if (next.size === 0) return drivers
   return drivers.filter((d) => {
     const slot = next.get(d.driver_id.toString())
-    return !slot || fitsBeforeReservation({ nowMs, reservedAtMs: slot.at.getTime(), travelMin: travelMinutes(d.distance_metres), durationMin })
+    // An advance booking occupies the driver from its own pickup time (they set off earlier), exactly as reservationClash judges it on accept.
+    const advance = advanceStartMs !== undefined
+    return !slot || fitsBeforeReservation({
+      nowMs: advance ? Math.max(nowMs, advanceStartMs) : nowMs, reservedAtMs: slot.at.getTime(),
+      travelMin: advance ? 0 : travelMinutes(d.distance_metres), durationMin,
+    })
   })
 }
 
@@ -96,7 +100,7 @@ export async function reservationClash(driverId: bigint, rideId: bigint, nowMs =
               ST_Distance(r.origin, s.location)::text AS dist
          FROM rides r
          LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
-         LEFT JOIN driver_location_snapshots s ON s.driver_id = $1
+         LEFT JOIN driver_location_snapshots s ON s.driver_id = $1 AND ${FRESH('s')}
         WHERE r.id = $2`,
       [driverId, rideId],
     )
@@ -109,7 +113,8 @@ export async function reservationClash(driverId: bigint, rideId: bigint, nowMs =
   if (!slot) return null
   const fits = fitsBeforeReservation({
     nowMs: startMs, reservedAtMs: slot.at.getTime(),
-    travelMin: row.scheduled_for ? 0 : travelMinutes(Number(row.dist)),
+    // No recent position is unknown, not 'zero metres away': travelMinutes(NaN) is the cautious 30 minutes.
+    travelMin: row.scheduled_for ? 0 : travelMinutes(row.dist == null ? NaN : Number(row.dist)),
     durationMin: rideDurationMin(row),
   })
   return fits ? null : slot
@@ -228,7 +233,7 @@ export type ReleaseBy = 'admin' | 'driver' | 'system'
  */
 export async function releaseReservation(
   rideId: bigint, by: ReleaseBy,
-  opts: { actorId?: bigint; reason?: string; event?: 'declined' | 'dropped_busy' | 'no_confirm'; expectDriverId?: bigint; notifyDriver?: boolean } = {},
+  opts: { actorId?: bigint; reason?: string; event?: 'declined' | 'dropped_busy' | 'no_confirm'; expectDriverId?: bigint; notifyDriver?: boolean; notifyOps?: boolean } = {},
 ): Promise<{ released: boolean; driverId?: string }> {
   const upd = await pool.query<{ driver_id: string; scheduled_for: Date }>(
     `WITH prev AS (
@@ -264,7 +269,7 @@ export async function releaseReservation(
     const m = reservationMessages.released(at)
     await tellDriver('advance_reserve_released', driverId, rideId, m.title, m.body)
   }
-  if (by === 'driver') {
+  if (by === 'driver' && opts.notifyOps !== false) {
     await tellOps(rideId, late ? 'Driver gave back a booking (late)' : 'Driver declined a booking',
       `Ride #${rideId} (pickup ${fmtPickup(at)}): driver ${driverId} gave the booking back${late ? ` ${minutesBefore} min before the pickup` : ''}. Reserve another driver.`)
   }
@@ -292,7 +297,7 @@ export async function listDriverReservations(driverId: bigint): Promise<DriverRe
             fs.total_estimated::text AS fare, ram.reservation_confirmed_at AS confirmed_at, ram.dispatch_buffer_minutes AS buffer_min,
             ST_Y(r.origin::geometry) AS lat, ST_X(r.origin::geometry) AS lng, ST_Distance(r.origin, s.location)::text AS dist
        FROM ride_advance_meta ram JOIN rides r ON r.id = ram.ride_id LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
-       LEFT JOIN driver_location_snapshots s ON s.driver_id = ram.claimed_by_driver_id
+       LEFT JOIN driver_location_snapshots s ON s.driver_id = ram.claimed_by_driver_id AND ${FRESH('s')}
       WHERE ram.claimed_by_driver_id = $1 AND r.status = 'scheduled' AND r.scheduled_for > now() - interval '1 hour'
       ORDER BY r.scheduled_for LIMIT 20`, [driverId])
   const now = Date.now()
@@ -412,6 +417,9 @@ export async function dispatchToReservedDriver(
     return true
   } catch (err) {
     log.error({ err, rideId: rideId.toString() }, 'could not hand the booking to its reserved driver, searching instead')
+    // The offer made for the hand-off must not outlive it (the driver could still accept it), and the reservation is over.
+    await pool.query(`UPDATE ride_assignments SET status = 'cancelled', cancelled_at = now() WHERE ride_id = $1 AND driver_id = $2 AND status = 'offered'`, [rideId, driverId]).catch(() => undefined)
+    await releaseReservation(rideId, 'system', { event: 'dropped_busy', reason: 'could not be assigned at dispatch', notifyOps: false })
     await tellOps(rideId, 'Reserved driver could not be assigned', `Ride #${rideId}: handing it to reserved driver ${driverId} failed. Searching for another driver.`)
     return false
   }
@@ -468,7 +476,7 @@ export async function sendHeadOutNudges(nowMs = Date.now()): Promise<number> {
   const due = await pool.query<{ ride_id: string; driver_id: string; scheduled_for: Date; dist: string | null }>(
     `SELECT ram.ride_id::text AS ride_id, ram.claimed_by_driver_id::text AS driver_id, r.scheduled_for, ST_Distance(r.origin, s.location)::text AS dist
        FROM ride_advance_meta ram JOIN rides r ON r.id = ram.ride_id
-       LEFT JOIN driver_location_snapshots s ON s.driver_id = ram.claimed_by_driver_id
+       LEFT JOIN driver_location_snapshots s ON s.driver_id = ram.claimed_by_driver_id AND ${FRESH('s')}
       WHERE r.status = 'scheduled' AND ram.claimed_by_driver_id IS NOT NULL AND ram.reservation_headout_at IS NULL
         AND r.scheduled_for > now() AND r.scheduled_for <= now() + interval '3 hours'
       LIMIT 200`)
@@ -526,7 +534,7 @@ export async function dispatchReservedRidesDue(dispatch: (rideId: string) => Pro
   const rows = await pool.query<{ ride_id: string; scheduled_for: Date; dist: string | null; buffer_min: number }>(
     `SELECT ram.ride_id::text AS ride_id, r.scheduled_for, ram.dispatch_buffer_minutes AS buffer_min, ST_Distance(r.origin, s.location)::text AS dist
        FROM ride_advance_meta ram JOIN rides r ON r.id = ram.ride_id
-       JOIN driver_location_snapshots s ON s.driver_id = ram.claimed_by_driver_id
+       JOIN driver_location_snapshots s ON s.driver_id = ram.claimed_by_driver_id AND ${FRESH('s')}
       WHERE r.status = 'scheduled' AND ram.claimed_by_driver_id IS NOT NULL
         AND r.scheduled_for > now() AND r.scheduled_for <= now() + make_interval(mins => $1)
       LIMIT 200`, [GO_LIVE_MAX_LEAD_MIN])
