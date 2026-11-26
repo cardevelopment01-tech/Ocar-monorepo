@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Linking } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Location from 'expo-location'
-import { readBackgroundLocationGranted, readLocationStatus, readNotificationStatus, shouldShowSetup, type PermissionRowModel } from '@ocar/mobile-shared'
+import { askThenFallback, readBackgroundLocationGranted, readLocationStatus, readNotificationStatus, shouldShowSetup, type PermissionRowModel } from '@ocar/mobile-shared'
 import { setupPushNotifications } from '@/services/notifications'
 
 const SNOOZE_KEY = 'ocar_permission_setup_snoozed_at'
@@ -24,10 +24,11 @@ export async function requestPermission(key: string, rows: PermissionRowModel[])
   const row = rows.find((r) => r.key === key)
   if (!row || row.status === 'granted') return
   if (row.status === 'blocked') { await Linking.openSettings(); return }
-  if (key === 'notifications') { await setupPushNotifications({ prompt: true }); return }
+  const settings = () => Linking.openSettings()
+  if (key === 'notifications') { await askThenFallback(async () => { await setupPushNotifications({ prompt: true }); return (await readNotificationStatus()) === 'granted' }, settings); return }
   if (key === 'location') {
     const foreground = await Location.getForegroundPermissionsAsync()
-    if (!foreground.granted) { await Location.requestForegroundPermissionsAsync(); return }
+    if (!foreground.granted) { await askThenFallback(async () => (await Location.requestForegroundPermissionsAsync()).granted, settings); return }
     await Location.requestBackgroundPermissionsAsync() // on Android 11+ this opens the phone's own page; coming back re-reads it
   }
 }

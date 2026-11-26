@@ -38,5 +38,16 @@ export const NOTIFICATION_DIALOG_MIN_API = 33
 export function statusFromNotificationPermission(p: { granted: boolean; canAskAgain: boolean; status: string }, androidApi?: number): PermissionStatus {
   if (p.granted) return 'granted'
   if (androidApi !== undefined && androidApi < NOTIFICATION_DIALOG_MIN_API) return 'blocked'
-  return p.canAskAgain && p.status !== 'denied' ? 'ask' : 'blocked'
+  // One "Don't allow" still leaves Android willing to ask once more; only canAskAgain=false means Settings is the only way.
+  return p.canAskAgain ? 'ask' : 'blocked'
+}
+
+/** A system dialog takes a person at least a second to answer. A request that comes back not granted that fast was never shown (Android had
+ *  already stopped asking), so the only way left is the phone's settings: open them at once instead of leaving a button that does nothing. */
+export const DIALOG_NOT_SHOWN_MS = 700
+
+export async function askThenFallback(ask: () => Promise<boolean>, openSettings: () => Promise<void>, now: () => number = Date.now): Promise<void> {
+  const started = now()
+  const granted = await ask()
+  if (!granted && now() - started < DIALOG_NOT_SHOWN_MS) await openSettings()
 }

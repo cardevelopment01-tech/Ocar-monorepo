@@ -17,7 +17,7 @@ export async function readLocationStatus(): Promise<PermissionStatus> {
   try {
     const p = await Location.getForegroundPermissionsAsync()
     if (p.granted) return 'granted'
-    return p.canAskAgain && p.status !== 'denied' ? 'ask' : 'blocked'
+    return p.canAskAgain ? 'ask' : 'blocked'
   } catch {
     return 'ask'
   }
