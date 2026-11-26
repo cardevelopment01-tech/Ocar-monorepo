@@ -83,6 +83,24 @@ describe.skipIf(!url)('onboarding reminders on a real database', () => {
     expect(await svc.sendKycReminders(new Date('2026-12-10T20:00:00Z'))).toBe(0) // 01:30 India time
     expect(await svc.sendKycReminders(NOW)).toBe(1) // only the stalled pending_docs driver with a known step
   })
+  it('the report shows each stalled driver with the result of the last send and who came back', async () => {
+    const report = await import('@/modules/drivers/kyc-reminders.report')
+    const reached = await driver('+919999001201', { updatedAgoDays: 3 })
+    const noDevice = await driver('+919999001202', { updatedAgoDays: 3 })
+    const back = await driver('+919999001203', { updatedAgoDays: 0.5 })
+    for (const [id, response, sent] of [[reached, '{"successCount":1,"failureCount":0,"invalidTokens":0}', daysAgo(2)], [noDevice, null, daysAgo(2)], [back, '{"successCount":1,"failureCount":0,"invalidTokens":0}', daysAgo(2)]] as const) {
+      const n = await pool.query<{ id: string }>(
+        `INSERT INTO notification_logs (owner_type, owner_id, channel, status, type, title, body, sent_at, provider_response) VALUES ('driver', $1, 'in_app', 'sent', 'kyc_reminder', 't', 'b', now(), $2::jsonb) RETURNING id::text`, [id, response])
+      await pool.query('INSERT INTO driver_kyc_reminder_sends (driver_id, n, step, notification_id, sent_at) VALUES ($1, 1, $2, $3::bigint, $4)', [id, 'documents', n.rows[0]!.id, sent])
+    }
+    const out = await report.listKycReminderReport({}, NOW)
+    const byId = new Map(out.rows.map((r) => [r.driverId, r]))
+    expect(byId.get(reached)).toMatchObject({ state: 'reminded', lastResult: 'reached' })
+    expect(byId.get(noDevice)).toMatchObject({ state: 'reminded', lastResult: 'no_device' })
+    expect(byId.get(back)).toMatchObject({ state: 'came_back' })
+    expect((await report.listKycReminderReport({ result: 'no_device' }, NOW)).rows.map((r) => r.driverId)).toContain(noDevice)
+    await pool.query('DELETE FROM notification_logs WHERE owner_type = $1 AND owner_id = ANY($2::bigint[])', ['driver', [reached, noDevice, back]])
+  })
   it('stops once the application is paused', async () => {
     await driver('+919999001107', { updatedAgoDays: 11 })
     expect(await svc.sendKycReminders(NOW)).toBe(0)
