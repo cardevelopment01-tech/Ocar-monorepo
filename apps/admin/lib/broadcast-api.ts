@@ -4,6 +4,7 @@ export interface BroadcastAudience {
   role: 'driver' | 'rider'
   missingRcBack?: boolean
   docIssues?: boolean
+  incompleteKyc?: boolean
   cityIds?: number[]
   categoryIds?: number[]
   bookedInLastDays?: number
@@ -66,7 +67,7 @@ const BASE = '/api/v1/admin/notifications'
 /** Screens a tap can open, per app. Mirrors BROADCAST_LINKS in the API; the label is what the admin sees. */
 export const BROADCAST_LINKS: Record<BroadcastAudience['role'], Array<{ value: string; label: string }>> = {
   rider: [{ value: 'home', label: 'Home' }, { value: 'offers', label: 'My offers' }, { value: 'trips', label: 'My trips' }],
-  driver: [{ value: 'home', label: 'Home' }, { value: 'wallet', label: 'Wallet' }, { value: 'earnings', label: 'Earnings' }, { value: 'documents', label: 'Documents' }],
+  driver: [{ value: 'home', label: 'Home' }, { value: 'wallet', label: 'Wallet' }, { value: 'earnings', label: 'Earnings' }, { value: 'documents', label: 'Documents' }, { value: 'onboarding', label: 'Finish my application' }],
 }
 
 export const broadcastApi = {

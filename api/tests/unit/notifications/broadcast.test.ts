@@ -23,7 +23,7 @@ vi.mock('@/modules/notifications/providers/push.provider', () => ({ sendPush: (.
 vi.mock('@/modules/drivers/drivers.repository', () => ({ docIssueExistsSql: (id: string) => `DOC_GATE(${id})` }))
 
 import {
-  audienceSchema, broadcastSchema, createBroadcast, listBroadcasts, maskAudience, normalizeIndianPhone, offersAllowedNow,
+  audienceSchema, BROADCAST_LINKS, broadcastSchema, createBroadcast, listBroadcasts, maskAudience, normalizeIndianPhone, offersAllowedNow,
   previewBroadcast, resolveAudience, runBroadcast, type Audience,
 } from '@/modules/notifications/broadcast.service'
 
@@ -712,5 +712,18 @@ describe('maskAudience', () => {
   it('replaces phone numbers with a count and leaves every other audience untouched', () => {
     expect(maskAudience({ role: 'driver', phones: ['+919861003979'] })).toEqual({ role: 'driver', phoneCount: 1 })
     expect(maskAudience({ role: 'driver', cityIds: [1] })).toEqual({ role: 'driver', cityIds: [1] })
+  })
+})
+
+describe('incompleteKyc audience', () => {
+  it('is a driver-only filter and cannot be mixed with the other driver filters', () => {
+    expect(audienceSchema.safeParse({ role: 'driver', incompleteKyc: true }).success).toBe(true)
+    expect(audienceSchema.safeParse({ role: 'rider', incompleteKyc: true }).success).toBe(false)
+    expect(audienceSchema.safeParse({ role: 'driver', incompleteKyc: true, cityIds: [1] }).success).toBe(false)
+    expect(audienceSchema.safeParse({ role: 'driver', incompleteKyc: true, docIssues: true }).success).toBe(false)
+  })
+  it('lets a broadcast tap open the onboarding step for drivers only', () => {
+    expect(BROADCAST_LINKS.driver).toContain('onboarding')
+    expect(BROADCAST_LINKS.rider as readonly string[]).not.toContain('onboarding')
   })
 })

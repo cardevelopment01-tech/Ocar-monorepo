@@ -19,6 +19,7 @@ const BROADCAST_ROUTES: Record<string, string> = {
   wallet: '/wallet',
   earnings: '/(tabs)/earnings',
   documents: '/documents',
+  onboarding: '/', // the app root resumes the saved onboarding step
 }
 
 export function resolvePushRoute(data: Record<string, string> | undefined): string | null {

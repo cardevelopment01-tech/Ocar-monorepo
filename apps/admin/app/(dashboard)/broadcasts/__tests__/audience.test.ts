@@ -76,3 +76,10 @@ describe('describeAudience', () => {
     expect(describeAudience({ role: 'rider', phoneCount: 3 }, names)).toBe('3 phone numbers (riders)')
   })
 })
+
+describe('incomplete KYC audience', () => {
+  it('is its own audience: nothing else is sent with it, and it is described in words', () => {
+    expect(buildAudience(form({ incompleteKyc: true, cityIds: ['1'], docIssues: true }))).toEqual({ role: 'driver', incompleteKyc: true })
+    expect(describeAudience({ role: 'driver', incompleteKyc: true }, { cities: new Map(), categories: new Map() })).toBe('Drivers · not finished verification')
+  })
+})

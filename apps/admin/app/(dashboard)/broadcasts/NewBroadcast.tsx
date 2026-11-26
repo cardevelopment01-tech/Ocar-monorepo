@@ -165,6 +165,13 @@ export default function NewBroadcast({ onSent }: { onSent: () => void }) {
             <MultiSelectFilter label="Vehicle type" options={categoryOptions} selected={form.categoryIds} onChange={(v) => patch({ categoryIds: v })} />
           </div>
           <label className="flex items-start gap-2 text-sm text-text-primary cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={form.incompleteKyc} onChange={(e) => patch({ incompleteKyc: e.target.checked, ...(e.target.checked ? { cityIds: [], categoryIds: [], docIssues: false, missingRcBack: false } : {}) })} />
+            <span>
+              Only drivers who haven&apos;t finished verification
+              <span className="block text-[11px] text-text-muted">Stopped partway through sign-up for at least a day. Cannot be mixed with the filters below.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm text-text-primary cursor-pointer">
             <input type="checkbox" className="mt-0.5" checked={form.docIssues} onChange={(e) => patch({ docIssues: e.target.checked })} />
             <span>
               Only drivers blocked by a document
