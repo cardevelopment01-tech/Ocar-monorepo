@@ -3,7 +3,7 @@ import * as service from "./admin.service";
 import { createHttpError, httpError } from "@/lib/errors";
 import { adminDocUploadSchema, uploadDriverDocumentForDriver } from "./admin-doc-upload.service";
 import { AppErrors } from "@/constants/errors";
-import { EXPORT_MAX_ROWS, exportDate, sendCsvExport } from "@/lib/csv-export";
+import { EXPORT_MAX_ROWS, exportDate, exportPhone, sendCsvExport } from "@/lib/csv-export";
 import * as sosService from "@/modules/safety/sos.service";
 import * as disputeService from "@/modules/safety/disputes.service";
 import * as adminAuditService from "@/modules/admin-audit/admin-audit.service";
@@ -62,7 +62,7 @@ export async function exportDriversCsv(
       columns: [
         { header: "Driver code", value: (r) => r.code },
         { header: "Name", value: (r) => r.full_name },
-        { header: "Phone", value: (r) => r.phone },
+        { header: "Phone", value: (r) => exportPhone(r.phone) },
         { header: "Email", value: (r) => r.email },
         { header: "Status", value: (r) => r.status },
         { header: "Onboarding step", value: (r) => r.onboarding_step },

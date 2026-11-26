@@ -61,6 +61,8 @@ describe('GET /api/v1/admin/drivers/export.csv', () => {
     expect(lines[0]).toContain('Driver code,Name,Phone')
     expect(lines).toHaveLength(4)
     expect(res.text).toContain('ZZ09E0001')
+    expect(res.text).toMatch(/,91 96000\d{5},/) // phone as text: no leading +, no apostrophe
+    expect(res.text).not.toContain("'+91")
   })
 
   it('applies the same filters as the list (the status tab)', async () => {

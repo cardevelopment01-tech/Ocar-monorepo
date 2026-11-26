@@ -51,3 +51,14 @@ describe('sendCsvExport', () => {
     expect(audit.recordAuditLog).toHaveBeenCalledWith(expect.objectContaining({ action: 'x.export', afterState: { filters: { a: 1 }, rows: 2 } }))
   })
 })
+
+describe('exportPhone', () => {
+  it('writes an Indian mobile as text a spreadsheet will not turn into a formula or 9.19E+11', async () => {
+    const { exportPhone } = await import('@/lib/csv-export')
+    const { toCsv } = await import('@/modules/analytics/csv')
+    expect(exportPhone('+919700000001')).toBe('91 9700000001')
+    expect(toCsv(['P'], [[exportPhone('+919700000001')]])).toContain('\r\n91 9700000001\r\n')
+    expect(exportPhone(null)).toBe('')
+    expect(exportPhone('12345')).toBe('12345')
+  })
+})

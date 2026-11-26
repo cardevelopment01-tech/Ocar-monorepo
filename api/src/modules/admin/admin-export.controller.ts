@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express'
 import { httpError } from '@/lib/errors'
-import { collectRows, exportDate, sendCsvExport, EXPORT_MAX_ROWS, type CsvColumn } from '@/lib/csv-export'
+import { collectRows, exportDate, exportPhone, sendCsvExport, EXPORT_MAX_ROWS, type CsvColumn } from '@/lib/csv-export'
 import * as repo from './admin.repository'
 import { getSosAlerts, getDisputes } from '@/modules/safety/safety.repository'
 import { listSettlementBatches, getSettlementBatchDetail } from '@/modules/payments/submodules/settlements/settlements.service'
@@ -25,6 +25,7 @@ function wrap(fn: (req: Request, res: Response) => Promise<void>) {
 const col = (header: string, key: string, fmt?: (v: unknown) => unknown): CsvColumn<Row> =>
   ({ header, value: r => (fmt ? fmt(r[key]) : r[key]) })
 const date = (v: unknown) => exportDate(v)
+const phone = (v: unknown) => exportPhone(v)
 const day = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v ?? '')).slice(0, 10)
 
 export const exportUsers = wrap(async (req, res) => {
@@ -35,7 +36,7 @@ export const exportUsers = wrap(async (req, res) => {
   await sendCsvExport(req, res, {
     entity: 'users', targetTable: 'users', filters: f, rows,
     columns: [
-      col('User code', 'code'), col('Name', 'name'), col('Phone', 'phone'), col('Email', 'email'), col('Status', 'status'),
+      col('User code', 'code'), col('Name', 'name'), col('Phone', 'phone', phone), col('Email', 'email'), col('Status', 'status'),
       col('Completed rides', 'total_rides'), col('Wallet balance (INR)', 'wallet_balance'), col('Rating', 'rating_avg'),
       col('Signed up (UTC)', 'created_at', date),
     ],
@@ -61,7 +62,7 @@ export const exportRides = wrap(async (req, res) => {
     entity: 'rides', targetTable: 'rides', filters: f, rows,
     columns: [
       col('Ride ID', 'id'), col('Status', 'status'), col('Type', 'ride_type'), col('Trip mode', 'trip_mode'),
-      col('Rider', 'user_name'), col('Rider phone', 'user_phone'), col('Driver', 'driver_name'), col('Driver phone', 'driver_phone'),
+      col('Rider', 'user_name'), col('Rider phone', 'user_phone', phone), col('Driver', 'driver_name'), col('Driver phone', 'driver_phone', phone),
       col('Pickup', 'origin_address'), col('Drop', 'destination_address'),
       col('Requested (UTC)', 'requested_at', date), col('Started (UTC)', 'started_at', date), col('Completed (UTC)', 'completed_at', date),
       col('Fare (INR)', 'fare'), col('Payment status', 'payment_status'), col('Payment channel', 'payment_channel'),
@@ -96,7 +97,7 @@ export const exportFleet = wrap(async (req, res) => {
     columns: [
       col('Plate', 'number_plate'), col('Vehicle', 'vehicle_name'), col('Brand', 'brand'), col('Category', 'category'),
       col('Status', 'status'), col('Primary', 'is_primary'), col('Driver code', 'driver_code'), col('Driver', 'driver_name'),
-      col('Driver phone', 'driver_phone'), col('Added (UTC)', 'created_at', date),
+      col('Driver phone', 'driver_phone', phone), col('Added (UTC)', 'created_at', date),
     ],
   })
 })
@@ -125,7 +126,7 @@ export const exportSos = wrap(async (req, res) => {
     entity: 'sos', targetTable: 'sos_alerts', filters: status ? { status } : {}, rows,
     columns: [
       col('Alert ID', 'id'), col('Ride ID', 'ride_id'), col('Severity', 'severity'), col('Status', 'status'),
-      col('Rider', 'user_name'), col('Rider phone', 'user_phone'), col('Driver', 'driver_name'), col('Driver phone', 'driver_phone'),
+      col('Rider', 'user_name'), col('Rider phone', 'user_phone', phone), col('Driver', 'driver_name'), col('Driver phone', 'driver_phone', phone),
       col('Pickup', 'origin_address'), col('Drop', 'destination_address'), col('Notes', 'notes'),
       col('Triggered (UTC)', 'created_at', date), col('Acknowledged by', 'acknowledged_by_email'), col('Resolved by', 'resolved_by_email'),
       col('Resolved (UTC)', 'resolved_at', date), col('Resolution note', 'resolution_note'),

@@ -17,6 +17,18 @@ export function exportDate(v: unknown): string {
 }
 
 /**
+ * "+919700000001" -> "91 9700000001". A cell that starts with "+" is guarded against spreadsheet formulas (it would read
+ * "'+91..."), and a bare 12-digit number turns into 9.19700E+11 in Excel. With the plus dropped and a space after the
+ * country code it stays text, shows as written and cannot run as a formula.
+ */
+export function exportPhone(v: unknown): string {
+  if (v === null || v === undefined || v === '') return ''
+  const s = String(v)
+  const m = /^\+(\d{1,3})(\d{10})$/.exec(s)
+  return m ? `${m[1]} ${m[2]}` : s
+}
+
+/**
  * Sends `rows` as a CSV download and writes an audit row (`<entity>.export`) with the filters and row count.
  * Callers fetch at most EXPORT_MAX_ROWS + 1 rows: a longer result is refused with 422 instead of silently cut short.
  */
