@@ -20,5 +20,5 @@ export type ReminderReport = {
 
 export const kycRemindersApi = {
   report: (params: { state?: DriverState; result?: SendResult }) =>
-    api.get<ReminderReport>('/admin/driver-onboarding/reminders', { params }).then((r) => r.data),
+    api.get<ReminderReport>('/api/v1/admin/driver-onboarding/reminders', { params }).then((r) => r.data),
 }
