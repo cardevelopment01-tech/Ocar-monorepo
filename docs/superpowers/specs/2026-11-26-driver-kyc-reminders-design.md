@@ -1,6 +1,6 @@
 # Driver onboarding reminders (design)
 
-Status: **for approval, nothing built.** Visual design (notification, banners, copy): https://claude.ai/artifact/JjAVduErkh7HsKQKEiD4v7
+Status: **approved and built** (see the plan in `docs/superpowers/plans/2026-11-26-driver-kyc-reminders.md`). Visual design (notification, banners, copy): https://claude.ai/artifact/JjAVduErkh7HsKQKEiD4v7
 
 ## Why
 A driver installs the app, verifies a phone number, and stops partway through KYC (details, vehicle, documents, selfie). They never get to ride requests, and nothing in the product brings them back. The client wants a short, respectful reminder sequence for those drivers, and an admin view of who was reached and who was not.
@@ -59,7 +59,7 @@ Cascade delete means the existing account-deletion path leaves no personal data 
 New `sweep_kyc_reminders` in the scheduler worker (hourly). Inside the India-time window and when enabled: select candidates, call `nextReminder`, claim the send with an insert (unique `(driver_id, n, sent_at::date)` style guard) so overlapping runs cannot double-send, then `notifyOwner({ type: 'kyc_reminder', ... })`. New type in `notifications.registry.ts` (General channel, 2-day TTL, collapse `type` so a new reminder replaces an old one on the device).
 
 ### Copy and image
-Three editable notification templates (`kyc_reminder_1..3`, push channel, English; Hindi and Odia use the same locale mechanism if wanted), filled with `{done}`, `{next_step}`, `{pause_date}`. Pause date = last progress + `pause_day`. One banner image per progress step (0 to 3 steps done; four PNGs), no date or name inside the image. Needs a public https link for the picture (see open items).
+Three editable notification templates (`kyc_reminder_1..3`, push channel, English; Hindi and Odia use the same locale mechanism if wanted), filled with `{done}`, `{next_step}`, `{pause_date}`. Pause date = last progress + `pause_day`. One banner image per progress step (0 to 3 steps done; four PNGs), no date or name inside the image. The PNGs live in `apps/user/public/push/` (regenerate with `scripts/make-kyc-banners.mjs`) and are served by the user web app. The folder's public https address is the admin setting `kyc_banner_base_url`; empty means reminders go out without a picture.
 
 ### Tap behaviour
 New push type `kyc_reminder` opens the app root, which already resumes the saved onboarding step. Older installs that do not know the type open the app or notification centre, which still works.
@@ -68,8 +68,8 @@ New push type `kyc_reminder` opens the app root, which already resumes the saved
 For a driver in onboarding, the setup screen asks for **notifications only** (not location) before the first step. The existing setup screen gets a `only=notifications` mode.
 
 ### Admin: settings
-Five rows in the existing System config page, new group "Driver onboarding":
-`kyc_reminders_enabled` (switch, **default off**), `kyc_reminder_day_1` (1), `kyc_reminder_day_2` (4), `kyc_reminder_day_3` (8), `kyc_pause_day` (10). Days are bounded 1 to 30 and day_1 < day_2 < day_3 < pause_day is enforced. The send window is fixed, not a setting.
+Six rows in the existing System config page, new group "Driver onboarding":
+`kyc_reminders_enabled` (switch, **default off**), `kyc_reminder_day_1` (1), `kyc_reminder_day_2` (4), `kyc_reminder_day_3` (8), `kyc_pause_day` (10), `kyc_banner_base_url` (empty). Days are bounded 1 to 30 and day_1 < day_2 < day_3 < pause_day is enforced. The send window is fixed, not a setting.
 
 ### Admin: report ("Onboarding follow-up" page)
 `GET /api/v1/admin/driver-onboarding/reminders` (super_admin and ops_admin) feeding a page next to Verifications. Top counts: stalled, reminded, came back, not reachable. Table per stalled driver:
@@ -98,7 +98,7 @@ Add an `incompleteKyc` audience filter and an `onboarding` link key to the exist
 7. Tap routing and banner images. Check: on a phone, tap opens the saved step.
 
 ## Open items
-- Public https location for the banner images (proposed: the user web app's public folder).
+- Set `kyc_banner_base_url` once the user web app serving `apps/user/public/push/` is deployed (not set by this change).
 - Pause day default (proposed 10).
 - Languages beyond English.
 - A later, separate decision: whether and when paused applications are purged.
