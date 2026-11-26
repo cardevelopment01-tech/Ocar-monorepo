@@ -24,6 +24,7 @@ import {
 } from '@/constants/limits'
 import { createWorkerLogger } from '@/lib/worker-logger'
 import { alertSilentDrivers } from '@/modules/rides/silent-drivers'
+import { onIdleDriverPaused, type IdlePauseCause } from '@/modules/rides/idle-paused'
 
 const log = createWorkerLogger('cleanup')
 
@@ -111,6 +112,10 @@ export const cleanupWorker = new Worker(
     const quiet10 = await repo.findStaleOnlineDrivers(offlineSec)
     const posOldList = posCapSec === offlineSec ? quiet10 : await repo.findStaleOnlineDrivers(posCapSec)
     const posOld = new Set(posOldList.map((d) => d.driver_id))
+    // Drivers paused in this sweep, and (below) the ones the offline tier then ended. Only the paused-and-not-ended ones are told they are
+    // paused: an ended driver gets the session-ended message instead.
+    const pausedNow: Array<{ id: string; sessionId: string; cause: IdlePauseCause }> = []
+    const endedNow = new Set<string>()
     const quiet90Ids = quiet90.map((d) => d.driver_id)
     const hb90 = await lastHeartbeatMs(quiet90Ids)
     const conn90 = await connectedAmong(quiet90Ids.filter((id) => !posOld.has(id) && !((hb90.get(id) ?? 0) > Date.now() - pauseSec * 1000)))
@@ -122,7 +127,10 @@ export const cleanupWorker = new Worker(
       // Pauses only a driver who is currently available, and leaves a marker only then, so a heartbeat can resume exactly the drivers the
       // sweep paused (never one who paused on purpose).
       const pausedSession = await repo.pauseIfAvailable(BigInt(id))
-      if (pausedSession) await redis.set(driverSweepPausedKey(id), pausedSession, 'EX', 6 * 3600).catch(() => undefined)
+      if (pausedSession) {
+        await redis.set(driverSweepPausedKey(id), pausedSession, 'EX', 6 * 3600).catch(() => undefined)
+        pausedNow.push({ id, sessionId: pausedSession, cause: posOld.has(id) && alive ? 'stale_position' : 'silent' })
+      }
     }
     const quiet10Ids = quiet10.map((d) => d.driver_id)
     const hb10 = await lastHeartbeatMs(quiet10Ids)
@@ -137,6 +145,7 @@ export const cleanupWorker = new Worker(
       if (await repo.hasActiveRide(BigInt(d.driver_id))) continue
       try {
         await goOffline(BigInt(d.driver_id), 'stale_heartbeat')
+        endedNow.add(d.driver_id)
         // Hardcoded copy, not a notification_templates row (unlike most other notification
         // types) — deliberately out of scope for this fix; revisit if ops needs to edit this wording.
         await notifyOwner({
@@ -151,6 +160,8 @@ export const cleanupWorker = new Worker(
         log.error({ err, driverId: d.driver_id }, 'stale-offline sweep failed for a driver') // one bad driver must not skip the rest
       }
     }
+    // Not awaited (it never throws): a push round-trip per driver must not slow the rest of the sweep.
+    for (const p of pausedNow) void onIdleDriverPaused(p.id, p.sessionId, p.cause, { nudge: !endedNow.has(p.id) })
   },
   { connection: redisConnection }
 )

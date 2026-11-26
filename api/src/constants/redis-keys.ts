@@ -7,6 +7,8 @@ export const driverHeartbeatThrottleKey = (driverId: string): string => `driver:
  *  driver chose never sets it, so a heartbeat never overrides a deliberate pause. */
 export const driverSweepPausedKey = (driverId: string): string => `driver:sweep-paused:${driverId}`
 
+/** One "you are paused" nudge per online session per window, so a driver whose phone flaps is not buzzed every minute. */
+export const driverIdleNudgeKey = (sessionId: string): string => `driver:idle-nudge:${sessionId}`
 /** One silence episode of an on-trip driver, identified by the time of their last fix: it is alerted once, and a driver who recovers and
  *  goes quiet again has a newer last fix, so a new key and a fresh page. */
 export const driverSilentAlertKey = (rideId: string, lastFixEpochSec: number): string => `ride:gps-silent:${rideId}:${lastFixEpochSec}`

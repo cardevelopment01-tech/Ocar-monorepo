@@ -106,26 +106,54 @@ export async function emitHeartbeat(nowMs: number = Date.now(), deps?: Heartbeat
 
 export function resetHeartbeatForTests(): void { lastHeartbeatAtMs = 0; heartbeatHttpInFlight = false; heartbeatBackoffMs = 0; nextHeartbeatAtMs = 0 }
 
-export async function emitLocationTick(fix: LocationFix): Promise<void> {
+// A live ping over a socket that says "connected" can still be lost (a half-dead connection, a sleeping radio). The server acks each ping;
+// no ack within this window means it did not arrive, and the same fix goes out over HTTP instead of being silently dropped.
+const PING_ACK_TIMEOUT_MS = 4000
+
+type PingDeps = {
+  socket: Pick<ReturnType<typeof getSocket>, 'connected' | 'timeout' | 'emit'>
+  api: Pick<ReturnType<typeof getApi>, 'post'>
+}
+
+// An API from before the ack was added never answers a ping. After this many misses in a row with no ack EVER seen, assume that server and
+// send pings without waiting (and without an HTTP duplicate each time). One ack seen, and the app treats a later miss as a lost ping.
+const LEGACY_AFTER_MISSES = 3
+let ackEverSeen = false
+let ackMisses = 0
+
+export function resetLocationSyncForTests(): void { disconnectedSinceMs = null; httpInFlight = false; httpBackoffMs = 0; httpRetryAt = 0; ackEverSeen = false; ackMisses = 0 }
+
+// `deps` is for tests only; the app resolves the socket and API lazily (see the file header).
+export async function emitLocationTick(fix: LocationFix, deps?: PingDeps): Promise<void> {
   const sessionId = await resolveSessionId()
   if (!sessionId) return // not online -- nothing to report against
 
-  const socket = getSocket()
+  const socket = deps?.socket ?? getSocket()
   if (socket.connected) {
     disconnectedSinceMs = null
-    socket.emit('location:update', { sessionId, ...fix })
-    return
+    if (!ackEverSeen && ackMisses >= LEGACY_AFTER_MISSES) { socket.emit('location:update', { sessionId, ...fix }); return }
+    const reply = await new Promise<{ ok?: boolean; sessionActive?: boolean } | null>((resolve) => {
+      socket.timeout(PING_ACK_TIMEOUT_MS).emit('location:update', { sessionId, ...fix }, (err: unknown, res?: { ok?: boolean; sessionActive?: boolean }) => resolve(!err && res?.ok === true ? res : null))
+    })
+    if (reply) { ackEverSeen = true; ackMisses = 0; if (reply.sessionActive === false) forgetSession(); return }
+    ackMisses += 1
+    // No ack (or the server refused it): try HTTP once, below. An older server that never acks lands here too and gets a duplicate
+    // position over HTTP, which it treats as just another fix.
+  } else {
+    if (disconnectedSinceMs === null) disconnectedSinceMs = Date.now()
+    if (Date.now() - disconnectedSinceMs < FALLBACK_DEBOUNCE_MS) return
   }
-
-  if (disconnectedSinceMs === null) disconnectedSinceMs = Date.now()
-  if (Date.now() - disconnectedSinceMs < FALLBACK_DEBOUNCE_MS) return
 
   if (httpInFlight || Date.now() < httpRetryAt) return
   httpInFlight = true
   try {
-    await getApi().post('/api/v1/rides/sessions/location', { sessionId, ...fix })
+    const res = await (deps?.api ?? getApi()).post('/api/v1/rides/sessions/location', { sessionId, ...fix }) as { data?: { sessionActive?: boolean } } | undefined
     httpBackoffMs = 0
-  } catch {
+    if (res?.data?.sessionActive === false) forgetSession()
+  } catch (err) {
+    // The server answers an ended session with 409 SESSION_ENDED: stop reporting for it rather than retrying a dead session forever.
+    const failed = (err as { response?: { status?: number; data?: { code?: string } } } | null)?.response
+    if (failed?.status === 409 && failed.data?.code === 'SESSION_ENDED') { forgetSession(); return }
     // Best-effort, like the web driver app's fire-and-forget POST; a later tick retries once
     // the backoff has elapsed.
     httpBackoffMs = Math.min(httpBackoffMs ? httpBackoffMs * 2 : BACKOFF_START_MS, BACKOFF_MAX_MS)

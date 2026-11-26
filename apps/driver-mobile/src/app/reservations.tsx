@@ -101,7 +101,7 @@ function BookingCard({ r, now, busy, onConfirm, onGiveBack }: { r: Reservation; 
     <View style={[styles.card, urgent ? styles.cardUrgent : null]}>
       <View style={styles.cardTop}>
         <View style={styles.row}>
-          {urgent ? <PulseDot color={colors.error} size={8} /> : null}
+          {urgent ? <PulseDot color={colors.warning} size={8} /> : null}
           <Text style={styles.when}>{whenLabel(new Date(pickupMs), new Date(now))}</Text>
         </View>
         <Text style={styles.in}>{inLabel(pickupMs, now)}</Text>
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
   noteText: { ...typography.caption, color: colors.ink600, flex: 1 },
   failure: { ...typography.caption, color: colors.error, fontFamily: fonts.semibold },
   card: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
-  cardUrgent: { borderColor: colors.error, borderWidth: 1.5 },
+  cardUrgent: { borderColor: colors.warning, borderWidth: 1.5 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   when: { ...typography.headline, fontSize: 18, color: colors.ink900, fontFamily: fonts.bold },
@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
   meta: { ...typography.caption, color: colors.ink600 },
   fare: { ...typography.body, color: colors.ink900, fontFamily: fonts.bold },
   hint: { ...typography.caption, color: colors.ink600 },
-  hintUrgent: { color: colors.error, fontFamily: fonts.semibold },
+  hintUrgent: { color: '#8A6420', fontFamily: fonts.semibold },
   actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: 2 },
   confirmWrap: { flex: 1 },
   confirmed: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

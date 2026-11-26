@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { AppState, Dimensions, Linking, Pressable, StyleSheet, Vibration, View } from 'react-native'
+import { Dimensions, Linking, Pressable, ScrollView, StyleSheet, Vibration, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, Card, captureError, NotificationBell, OCAR_MAP_PROPS, PushPrimerSheet, useUnreadCount, PulseDot, card, colors, geo, h, shadow, useNavBottom, getCurrentOrLastKnownPosition, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, Card, captureError, NotificationBell, OCAR_MAP_PROPS, PushPrimerSheet, useUnreadCount, card, colors, geo, h, shadow, useNavBottom, getCurrentOrLastKnownPosition, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { OnlineToggle } from '@/features/go-online/components/OnlineToggle'
@@ -15,6 +15,8 @@ import { useWalletGate } from '@/features/go-online/useWalletGate'
 import { walletBlockMessage } from '@/features/go-online/walletGateMessage'
 import { useSocketConnected } from '@/features/go-online/useSocketConnected'
 import { ensureBackgroundTracking } from '@/services/location/backgroundTask'
+import { useTrackingHealth } from '@/features/tracking-health/useTrackingHealth'
+import { TrackingHealthCard, trackingTone } from '@/features/tracking-health/TrackingHealthCard'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
 import { useNotificationPrimer } from '@/features/notifications/usePushSetup'
 import { fetchEarningsSummary } from '@/features/earnings/api'
@@ -28,6 +30,7 @@ import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosit
 import { INITIAL_RECENTER, nextRecenter, type RecenterState } from '@/features/map/recenter'
 import { useReservations } from '@/features/reservations/useReservations'
 import { UpcomingBookingCard } from '@/features/reservations/UpcomingBookingCard'
+import { NoticeGroup, NoticeRow, NoticeSheet, type NoticeDetail } from '@/components/Notices'
 import { stageOf } from '@/features/reservations/format'
 import { confirmReservation, startReservation } from '@/features/reservations/api'
 
@@ -64,14 +67,14 @@ export default function HomeScreen() {
   const trackingFailed = useDriverSessionStore((s) => s.trackingFailed)
   const setTrackingFailed = useDriverSessionStore((s) => s.setTrackingFailed)
   const retryingTracking = useRef(false)
-  function retryTracking() {
+  function retryTracking(onDone?: () => void) {
     if (retryingTracking.current) return
     retryingTracking.current = true
     const sid = useDriverSessionStore.getState().sessionId ?? undefined
     ensureBackgroundTracking()
       .then(() => setTrackingFailed(false, sid))
       .catch((err) => captureError(err, { where: 'home_retry_tracking' }))
-      .finally(() => { retryingTracking.current = false })
+      .finally(() => { retryingTracking.current = false; onDone?.() })
   }
   const walletGate = useWalletGate()
   // Bookings an admin reserved for this driver: the next one is shown on this screen so it is never forgotten.
@@ -88,6 +91,8 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookings.started])
   const [starting, setStarting] = useState(false)
+  // The notice whose full explanation is open in the bottom sheet.
+  const [noticeDetail, setNoticeDetail] = useState<NoticeDetail | null>(null)
   const [startError, setStartError] = useState<string | null>(null)
   // One short vibration the moment it is time to head out (the push carries the sound), only while the app is open.
   const lastStage = useRef<string | null>(null)
@@ -146,20 +151,9 @@ export default function HomeScreen() {
   // hadn't been in a while, with nothing on screen indicating it was stale.
   const live = useDriverLivePosition(isOnline)
 
-  // Location can be switched off in system settings while online; the server keeps the session alive but no
-  // position reaches it, so the driver must be told rather than left on "ride requests incoming".
-  const [locationOff, setLocationOff] = useState(false)
-  useEffect(() => {
-    if (!isOnline) { setLocationOff(false); return }
-    const check = () => {
-      Location.getForegroundPermissionsAsync()
-        .then(({ granted }) => setLocationOff(!granted))
-        .catch(() => {})
-    }
-    check()
-    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') check() })
-    return () => sub.remove()
-  }, [isOnline])
+  // Location can stop reaching the server while the driver still looks Online (permission or the phone's Location switch turned off, the
+  // tracking service stopped, or no GPS). The card says which and offers the one fix, instead of leaving "ride requests incoming".
+  const trackingHealth = useTrackingHealth(isOnline, trackingFailed)
 
   useEffect(() => {
     Location.requestForegroundPermissionsAsync()
@@ -246,6 +240,12 @@ export default function HomeScreen() {
         : null
   // What the banner shows. The no-credit notice is display-only: it never stops the driver going online (blockedBanner does that).
   const shownBanner = blockedBanner ?? packageNotice
+  // Tracking notice: a blocker sorts first in the group, information and the brief "back" confirmation sort last.
+  const trackingShown = isOnline && (trackingHealth.issue != null || trackingHealth.recovered)
+  const trackingFirst = trackingShown && trackingTone(trackingHealth.issue) === 'blocker'
+  const trackingRow = trackingShown
+    ? <TrackingHealthCard issue={trackingHealth.issue} recovered={trackingHealth.recovered} onRestart={() => retryTracking(trackingHealth.recheck)} onOpenDetail={setNoticeDetail} />
+    : null
 
   const toggleDisabled =
     flow.sessionCheck !== 'ready' || flow.checkingVerification || (!isOnline && (!!blockedBanner || !flow.vehicle))
@@ -311,28 +311,15 @@ export default function HomeScreen() {
         <NotificationBell count={unreadNotifications} onPress={() => router.push('/notifications')} style={styles.bellBtn} />
       </View>
 
-      <View style={[styles.sheet, { bottom: sheetBottom }]} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
+      <View style={[styles.sheet, { bottom: sheetBottom, maxHeight: WINDOW_HEIGHT - sheetBottom - insets.top - 64 }]} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
+        <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false} bounces={false}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.date}>{todayLabel}</Text>
             <Text style={styles.greeting}>Hi, {firstName}</Text>
-            {isOnline && locationOff ? (
-              <Pressable onPress={() => void Linking.openSettings()}>
-                <Text style={[styles.subtext, { color: colors.error }]}>
-                  Location is off, so you won't get ride requests. Tap to turn it on in Settings.
-                </Text>
-              </Pressable>
-            ) : isOnline && trackingFailed ? (
-              <Pressable onPress={retryTracking}>
-                <Text style={[styles.subtext, { color: colors.error }]}>
-                  Location tracking did not start, so you may miss ride requests. Tap to try again.
-                </Text>
-              </Pressable>
-            ) : (
-              <Text style={styles.subtext}>
-                {isOnline ? "You're live, ride requests incoming" : 'Go online to start earning'}
-              </Text>
-            )}
+            <Text style={styles.subtext}>
+              {isOnline ? (trackingHealth.issue ? "You're online, but we can't see your location" : "You're live, ride requests incoming") : 'Go online to start earning'}
+            </Text>
           </View>
           <OnlineToggle isOnline={isOnline} onToggle={() => void handleToggle()} disabled={toggleDisabled} />
         </View>
@@ -352,39 +339,32 @@ export default function HomeScreen() {
           </Card>
         ) : null}
 
-        {shownBanner ? (
-          <Pressable onPress={() => router.push(shownBanner.route)} style={({ pressed }) => [styles.alertCard, pressed ? styles.pressedScale : null]} accessibilityRole="button">
-            {/* Pulse only for the rejected-doc case, a frozen wallet doesn't get worse by the minute
-                the way a rejected document review clock does, so it doesn't need the same urgency cue. */}
-            {documentGate.hasRejected ? (
-              <PulseDot color={colors.error} size={8} />
-            ) : (
-              <Feather name="alert-triangle" size={16} color={colors.error} />
-            )}
-            <View style={styles.alertBody}>
-              <Text style={styles.alertTitle}>{shownBanner.title}</Text>
-              <Text style={styles.alertText} numberOfLines={3}>{shownBanner.message}</Text>
-            </View>
-            <View style={styles.alertAction}>
-              <Text style={styles.alertActionText}>{shownBanner.actionLabel}</Text>
-              <Feather name="chevron-right" size={14} color={colors.error} />
-            </View>
-          </Pressable>
-        ) : null}
-
-        {nextBooking ? (
-          <UpcomingBookingCard
-            reservation={nextBooking}
-            extra={bookings.reservations.length - 1}
-            now={bookings.now}
-            onPress={() => router.push('/reservations')}
-            onStart={startBooking}
-            onNavigate={navigateToPickup}
-            onConfirm={confirmBooking}
-            starting={starting}
-            startError={startError}
-          />
-        ) : null}
+        <NoticeGroup>
+          {trackingFirst ? trackingRow : null}
+          {shownBanner ? (
+            <NoticeRow
+              tone="blocker"
+              title={shownBanner.title}
+              message={shownBanner.message}
+              action={{ label: shownBanner.actionLabel, onPress: () => router.push(shownBanner.route) }}
+              onPress={() => router.push(shownBanner.route)}
+            />
+          ) : null}
+          {nextBooking ? (
+            <UpcomingBookingCard
+              reservation={nextBooking}
+              extra={bookings.reservations.length - 1}
+              now={bookings.now}
+              onPress={() => router.push('/reservations')}
+              onStart={startBooking}
+              onNavigate={navigateToPickup}
+              onConfirm={confirmBooking}
+              starting={starting}
+              startError={startError}
+            />
+          ) : null}
+          {!trackingFirst ? trackingRow : null}
+        </NoticeGroup>
 
         {flow.error ? (
           <Card style={styles.card}>
@@ -441,8 +421,10 @@ export default function HomeScreen() {
             <Feather name="chevron-right" size={14} color={colors.ink400} />
           </Pressable>
         </View>
+        </ScrollView>
       </View>
 
+      <NoticeSheet detail={noticeDetail} onClose={() => setNoticeDetail(null)} />
       <BottomSheet visible={showOfflineConfirm} onClose={() => setShowOfflineConfirm(false)}>
         <View style={styles.confirmBody}>
           <View style={styles.confirmIconRing}>
@@ -500,13 +482,6 @@ const styles = StyleSheet.create({
   card: { gap: spacing.sm },
   detail: { ...typography.body, color: colors.ink600 },
   error: { ...typography.label, color: colors.error },
-  alertCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.errorLight, borderWidth: 1, borderColor: colors.error, borderRadius: 20, padding: spacing.md },
-  alertBody: { flex: 1, gap: 2 },
-  alertTitle: { ...typography.label, color: colors.error, fontFamily: fonts.bold, fontSize: 14 },
-  alertText: { ...typography.caption, color: colors.ink600 },
-  alertAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  alertActionText: { ...typography.caption, color: colors.error, fontFamily: fonts.bold },
-  pressedScale: { transform: [{ scale: 0.98 }] },
   returnCabBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.successLight, borderRadius: 20, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   returnCabDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
   returnCabText: { ...typography.caption, color: colors.success, fontFamily: fonts.bold },
@@ -519,6 +494,9 @@ const styles = StyleSheet.create({
     gap: 14,
     boxShadow: shadow.lg,
   },
+  // The sheet's rows live in a ScrollView so it can never grow taller than the screen; the sheet's own gap moves inside.
+  sheetScroll: { flexGrow: 0 },
+  sheetContent: { gap: 14 },
   unifiedCard: {
     backgroundColor: colors.surface2,
     borderRadius: 16,

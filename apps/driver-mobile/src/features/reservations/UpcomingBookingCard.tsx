@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
-import { Feather } from '@expo/vector-icons'
-import { Button, PulseDot, Text, colors, fonts, radii, spacing, typography } from '@ocar/mobile-shared'
-import { clockOf, countdown, driveLine, guidance, inLabel, phaseOf, stageOf, whenLabel } from './format'
+import { StyleSheet, View } from 'react-native'
+import { Button, Text, colors, fonts, spacing, typography } from '@ocar/mobile-shared'
+import { NoticeBlock, NoticeRow, TonePill, tonePill } from '@/components/Notices'
+import { clockOf, countdown, driveLine, inLabel, stageOf, whenLabel } from './format'
 import type { Reservation } from './types'
 
 type Props = {
@@ -21,11 +21,12 @@ type Props = {
 }
 
 /**
- * Home card for the driver's next reserved booking. One card that changes with the time, so there is never a second thing to learn:
- *   later    calm: when, how far away, confirm or confirmed
- *   leaveby  the time to leave and how long the drive is, with Navigate
- *   headout  "Head to the pickup now", with Start now (opens the ride early, so the rider sees the driver on the way)
- *   opens    a countdown to the moment the ride opens by itself, with Start now
+ * The driver's next reserved booking, as one entry in Home's notice group. It is a single 64 px row until there is something to do, and only then grows:
+ *   later    a row: when, which pickup, how long to go ("Today, 6:22 PM  in 1h 56m")
+ *   leaveby  a block: the time to leave and the drive, with Navigate (and "I will be there" if not yet confirmed)
+ *   headout  a block: "Head to the pickup now", with Start now (opens the ride early, so the rider sees the driver on the way)
+ *   opens    a block: a countdown to the moment the ride opens by itself, with Start now
+ * Time pressure is amber in the pill, never red: nothing here is broken, the driver just has something to do soon.
  */
 export function UpcomingBookingCard({ reservation, extra, now, onPress, onStart, onNavigate, onConfirm, starting, startError }: Props) {
   const stage = stageOf(reservation, now)
@@ -37,90 +38,63 @@ export function UpcomingBookingCard({ reservation, extra, now, onPress, onStart,
     const t = setInterval(() => setTick(Date.now()), 1000)
     return () => clearInterval(t)
   }, [stage])
-  const clock = stage === 'opens' ? tick : now
 
   const pickupMs = new Date(reservation.pickupAt).getTime()
-  const urgent = stage === 'headout' || stage === 'opens'
   const needsConfirm = !reservation.confirmed
-  const phase = phaseOf(pickupMs, now)
-  const accent = urgent ? colors.error : needsConfirm ? '#8A6420' : colors.success
-  const chip = stage === 'opens' ? 'Going live' : stage === 'headout' ? 'Head out' : stage === 'leaveby' ? (needsConfirm ? 'Confirm' : 'Leave soon') : needsConfirm ? 'Confirm' : 'Confirmed'
 
+  if (stage === 'later') {
+    const message = extra > 0 ? `Next booking · ${extra} more after this` : needsConfirm ? 'Tap to confirm' : `Next booking · ${reservation.pickup ?? 'confirmed'}`
+    return (
+      <NoticeRow
+        tone={needsConfirm ? 'attention' : 'ok'}
+        title={whenLabel(new Date(pickupMs), new Date(now))}
+        message={message}
+        aside={inLabel(pickupMs, now)}
+        onPress={onPress}
+      />
+    )
+  }
+
+  const status = stage === 'opens' ? 'Going live' : stage === 'headout' ? 'Head out' : needsConfirm ? 'Confirm' : 'Leave soon'
   const opensMs = new Date(reservation.opensAt).getTime()
-  const heading =
-    stage === 'opens' ? `Booking opens in ${countdown(opensMs, clock)}`
-    : stage === 'headout' ? 'Head to the pickup now'
-    : stage === 'leaveby' ? `Leave by ${clockOf(reservation.leaveBy)}`
-    : whenLabel(new Date(pickupMs), new Date(now))
-  const aside = stage === 'later' || stage === 'leaveby' ? inLabel(stage === 'later' ? pickupMs : new Date(reservation.leaveBy).getTime(), now) : null
-  const detail =
-    stage === 'opens' ? 'We will open the ride for you. Tap Start now to go straight to it.'
-    : stage === 'headout' ? `Booking at ${clockOf(reservation.pickupAt)}. ${driveLine(reservation.driveMin)}.`
-    : stage === 'leaveby' ? `${driveLine(reservation.driveMin)}. Booking at ${clockOf(reservation.pickupAt)}.`
-    : guidance(phase, reservation.confirmed)
+  const heading = stage === 'opens' ? `Opens in ${countdown(opensMs, tick)}` : stage === 'headout' ? 'Head to the pickup now' : `Leave by ${clockOf(reservation.leaveBy)}`
+  const aside = stage === 'leaveby' ? inLabel(new Date(reservation.leaveBy).getTime(), now) : `Booking at ${clockOf(reservation.pickupAt)}`
+  // The booking time is already in the corner for 'head out' and 'opens'; 'leave by' shows how long to go there instead.
+  const detail = stage === 'opens' ? "We'll open the ride for you. Start now to go straight to it." : stage === 'headout' ? `${driveLine(reservation.driveMin)}.` : `${driveLine(reservation.driveMin)} · Booking at ${clockOf(reservation.pickupAt)}`
 
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Upcoming booking. ${heading}. ${detail}`}
-      style={({ pressed }) => [styles.card, urgent ? styles.cardUrgent : null, pressed ? styles.pressed : null]}
-    >
+    <NoticeBlock onPress={onPress} accessibilityLabel={`Upcoming booking. ${status}. ${heading}. ${detail}`}>
       <View style={styles.top}>
-        <View style={styles.titleRow}>
-          {urgent ? <PulseDot color={colors.error} size={8} /> : <Feather name={stage === 'leaveby' ? 'clock' : 'calendar'} size={15} color={colors.primary} />}
-          <Text style={styles.title}>Upcoming booking</Text>
-        </View>
-        <View style={[styles.chip, { borderColor: accent }]}>
-          <Text style={[styles.chipText, { color: accent }]}>{chip}</Text>
-        </View>
+        <TonePill tone="attention" label={status} />
+        <Text style={styles.aside}>{aside}</Text>
       </View>
-
-      <Text style={styles.heading}>
-        {heading}{aside ? <Text style={styles.aside}>  {aside}</Text> : null}
-      </Text>
-      {stage === 'later' && reservation.pickup ? <Text style={styles.place} numberOfLines={1}>{reservation.pickup}</Text> : null}
-      <Text style={[styles.hint, urgent ? styles.hintUrgent : null]}>{detail}</Text>
+      <Text style={[styles.heading, stage === 'opens' ? styles.headingBig : stage === 'headout' ? styles.headingSmall : null]}>{heading}</Text>
+      <Text style={styles.detail}>{detail}</Text>
 
       {stage === 'leaveby' ? (
-        <View style={styles.action}>
-          {needsConfirm ? <Button label="I will be there" icon="check" onPress={onConfirm} /> : null}
-          <Button label="Navigate to pickup" icon="navigation" variant={needsConfirm ? 'ghost' : 'secondary'} onPress={onNavigate} accessibilityLabel="Navigate to the pickup" />
+        <View style={styles.buttons}>
+          {needsConfirm ? <View style={styles.primary}><Button label="I will be there" onPress={onConfirm} /></View> : null}
+          <View style={needsConfirm ? styles.secondary : styles.primary}>
+            <Button label={needsConfirm ? 'Navigate' : 'Navigate to pickup'} icon="navigation" variant={needsConfirm ? 'soft' : 'primary'} onPress={onNavigate} accessibilityLabel="Navigate to the pickup" />
+          </View>
         </View>
-      ) : null}
-      {urgent ? (
-        <View style={styles.action}>
-          <Button label="Start now" icon="arrow-right" loading={starting} onPress={onStart} accessibilityLabel="Start now: open the ride and head to the pickup" />
-        </View>
-      ) : null}
+      ) : (
+        <Button label="Start now" icon="arrow-right" loading={starting} onPress={onStart} accessibilityLabel="Start now: open the ride and head to the pickup" />
+      )}
       {startError ? <Text style={styles.error} accessibilityLiveRegion="polite">{startError}</Text> : null}
-
-      {stage === 'later' ? (
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>{extra > 0 ? `${extra} more booking${extra === 1 ? '' : 's'}` : 'View details'}</Text>
-          <Feather name="chevron-right" size={14} color={colors.ink400} />
-        </View>
-      ) : null}
-    </Pressable>
+    </NoticeBlock>
   )
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.primaryLight, padding: spacing.md, gap: 4 },
-  cardUrgent: { borderColor: colors.error, borderWidth: 1.5, backgroundColor: colors.errorLight },
-  pressed: { transform: [{ scale: 0.985 }] },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  title: { ...typography.label, color: colors.ink600, fontFamily: fonts.semibold },
-  chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
-  chipText: { ...typography.caption, fontFamily: fonts.bold },
-  heading: { ...typography.headline, fontSize: 20, color: colors.ink900, fontFamily: fonts.bold, marginTop: 2 },
-  aside: { ...typography.body, color: colors.ink600, fontFamily: fonts.semibold },
-  place: { ...typography.body, color: colors.ink600 },
-  hint: { ...typography.caption, color: colors.ink600, marginTop: 2 },
-  hintUrgent: { color: colors.error, fontFamily: fonts.semibold },
-  action: { marginTop: spacing.sm, gap: spacing.xs },
-  error: { ...typography.caption, color: colors.error, fontFamily: fonts.semibold, marginTop: spacing.xs },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 2, marginTop: 2 },
-  footerText: { ...typography.caption, color: colors.ink400 },
+  aside: { ...typography.label, fontFamily: fonts.semibold, fontSize: 13, color: colors.ink600, fontVariant: ['tabular-nums'] },
+  heading: { ...typography.headline, fontSize: 24, lineHeight: 30, color: colors.ink900, fontVariant: ['tabular-nums'] },
+  headingBig: { fontSize: 30, lineHeight: 36, letterSpacing: -0.6 },
+  headingSmall: { fontSize: 22, lineHeight: 28 },
+  detail: { ...typography.label, fontFamily: fonts.regular, fontSize: 13, lineHeight: 18, color: colors.ink600, marginTop: -6 },
+  buttons: { flexDirection: 'row', gap: spacing.sm + 2 },
+  primary: { flex: 1.3 },
+  secondary: { flex: 1 },
+  error: { ...typography.caption, color: tonePill.blocker.ink, fontFamily: fonts.semibold },
 })

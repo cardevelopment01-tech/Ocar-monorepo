@@ -3,10 +3,13 @@ import * as TaskManager from 'expo-task-manager'
 import { emitLocationTick, emitHeartbeat } from './locationSync'
 import { useDriverPositionStore } from './driverPositionStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
-import { isAccurateEnough, trackingProfileForRideState } from './locationPolicy'
+import { isAccurateEnough, shouldSendLivePosition, trackingProfileForRideState } from './locationPolicy'
 import { trail, type TrailFix } from './trailBuffer'
 
 export const LOCATION_TASK_NAME = 'ocar-background-location-spike'
+
+// When a live position last went out, for the rough-fix fallback in locationPolicy.ts (0 = none yet, so a first rough fix may go).
+let lastLiveSentAt = 0
 
 // Must be called at module scope (not inside a component or conditionally) --
 // Android can invoke this task in a headless JS instance after the app process
@@ -30,7 +33,11 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     void trail.add(trailFixes).catch(() => {})
     const latest = locations[locations.length - 1]
     if (!latest) return
-    if (!isAccurateEnough(latest.coords.accuracy)) return
+    useDriverPositionStore.getState().noteFixSeen()
+    // The session store is empty in a headless process, so a trip is also read from the trail on disk before a rough fix may go out.
+    const onRide = !!useDriverSessionStore.getState().activeRide || (await trail.hasRide().catch(() => true))
+    if (!shouldSendLivePosition(latest.coords.accuracy, Date.now() - lastLiveSentAt, onRide)) return
+    lastLiveSentAt = Date.now()
 
     // Real backend sync (Days 8-10) -- no-ops if the driver isn't online
     // (emitLocationTick reads the current sessionId itself).

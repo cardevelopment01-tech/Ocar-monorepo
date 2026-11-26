@@ -24,6 +24,10 @@ let io: Server
 // Socket.IO does not wrap listeners: a synchronous throw (e.g. BigInt('x'), destructuring undefined) from a
 // client-supplied payload becomes an uncaught exception and kills the whole API process. Every client event
 // goes through this wrapper, and ids are parsed with parseId() rather than raw BigInt().
+// A live ping is acked with the result of its write, but never later than this: a slow database must not make every app time out (4 s) and
+// resend its ping over HTTP, doubling the load exactly when the server is struggling.
+const LOCATION_ACK_AT_MOST_MS = 2000
+
 function safeHandler<A extends unknown[]>(
   log: { warn: (o: object, m: string) => void },
   event: string,
@@ -166,11 +170,19 @@ export function initSocketServer(httpServer: HttpServer): Server {
         heading?: unknown
         speed?: unknown
         recordedAt?: unknown
-      }) => {
+      }, ack?: unknown) => {
+        // Optional ack (older apps pass none): lets the app tell a ping the server took from one lost on a half-dead connection or a failed
+        // write, and resend it over HTTP. Sent once. An ended session counts as received (updateLocation tells the app separately).
+        let acked = false
+        const reply = (ok: boolean) => {
+          if (acked) return
+          acked = true
+          if (typeof ack === 'function') (ack as (r: { ok: boolean }) => void)({ ok })
+        }
         const sessionId = parseId(data?.sessionId)
         const lat = finiteNum(data?.lat, -90, 90)
         const lng = finiteNum(data?.lng, -180, 180)
-        if (sessionId === null || lat === null || lng === null) return
+        if (sessionId === null || lat === null || lng === null) { reply(false); return }
         // The device clock is not trusted, but a wrong one must not silence the driver either: updateLocation
         // replaces an implausible recordedAt with server time (this used to drop the ping, so a phone with a
         // bad clock never updated its location and was swept offline). Anything that isn't a string is stamped now.
@@ -183,13 +195,16 @@ export function initSocketServer(httpServer: HttpServer): Server {
             ? data.recordedAt
             : new Date().toISOString(),
         }
+        const ackTimer = setTimeout(() => reply(true), LOCATION_ACK_AT_MOST_MS)
         const heading = finiteNum(data?.heading, 0, 360)
         const speed   = finiteNum(data?.speed, 0, 400)
         if (heading !== null) input.heading = heading
         if (speed   !== null) input.speed   = speed
-        updateLocation(BigInt(user.sub), input).catch((err: unknown) => {
+        updateLocation(BigInt(user.sub), input).then(() => { clearTimeout(ackTimer); reply(true) }).catch((err: unknown) => {
+          clearTimeout(ackTimer)
           // Expected: the driver's session was ended server-side and updateLocation has just told them so.
-          if ((err as { appCode?: string } | null)?.appCode === 'SESSION_ENDED') return
+          if ((err as { appCode?: string } | null)?.appCode === 'SESSION_ENDED') { reply(true); return }
+          reply(false)
           log.error({ err, sessionId: String(sessionId) }, 'location:update failed')
         })
       }))

@@ -97,7 +97,10 @@ export function createTrailBuffer(deps: TrailDeps) {
     await persist(true)
   }
 
-  return { start, add, flush, end }
+  // Is a trip under way? Read from disk, so it is right in a bare background process where the in-memory session store is empty.
+  async function hasRide(): Promise<boolean> { return (await get()).rideId !== null }
+
+  return { start, add, flush, end, hasRide }
 }
 
 // `api` is required lazily for the reason given in locationSync.ts (an import cycle through useAuthStore).
