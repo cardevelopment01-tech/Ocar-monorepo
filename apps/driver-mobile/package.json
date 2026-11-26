@@ -79,5 +79,10 @@
     "typescript": "^5.0.0",
     "typescript-eslint": "^8.0.0",
     "vitest": "^1.0.0"
+  },
+  "expo": {
+    "autolinking": {
+      "buildFromSource": ["expo-audio", "expo-speech"]
+    }
   }
 }
