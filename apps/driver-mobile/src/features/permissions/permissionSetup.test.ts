@@ -21,7 +21,8 @@ vi.mock('@ocar/mobile-shared', () => ({
   readBackgroundLocationGranted: vi.fn(), readLocationStatus: vi.fn(), askThenFallback: async (ask: () => Promise<boolean>) => { await ask() }, readNotificationStatus: vi.fn(), shouldShowSetup: vi.fn(),
 }))
 
-import { requestPermission } from './permissionSetup'
+import * as shared from '@ocar/mobile-shared'
+import { readPermissionRows, requestPermission } from './permissionSetup'
 
 const row = (key: string, status: 'granted' | 'ask' | 'blocked') => ({ key, title: key, reason: '', status, required: true, actionLabel: 'Allow' })
 
@@ -53,5 +54,17 @@ describe('requestPermission (the Allow button on the setup screen)', () => {
     await requestPermission('location', [row('location', 'ask')])
     expect(mocks.requestBackground).toHaveBeenCalledTimes(1)
     expect(mocks.requestForeground).not.toHaveBeenCalled()
+  })
+})
+
+describe('readPermissionRows for a driver still in onboarding', () => {
+  it('asks for notifications only, with wording about the application, and no location row', async () => {
+    vi.mocked(shared.readNotificationStatus).mockResolvedValue('ask')
+    vi.mocked(shared.readLocationStatus).mockResolvedValue('ask')
+    vi.mocked(shared.readBackgroundLocationGranted).mockResolvedValue(false)
+    const rows = await readPermissionRows('notifications')
+    expect(rows.map((r) => r.key)).toEqual(['notifications'])
+    expect(rows[0]!.reason).toContain('your application')
+    expect((await readPermissionRows()).map((r) => r.key)).toEqual(['notifications', 'location'])
   })
 })

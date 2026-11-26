@@ -49,6 +49,8 @@ export default function Index() {
 
   // Only a driver heading to Home is stopped for setup: one relaunching into a ride, or onboarding, goes straight there.
   const gate = usePermissionGate(isAuthenticated && !onboardingRoute && route === '/(tabs)/home')
+  // A driver in onboarding has no push token until notifications are allowed, so the reminders could not reach them: ask once here.
+  const onboardingGate = usePermissionGate(isAuthenticated && !!onboardingRoute, 'notifications')
 
   useEffect(() => {
     if (!isAuthenticated || onboardingRoute) return
@@ -85,7 +87,10 @@ export default function Index() {
   if (!introHydrated) return null
   if (!isAuthenticated && !hasSeenIntro) return <Redirect href="/intro" />
   if (!isAuthenticated) return <Redirect href="/(auth)/phone" />
-  if (onboardingRoute) return <Redirect href={onboardingRoute} />
+  if (onboardingRoute) {
+    if (onboardingGate === 'checking') return null
+    return <Redirect href={onboardingGate === 'show' ? '/permissions?only=notifications' : onboardingRoute} />
+  }
 
   if (checkState === 'failed') {
     return (

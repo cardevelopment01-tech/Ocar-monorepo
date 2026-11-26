@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AppState } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { PermissionSetup, type PermissionRowModel } from '@ocar/mobile-shared'
 import { readPermissionRows, requestPermission, snoozeSetup } from '@/features/permissions/permissionSetup'
 
@@ -8,10 +8,12 @@ import { readPermissionRows, requestPermission, snoozeSetup } from '@/features/p
 // they get a ride request. "Not now" hides it for a day.
 export default function PermissionsScreen() {
   const router = useRouter()
+  // A driver still in onboarding is sent here for notifications only (?only=notifications).
+  const only = useLocalSearchParams<{ only?: string }>().only === 'notifications' ? 'notifications' : undefined
   const [rows, setRows] = useState<PermissionRowModel[] | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
 
-  const refresh = useCallback(async () => setRows(await readPermissionRows()), [])
+  const refresh = useCallback(async () => setRows(await readPermissionRows(only)), [only])
   useEffect(() => {
     void refresh()
     // Back from the phone's settings: read it again.
@@ -28,7 +30,7 @@ export default function PermissionsScreen() {
   return (
     <PermissionSetup
       title="Set up Ocar"
-      subtitle="Two quick things so ride requests always reach you."
+      subtitle={only ? "One quick thing so we can keep you updated on your application." : "Two quick things so ride requests always reach you."}
       rows={rows}
       busyKey={busyKey}
       onAllow={(k) => void onAllow(k)}
