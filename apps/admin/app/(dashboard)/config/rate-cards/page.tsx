@@ -848,7 +848,7 @@ function CreateRateCardDialog({
               <label className={labelCls}>Night allowance (₹ per night)</label>
               <input type="number" step="0.01" min="0" value={form.night_allowance_per_night}
                 onChange={e => set('night_allowance_per_night', e.target.value)} className={`${inputCls} font-mono`} placeholder="0" />
-              <p className="text-xs text-text-muted mt-1">Blank keeps the current card's value (0 for a new card). 0 = none. Added once for every night the trip is driven between 11 PM and 6 AM, not surged. Paid on to the driver.</p>
+              <p className="text-xs text-text-muted mt-1">Blank keeps the current card&apos;s value (0 for a new card). 0 = none. Added once for every night the trip is driven between 11 PM and 6 AM, not surged. Paid on to the driver.</p>
             </div>
             )}
             <div>
