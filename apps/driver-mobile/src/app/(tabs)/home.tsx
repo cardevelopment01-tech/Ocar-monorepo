@@ -16,7 +16,7 @@ import { walletBlockMessage } from '@/features/go-online/walletGateMessage'
 import { useSocketConnected } from '@/features/go-online/useSocketConnected'
 import { ensureBackgroundTracking } from '@/services/location/backgroundTask'
 import { useTrackingHealth } from '@/features/tracking-health/useTrackingHealth'
-import { TrackingHealthCard } from '@/features/tracking-health/TrackingHealthCard'
+import { TrackingHealthCard, trackingTone } from '@/features/tracking-health/TrackingHealthCard'
 import { useDocumentGate } from '@/features/go-online/useDocumentGate'
 import { useNotificationPrimer } from '@/features/notifications/usePushSetup'
 import { fetchEarningsSummary } from '@/features/earnings/api'
@@ -30,7 +30,7 @@ import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosit
 import { INITIAL_RECENTER, nextRecenter, type RecenterState } from '@/features/map/recenter'
 import { useReservations } from '@/features/reservations/useReservations'
 import { UpcomingBookingCard } from '@/features/reservations/UpcomingBookingCard'
-import { StatusCard } from '@/components/StatusCard'
+import { NoticeGroup, NoticeRow, NoticeSheet, type NoticeDetail } from '@/components/Notices'
 import { stageOf } from '@/features/reservations/format'
 import { confirmReservation, startReservation } from '@/features/reservations/api'
 
@@ -91,6 +91,8 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookings.started])
   const [starting, setStarting] = useState(false)
+  // The notice whose full explanation is open in the bottom sheet.
+  const [noticeDetail, setNoticeDetail] = useState<NoticeDetail | null>(null)
   const [startError, setStartError] = useState<string | null>(null)
   // One short vibration the moment it is time to head out (the push carries the sound), only while the app is open.
   const lastStage = useRef<string | null>(null)
@@ -238,6 +240,12 @@ export default function HomeScreen() {
         : null
   // What the banner shows. The no-credit notice is display-only: it never stops the driver going online (blockedBanner does that).
   const shownBanner = blockedBanner ?? packageNotice
+  // Tracking notice: a blocker sorts first in the group, information and the brief "back" confirmation sort last.
+  const trackingShown = isOnline && (trackingHealth.issue != null || trackingHealth.recovered)
+  const trackingFirst = trackingShown && trackingTone(trackingHealth.issue) === 'blocker'
+  const trackingRow = trackingShown
+    ? <TrackingHealthCard issue={trackingHealth.issue} recovered={trackingHealth.recovered} onRestart={() => retryTracking(trackingHealth.recheck)} onOpenDetail={setNoticeDetail} />
+    : null
 
   const toggleDisabled =
     flow.sessionCheck !== 'ready' || flow.checkingVerification || (!isOnline && (!!blockedBanner || !flow.vehicle))
@@ -316,10 +324,6 @@ export default function HomeScreen() {
           <OnlineToggle isOnline={isOnline} onToggle={() => void handleToggle()} disabled={toggleDisabled} />
         </View>
 
-        {isOnline ? (
-          <TrackingHealthCard issue={trackingHealth.issue} recovered={trackingHealth.recovered} onRestart={() => retryTracking(trackingHealth.recheck)} />
-        ) : null}
-
         {isOnline && mode === 'return_cab' ? (
           <View style={styles.returnCabBanner}>
             <View style={styles.returnCabDot} />
@@ -335,23 +339,32 @@ export default function HomeScreen() {
           </Card>
         ) : null}
 
-        {shownBanner ? (
-          <StatusCard tone="blocker" label="Action needed" title={shownBanner.title} message={shownBanner.message} action={{ label: shownBanner.actionLabel, onPress: () => router.push(shownBanner.route) }} />
-        ) : null}
-
-        {nextBooking ? (
-          <UpcomingBookingCard
-            reservation={nextBooking}
-            extra={bookings.reservations.length - 1}
-            now={bookings.now}
-            onPress={() => router.push('/reservations')}
-            onStart={startBooking}
-            onNavigate={navigateToPickup}
-            onConfirm={confirmBooking}
-            starting={starting}
-            startError={startError}
-          />
-        ) : null}
+        <NoticeGroup>
+          {trackingFirst ? trackingRow : null}
+          {shownBanner ? (
+            <NoticeRow
+              tone="blocker"
+              title={shownBanner.title}
+              message={shownBanner.message}
+              action={{ label: shownBanner.actionLabel, onPress: () => router.push(shownBanner.route) }}
+              onPress={() => router.push(shownBanner.route)}
+            />
+          ) : null}
+          {nextBooking ? (
+            <UpcomingBookingCard
+              reservation={nextBooking}
+              extra={bookings.reservations.length - 1}
+              now={bookings.now}
+              onPress={() => router.push('/reservations')}
+              onStart={startBooking}
+              onNavigate={navigateToPickup}
+              onConfirm={confirmBooking}
+              starting={starting}
+              startError={startError}
+            />
+          ) : null}
+          {!trackingFirst ? trackingRow : null}
+        </NoticeGroup>
 
         {flow.error ? (
           <Card style={styles.card}>
@@ -411,6 +424,7 @@ export default function HomeScreen() {
         </ScrollView>
       </View>
 
+      <NoticeSheet detail={noticeDetail} onClose={() => setNoticeDetail(null)} />
       <BottomSheet visible={showOfflineConfirm} onClose={() => setShowOfflineConfirm(false)}>
         <View style={styles.confirmBody}>
           <View style={styles.confirmIconRing}>
