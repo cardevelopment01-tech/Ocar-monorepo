@@ -57,12 +57,19 @@ const BOUNDS: Record<string, ConfigBounds> = {
   city_ride_max_stops:              { min: 0, max: 3 },
   // GST rates in percent: the commission invoice backs this out of the amount cut, so a typo like 180 would invoice the wrong tax on every driver.
   package_gst_percent:              { min: 0, max: 50 },
+  // Onboarding reminders: days after a driver's last progress. The four must also stay in order (see kycDayOrderError).
+  kyc_reminder_day_1:               { min: 1, max: 30 },
+  kyc_reminder_day_2:               { min: 1, max: 30 },
+  kyc_reminder_day_3:               { min: 1, max: 30 },
+  kyc_pause_day:                    { min: 1, max: 30 },
   commission_gst_percent:           { min: 0, max: 50 },
 }
 
 // Typed `string` in the table but really booleans — free text here would silently break the reader.
 const ALLOWED_VALUES: Record<string, readonly string[]> = {
   cash_collection_enabled: ['true', 'false'],
+  // Read as on only when exactly 'true': a typo must be refused, not left looking like an enabled switch.
+  kyc_reminders_enabled: ['true', 'false'],
   // Read as on only when exactly 'true': a typo must be refused, not left looking like an enabled switch.
   dispatch_no_resend_enabled: ['true', 'false'],
   dispatch_head_start_enabled: ['true', 'false'],
@@ -118,6 +125,18 @@ export function versionPairCheck(key: string): { siblingKey: string; check: (val
       return null
     },
   }
+}
+
+const KYC_DAY_KEYS = ['kyc_reminder_day_1', 'kyc_reminder_day_2', 'kyc_reminder_day_3', 'kyc_pause_day'] as const
+
+/** The onboarding reminder days must run first < second < third < pause day, or a reminder could never fire. `current` holds the four saved values. */
+export function kycDayOrderError(key: string, value: string, current: Record<string, number>): string | null {
+  if (!(KYC_DAY_KEYS as readonly string[]).includes(key)) return null
+  const next = KYC_DAY_KEYS.map((k) => (k === key ? Number(value) : current[k]!))
+  for (let i = 1; i < next.length; i++) {
+    if (!(next[i - 1]! < next[i]!)) return 'reminder days must increase: first < second < third < pause day'
+  }
+  return null
 }
 
 export function getConfigBounds(key: string): ConfigBounds | null {

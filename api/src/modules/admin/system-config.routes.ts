@@ -5,7 +5,7 @@ import { createHttpError, httpError } from '@/lib/errors'
 import { AppErrors } from '@/constants/errors'
 import { recordAuditLog } from '@/lib/audit-log'
 import { listConfig, getConfigById, getConfigValue, validateConfigValue, updateConfigValue } from '@/lib/system-config'
-import { validateConfigBounds, versionPairCheck } from '@/lib/system-config-bounds'
+import { validateConfigBounds, versionPairCheck, kycDayOrderError } from '@/lib/system-config-bounds'
 import { openDiscountedRideCount } from '@/modules/offers/offers.repository'
 import { cashDiscountGuard } from '@/modules/offers/cash-discount-guard'
 
@@ -32,6 +32,12 @@ router.patch('/:id', async (req, res, next) => {
 
     const validationError = validateConfigValue(before.valueType, value) ?? validateConfigBounds(before.key, value)
     if (validationError) throw httpError(422, validationError, AppErrors.VALIDATION_ERROR.code)
+    if (before.key.startsWith('kyc_')) {
+      const current: Record<string, number> = {}
+      for (const [k, fb] of [['kyc_reminder_day_1', 1], ['kyc_reminder_day_2', 4], ['kyc_reminder_day_3', 8], ['kyc_pause_day', 10]] as const) current[k] = Number(await getConfigValue(k, String(fb)))
+      const orderError = kycDayOrderError(before.key, value, current)
+      if (orderError) throw httpError(422, orderError, AppErrors.VALIDATION_ERROR.code)
+    }
     const pair = versionPairCheck(before.key)
     if (pair) {
       const pairError = pair.check(value, await getConfigValue(pair.siblingKey, '0.0.0'))
