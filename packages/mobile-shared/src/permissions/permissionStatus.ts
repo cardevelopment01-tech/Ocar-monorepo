@@ -1,11 +1,12 @@
 import * as Location from 'expo-location'
 import * as Notifications from 'expo-notifications'
+import { Platform } from 'react-native'
 import { statusFromNotificationPermission, type PermissionStatus } from './permissionRules'
 
 // Reads what the phone says right now. Kept apart from permissionRules.ts so the pure rules can be unit-tested without native modules.
 export async function readNotificationStatus(): Promise<PermissionStatus> {
   try {
-    return statusFromNotificationPermission(await Notifications.getPermissionsAsync())
+    return statusFromNotificationPermission(await Notifications.getPermissionsAsync(), Platform.OS === 'android' ? Number(Platform.Version) : undefined)
   } catch {
     return 'ask'
   }

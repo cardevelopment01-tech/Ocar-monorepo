@@ -30,4 +30,9 @@ describe('missingRequired / statusFromNotificationPermission', () => {
     expect(statusFromNotificationPermission({ granted: false, canAskAgain: true, status: 'undetermined' })).toBe('ask')
     expect(statusFromNotificationPermission({ granted: false, canAskAgain: false, status: 'denied' })).toBe('blocked')
   })
+  it('on Android 12 and older there is no dialog, so notifications that are off can only be fixed in Settings', () => {
+    expect(statusFromNotificationPermission({ granted: false, canAskAgain: true, status: 'undetermined' }, 31)).toBe('blocked')
+    expect(statusFromNotificationPermission({ granted: true, canAskAgain: true, status: 'granted' }, 31)).toBe('granted')
+    expect(statusFromNotificationPermission({ granted: false, canAskAgain: true, status: 'undetermined' }, 34)).toBe('ask')
+  })
 })

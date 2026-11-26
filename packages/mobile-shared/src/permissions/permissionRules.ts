@@ -32,7 +32,11 @@ export function shouldShowSetup(rows: readonly PermissionRowModel[], snoozedAt: 
   return snoozedAt === null || now - snoozedAt >= SETUP_SNOOZE_MS
 }
 
-export function statusFromNotificationPermission(p: { granted: boolean; canAskAgain: boolean; status: string }): PermissionStatus {
+/** Android 13 (API 33) added the notification dialog. On older Android there is nothing to ask: if notifications are off, only Settings turns them on. */
+export const NOTIFICATION_DIALOG_MIN_API = 33
+
+export function statusFromNotificationPermission(p: { granted: boolean; canAskAgain: boolean; status: string }, androidApi?: number): PermissionStatus {
   if (p.granted) return 'granted'
+  if (androidApi !== undefined && androidApi < NOTIFICATION_DIALOG_MIN_API) return 'blocked'
   return p.canAskAgain && p.status !== 'denied' ? 'ask' : 'blocked'
 }
