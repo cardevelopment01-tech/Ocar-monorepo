@@ -1,3 +1,4 @@
+import { sendReservationReminders } from '@/modules/rides/reservation.service'
 import { Worker } from 'bullmq'
 import { redisConnection, QUEUE_NAMES } from '@/jobs/queues'
 import * as repo from '@/modules/rides/rides.repository'
@@ -64,6 +65,7 @@ export const schedulerWorker = new Worker(
       }
       // Reminders ride on the same minute sweep; a failure here must never stop dispatch above, so it is isolated.
       await sendAdvanceReminders().catch((err: unknown) => log.error({ err }, 'advance reminders failed'))
+      await sendReservationReminders().catch((err: unknown) => log.error({ err }, 'reservation reminders failed'))
       return
     }
 

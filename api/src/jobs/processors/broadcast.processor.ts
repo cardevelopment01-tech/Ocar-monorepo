@@ -1,3 +1,4 @@
+import { dropReservationClashes, rideDurationMin } from '@/modules/rides/reservation.service'
 import { socketEvents, hasLiveDriverSocket } from '@/websocket/socket.server'
 import * as repo from '@/modules/rides/rides.repository'
 import { pool } from '@/db/client'
@@ -278,6 +279,11 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
     if (left.size > 0) drivers = drivers.filter((d) => !left.has(d.driver_id.toString()))
   }
 
+  // A driver holding a reserved booking is only offered rides that finish (drive to the pickup + the ride + a buffer) before it.
+  if (drivers.length > 0) {
+    drivers = await dropReservationClashes(drivers, rideDurationMin(ride), rideId)
+  }
+
   // What this round skipped, for the record (spread also skips busy drivers and those already offered).
   const skippedCounts = { liveSkipped: liveDriverIds.length, declinedSkipped: declinedDriverIds.length, otherSkipped: spread ? new Set([...busyDriverIds, ...offeredBefore.map((o) => o.driver_id)].map(String)).size : 0 }
 
@@ -459,6 +465,7 @@ export async function processBroadcast(data: BroadcastJobData): Promise<void> {
         offerRound:        data.broadcastRound,
         stopCount:         stops.length,
       }
+      if (ride.scheduled_for) requestPayload['scheduledFor'] = new Date(ride.scheduled_for).toISOString()
       if (ride.return_at)   requestPayload['returnAt']  = ride.return_at
       if (ride.trip_hours)  requestPayload['tripHours'] = Number(ride.trip_hours)
       if (categoryName)     requestPayload['rideCategoryName'] = categoryName

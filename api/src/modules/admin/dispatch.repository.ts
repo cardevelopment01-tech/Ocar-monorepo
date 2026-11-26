@@ -77,6 +77,8 @@ export async function listDispatchQueue(f: DispatchFilters) {
        r.id::text, r.status, r.ride_type, r.trip_mode, r.is_return_cab,
        r.origin_address, r.destination_address, r.requested_at, r.scheduled_for,
        ${DISPATCH_AT} AS dispatch_at, ram.status AS advance_status,
+       ram.claimed_by_driver_id::text AS reserved_driver_id, rdrv.full_name AS reserved_driver_name, rdrv.phone AS reserved_driver_phone,
+       ram.reservation_confirmed_at, ram.reservation_risk_alerted_at,
        u.name AS user_name, u.phone AS user_phone,
        vc.display_name AS category_name, oc.name AS city_name,
        COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
@@ -89,6 +91,7 @@ export async function listDispatchQueue(f: DispatchFilters) {
      JOIN rides r ON r.id = pg.id
      JOIN users u ON u.id = r.user_id
      LEFT JOIN ride_advance_meta ram ON ram.ride_id = r.id
+     LEFT JOIN drivers rdrv ON rdrv.id = ram.claimed_by_driver_id
      LEFT JOIN vehicle_categories vc ON vc.id = r.category_id
      LEFT JOIN cities oc ON oc.id = r.origin_city_id
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id

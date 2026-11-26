@@ -30,6 +30,8 @@ import { tellBooked, tellNoDrivers, keepSearchingAdvance, broadcastDataFor, redi
 import { getAdvancePolicy, lateCancelFee, lateCancelSummary } from '@/lib/advance-policy'
 import { advanceBookingEventsTotal } from '@/observability/metrics'
 import { pickupWaitFloor } from '@/lib/pickup-wait-floor'
+import { reservationClash } from '@/modules/rides/reservation.service'
+import { fmtClock } from '@/lib/ist-format'
 import { enqueueBreadcrumb, flushBreadcrumbs } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
 import { publishNearbyCar } from '@/websocket/nearby-bus'
@@ -1250,6 +1252,11 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
     throw httpError(422, 'Driver operating city is not set', 'CITY_NOT_ASSIGNED')
   }
   const billingMode = cityRes.rows[0].billing_mode
+
+  const clash = await reservationClash(driverId, rideId)
+  if (clash) {
+    throw httpError(409, `This ride would run into your booking at ${fmtClock(clash.at)}. Skip it so you are ready on time.`, 'RESERVATION_CLASH')
+  }
 
   const cancelledDriverIds = await repo.acceptAssignment(rideId, driverId, billingMode)
   if (cancelledDriverIds === false) {
@@ -2853,6 +2860,12 @@ export async function adminAssignDriver(
   }
   if (!candidate.eligible && !overrideEligibility) {
     throw Object.assign(new Error('Driver is not eligible — pass overrideEligibility to force'), { httpStatus: 422 })
+  }
+
+  // Putting a driver on a ride that runs into their reserved booking is a decision for ops, so it needs the override.
+  if (!overrideEligibility) {
+    const clash = await reservationClash(driverId, rideId)
+    if (clash) throw httpError(409, `This driver is reserved for a booking at ${fmtClock(clash.at)} that this ride would run into`, 'RESERVATION_CLASH')
   }
 
   let workingRide = ride
