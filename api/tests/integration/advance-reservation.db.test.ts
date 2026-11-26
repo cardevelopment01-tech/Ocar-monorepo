@@ -51,7 +51,7 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
   async function purge(): Promise<void> {
     const drivers = [driverA, driverB].filter(Boolean).map(String)
     const rides = `SELECT id FROM rides WHERE user_id = $1`
-    for (const t of ['ride_assignments', 'ride_status_history', 'ride_advance_meta', 'fare_snapshots', 'driver_reservation_events']) {
+    for (const t of ['ride_assignments', 'ride_status_history', 'ride_advance_meta', 'fare_snapshots', 'driver_reservation_events', 'ride_eta_snapshots']) {
       await pool.query(`DELETE FROM ${t} WHERE ride_id IN (${rides})`, [userId])
     }
     await pool.query('DELETE FROM rides WHERE user_id = $1', [userId])
