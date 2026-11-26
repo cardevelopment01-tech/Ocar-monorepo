@@ -23,6 +23,8 @@ export const RESERVATION_READY_MIN = 30
 export const RESERVATION_LATE_RELEASE_MIN = 60
 /** The driver is nudged to set off this long before the latest moment they could still reach the pickup on time. */
 export const HEAD_OUT_BUFFER_MIN = 10
+/** A far-off driver's booking goes live no earlier than this long before the pickup. */
+export const GO_LIVE_MAX_LEAD_MIN = 90
 /** "Start now" is only offered inside this window before the pickup. */
 export const START_NOW_WINDOW_MIN = 60
 /** Used only to turn "distance to the pickup" into minutes for the fit check; deliberately slow so the check errs on the safe side. */
@@ -305,14 +307,35 @@ export async function listDriverReservations(driverId: bigint): Promise<DriverRe
       canConfirm: r.confirmed_at == null, handBackIsLate: at.getTime() - now < RESERVATION_LATE_RELEASE_MIN * 60_000,
       pickupLat: r.lat, pickupLng: r.lng, driveMin,
       leaveBy: leaveByFor(at, driveMin).toISOString(),
-      opensAt: new Date(at.getTime() - r.buffer_min * 60_000).toISOString(),
+      opensAt: new Date(at.getTime() - goLiveLeadMin(driveMin, r.buffer_min) * 60_000).toISOString(),
     }
   })
+}
+
+/**
+ * How long before the pickup a reserved booking should go live (the ride opens, the rider sees the driver on the way): the normal lead (15 min), or the
+ * drive plus a 10 min buffer when that is longer, never more than 90 min. A driver whose position is unknown keeps the normal lead.
+ */
+export function goLiveLeadMin(driveMin: number | null, baseLeadMin: number): number {
+  if (driveMin == null) return baseLeadMin
+  return Math.min(GO_LIVE_MAX_LEAD_MIN, Math.max(baseLeadMin, driveMin + HEAD_OUT_BUFFER_MIN))
 }
 
 /** The time to set off for a pickup: the drive (or an assumed 30 min when the position is unknown) plus a buffer, before the pickup. */
 export function leaveByFor(pickup: Date, driveMin: number | null): Date {
   return new Date(pickup.getTime() - ((driveMin ?? 30) + HEAD_OUT_BUFFER_MIN) * 60_000)
+}
+
+/**
+ * Rides that were a reserved booking of this driver and have just been handed to them (accepted in the last 20 minutes, the trip not started). The app opens
+ * each one once, so a booking that went live between two refreshes still takes the driver to the ride.
+ */
+export async function listStartedBookings(driverId: bigint): Promise<{ rideId: string }[]> {
+  const res = await pool.query<{ ride_id: string }>(
+    `SELECT r.id::text AS ride_id FROM ride_advance_meta ram JOIN rides r ON r.id = ram.ride_id
+      WHERE ram.claimed_by_driver_id = $1 AND r.driver_id = $1 AND r.status = 'accepted' AND r.accepted_at > now() - interval '20 minutes'
+      ORDER BY r.accepted_at DESC LIMIT 5`, [driverId])
+  return res.rows.map((r) => ({ rideId: r.ride_id }))
 }
 
 export async function confirmReservation(driverId: bigint, rideId: bigint): Promise<{ confirmed: true }> {
@@ -490,4 +513,30 @@ export async function startReservation(driverId: bigint, rideId: bigint, dispatc
   if (after.rows[0]?.driver_id !== driverId.toString()) throw httpErr(409, 'Could not start this booking right now', 'START_FAILED')
   count('reservation_started_early')
   return { started: true }
+}
+
+// ── Go live early for a far-off driver (60 s sweep) ─────────────────────────
+
+/**
+ * A reserved booking goes live when the driver would have to set off (the drive plus a buffer), if that is earlier than the normal 15 minutes before the
+ * pickup. The normal dispatch sweep still runs for everything at its usual time; this only brings a far driver's booking forward. `dispatch` is the
+ * normal dispatch of a booking, which is safe to run twice.
+ */
+export async function dispatchReservedRidesDue(dispatch: (rideId: string) => Promise<void>, nowMs = Date.now()): Promise<number> {
+  const rows = await pool.query<{ ride_id: string; scheduled_for: Date; dist: string | null; buffer_min: number }>(
+    `SELECT ram.ride_id::text AS ride_id, r.scheduled_for, ram.dispatch_buffer_minutes AS buffer_min, ST_Distance(r.origin, s.location)::text AS dist
+       FROM ride_advance_meta ram JOIN rides r ON r.id = ram.ride_id
+       JOIN driver_location_snapshots s ON s.driver_id = ram.claimed_by_driver_id
+      WHERE r.status = 'scheduled' AND ram.claimed_by_driver_id IS NOT NULL
+        AND r.scheduled_for > now() AND r.scheduled_for <= now() + make_interval(mins => $1)
+      LIMIT 200`, [GO_LIVE_MAX_LEAD_MIN])
+  let n = 0
+  for (const row of rows.rows) {
+    const driveMin = Math.ceil(travelMinutes(Number(row.dist)))
+    const goLiveAt = new Date(row.scheduled_for).getTime() - goLiveLeadMin(driveMin, row.buffer_min) * 60_000
+    if (goLiveAt > nowMs) continue
+    try { await dispatch(row.ride_id); n++ } catch (err) { log.error({ err, rideId: row.ride_id }, 'early go-live failed') }
+  }
+  if (n > 0) count('early_go_live')
+  return n
 }

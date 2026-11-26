@@ -9,7 +9,7 @@ import { withTripWindow } from '@/lib/trip-window'
 import { requireSupportedApp } from '@/modules/app-version/app-version.routes'
 import * as service from './rides.service'
 import { rescheduleAdvanceRide } from './advance.service'
-import { listDriverReservations, confirmReservation, declineReservation, startReservation } from './reservation.service'
+import { listDriverReservations, listStartedBookings, confirmReservation, declineReservation, startReservation } from './reservation.service'
 import { processDispatchScheduled } from '@/jobs/processors/dispatch-scheduled.processor'
 import * as repo from './rides.repository'
 import * as paymentsService from '@/modules/payments/payments.service'
@@ -251,7 +251,7 @@ router.get('/nearby-drivers', authenticate(), async (req, res, next) => {
 
 // Bookings an admin reserved for this driver. Must sit above GET /:id.
 router.get('/reservations', authenticate(), onlyDriver, async (req, res, next) => {
-  try { res.json({ reservations: await listDriverReservations(req.driver!.id) }) } catch (err) { next(err) }
+  try { res.json({ reservations: await listDriverReservations(req.driver!.id), started: await listStartedBookings(req.driver!.id) }) } catch (err) { next(err) }
 })
 router.get('/:id', authenticate(), async (req, res, next) => {
   try {

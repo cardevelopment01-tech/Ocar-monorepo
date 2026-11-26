@@ -37,17 +37,6 @@ export function inLabel(pickupMs: number, nowMs: number): string {
   return m === 0 ? `in ${h}h` : `in ${h}h ${m}m`
 }
 
-/**
- * A booking that was on the list and is gone now, close to its pickup time, has most likely just been handed to this driver as their ride
- * (the other way it leaves the list is being given back or taken off them, which happens by the driver's own tap or well ahead of time).
- * Returns that booking's id, so the app can check for an active ride and open it.
- */
-export function bookingThatStarted(prev: { rideId: string; pickupMs: number } | null, list: { rideId: string }[], nowMs: number): string | null {
-  if (!prev || list.some((r) => r.rideId === prev.rideId)) return null
-  const left = prev.pickupMs - nowMs
-  return left <= 20 * MIN && left >= -15 * MIN ? prev.rideId : null
-}
-
 /** The one line a driver should read for a booking in this phase. */
 export function guidance(phase: BookingPhase, confirmed: boolean): string {
   if (phase === 'due') return 'Your booking time has come. Stay online; it is about to reach you.'

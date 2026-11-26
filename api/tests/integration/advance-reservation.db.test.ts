@@ -396,4 +396,69 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
       await expect(svc.startReservation(driverB, second, dispatch)).rejects.toMatchObject({ code: 'DRIVER_BUSY' })
     })
   })
+
+  describe('go live early for a far-off driver', () => {
+    // Also frees the driver from any ride an earlier test left running on them.
+    const clearB = async () => {
+      await pool.query('UPDATE ride_advance_meta SET claimed_by_driver_id = NULL WHERE claimed_by_driver_id = $1', [driverB])
+      await pool.query("UPDATE ride_assignments SET status = 'cancelled' WHERE driver_id = $1 AND status = 'accepted'", [driverB])
+      await pool.query("UPDATE rides SET status = 'cancelled' WHERE driver_id = $1 AND status IN ('accepted', 'driver_arrived')", [driverB])
+    }
+    const place = async (lng: number) => {
+      await pool.query("UPDATE driver_sessions SET status = 'offline' WHERE driver_id = $1 AND status <> 'offline'", [driverB])
+      const veh = await pool.query<{ id: string }>('SELECT id FROM driver_vehicles WHERE driver_id = $1', [driverB])
+      const sid = (await pool.query<{ id: string }>("INSERT INTO driver_sessions (driver_id, vehicle_id, category_id, mode, status) VALUES ($1, $2, 2, 'standard', 'online') RETURNING id", [driverB, veh.rows[0]!.id])).rows[0]!.id
+      await pool.query(`INSERT INTO driver_location_snapshots (driver_id, session_id, location, is_available, recorded_at) VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3::float8, 20.3), 4326)::geography, true, now())
+                        ON CONFLICT (driver_id) DO UPDATE SET session_id = EXCLUDED.session_id, location = EXCLUDED.location, recorded_at = now()`, [driverB, sid, lng])
+    }
+
+    it('the lead is the normal 15 min, or the drive plus 10 min when longer, never more than 90, and the normal lead when the position is unknown', () => {
+      expect(svc.goLiveLeadMin(null, 15)).toBe(15)
+      expect(svc.goLiveLeadMin(3, 15)).toBe(15)        // near: 3 + 10 = 13 < 15
+      expect(svc.goLiveLeadMin(5, 15)).toBe(15)
+      expect(svc.goLiveLeadMin(25, 15)).toBe(35)
+      expect(svc.goLiveLeadMin(300, 15)).toBe(90)
+    })
+
+    it('the list and the admin queue both show the earlier go-live time for a far driver, the normal one for a near driver', async () => {
+      await clearB()
+      await place(85.8 + 0.09)                          // about 10 km away: about 24 min at 25 km/h
+      const id = await booking(120)
+      await svc.reserveDriver(id, driverB, adminId, null, true)
+      const r = (await svc.listDriverReservations(driverB)).find((x) => x.rideId === id.toString())!
+      const leadMin = (new Date(r.pickupAt).getTime() - new Date(r.opensAt).getTime()) / 60_000
+      expect(leadMin).toBe((r.driveMin as number) + 10)
+      expect(leadMin).toBeGreaterThan(15)
+      const q = await pool.query('SELECT scheduled_for FROM rides WHERE id = $1', [id])
+      const dispatch = await import('@/modules/admin/dispatch.repository')
+      const rows = (await dispatch.listDispatchQueue({ lane: 'scheduled', limit: 50, offset: 0 })).rows as { id: string; dispatch_at: Date }[]
+      const row = rows.find((x) => x.id === id.toString())!
+      expect((new Date(q.rows[0].scheduled_for).getTime() - new Date(row.dispatch_at).getTime()) / 60_000).toBe(leadMin)
+      await place(85.8)                                 // right at the pickup: back to the normal lead
+      const near = (await svc.listDriverReservations(driverB)).find((x) => x.rideId === id.toString())!
+      expect((new Date(near.pickupAt).getTime() - new Date(near.opensAt).getTime()) / 60_000).toBe(15)
+    })
+
+    it('opens the booking of a far-off driver early (and only theirs), and leaves a near driver alone until the usual time', async () => {
+      const { processDispatchScheduled } = await import('@/jobs/processors/dispatch-scheduled.processor')
+      const dispatch = (id: string) => processDispatchScheduled({ rideId: id })
+      await clearB()
+      await place(85.8 + 0.09)                          // far: lead is about 34 min
+      const far = await booking(30)                     // usual go-live would be in 15 min; the far lead is already past
+      await svc.reserveDriver(far, driverB, adminId, null, true)
+      expect(await svc.dispatchReservedRidesDue(dispatch)).toBeGreaterThanOrEqual(1)
+      expect((await pool.query('SELECT status, driver_id::text AS d FROM rides WHERE id = $1', [far])).rows[0]).toEqual({ status: 'accepted', d: driverB.toString() })
+      // the driver's app is told this booking has started, so it can open the ride even if it never saw the booking go live
+      expect((await svc.listStartedBookings(driverB)).map((x) => x.rideId)).toEqual([far.toString()])
+      expect(await svc.listStartedBookings(driverA)).toEqual([])
+
+      await pool.query("UPDATE rides SET status = 'cancelled' WHERE id = $1", [far])
+      await clearB()
+      await place(85.8)                                 // near: normal 15 min lead
+      const near = await booking(30)
+      await svc.reserveDriver(near, driverB, adminId, null, true)
+      await svc.dispatchReservedRidesDue(dispatch)
+      expect((await pool.query('SELECT status FROM rides WHERE id = $1', [near])).rows[0].status).toBe('scheduled')
+    })
+  })
 })

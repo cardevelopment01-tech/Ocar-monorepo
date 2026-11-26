@@ -11,8 +11,9 @@ const REFRESH_MS = 60_000
  * an admin reserves (or takes back) shows up without the driver doing anything. A failed refresh keeps what is on screen.
  * `now` ticks every 30 s so "in 24 min" and the phase move on their own.
  */
-export function useReservations(): { reservations: Reservation[]; loading: boolean; error: boolean; now: number; refresh: () => Promise<void> } {
+export function useReservations(): { reservations: Reservation[]; started: { rideId: string }[]; loading: boolean; error: boolean; now: number; refresh: () => Promise<void> } {
   const [reservations, setReservations] = useState<Reservation[]>([])
+  const [started, setStarted] = useState<{ rideId: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [now, setNow] = useState(() => Date.now())
@@ -20,9 +21,10 @@ export function useReservations(): { reservations: Reservation[]; loading: boole
 
   const refresh = useCallback(async () => {
     try {
-      const list = await fetchReservations()
+      const { reservations: list, started: began } = await fetchReservations()
       if (!alive.current) return
       setReservations(list)
+      setStarted(began)
       setError(false)
     } catch (err) {
       if (!alive.current) return
@@ -42,5 +44,5 @@ export function useReservations(): { reservations: Reservation[]; loading: boole
     return () => { alive.current = false; clearInterval(poll); clearInterval(tick); sub.remove() }
   }, [refresh])
 
-  return { reservations, loading, error, now, refresh }
+  return { reservations, started, loading, error, now, refresh }
 }

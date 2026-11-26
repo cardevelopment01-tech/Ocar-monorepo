@@ -1,9 +1,15 @@
 import { api } from '@/services/api'
 import type { Reservation } from './types'
 
-export async function fetchReservations(): Promise<Reservation[]> {
-  const res = await api.get<{ reservations: Reservation[] }>('/api/v1/rides/reservations')
-  return res.data.reservations
+export type ReservationsResponse = {
+  reservations: Reservation[]
+  /** Rides that were this driver's reserved bookings and have just been handed to them (an older server omits it). */
+  started: { rideId: string }[]
+}
+
+export async function fetchReservations(): Promise<ReservationsResponse> {
+  const res = await api.get<{ reservations: Reservation[]; started?: { rideId: string }[] }>('/api/v1/rides/reservations')
+  return { reservations: res.data.reservations, started: res.data.started ?? [] }
 }
 
 export async function confirmReservation(rideId: string): Promise<void> {

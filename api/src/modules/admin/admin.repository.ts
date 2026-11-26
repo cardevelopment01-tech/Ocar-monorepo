@@ -12,6 +12,7 @@ import {
 import { invalidate, cachedRead } from "@/lib/cache/reference-cache";
 import { RATE_CARD_CACHE_TTL_SECONDS } from "@/constants/limits";
 import { logger } from "@/lib/logger";
+import { RESERVED_DISPATCH_AT } from "./dispatch.repository";
 import { hasApprovedRequiredDocs, docIssueExistsSql } from "@/modules/drivers/drivers.repository";
 import { REQUIRED_IDENTITY_DOCS, REQUIRED_VEHICLE_DOCS, sqlList, sqlVehicleDocApplies } from "@/modules/drivers/required-docs";
 import { invalidateSurgeCache } from "@/modules/pricing/pricing.repository";
@@ -2388,7 +2389,7 @@ export async function getAdminRideById(rideId: bigint) {
        r.sos_triggered, r.sos_triggered_at,
        r.user_id::text AS user_id, r.driver_id::text AS driver_id,
        r.scheduled_for,
-       COALESCE(r.scheduled_for - (ram.dispatch_buffer_minutes * interval '1 minute'), r.requested_at) AS dispatch_at,
+       ${RESERVED_DISPATCH_AT} AS dispatch_at,
        ram.claimed_by_driver_id::text AS reserved_driver_id, rdrv.full_name AS reserved_driver_name, rdrv.phone AS reserved_driver_phone,
        ram.reservation_confirmed_at, ram.reservation_risk_alerted_at,
        (SELECT count(*)::int FROM driver_reservation_events e WHERE e.driver_id = ram.claimed_by_driver_id
@@ -2417,6 +2418,7 @@ export async function getAdminRideById(rideId: bigint) {
      LEFT JOIN driver_vehicles dv ON dv.id = r.vehicle_id
      LEFT JOIN ride_advance_meta ram ON ram.ride_id = r.id
      LEFT JOIN drivers rdrv ON rdrv.id = ram.claimed_by_driver_id
+     LEFT JOIN driver_location_snapshots rsnap ON rsnap.driver_id = ram.claimed_by_driver_id
      LEFT JOIN vehicle_categories vc ON vc.id = r.category_id
      LEFT JOIN cities oc ON oc.id = r.origin_city_id
      LEFT JOIN cities dc ON dc.id = r.destination_city_id
