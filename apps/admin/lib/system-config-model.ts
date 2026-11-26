@@ -66,6 +66,7 @@ const META: Record<string, Meta> = {
   kyc_reminder_day_1:    { group: 'onboarding', title: 'First reminder', help: 'Days after the driver’s last step. Must be before the second.', suffix: ' days' },
   kyc_reminder_day_2:    { group: 'onboarding', title: 'Second reminder', help: 'Days after the driver’s last step. Must be before the third.', suffix: ' days' },
   kyc_reminder_day_3:    { group: 'onboarding', title: 'Last reminder', help: 'Days after the driver’s last step. Must be before the pause day.', suffix: ' days' },
+  kyc_banner_base_url:   { group: 'onboarding', kind: 'text', title: 'Reminder picture folder', help: 'Public https folder holding kyc-step-0.png to kyc-step-3.png (no trailing slash). Leave empty to send reminders without a picture.' },
   kyc_pause_day:         { group: 'onboarding', title: 'Pause the application', help: 'Days after the driver’s last step when reminders stop. Nothing is deleted; they can resume any time.', suffix: ' days' },
 
   driver_warning_suspend_threshold: { group: 'drivers', title: 'Warnings before auto-suspension', help: 'Warnings inside the window that automatically suspend a driver.', suffix: ' warnings' },

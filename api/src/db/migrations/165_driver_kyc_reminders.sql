@@ -19,6 +19,7 @@ INSERT INTO system_config (key, value, value_type, description) VALUES
   ('kyc_reminder_day_1',    '1',      'integer', 'Days after a driver''s last progress before the first reminder (1 to 30).'),
   ('kyc_reminder_day_2',    '4',      'integer', 'Days after a driver''s last progress before the second reminder (1 to 30).'),
   ('kyc_reminder_day_3',    '8',      'integer', 'Days after a driver''s last progress before the last reminder (1 to 30).'),
+  ('kyc_banner_base_url',  '',       'string',  'Public https folder holding the reminder pictures (kyc-step-0.png to kyc-step-3.png), no trailing slash. Empty sends reminders without a picture.'),
   ('kyc_pause_day',         '10',     'integer', 'Days after a driver''s last progress when the application is paused and reminders stop (1 to 30). Nothing is deleted.')
 ON CONFLICT (key) DO NOTHING;
 

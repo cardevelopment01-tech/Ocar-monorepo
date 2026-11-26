@@ -71,3 +71,13 @@ describe('onboarding reminder settings', () => {
     expect(kycDayOrderError('commission_percent', '5', cur)).toBeNull() // other keys are not ours
   })
 })
+
+describe('reminder picture folder', () => {
+  it('is empty or a public https folder with no trailing slash', () => {
+    expect(validateConfigBounds('kyc_banner_base_url', '')).toBeNull()
+    expect(validateConfigBounds('kyc_banner_base_url', 'https://ocarindia.com/push')).toBeNull()
+    expect(validateConfigBounds('kyc_banner_base_url', 'http://ocarindia.com/push')).not.toBeNull()
+    expect(validateConfigBounds('kyc_banner_base_url', 'https://ocarindia.com/push/')).not.toBeNull()
+    expect(validateConfigBounds('kyc_banner_base_url', 'https://localhost/push')).not.toBeNull()
+  })
+})

@@ -152,6 +152,8 @@ export function validateConfigBounds(key: string, value: string): string | null 
   if (key === 'dispatch_spread_city_ids' && !CITY_LIST_RE.test(value)) return 'value must be empty or city ids separated by commas, e.g. 1,2'
   if (VERSION_KEY_RE.test(key) && !VERSION_VALUE_RE.test(value)) return 'value must look like 1.2.3'
 
+  if (key === 'kyc_banner_base_url' && value !== '' && !/^https:\/\/[^\s/]+\.[^\s/]+(\/[^\s]*)?[^\s/]$/.test(value)) return 'must be empty or a public https folder link with no trailing slash'
+
   const bounds = BOUNDS[key]
   if (!bounds) return null
   const n = Number(value)

@@ -101,6 +101,16 @@ describe.skipIf(!url)('onboarding reminders on a real database', () => {
     expect((await report.listKycReminderReport({ result: 'no_device' }, NOW)).rows.map((r) => r.driverId)).toContain(noDevice)
     await pool.query('DELETE FROM notification_logs WHERE owner_type = $1 AND owner_id = ANY($2::bigint[])', ['driver', [reached, noDevice, back]])
   })
+  it('attaches the step picture only when a picture folder is configured', async () => {
+    await driver('+919999001301', { updatedAgoDays: 1.2 }) // two steps done: documents
+    await svc.sendKycReminders(NOW)
+    expect((notify.notifyOwner.mock.calls[0]![0] as { imageUrl?: string }).imageUrl).toBeUndefined()
+    await pool.query('DELETE FROM driver_kyc_reminder_sends WHERE driver_id IN (SELECT id FROM drivers WHERE phone = $1)', ['+919999001301'])
+    notify.notifyOwner.mockClear()
+    cfg.values = { kyc_reminders_enabled: 'true', kyc_banner_base_url: 'https://ocarindia.example/push' }
+    await svc.sendKycReminders(NOW)
+    expect((notify.notifyOwner.mock.calls[0]![0] as { imageUrl?: string }).imageUrl).toBe('https://ocarindia.example/push/kyc-step-2.png')
+  })
   it('stops once the application is paused', async () => {
     await driver('+919999001107', { updatedAgoDays: 11 })
     expect(await svc.sendKycReminders(NOW)).toBe(0)

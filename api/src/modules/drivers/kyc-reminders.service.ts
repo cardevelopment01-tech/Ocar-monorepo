@@ -29,6 +29,7 @@ export async function sendKycReminders(now = new Date()): Promise<number> {
 
   const days: [number, number, number] = [await numberConfig('kyc_reminder_day_1', 1), await numberConfig('kyc_reminder_day_2', 4), await numberConfig('kyc_reminder_day_3', 8)]
   const pauseDay = await numberConfig('kyc_pause_day', 10)
+  const bannerBase = (await getConfigValue('kyc_banner_base_url', '')).trim()
 
   const rows = await pool.query<{ id: string; onboarding_step: string; updated_at: Date; sent: number }>(
     `SELECT d.id::text, d.onboarding_step, d.updated_at,
@@ -56,7 +57,7 @@ export async function sendKycReminders(now = new Date()): Promise<number> {
       const slug = `kyc_reminder_${n}${done === 0 ? '_new' : ''}`
       const msg = await renderTemplate(slug, 'push', { headline: HEADLINE[done]!, nextAction: NEXT_ACTION[row.onboarding_step]!, pauseDate })
       const note = await notifyOwner({ ownerType: 'driver', ownerId: BigInt(row.id), type: 'kyc_reminder', title: msg.subject ?? 'Finish your Ocar application', body: msg.body,
-        payload: { reminder: String(n), step: row.onboarding_step } })
+        payload: { reminder: String(n), step: row.onboarding_step }, ...(bannerBase ? { imageUrl: `${bannerBase}/kyc-step-${done}.png` } : {}) })
       await pool.query('UPDATE driver_kyc_reminder_sends SET notification_id = $2::bigint WHERE id = $1', [claim.rows[0]!.id, note.id])
       sent++
     } catch (err) {
