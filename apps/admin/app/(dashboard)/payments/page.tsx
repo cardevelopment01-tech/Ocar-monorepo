@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { IndianRupee } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
+import { useCsvExport, ExportStatus, OPS_ROLES, FINANCE_ROLES } from '@/lib/use-csv-export'
 import FilterBar from '@/components/ui/FilterBar'
 import { adminPaymentApi, type AdminPaymentItem } from '@/lib/admin-api'
 import { grossOf, rupees } from '@/lib/payment-amounts'
@@ -51,6 +52,7 @@ export default function PaymentsPage() {
 
   const [search, setSearch] = useState('')
   const [channelFilter, setChannelFilter] = useState('')
+  const exp = useCsvExport('/api/v1/admin/payments/export.csv', FINANCE_ROLES)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Only the newest request may write state (see rides page).
   const requestId = useRef(0)
@@ -152,6 +154,7 @@ export default function PaymentsPage() {
             search={search}
             onSearch={setSearch}
             searchPlaceholder="Search by user or driver name…"
+            {...(exp.allowed ? { onExport: () => void exp.run({ channel: channelFilter, search: debouncedSearch }, 'payment'), exporting: exp.exporting } : {})}
             filters={[{
               key: 'channel', label: 'All Channels',
               options: [
@@ -164,6 +167,7 @@ export default function PaymentsPage() {
               onChange: (v) => { setChannelFilter(v); setPage(1) },
             }]}
           />
+          <ExportStatus result={exp.result} />
         </div>
         {loading
           ? <table className="w-full"><tbody><SkeletonRows cols={12} /></tbody></table>

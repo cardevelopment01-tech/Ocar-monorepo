@@ -3,6 +3,7 @@ import * as service from "./admin.service";
 import { createHttpError, httpError } from "@/lib/errors";
 import { adminDocUploadSchema, uploadDriverDocumentForDriver } from "./admin-doc-upload.service";
 import { AppErrors } from "@/constants/errors";
+import { EXPORT_MAX_ROWS, exportDate, exportPhone, sendCsvExport } from "@/lib/csv-export";
 import * as sosService from "@/modules/safety/sos.service";
 import * as disputeService from "@/modules/safety/disputes.service";
 import * as adminAuditService from "@/modules/admin-audit/admin-audit.service";
@@ -36,6 +37,47 @@ export async function getDrivers(
       q.limit = parseInt(req.query["limit"] as string, 10);
     const result = await service.listDrivers(q);
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function exportDriversCsv(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const q: { status?: string; search?: string; city?: string; vehicle?: string } = {};
+    for (const k of ["status", "search", "city", "vehicle"] as const) {
+      const v = req.query[k];
+      if (typeof v === "string" && v) q[k] = v;
+    }
+    const { filters, rows } = await service.exportDrivers(q, EXPORT_MAX_ROWS + 1);
+    await sendCsvExport(req, res, {
+      entity: "drivers",
+      targetTable: "drivers",
+      filters: { ...q, resolved: filters },
+      rows,
+      columns: [
+        { header: "Driver code", value: (r) => r.code },
+        { header: "Name", value: (r) => r.full_name },
+        { header: "Phone", value: (r) => exportPhone(r.phone) },
+        { header: "Email", value: (r) => r.email },
+        { header: "Status", value: (r) => r.status },
+        { header: "Onboarding step", value: (r) => r.onboarding_step },
+        { header: "City", value: (r) => r.city_name },
+        { header: "Vehicle plate", value: (r) => r.number_plate },
+        { header: "Vehicle", value: (r) => r.vehicle_name },
+        { header: "Category", value: (r) => r.vehicle_category },
+        { header: "Docs submitted", value: (r) => r.docs_submitted },
+        { header: "Docs approved", value: (r) => r.docs_approved },
+        { header: "Docs pending review", value: (r) => r.docs_pending },
+        { header: "Document issues", value: (r) => r.doc_issues },
+        { header: "Signed up (UTC)", value: (r) => exportDate(r.created_at) },
+        { header: "Waiting for approval since (UTC)", value: (r) => exportDate(r.queued_at) },
+      ],
+    });
   } catch (err) {
     next(err);
   }

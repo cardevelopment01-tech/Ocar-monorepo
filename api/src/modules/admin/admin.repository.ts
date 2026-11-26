@@ -344,6 +344,84 @@ export async function listDrivers(
   return { rows, total: parseInt(totalRes.rows[0].total as string, 10), summary, facets };
 }
 
+export interface DriverExportRow {
+  code: string;
+  full_name: string | null;
+  phone: string;
+  email: string | null;
+  status: string;
+  onboarding_step: string;
+  city_name: string | null;
+  number_plate: string | null;
+  vehicle_name: string | null;
+  vehicle_category: string | null;
+  docs_submitted: number;
+  docs_approved: number;
+  docs_pending: number;
+  doc_issues: string;
+  created_at: string;
+  queued_at: string | null;
+}
+
+// Same WHERE as the list (so the file matches the screen), no paging. `max` is the caller's cap + 1.
+export async function exportDrivers(
+  filters: DriverListFilters,
+  max: number,
+): Promise<DriverExportRow[]> {
+  const main = buildDriverWhere(filters);
+  const res = await pool.query(
+    `SELECT d.id, d.code, d.phone, d.full_name, d.email, d.status, d.onboarding_step, d.created_at,
+            CASE WHEN d.status = 'pending_approval' THEN COALESCE(
+              (SELECT MAX(h.created_at) FROM driver_status_history h WHERE h.driver_id = d.id AND h.to_status = 'pending_approval'),
+              d.created_at) END AS queued_at,
+            c.name AS city_name, v.number_plate, v.vehicle_name, vc.display_name AS vehicle_category,
+            (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id) AS docs_submitted,
+            (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'approved') AS docs_approved,
+            ${docIssuesSql()} AS has_doc_issue,
+            CASE WHEN d.status IN ${DOCS_REVIEW_STATUSES_SQL} THEN
+              (SELECT COUNT(*) FROM driver_documents dd WHERE dd.driver_id = d.id AND dd.status = 'pending'
+                 AND dd.doc_type::text IN (${sqlList(REQUIRED_IDENTITY_DOCS)}))
+              + (SELECT COUNT(*) FROM driver_vehicle_documents dvd JOIN driver_vehicles dv ON dv.id = dvd.vehicle_id
+                 WHERE dv.driver_id = d.id AND dvd.status = 'pending' AND ${sqlVehicleDocApplies('dv', 'dvd')} AND dvd.doc_type::text IN (${sqlList(REQUIRED_VEHICLE_DOCS)}))
+            ELSE 0 END AS docs_pending
+       ${DRIVER_LIST_FROM}
+       ${main.where}
+       ORDER BY ${filters.status === "pending_approval" ? "queued_at ASC, d.id ASC" : "d.created_at DESC"}
+       LIMIT $${main.params.length + 1}`,
+    [...main.params, max],
+  );
+
+  // Reasons only for the flagged rows. Chunks of 10, not all at once: "Blocked by docs" can flag thousands and the pool is small.
+  const reasons = new Map<number, string>();
+  const flagged = res.rows.flatMap((r, i) => (r.has_doc_issue ? [i] : []));
+  for (let k = 0; k < flagged.length; k += 10) {
+    await Promise.all(
+      flagged.slice(k, k + 10).map(async (i) => {
+        reasons.set(i, (await findDocIssues(BigInt(res.rows[i].id as string))).map((x) => x.short).join("; "));
+      }),
+    );
+  }
+
+  return res.rows.map((r, i) => ({
+    code: r.code as string,
+    full_name: r.full_name as string | null,
+    phone: r.phone as string,
+    email: r.email as string | null,
+    status: r.status as string,
+    onboarding_step: r.onboarding_step as string,
+    city_name: r.city_name as string | null,
+    number_plate: r.number_plate as string | null,
+    vehicle_name: r.vehicle_name as string | null,
+    vehicle_category: r.vehicle_category as string | null,
+    docs_submitted: parseInt(r.docs_submitted as string, 10),
+    docs_approved: parseInt(r.docs_approved as string, 10),
+    docs_pending: parseInt(r.docs_pending as string, 10),
+    doc_issues: reasons.get(i) ?? "",
+    created_at: r.created_at as string,
+    queued_at: (r.queued_at as string | null) ?? null,
+  }));
+}
+
 export async function getDriverById(
   id: bigint,
 ): Promise<AdminDriverDetail | null> {

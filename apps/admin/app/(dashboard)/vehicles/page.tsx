@@ -1,4 +1,5 @@
 'use client'
+import { useCsvExport, ExportStatus, ExportButton, OPS_ROLES, FINANCE_ROLES } from '@/lib/use-csv-export'
 import React, { useState, useEffect, useCallback } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Car, Tag, Layers, FileText, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
@@ -598,6 +599,7 @@ function FleetTab() {
   const [retry, setRetry] = useState(0)
   const [statusFilter, setStatusFilter] = useState('')
   const [blacklistTarget, setBlacklistTarget] = useState<FleetVehicle | null>(null)
+  const exp = useCsvExport('/api/v1/admin/vehicles/fleet/export.csv', OPS_ROLES)
   const [actionLoading, setActionLoading] = useState(false)
 
   const load = useCallback(async () => {
@@ -641,6 +643,8 @@ function FleetTab() {
       <div className="admin-card">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-bold text-text-primary">Fleet</h2>
+          <div className="flex items-center gap-2">
+          {exp.allowed && <ExportButton exporting={exp.exporting} onClick={() => void exp.run({ status: statusFilter }, 'vehicle')} />}
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
             className="border border-border rounded-xl px-3 py-2 text-sm bg-surface-2 focus:outline-none">
             <option value="">All Statuses</option>
@@ -649,7 +653,9 @@ function FleetTab() {
             <option value="blacklisted">Blacklisted</option>
             <option value="inactive">Inactive</option>
           </select>
+          </div>
         </div>
+        <ExportStatus result={exp.result} />
         <div className="overflow-x-auto">
           <table className="data-table">
             <thead><tr>
@@ -722,6 +728,7 @@ function DocumentsTab() {
   const [retryP, setRetryP] = useState(0)
   const [retryE, setRetryE] = useState(0)
   const [rejectTarget, setRejectTarget] = useState<PendingVehicleDoc | null>(null)
+  const exp = useCsvExport('/api/v1/admin/vehicles/documents/pending/export.csv', OPS_ROLES)
   const [actionLoading, setActionLoading] = useState(false)
 
   useEffect(() => {
@@ -757,7 +764,11 @@ function DocumentsTab() {
     <div className="space-y-6">
       {/* Pending review */}
       <div className="admin-card">
-        <h2 className="text-base font-bold text-text-primary mb-1">Pending Review</h2>
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <h2 className="text-base font-bold text-text-primary">Pending Review</h2>
+          {exp.allowed && <ExportButton exporting={exp.exporting} onClick={() => void exp.run({}, 'document')} />}
+        </div>
+        <ExportStatus result={exp.result} />
         {!loadingP && pending.length > 0 && (
           <div className="bg-warning-light border border-warning/20 rounded-xl px-4 py-2.5 mb-3 text-sm font-semibold text-warning">
             ⚡ {pending.length} document{pending.length > 1 ? 's' : ''} awaiting review

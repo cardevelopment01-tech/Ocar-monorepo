@@ -4,6 +4,7 @@ import { AlertTriangle, Clock, CheckCircle, Zap } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
+import { useCsvExport, ExportStatus, OPS_ROLES, FINANCE_ROLES } from '@/lib/use-csv-export'
 import FilterBar from '@/components/ui/FilterBar'
 import SlideOver from '@/components/ui/SlideOver'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -45,6 +46,7 @@ export default function DisputesPage() {
   const [loading,      setLoading]      = useState(true)
   const [search,       setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const exp = useCsvExport('/api/v1/admin/safety/disputes/export.csv', OPS_ROLES)
   const [selected,     setSelected]     = useState<Dispute | null>(null)
   const [outcome,      setOutcome]      = useState('')
   const [notes,        setNotes]        = useState('')
@@ -225,6 +227,7 @@ export default function DisputesPage() {
             search={search}
             onSearch={setSearch}
             searchPlaceholder="Search by ID, name, or ride code…"
+            {...(exp.allowed ? { onExport: () => void exp.run({ status: statusFilter }, 'dispute'), exporting: exp.exporting } : {})}
             filters={[{
               key: 'status', label: 'All Statuses',
               options: [
@@ -239,6 +242,7 @@ export default function DisputesPage() {
               onChange: setStatusFilter,
             }]}
           />
+          <ExportStatus result={exp.result} />
         </div>
         <DataTable
           columns={columns}

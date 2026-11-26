@@ -5,6 +5,7 @@ import { Wallet } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import DataTable from '@/components/ui/DataTable'
+import { useCsvExport, ExportStatus, ExportButton, FINANCE_ROLES } from '@/lib/use-csv-export'
 import {
   payoutsApi,
   type SettlementBatchSummary,
@@ -15,6 +16,7 @@ import {
 } from '@/lib/payouts-api'
 
 export default function PayoutsPage() {
+  const exp = useCsvExport('/api/v1/admin/payouts/export.csv', FINANCE_ROLES) // the page itself is finance-only
   const [confirm, setConfirm] = useState<null | 'hold' | 'release' | 'adjust' | 'pan-verify' | 'pan-unverify'>(null)
 
   // --- Batches ---
@@ -273,7 +275,11 @@ export default function PayoutsPage() {
 
       {/* Batches */}
       <div className="admin-card">
-        <p className="text-sm font-semibold text-text-primary mb-3">Settlement Batches</p>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <p className="text-sm font-semibold text-text-primary">Settlement Batches</p>
+          <ExportButton exporting={exp.exporting} onClick={() => void exp.run({}, 'batch')} />
+        </div>
+        <ExportStatus result={exp.result} />
         <DataTable
           columns={batchColumns as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
           data={batches as unknown as Record<string, unknown>[]}
@@ -283,9 +289,12 @@ export default function PayoutsPage() {
 
         {selected && (
           <div className="mt-5 pt-4 border-t border-border-light">
-            <p className="text-sm font-semibold text-text-primary mb-3">
-              {selected.period_from} → {selected.period_to} — settlements
-            </p>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <p className="text-sm font-semibold text-text-primary">
+                {selected.period_from} → {selected.period_to} — settlements
+              </p>
+              <ExportButton exporting={exp.exporting} onClick={() => void exp.run({ periodFrom: selected.period_from, periodTo: selected.period_to }, 'settlement')} />
+            </div>
             <DataTable
               columns={settlementColumns as unknown as { key: string; header: string; render?: (row: Record<string, unknown>) => React.ReactNode }[]}
               data={rows as unknown as Record<string, unknown>[]}

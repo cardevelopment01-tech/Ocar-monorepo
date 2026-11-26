@@ -56,7 +56,7 @@ export interface AuditEntry {
 const log = logger.child({ module: 'audit' })
 
 // Actions worth a push to every super admin the moment they happen.
-const RISKY = /^(drivers\.delete|admins\.|admin_totp\.disabled|system_config\.|maintenance_mode\.|audit_log\.export|analytics_export$)|balance|force-resolve|rate-cards\.create|reset-2fa|sign-out|\.role\./
+const RISKY = /^(drivers\.delete|admins\.|admin_totp\.disabled|system_config\.|maintenance_mode\.|audit_log\.export|analytics_export$)|\.export$|balance|force-resolve|rate-cards\.create|reset-2fa|sign-out|\.role\./
 export function isRiskyAction(action: string, outcome: AuditOutcome = 'success'): boolean {
   return outcome === 'success' && RISKY.test(action)
 }

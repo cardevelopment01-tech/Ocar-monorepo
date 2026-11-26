@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { Car, MapPin, Activity, XCircle, Wallet, CalendarClock, AlertTriangle, RefreshCw, Headset, Phone } from 'lucide-react'
 import StatusPill from '@/components/ui/StatusPill'
 import DataTable from '@/components/ui/DataTable'
+import { useCsvExport, ExportStatus, OPS_ROLES } from '@/lib/use-csv-export'
 import FilterBar from '@/components/ui/FilterBar'
 import StatCard from '@/components/ui/StatCard'
 import { adminRideApi, type AdminRideItem, type AdminRideStats } from '@/lib/admin-api'
@@ -63,6 +64,16 @@ function RidesPageContent() {
   const [dateFrom, setDateFrom] = useState(searchParams.get('from') ?? '')
   const [dateTo, setDateTo] = useState(searchParams.get('to') ?? '')
   const [live, setLive] = useState(true)
+  const exp = useCsvExport('/api/v1/admin/rides/export.csv', OPS_ROLES)
+  // Rides are the biggest table, so the file always needs a window: the chosen dates, or the last 30 days when none is set.
+  const exportRides = () => {
+    const noRange = !dateFrom && !dateTo
+    void exp.run({
+      status: statusFilter, ride_type: rideTypeFilter, search: debouncedSearch, cityId: cityFilter,
+      cashDiscrepancy: cashFlagFilter ? 'true' : undefined, attention: attentionOnly ? 'true' : undefined,
+      dateFrom: dateFrom || istDay(30), dateTo: dateTo || istDay(0),
+    }, 'ride', noRange ? 'last 30 days; pick dates to change' : undefined)
+  }
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null)
   const [cities, setCities] = useState<AdminCity[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -342,6 +353,7 @@ function RidesPageContent() {
             search={search}
             onSearch={setSearch}
             searchPlaceholder="Name, phone or ride ID…"
+            {...(exp.allowed ? { onExport: exportRides, exporting: exp.exporting } : {})}
             actions={
               <>
                 <input
@@ -400,6 +412,7 @@ function RidesPageContent() {
               },
             ]}
           />
+          <ExportStatus result={exp.result} />
         </div>
         {loadError && (
           <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger-light px-3 py-2 text-xs text-danger">
