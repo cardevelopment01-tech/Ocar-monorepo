@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Ocar Rider",
+    "name": "Ocar",
     "slug": "ocar-rider",
     "scheme": "ocarrider",
     "experiments": { "reactCompiler": true },
