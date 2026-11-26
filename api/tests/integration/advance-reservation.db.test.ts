@@ -296,6 +296,8 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
       expect(await svc.dispatchToReservedDriver(id, (d, r) => acceptRide(d, r), (a) => repo.createRideAssignment(a))).toBe(true)
       const r = (await pool.query('SELECT status, driver_id::text AS d FROM rides WHERE id = $1', [id])).rows[0]
       expect(r).toEqual({ status: 'accepted', d: driverB.toString() })
+      // the driver's open app is told (a push that opens the ride), the same way an admin force-assign does it
+      expect(notify.notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ ownerType: 'driver', ownerId: driverB, type: 'ride_force_assigned', rideId: id }))
       // the driver is now on this ride: a second booking handed to them in the same minute finds them busy and is released, never double-booked
       const second = await booking(10)
       await svc.reserveDriver(second, driverB, adminId, null, true)

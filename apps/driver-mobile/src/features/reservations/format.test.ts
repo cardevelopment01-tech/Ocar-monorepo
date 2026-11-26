@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { guidance, inLabel, phaseOf, whenLabel } from './format'
+import { bookingThatStarted, guidance, inLabel, phaseOf, whenLabel } from './format'
 
 const MIN = 60_000
 const now = new Date(2026, 10, 26, 14, 0, 0) // 26 Nov 2026, 2:00 PM local
@@ -47,5 +47,22 @@ describe('guidance', () => {
     expect(guidance('later', true)).toMatch(/finish in time/)
     expect(guidance('ready', true)).toMatch(/near the pickup/)
     expect(guidance('due', true)).toMatch(/time has come/)
+  })
+})
+
+describe('bookingThatStarted', () => {
+  const t = now.getTime()
+  const prev = { rideId: '7', pickupMs: t + 5 * MIN }
+  it('is the booking that left the list close to its pickup time', () => {
+    expect(bookingThatStarted(prev, [], t)).toBe('7')
+    expect(bookingThatStarted({ rideId: '7', pickupMs: t - 10 * MIN }, [{ rideId: '8' }], t)).toBe('7')
+  })
+  it('is nothing while it is still on the list, or when nothing was shown before', () => {
+    expect(bookingThatStarted(prev, [{ rideId: '7' }], t)).toBeNull()
+    expect(bookingThatStarted(null, [], t)).toBeNull()
+  })
+  it('is nothing for a booking that left long before its time (handed back or taken off) or long after', () => {
+    expect(bookingThatStarted({ rideId: '7', pickupMs: t + 3 * 60 * MIN }, [], t)).toBeNull()
+    expect(bookingThatStarted({ rideId: '7', pickupMs: t - 3 * 60 * MIN }, [], t)).toBeNull()
   })
 })

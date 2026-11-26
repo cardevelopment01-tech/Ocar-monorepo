@@ -36,7 +36,7 @@ export function UpcomingBookingCard({ reservation, extra, now, onPress }: Props)
       </View>
       <Text style={styles.when}>{whenLabel(new Date(pickupMs), new Date(now))}<Text style={styles.in}>  {inLabel(pickupMs, now)}</Text></Text>
       {reservation.pickup ? <Text style={styles.place} numberOfLines={1}>{reservation.pickup}</Text> : null}
-      <Text style={[styles.hint, urgent ? styles.hintUrgent : null]} numberOfLines={2}>{guidance(phase, reservation.confirmed)}</Text>
+      <Text style={[styles.hint, urgent ? styles.hintUrgent : null]} numberOfLines={3}>{guidance(phase, reservation.confirmed)}</Text>
       <View style={styles.footer}>
         <Text style={styles.footerText}>{extra > 0 ? `${extra} more booking${extra === 1 ? '' : 's'}` : 'View details'}</Text>
         <Feather name="chevron-right" size={14} color={colors.ink400} />

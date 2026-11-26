@@ -28,6 +28,8 @@ import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosit
 import { INITIAL_RECENTER, nextRecenter, type RecenterState } from '@/features/map/recenter'
 import { useReservations } from '@/features/reservations/useReservations'
 import { UpcomingBookingCard } from '@/features/reservations/UpcomingBookingCard'
+import { bookingThatStarted } from '@/features/reservations/format'
+import { fetchActiveRideForRelaunch } from '@/features/active-ride/relaunchApi'
 
 // Same fallback center as the web driver app's Home.tsx (Bhubaneswar) -- shown
 // until a real fix comes in, or forever if location is denied.
@@ -72,6 +74,16 @@ export default function HomeScreen() {
   // Bookings an admin reserved for this driver: the next one is shown on this screen so it is never forgotten.
   const bookings = useReservations()
   const nextBooking = bookings.reservations[0] ?? null
+  // When the next booking vanishes from the list right at its pickup time it has been handed to this driver: open the ride instead of leaving them on Home.
+  const lastBooking = useRef<{ rideId: string; pickupMs: number } | null>(null)
+  useEffect(() => {
+    const started = bookingThatStarted(lastBooking.current, bookings.reservations, Date.now())
+    lastBooking.current = nextBooking ? { rideId: nextBooking.rideId, pickupMs: new Date(nextBooking.pickupAt).getTime() } : lastBooking.current
+    if (!started) return
+    lastBooking.current = null
+    fetchActiveRideForRelaunch().then((ride) => { if (ride && ride.id === started) router.push(`/active-ride/${started}`) }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings.reservations])
   const socketConnected = useSocketConnected()
   const showReconnecting = isOnline && !socketConnected
   const documentGate = useDocumentGate()

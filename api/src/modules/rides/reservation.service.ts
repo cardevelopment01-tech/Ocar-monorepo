@@ -353,6 +353,11 @@ export async function dispatchToReservedDriver(
     await createOffer({ rideId, driverId, sessionId: BigInt(s!.session_id!), expiresAt: new Date(Date.now() + 60_000), broadcastRound: 0 })
     await accept(driverId, rideId)
     count('reserved_dispatch_accepted')
+    // The accept above tells the rider; the driver's open app learns of it the way it does for an admin force-assign: a push that opens the ride.
+    await notifyOwner({
+      ownerType: 'driver', ownerId: driverId, type: 'ride_force_assigned', title: 'Your booking is starting',
+      body: `The booking at ${fmtClock(at)} is yours. Tap to open the ride and head to the pickup.`, rideId, tag: `ride-${rideId}`,
+    }).catch((err: unknown) => log.error({ err, rideId: rideId.toString() }, 'driver hand-off notice failed'))
     return true
   } catch (err) {
     log.error({ err, rideId: rideId.toString() }, 'could not hand the booking to its reserved driver, searching instead')
