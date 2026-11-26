@@ -48,6 +48,12 @@ export function resolvePushRoute(data: Record<string, string> | undefined): stri
     case 'trip_window_ended':
       return rideId ? `/active-ride/${rideId}` : null
 
+    // A booking an admin reserved for this driver, its reminders, and it being taken off them: the upcoming-bookings screen has all three.
+    case 'advance_reserved':
+    case 'advance_reserve_reminder':
+    case 'advance_reserve_released':
+      return '/reservations'
+
     // The ride is over; nothing to open on it. Home shows the driver's current state.
     case 'ride_cancelled':
       return '/(tabs)/home'

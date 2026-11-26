@@ -5,7 +5,6 @@ import { fmtClock, fmtPickup } from '@/lib/ist-format'
 import { advanceBookingEventsTotal } from '@/observability/metrics'
 import { notifyOwner, notifyAllAdmins } from '@/modules/notifications/notifications.service'
 import type { NotificationType } from '@/modules/notifications/notifications.registry'
-import { socketEvents } from '@/websocket/socket.server'
 
 const log = logger.child({ module: 'advance-reservations' })
 const count = (event: string) => advanceBookingEventsTotal.inc({ event })
@@ -193,7 +192,6 @@ export async function reserveDriver(rideId: bigint, driverId: bigint, adminId: b
   }
   const m = reservationMessages.reserved(at)
   await tellDriver('advance_reserved', driverId, rideId, m.title, m.body)
-  socketEvents.sendRideRequest(driverId.toString(), { reservation: true }) // nudges an open app to refresh the upcoming list
   return { success: true, replaced }
 }
 

@@ -26,6 +26,8 @@ import { MARKER_DP } from '@/features/map/vehicleKind'
 import { fetchReverseGeocode } from '@/features/map/api'
 import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosition'
 import { INITIAL_RECENTER, nextRecenter, type RecenterState } from '@/features/map/recenter'
+import { useReservations } from '@/features/reservations/useReservations'
+import { UpcomingBookingCard } from '@/features/reservations/UpcomingBookingCard'
 
 // Same fallback center as the web driver app's Home.tsx (Bhubaneswar) -- shown
 // until a real fix comes in, or forever if location is denied.
@@ -67,6 +69,9 @@ export default function HomeScreen() {
       .finally(() => { retryingTracking.current = false })
   }
   const walletGate = useWalletGate()
+  // Bookings an admin reserved for this driver: the next one is shown on this screen so it is never forgotten.
+  const bookings = useReservations()
+  const nextBooking = bookings.reservations[0] ?? null
   const socketConnected = useSocketConnected()
   const showReconnecting = isOnline && !socketConnected
   const documentGate = useDocumentGate()
@@ -323,6 +328,15 @@ export default function HomeScreen() {
               <Feather name="chevron-right" size={14} color={colors.error} />
             </View>
           </Pressable>
+        ) : null}
+
+        {nextBooking ? (
+          <UpcomingBookingCard
+            reservation={nextBooking}
+            extra={bookings.reservations.length - 1}
+            now={bookings.now}
+            onPress={() => router.push('/reservations')}
+          />
         ) : null}
 
         {flow.error ? (
