@@ -16,6 +16,8 @@ import { vehicleCategoryApi, type VehicleCategory } from '@/lib/vehicle-api'
 import { cn } from '@/lib/utils'
 import { InitialsAvatar, fmt, docIssueBrief } from './shared'
 import { extractErrorMessage } from '@/lib/http-errors'
+import { downloadCsv } from '@/lib/csv-download'
+import { useAdminAuth } from '@/lib/auth-context'
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 
@@ -247,6 +249,25 @@ function DriversPageInner() {
   const inQueue = statusFilter === 'pending_approval'
   const tabOwnsStatus = inQueue || statusFilter === 'suspended' || statusFilter === 'docs_review' || statusFilter === 'doc_issues' // those are tabs, not dropdown options
   const hasFilters = cityIds.length > 0 || vehicleIds.length > 0 || !!statusFilter || !!urlSearch
+  // The file is the list you are looking at: same tab, search, city and vehicle filters. Whole-book phone numbers: super + ops only.
+  const { admin } = useAdminAuth()
+  const canExport = admin?.role === 'super_admin' || admin?.role === 'ops_admin'
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const runExport = async () => {
+    setExporting(true)
+    setExportError(null)
+    try {
+      const { rows } = await downloadCsv('/api/v1/admin/drivers/export.csv', {
+        status: statusFilter, search: urlSearch, city: cityParam, vehicle: vehicleParam,
+      })
+      setSuccessMsg(rows === null ? 'Export downloaded' : `Exported ${rows.toLocaleString('en-IN')} driver${rows === 1 ? '' : 's'}`)
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Export failed. Try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
   const clearFilters = () => { setSearch(''); setParams({ city: null, vehicle: null, status: null, q: null }) }
   const emptyMessage = inQueue && !urlSearch && !cityIds.length && !vehicleIds.length ? 'All caught up. No drivers are waiting for approval.' : !hasFilters ? 'No drivers yet' : 'No drivers' +
     (cityIds.length ? ` in ${cityIds.map(cityName).join(', ')}` : '') +
@@ -441,6 +462,7 @@ function DriversPageInner() {
             onSearch={setSearch}
             searchPlaceholder="Search by name, phone, code, or vehicle number…"
             wrapSearch
+            {...(canExport ? { onExport: () => void runExport(), exporting } : {})}
             leading={<>
               <MultiSelectFilter
                 label="City" options={cityOptions} selected={cityIds} searchable searchPlaceholder="Search cities…"
@@ -462,6 +484,7 @@ function DriversPageInner() {
               onChange: v => setParams({ status: v || null }),
             }]}
           />
+          {exportError && <p role="alert" className="text-xs font-medium text-danger">{exportError}</p>}
           {(cityIds.length > 0 || vehicleIds.length > 0) && (
             <div className="flex flex-wrap items-center gap-2">
               {cityIds.map(id => (

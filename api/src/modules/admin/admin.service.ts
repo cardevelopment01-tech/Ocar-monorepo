@@ -79,32 +79,31 @@ function parseIdList(raw: string | undefined, allowNone: boolean): { ids: number
   return out
 }
 
-export async function listDrivers(query: {
-  status?: string
-  search?: string
-  city?: string
-  vehicle?: string
-  page?: number
-  limit?: number
-}) {
+type DriverListQuery = { status?: string; search?: string; city?: string; vehicle?: string }
+
+// The list and the CSV export read the same filters, so the file always matches what is on screen.
+function driverFilters(query: DriverListQuery): Parameters<typeof repo.exportDrivers>[0] {
+  const city = parseIdList(query.city, true)
+  const vehicle = parseIdList(query.vehicle, false)
+  const f: Parameters<typeof repo.exportDrivers>[0] = {}
+  // 'docs_review' is a tab, not a driver status: active/suspended drivers with a required doc waiting for review.
+  if (query.status === 'docs_review') f.docsToReview = true
+  // 'doc_issues' is a tab too: active drivers a document keeps offline (expired / rejected / waiting for review / missing).
+  else if (query.status === 'doc_issues') f.docIssues = true
+  else if (query.status !== undefined) f.status = query.status
+  if (query.search !== undefined) f.search = query.search
+  if (city.ids.length) f.cityIds = city.ids
+  if (city.none) f.includeNoCity = true
+  if (vehicle.ids.length) f.categoryIds = vehicle.ids
+  return f
+}
+
+export async function listDrivers(query: DriverListQuery & { page?: number; limit?: number }) {
   const limit = Math.min(query.limit ?? 20, 100)
   const page  = Math.max(query.page ?? 1, 1)
   const offset = (page - 1) * limit
 
-  const city = parseIdList(query.city, true)
-  const vehicle = parseIdList(query.vehicle, false)
-
-  const repoQuery: Parameters<typeof repo.listDrivers>[0] = { limit, offset }
-  // 'docs_review' is a tab, not a driver status: active/suspended drivers with a required doc waiting for review.
-  if (query.status === 'docs_review') repoQuery.docsToReview = true
-  // 'doc_issues' is a tab too: active drivers a document keeps offline (expired / rejected / waiting for review / missing).
-  else if (query.status === 'doc_issues') repoQuery.docIssues = true
-  else if (query.status !== undefined) repoQuery.status = query.status
-  if (query.search !== undefined) repoQuery.search = query.search
-  if (city.ids.length) repoQuery.cityIds = city.ids
-  if (city.none) repoQuery.includeNoCity = true
-  if (vehicle.ids.length) repoQuery.categoryIds = vehicle.ids
-  const { rows, total, summary, facets } = await repo.listDrivers(repoQuery)
+  const { rows, total, summary, facets } = await repo.listDrivers({ ...driverFilters(query), limit, offset })
 
   return {
     drivers: rows,
@@ -112,6 +111,11 @@ export async function listDrivers(query: {
     summary,
     facets,
   }
+}
+
+export async function exportDrivers(query: DriverListQuery, max: number) {
+  const filters = driverFilters(query)
+  return { filters, rows: await repo.exportDrivers(filters, max) }
 }
 
 export async function getDriver(id: bigint) {

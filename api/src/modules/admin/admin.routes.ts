@@ -2,7 +2,7 @@ import { Router, IRouter } from 'express'
 import { authenticate } from '@/middleware/auth.middleware'
 import { requireAdmin } from '@/middleware/role.middleware'
 import { validate } from '@/middleware/validate.middleware'
-import { adminStepUpLimiter } from '@/middleware/rateLimit.middleware'
+import { adminStepUpLimiter, adminExportLimiter } from '@/middleware/rateLimit.middleware'
 import * as controller from './admin.controller'
 import * as lifecycle from './admin-lifecycle.controller'
 import { changeRoleSchema, removeAdminSchema, stepUpSchema } from './admin-lifecycle.controller'
@@ -44,6 +44,8 @@ router.get('/live-map/attention', requireAdmin('super_admin', 'ops_admin'), cont
 
 // ─── Drivers ──────────────────────────────────────────────────────────────────
 router.get('/drivers',               controller.getDrivers)
+// Whole-book copy of driver phone numbers: super + ops only, throttled, and audited (drivers.export). Must precede /drivers/:id.
+router.get('/drivers/export.csv',    requireAdmin('super_admin', 'ops_admin'), adminExportLimiter, controller.exportDriversCsv)
 router.get('/drivers/:id',           controller.getDriver)
 router.patch('/drivers/:id/status',  requireAdmin('super_admin', 'ops_admin'), controller.updateDriverStatus)
 router.patch('/drivers/:id/profile', requireAdmin('super_admin', 'ops_admin'), controller.updateDriverProfile)

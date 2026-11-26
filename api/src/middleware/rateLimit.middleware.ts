@@ -231,6 +231,8 @@ function payuSdkLimiter(prefix: string, max: number) {
   if (store !== undefined) options.store = store
   return rateLimit(options)
 }
+// Admin CSV exports copy a whole table of personal data, so they are capped per admin (3 a minute).
+export const adminExportLimiter = payuSdkLimiter('adminexport', 3)
 export const payuHashLimiter = payuSdkLimiter('payuhash', 60)
 export const payuConfirmLimiter = payuSdkLimiter('payuconfirm', 20)
 
