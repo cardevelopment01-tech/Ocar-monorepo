@@ -82,15 +82,19 @@ export async function dropReservationClashes<T extends { driver_id: bigint; dist
 
 /** For a single driver acting on a ride (accept tap, admin assignment): the reservation this ride would run into, or null. */
 export async function reservationClash(driverId: bigint, rideId: bigint, nowMs = Date.now()): Promise<ReservedSlot | null> {
-  const res = await pool.query<{ scheduled_for: Date | null; trip_hours: string | null; estimated_min: string | null; dist: string | null }>(
-    `SELECT r.scheduled_for, fs.trip_hours, fs.estimated_min,
-            ST_Distance(r.origin, s.location)::text AS dist
-       FROM rides r
-       LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
-       LEFT JOIN driver_location_snapshots s ON s.driver_id = $1
-      WHERE r.id = $2`,
-    [driverId, rideId],
-  ).catch(() => null)
+  // Fails open like the offer filter: if this lookup breaks, the accept / assignment goes ahead.
+  let res: { rows: { scheduled_for: Date | null; trip_hours: string | null; estimated_min: string | null; dist: string | null }[] } | undefined
+  try {
+    res = await pool.query<{ scheduled_for: Date | null; trip_hours: string | null; estimated_min: string | null; dist: string | null }>(
+      `SELECT r.scheduled_for, fs.trip_hours, fs.estimated_min,
+              ST_Distance(r.origin, s.location)::text AS dist
+         FROM rides r
+         LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id
+         LEFT JOIN driver_location_snapshots s ON s.driver_id = $1
+        WHERE r.id = $2`,
+      [driverId, rideId],
+    )
+  } catch (err) { log.error({ err }, 'reservation clash lookup failed, not blocking'); return null }
   const row = res?.rows[0]
   if (!row) return null
   // A booking being dispatched is judged on its own pickup time, not "starting now".
