@@ -28,3 +28,14 @@ describe('expo-speech patch', () => {
     expect(kt).toMatch(/setAudioAttributes\(/)
   })
 })
+
+// Value: protects=the alarm-volume patches above actually reach the phone; fails_when=autolinking.buildFromSource stops listing expo-audio or
+// expo-speech (Expo then links its prebuilt Android libraries and ignores the patched source, so the ring and the voice go back to the media
+// volume while the two tests above still pass); why_new=that is exactly what happened until this setting existed; seam=package.json;
+// no_claim=the audible result (verified on a device build).
+describe('alarm-volume patches are compiled in', () => {
+  it('package.json builds expo-audio and expo-speech from source', () => {
+    const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')) as { expo?: { autolinking?: { buildFromSource?: string[] } } }
+    expect(pkg.expo?.autolinking?.buildFromSource).toEqual(expect.arrayContaining(['expo-audio', 'expo-speech']))
+  })
+})
