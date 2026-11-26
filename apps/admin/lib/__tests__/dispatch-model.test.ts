@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtDuration, dispatchState, relativeTo, earlyAssignWarning } from '../dispatch-model'
+import { fmtDuration, dispatchState, relativeTo, earlyAssignWarning, reservationNote } from '../dispatch-model'
 
 const NOW = new Date('2026-11-23T10:00:00Z').getTime()
 const at = (minutesFromNow: number) => new Date(NOW + minutesFromNow * 60_000).toISOString()
@@ -48,6 +48,7 @@ describe('earlyAssignWarning', () => {
     const w = earlyAssignWarning({ status: 'scheduled', dispatch_at: at(300), scheduled_for: at(315) }, NOW)!
     expect(w).toMatch(/opens it for dispatch immediately/)
     expect(w).toMatch(/online right now/)
+    expect(w).toMatch(/Reserve/) // points at the better tool
     expect(w).toMatch(/5h/)
   })
   it('stays quiet when dispatch is imminent or has passed', () => {
@@ -57,5 +58,21 @@ describe('earlyAssignWarning', () => {
   it('never warns for a ride that is already in dispatch', () => {
     expect(earlyAssignWarning({ status: 'no_drivers', dispatch_at: at(-30), scheduled_for: null }, NOW)).toBeNull()
     expect(earlyAssignWarning({ status: 'requested', dispatch_at: at(-30), scheduled_for: null }, NOW)).toBeNull()
+  })
+})
+
+describe('reservationNote', () => {
+  const base = { reserved_driver_id: '9', reserved_driver_name: 'Ravi', scheduled_for: at(300) }
+  it('is null when nobody is reserved', () => {
+    expect(reservationNote({ reserved_driver_id: null }, NOW)).toBeNull()
+    expect(reservationNote({}, NOW)).toBeNull()
+  })
+  it('says confirmed (ok), or not confirmed yet (a warning far ahead, urgent inside the hour)', () => {
+    expect(reservationNote({ ...base, reservation_confirmed_at: at(-5) }, NOW)).toEqual({ text: 'Ravi reserved: confirmed', tone: 'ok' })
+    expect(reservationNote(base, NOW)).toEqual({ text: 'Ravi reserved: not confirmed yet', tone: 'warn' })
+    expect(reservationNote({ ...base, scheduled_for: at(45) }, NOW)?.tone).toBe('danger')
+  })
+  it('an at-risk alert outranks everything, even a confirmation', () => {
+    expect(reservationNote({ ...base, reservation_confirmed_at: at(-5), reservation_risk_alerted_at: at(-1) }, NOW)).toEqual({ text: 'Ravi reserved: at risk', tone: 'danger' })
   })
 })

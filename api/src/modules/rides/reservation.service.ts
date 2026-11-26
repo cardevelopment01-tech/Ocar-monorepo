@@ -4,6 +4,7 @@ import { recordAuditLog } from '@/lib/audit-log'
 import { fmtClock, fmtPickup } from '@/lib/ist-format'
 import { advanceBookingEventsTotal } from '@/observability/metrics'
 import { notifyOwner, notifyAllAdmins } from '@/modules/notifications/notifications.service'
+import * as repo from '@/modules/rides/rides.repository'
 import type { NotificationType } from '@/modules/notifications/notifications.registry'
 
 const log = logger.child({ module: 'advance-reservations' })
@@ -148,8 +149,8 @@ async function overlappingBooking(driverId: bigint, rideId: bigint, at: Date, du
 }
 
 export async function reserveDriver(rideId: bigint, driverId: bigint, adminId: bigint, ip: string | null = null, override = false): Promise<{ success: true; replaced: boolean }> {
-  const res = await pool.query<{ status: string; scheduled_for: Date | null; origin_city_id: string | null; trip_hours: string | null; estimated_min: string | null; prev: string | null; meta: string | null }>(
-    `SELECT r.status, r.scheduled_for, r.origin_city_id::text, fs.trip_hours, fs.estimated_min, ram.claimed_by_driver_id::text AS prev, ram.id::text AS meta
+  const res = await pool.query<{ status: string; category_id: string; scheduled_for: Date | null; origin_city_id: string | null; trip_hours: string | null; estimated_min: string | null; prev: string | null; meta: string | null }>(
+    `SELECT r.status, r.category_id::text, r.scheduled_for, r.origin_city_id::text, fs.trip_hours, fs.estimated_min, ram.claimed_by_driver_id::text AS prev, ram.id::text AS meta
        FROM rides r LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id LEFT JOIN ride_advance_meta ram ON ram.ride_id = r.id
       WHERE r.id = $1`, [rideId])
   const ride = res.rows[0]
@@ -162,6 +163,19 @@ export async function reserveDriver(rideId: bigint, driverId: bigint, adminId: b
   if (!d.rows[0]) throw httpErr(404, 'Driver not found')
   if (d.rows[0].status !== 'active') throw httpErr(422, 'Driver is not active', 'DRIVER_NOT_ACTIVE')
   if (ride.origin_city_id && d.rows[0].city_id !== ride.origin_city_id && !override) throw httpErr(422, 'Driver works in another city', 'DRIVER_OTHER_CITY')
+
+  // Same eligibility as assigning (vehicle category, wallet balance), except the driver does not have to be online: it is a booking for later.
+  // The category comes from the vehicle on file, since an offline driver has no session to read it from.
+  if (!override) {
+    const ok = await repo.getEligibleDriverCategoryIds(BigInt(ride.category_id))
+    const veh = await pool.query<{ category_id: string | null }>(
+      `SELECT category_id::text FROM driver_vehicles WHERE driver_id = $1 AND status = 'active' ORDER BY is_primary DESC LIMIT 1`, [driverId])
+    const cat = veh.rows[0]?.category_id
+    if (!cat || !ok.some((id) => id.toString() === cat)) throw httpErr(422, 'Driver has no active vehicle of the right category for this ride', 'DRIVER_NOT_ELIGIBLE')
+    const { getRideAssignCandidates } = await import('@/modules/rides/rides.service')
+    const cand = (await getRideAssignCandidates(rideId, { driverId })).find((c) => c.driver_id === driverId.toString())
+    if (cand && !cand.wallet_ok) throw httpErr(422, 'Driver cannot take rides with the current wallet or package balance', 'DRIVER_NOT_ELIGIBLE')
+  }
 
   const clash = await overlappingBooking(driverId, rideId, at, rideDurationMin(ride))
   if (clash && !override) {

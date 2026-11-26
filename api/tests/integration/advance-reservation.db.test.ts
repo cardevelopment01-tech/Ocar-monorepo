@@ -6,7 +6,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 const url = process.env['TEST_DATABASE_URL']
 
 const notify = vi.hoisted(() => ({ notifyOwner: vi.fn(async () => undefined), notifyAllAdmins: vi.fn(async () => undefined) }))
-vi.mock('@/modules/notifications/notifications.service', () => notify)
+// The real accept path also asks for other notifications: those are no-ops here.
+vi.mock('@/modules/notifications/notifications.service', () => new Proxy(notify, { get: (t, k) => (typeof k !== 'string' || k === 'then' || k === '__esModule' ? undefined : k in t ? (t as Record<string, unknown>)[k] : vi.fn(async () => undefined)) }))
 vi.mock('@/websocket/socket.server', () => ({ socketEvents: { sendRideRequest: vi.fn(), sendRideStatusUpdate: vi.fn(), sendDriverAssigned: vi.fn() } }))
 vi.mock('@/lib/audit-log', () => ({ recordAuditLog: vi.fn(async () => undefined) }))
 
@@ -32,22 +33,38 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
     for (const [phone, set] of [['+919999000322', 'A'], ['+919999000333', 'B']] as const) {
       const d = await pool.query<{ id: string }>(
         "INSERT INTO drivers (phone, status, city_id) VALUES ($1, 'active', 1) ON CONFLICT (phone) DO UPDATE SET status = 'active', city_id = 1 RETURNING id", [phone])
-      if (set === 'A') driverA = BigInt(d.rows[0]!.id); else driverB = BigInt(d.rows[0]!.id)
+      const id = BigInt(d.rows[0]!.id)
+      if (set === 'A') driverA = id; else driverB = id
+    }
+    await purge()
+    for (const id of [driverA, driverB]) {
+      await pool.query("INSERT INTO driver_vehicles (driver_id, category_id, status) VALUES ($1, 2, 'active')", [id])
+      // A funded wallet: reserving applies the same balance rule as assigning.
+      await pool.query("INSERT INTO driver_wallets (driver_id, balance) VALUES ($1, 5000) ON CONFLICT DO NOTHING", [id])
+      await pool.query("UPDATE driver_wallets SET balance = 5000, is_frozen = false WHERE driver_id = $1", [id])
     }
     const a = await pool.query<{ id: string }>("INSERT INTO admins (email, password_hash, role) VALUES ('reservation-test@example.com', 'x', 'super_admin') ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email RETURNING id")
     adminId = BigInt(a.rows[0]!.id)
   })
 
+  // Everything this file creates, including what an earlier failed run left behind (all of it hangs off these three accounts).
+  async function purge(): Promise<void> {
+    const drivers = [driverA, driverB].filter(Boolean).map(String)
+    const rides = `SELECT id FROM rides WHERE user_id = $1`
+    for (const t of ['ride_assignments', 'ride_status_history', 'ride_advance_meta', 'fare_snapshots', 'driver_reservation_events']) {
+      await pool.query(`DELETE FROM ${t} WHERE ride_id IN (${rides})`, [userId])
+    }
+    await pool.query('DELETE FROM rides WHERE user_id = $1', [userId])
+    if (drivers.length) {
+      await pool.query('DELETE FROM ride_assignments WHERE driver_id = ANY($1::bigint[])', [drivers])
+      await pool.query('DELETE FROM driver_sessions WHERE driver_id = ANY($1::bigint[])', [drivers])
+      await pool.query('DELETE FROM driver_vehicles WHERE driver_id = ANY($1::bigint[])', [drivers])
+    }
+  }
+
   afterAll(async () => {
     if (!pool) return
-    const ids = rideIds.map(String)
-    if (ids.length) {
-      await pool.query('DELETE FROM driver_reservation_events WHERE ride_id = ANY($1::bigint[])', [ids])
-      await pool.query('DELETE FROM ride_status_history WHERE ride_id = ANY($1::bigint[])', [ids])
-      await pool.query('DELETE FROM ride_advance_meta WHERE ride_id = ANY($1::bigint[])', [ids])
-      await pool.query('DELETE FROM fare_snapshots WHERE ride_id = ANY($1::bigint[])', [ids])
-      await pool.query('DELETE FROM rides WHERE id = ANY($1::bigint[])', [ids])
-    }
+    await purge()
     await pool.end()
   })
 
@@ -101,6 +118,17 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
     await pool.query("UPDATE drivers SET status = 'active', city_id = 2 WHERE id = $1", [driverB])
     await expect(svc.reserveDriver(ok, driverB, adminId)).rejects.toMatchObject({ code: 'DRIVER_OTHER_CITY' })
     await pool.query('UPDATE drivers SET city_id = 1 WHERE id = $1', [driverB])
+    // the wrong vehicle category (hatchback for a sedan booking), and no active vehicle at all
+    await pool.query('UPDATE driver_vehicles SET category_id = 5 WHERE driver_id = $1', [driverB])
+    await expect(svc.reserveDriver(ok, driverB, adminId)).rejects.toMatchObject({ httpStatus: 422, code: 'DRIVER_NOT_ELIGIBLE' })
+    await pool.query("UPDATE driver_vehicles SET category_id = 2, status = 'pending' WHERE driver_id = $1", [driverB])
+    await expect(svc.reserveDriver(ok, driverB, adminId)).rejects.toMatchObject({ code: 'DRIVER_NOT_ELIGIBLE' })
+    await pool.query("UPDATE driver_vehicles SET status = 'active' WHERE driver_id = $1", [driverB])
+    // an empty wallet is refused like it is for assigning
+    await pool.query('UPDATE driver_wallets SET balance = 0 WHERE driver_id = $1', [driverB])
+    await expect(svc.reserveDriver(ok, driverB, adminId)).rejects.toMatchObject({ code: 'DRIVER_NOT_ELIGIBLE' })
+    await pool.query('UPDATE driver_wallets SET balance = 5000 WHERE driver_id = $1', [driverB])
+    await expect(svc.reserveDriver(ok, driverB, adminId)).resolves.toMatchObject({ success: true }) // and an offline driver is fine
   })
 
   it('refuses a second booking that overlaps one the driver already holds, but allows it with the override and when there is enough gap', async () => {
@@ -139,6 +167,19 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
       expect(await svc.dropReservationClashes([near], 70)).toHaveLength(0)
       // far away: 25 km = 60 min drive + 20 + 20 = 100 > 90
       expect(await svc.dropReservationClashes([{ driver_id: driverA, distance_metres: 25_000 }], 20)).toHaveLength(0)
+    })
+
+    it('a single ride (accept tap, admin assignment) is judged the same way: refused when it would run into the reservation, fine when there is room', async () => {
+      await pool.query('UPDATE ride_advance_meta SET claimed_by_driver_id = NULL WHERE claimed_by_driver_id = $1', [driverB])
+      const reserved = await booking(45)
+      await svc.reserveDriver(reserved, driverB, adminId, null, true)
+      const asap = await booking(1, 40)
+      await pool.query("UPDATE rides SET scheduled_for = NULL, status = 'requested' WHERE id = $1", [asap])
+      expect(await svc.reservationClash(driverB, asap)).toMatchObject({ rideId: reserved.toString() })
+      await pool.query("UPDATE rides SET scheduled_for = now() + interval '200 minutes' WHERE id = $1", [reserved])
+      expect(await svc.reservationClash(driverB, asap)).toBeNull()
+      expect(await svc.reservationClash(driverA, asap)).toBeNull() // a driver with no reservation is never held back
+      await pool.query("UPDATE rides SET status = 'cancelled' WHERE id = $1", [asap])
     })
 
     it('a booking that is already reserved never clashes with itself', async () => {
@@ -240,6 +281,29 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
       const accept = vi.fn()
       expect(await svc.dispatchToReservedDriver(id, accept, vi.fn())).toBe(false)
       expect(accept).not.toHaveBeenCalled()
+    })
+
+    it('a reserved driver who is online and free gets the booking straight away, through the real accept path', async () => {
+      const { acceptRide } = await import('@/modules/rides/rides.service')
+      const veh = await pool.query<{ id: string }>("SELECT id FROM driver_vehicles WHERE driver_id = $1", [driverB])
+      await pool.query("UPDATE driver_sessions SET status = 'offline' WHERE driver_id = $1 AND status <> 'offline'", [driverB])
+      await pool.query("INSERT INTO driver_sessions (driver_id, vehicle_id, category_id, mode, status) VALUES ($1, $2, 2, 'standard', 'online')", [driverB, veh.rows[0]!.id])
+      // This driver's earlier bookings from the tests above would (rightly) block the accept; start clean.
+      await pool.query('UPDATE ride_advance_meta SET claimed_by_driver_id = NULL WHERE claimed_by_driver_id = $1', [driverB])
+      const id = await booking(10)
+      await svc.reserveDriver(id, driverB, adminId, null, true)
+      await pool.query("UPDATE rides SET status = 'requested' WHERE id = $1", [id])
+      expect(await svc.dispatchToReservedDriver(id, (d, r) => acceptRide(d, r), (a) => repo.createRideAssignment(a))).toBe(true)
+      const r = (await pool.query('SELECT status, driver_id::text AS d FROM rides WHERE id = $1', [id])).rows[0]
+      expect(r).toEqual({ status: 'accepted', d: driverB.toString() })
+      // the driver is now on this ride: a second booking handed to them in the same minute finds them busy and is released, never double-booked
+      const second = await booking(10)
+      await svc.reserveDriver(second, driverB, adminId, null, true)
+      await pool.query("UPDATE rides SET status = 'requested' WHERE id = $1", [second])
+      expect(await svc.dispatchToReservedDriver(second, (d, r2) => acceptRide(d, r2), (a) => repo.createRideAssignment(a))).toBe(false)
+      expect((await reservedOn(second)).d).toBeNull()
+      expect((await pool.query('SELECT event FROM driver_reservation_events WHERE ride_id = $1', [second])).rows[0].event).toBe('dropped_busy')
+      await pool.query("UPDATE rides SET status = 'cancelled' WHERE id IN ($1, $2)", [id, second]).catch(() => undefined)
     })
 
     it('an offline reserved driver loses the booking: released, recorded, driver and ops told, search carries on', async () => {

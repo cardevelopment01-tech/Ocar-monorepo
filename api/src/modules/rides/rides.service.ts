@@ -30,7 +30,7 @@ import { tellBooked, tellNoDrivers, keepSearchingAdvance, broadcastDataFor, redi
 import { getAdvancePolicy, lateCancelFee, lateCancelSummary } from '@/lib/advance-policy'
 import { advanceBookingEventsTotal } from '@/observability/metrics'
 import { pickupWaitFloor } from '@/lib/pickup-wait-floor'
-import { reservationClash } from '@/modules/rides/reservation.service'
+import { reservationClash, lateReleaseCounts } from '@/modules/rides/reservation.service'
 import { fmtClock } from '@/lib/ist-format'
 import { enqueueBreadcrumb, flushBreadcrumbs } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
@@ -2824,7 +2824,7 @@ export async function getRideAssignCandidates(
   const categoryIds = await repo.getEligibleDriverCategoryIds(ride.category_id)
   const minWalletBalance = await getMinWalletBalance()
 
-  return repo.getAssignCandidates({
+  const list = await repo.getAssignCandidates({
     cityId: ride.origin_city_id,
     rideLat: ride.origin_lat,
     rideLng: ride.origin_lng,
@@ -2832,6 +2832,9 @@ export async function getRideAssignCandidates(
     minWalletBalance,
     ...opts,
   })
+  // How often each driver handed a reserved booking back late in the last 30 days (a warning for ops, not a rule).
+  const late = await lateReleaseCounts(list.map((c) => BigInt(c.driver_id))).catch(() => new Map<string, number>())
+  return list.map((c) => ({ ...c, late_releases: late.get(c.driver_id) ?? 0 }))
 }
 
 export async function adminAssignDriver(
