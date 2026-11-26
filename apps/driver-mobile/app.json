@@ -4,7 +4,7 @@
                  "slug":  "ocar-driver",
                  "scheme":  "ocardriver",
     "experiments": { "reactCompiler": true },
-                 "version":  "1.4.0",
+                 "version":  "1.5.0",
   "runtimeVersion": { "policy": "fingerprint" },
   "updates": { "fallbackToCacheTimeout": 0 },
                  "orientation":  "portrait",
