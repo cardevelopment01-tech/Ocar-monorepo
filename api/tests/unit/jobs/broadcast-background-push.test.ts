@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { getRoute } = vi.hoisted(() => ({ getRoute: vi.fn() }))
 vi.mock('@/modules/geo/geo.service', () => ({ getRoute }))
+vi.mock('@/modules/rides/reservation.service', () => ({ dropReservationClashes: async (d: unknown[]) => d, rideDurationMin: () => 60 }))
 vi.mock('@/websocket/socket.server', () => ({ socketEvents: { sendRideRequest: vi.fn() } }))
 vi.mock('@/modules/payments/payments.service', () => ({ getMinWalletBalance: vi.fn().mockResolvedValue(0) }))
 vi.mock('@/modules/notifications/notifications.service', () => ({ sendRideRequestPushOnce: vi.fn().mockResolvedValue(undefined), notifyRideEvent: vi.fn().mockResolvedValue(undefined) }))

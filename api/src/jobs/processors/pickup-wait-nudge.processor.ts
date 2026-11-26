@@ -3,6 +3,7 @@ import { renderTemplate } from '@/modules/notifications/templates.service'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
 import { PICKUP_WAIT_RADIUS_METRES } from '@/constants/limits'
+import { pickupWaitFloor } from '@/lib/pickup-wait-floor'
 import { logger } from '@/lib/logger'
 
 const log = logger.child({ module: 'pickup-wait-nudge-processor' })
@@ -40,7 +41,7 @@ export async function processPickupWaitNudge(data: PickupWaitNudgeJobData): Prom
   }
 
   const startedAt = await repo.getPickupWaitStartedAt(
-    rideId, new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+    rideId, new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES, ...pickupWaitFloor(ride))
   if (!startedAt) { await checkAgain(RECHECK_MS); return }
 
   const remainingMs = new Date(startedAt).getTime() + terms.freeMin * 60_000 - Date.now()

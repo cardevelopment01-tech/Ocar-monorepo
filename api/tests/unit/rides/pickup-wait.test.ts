@@ -91,6 +91,17 @@ describe('verifyStartOTP records the wait at the pickup', () => {
     expect(repo.getPickupWaitMinutes).toHaveBeenCalledWith(303n, new Date(ARRIVED), 20.3, 85.8, PICKUP_WAIT_RADIUS_METRES)
   })
 
+  it('an advance ride: the clock cannot start before the pickup time the rider booked (a driver who is early has not made them wait)', async () => {
+    const booked = '2026-10-01T06:05:00.000Z'
+    vi.mocked(repo.getRideCoreForDriverAction).mockResolvedValue({
+      id: BigInt(303), driver_id: 9, user_id: 42, status: 'driver_arrived', driver_arrived_at: ARRIVED, scheduled_for: booked,
+      start_otp_hash: 'HASH', origin_lat: 20.3, origin_lng: 85.8, dest_lat: null, dest_lng: null,
+    } as never)
+    vi.mocked(repo.getPickupWaitMinutes).mockResolvedValue(0)
+    await verifyStartOTP(BigInt(9), BigInt(303), '1234')
+    expect(repo.getPickupWaitMinutes).toHaveBeenCalledWith(303n, new Date(ARRIVED), 20.3, 85.8, PICKUP_WAIT_RADIUS_METRES, new Date(booked))
+  })
+
   it('charges nothing when no position was ever recorded at the pickup (an "arrived" tap from far away)', async () => {
     vi.mocked(repo.getPickupWaitMinutes).mockResolvedValue(null)
     await verifyStartOTP(BigInt(9), BigInt(303), '1234')

@@ -61,6 +61,16 @@ describe('processPickupWaitNudge: tell the rider once when the free minutes are 
     expect(repo.getPickupWaitStartedAt).toHaveBeenCalledWith(303n, new Date(ARRIVED), 20.3, 85.8, PICKUP_WAIT_RADIUS_METRES)
   })
 
+  it('an advance ride: counts the free minutes from the booked pickup time, so an early driver does not trigger the "waiting" note', async () => {
+    const booked = '2026-10-01T06:05:00.000Z'
+    vi.mocked(repo.getRideCoreById).mockResolvedValue(arrivedRide({ scheduled_for: booked }) as never)
+    vi.mocked(repo.getPickupWaitStartedAt).mockResolvedValue(booked) // the clock starts at the booked time, later than the arrival
+    await processPickupWaitNudge(job())
+    expect(repo.getPickupWaitStartedAt).toHaveBeenCalledWith(303n, new Date(ARRIVED), 20.3, 85.8, PICKUP_WAIT_RADIUS_METRES, new Date(booked))
+    expect(notifyOwner).not.toHaveBeenCalled()
+    expect(add()).toHaveBeenCalled() // looks again when the free minutes (from the booked time) really end
+  })
+
   it('does not push yet when the clock started after the tap: it comes back when the free minutes really end', async () => {
     // The driver reached the pickup 1 minute ago, so 2 of the 3 free minutes are left.
     vi.mocked(repo.getPickupWaitStartedAt).mockResolvedValue('2026-10-01T05:59:00.000Z')

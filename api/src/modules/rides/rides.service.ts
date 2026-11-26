@@ -26,9 +26,12 @@ import { normalizeCode, reserveRedemption } from '@/modules/offers/offers.reposi
 import type { FareEstimateRequest } from '@/modules/pricing/pricing.types'
 import { queues, QUEUE_NAMES } from '@/jobs/queues'
 import { expireRideRequests } from '@/modules/rides/request-expiry'
-import { tellBooked, tellNoDrivers, keepSearchingAdvance, broadcastDataFor } from '@/modules/rides/advance.service'
+import { tellBooked, tellNoDrivers, keepSearchingAdvance, broadcastDataFor, redispatchAfterDriverCancel } from '@/modules/rides/advance.service'
 import { getAdvancePolicy, lateCancelFee, lateCancelSummary } from '@/lib/advance-policy'
 import { advanceBookingEventsTotal } from '@/observability/metrics'
+import { pickupWaitFloor } from '@/lib/pickup-wait-floor'
+import { reservationClash, lateReleaseCounts } from '@/modules/rides/reservation.service'
+import { fmtClock } from '@/lib/ist-format'
 import { enqueueBreadcrumb, flushBreadcrumbs } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
 import { publishNearbyCar } from '@/websocket/nearby-bus'
@@ -692,13 +695,13 @@ export function publicDriverRef(driverId: string): string {
  */
 export async function withPickupWait<T extends {
   id?: unknown; status?: string; driver_arrived_at?: string | Date | null
-  origin_lat?: number | null; origin_lng?: number | null; pickup_free_wait_min?: number | null
+  origin_lat?: number | null; origin_lng?: number | null; pickup_free_wait_min?: number | null; scheduled_for?: string | Date | null
 }>(ride: T): Promise<T & { pickup_wait_started_at?: string | null }> {
   if (ride.status !== 'driver_arrived' || ride.pickup_free_wait_min == null || !ride.driver_arrived_at
     || ride.origin_lat == null || ride.origin_lng == null) return ride
   try {
     const startedAt = await repo.getPickupWaitStartedAt(
-      BigInt(ride.id as string | number | bigint), new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+      BigInt(ride.id as string | number | bigint), new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES, ...pickupWaitFloor(ride))
     return { ...ride, pickup_wait_started_at: startedAt }
   } catch (err) {
     log.warn({ err }, 'pickup wait start not added to the ride')
@@ -1250,6 +1253,11 @@ export async function acceptRide(driverId: bigint, rideId: bigint) {
   }
   const billingMode = cityRes.rows[0].billing_mode
 
+  const clash = await reservationClash(driverId, rideId)
+  if (clash) {
+    throw httpError(409, `This ride would run into your booking at ${fmtClock(clash.at)}. Skip it so you are ready on time.`, 'RESERVATION_CLASH')
+  }
+
   const cancelledDriverIds = await repo.acceptAssignment(rideId, driverId, billingMode)
   if (cancelledDriverIds === false) {
     throw Object.assign(new Error('Ride no longer available'), { httpStatus: 409 })
@@ -1476,13 +1484,13 @@ export async function startReturn(driverId: bigint, rideId: bigint) {
 // free window (terms pinned at booking; none for a ride booked before waiting charges existed). Never blocks the trip from starting.
 async function recordPickupWaitAtStart(
   rideId: bigint,
-  ride: { driver_arrived_at: string | null; origin_lat: number; origin_lng: number },
+  ride: { driver_arrived_at: string | null; origin_lat: number; origin_lng: number; scheduled_for?: string | Date | null },
 ): Promise<void> {
   try {
     const terms = await repo.getPickupWaitTerms(rideId)
     if (!terms || !ride.driver_arrived_at) return
     await flushBreadcrumbs().catch(() => undefined)
-    const minutes = await repo.getPickupWaitMinutes(rideId, new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES)
+    const minutes = await repo.getPickupWaitMinutes(rideId, new Date(ride.driver_arrived_at), ride.origin_lat, ride.origin_lng, PICKUP_WAIT_RADIUS_METRES, ...pickupWaitFloor(ride))
     if (minutes === null) {
       log.warn({ rideId }, 'no position recorded at the pickup: no waiting charge')
       return
@@ -2469,6 +2477,13 @@ export async function cancelRideAsDriver(
     throw Object.assign(new Error('Ride cannot be cancelled at this stage'), { httpStatus: 409 })
   }
 
+  // An advance booking is a promise of a pickup time: when its driver drops out, it goes back to being searched for instead of being
+  // cancelled on the rider (see redispatchAfterDriverCancel). Any other ride, or one whose pickup time is long gone, cancels as before.
+  if (await redispatchAfterDriverCancel(ride, driverId, reasonCode, reason)) {
+    void callMasking.releaseForRide(rideId).catch((err: unknown) => log.error({ err, rideId }, 'call-masking release failed'))
+    return { success: true, redispatched: true }
+  }
+
   const stage = cancelStageFor(ride.status)
 
   const client = await pool.connect()
@@ -2809,7 +2824,7 @@ export async function getRideAssignCandidates(
   const categoryIds = await repo.getEligibleDriverCategoryIds(ride.category_id)
   const minWalletBalance = await getMinWalletBalance()
 
-  return repo.getAssignCandidates({
+  const list = await repo.getAssignCandidates({
     cityId: ride.origin_city_id,
     rideLat: ride.origin_lat,
     rideLng: ride.origin_lng,
@@ -2817,6 +2832,9 @@ export async function getRideAssignCandidates(
     minWalletBalance,
     ...opts,
   })
+  // How often each driver handed a reserved booking back late in the last 30 days (a warning for ops, not a rule).
+  const late = await lateReleaseCounts(list.map((c) => BigInt(c.driver_id))).catch(() => new Map<string, number>())
+  return list.map((c) => ({ ...c, late_releases: late.get(c.driver_id) ?? 0 }))
 }
 
 export async function adminAssignDriver(
@@ -2845,6 +2863,12 @@ export async function adminAssignDriver(
   }
   if (!candidate.eligible && !overrideEligibility) {
     throw Object.assign(new Error('Driver is not eligible — pass overrideEligibility to force'), { httpStatus: 422 })
+  }
+
+  // Putting a driver on a ride that runs into their reserved booking is a decision for ops, so it needs the override.
+  if (!overrideEligibility) {
+    const clash = await reservationClash(driverId, rideId)
+    if (clash) throw httpError(409, `This driver is reserved for a booking at ${fmtClock(clash.at)} that this ride would run into`, 'RESERVATION_CLASH')
   }
 
   let workingRide = ride

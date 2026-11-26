@@ -1,3 +1,4 @@
+import { GO_LIVE_MAX_LEAD_MIN, HEAD_OUT_BUFFER_MIN, RESERVATION_PICKUP_SPEED_KMH, DRIVER_POSITION_FRESH_MIN } from '@/constants/limits'
 import { pool } from '@/db/client'
 import { COUNT_CAP, capTotal } from './admin.repository'
 
@@ -26,6 +27,9 @@ export interface DispatchFilters {
 
 // When the ride was (or will be) handed to drivers: an advance booking at its dispatch buffer, anything else at booking time.
 const DISPATCH_AT = `COALESCE(r.scheduled_for - (ram.dispatch_buffer_minutes * interval '1 minute'), r.requested_at)`
+// The same, but a booking reserved for a far-off driver goes live earlier: the drive plus 10 min (see reservation.service goLiveLeadMin).
+export const RESERVED_DISPATCH_AT = `COALESCE(r.scheduled_for - (GREATEST(ram.dispatch_buffer_minutes, CASE WHEN ram.claimed_by_driver_id IS NOT NULL AND rsnap.location IS NOT NULL
+    THEN LEAST(${GO_LIVE_MAX_LEAD_MIN}, CEIL(ST_Distance(r.origin, rsnap.location) / 1000.0 / ${RESERVATION_PICKUP_SPEED_KMH} * 60) + ${HEAD_OUT_BUFFER_MIN}) ELSE 0 END) * interval '1 minute'), r.requested_at)`
 
 export async function getDispatchSummary() {
   const res = await pool.query(
@@ -76,7 +80,9 @@ export async function listDispatchQueue(f: DispatchFilters) {
     `SELECT
        r.id::text, r.status, r.ride_type, r.trip_mode, r.is_return_cab,
        r.origin_address, r.destination_address, r.requested_at, r.scheduled_for,
-       ${DISPATCH_AT} AS dispatch_at, ram.status AS advance_status,
+       ${RESERVED_DISPATCH_AT} AS dispatch_at, ram.status AS advance_status,
+       ram.claimed_by_driver_id::text AS reserved_driver_id, rdrv.full_name AS reserved_driver_name, rdrv.phone AS reserved_driver_phone,
+       ram.reservation_confirmed_at, ram.reservation_risk_alerted_at,
        u.name AS user_name, u.phone AS user_phone,
        vc.display_name AS category_name, oc.name AS city_name,
        COALESCE(fs.total_final, fs.total_estimated)::text AS fare,
@@ -89,6 +95,8 @@ export async function listDispatchQueue(f: DispatchFilters) {
      JOIN rides r ON r.id = pg.id
      JOIN users u ON u.id = r.user_id
      LEFT JOIN ride_advance_meta ram ON ram.ride_id = r.id
+     LEFT JOIN drivers rdrv ON rdrv.id = ram.claimed_by_driver_id
+     LEFT JOIN driver_location_snapshots rsnap ON rsnap.driver_id = ram.claimed_by_driver_id AND rsnap.recorded_at > now() - make_interval(mins => ${DRIVER_POSITION_FRESH_MIN})
      LEFT JOIN vehicle_categories vc ON vc.id = r.category_id
      LEFT JOIN cities oc ON oc.id = r.origin_city_id
      LEFT JOIN fare_snapshots fs ON fs.ride_id = r.id

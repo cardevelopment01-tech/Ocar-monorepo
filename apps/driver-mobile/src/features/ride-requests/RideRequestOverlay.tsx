@@ -1,3 +1,4 @@
+import { whenLabel } from '@/features/reservations/format'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BackHandler, Modal, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import Svg, { Circle } from 'react-native-svg'
@@ -327,7 +328,8 @@ export function RideRequestOverlay() {
   const dropName = drop.name
   const dropRest = drop.rest
   // What a driver also needs to know before taking a long job: how long they are committed, and the terms.
-  const facts: { icon: 'clock' | 'corner-up-left' | 'navigation' | 'user'; text: string }[] = []
+  const facts: { icon: 'clock' | 'corner-up-left' | 'navigation' | 'user' | 'calendar'; text: string }[] = []
+  if (pending.scheduledFor) facts.push({ icon: 'calendar', text: `Booked for ${whenLabel(new Date(pending.scheduledFor), new Date())}` })
   if (isRound) {
     if (hours) facts.push({ icon: 'clock', text: `${hours}h booked` })
     facts.push({ icon: 'corner-up-left', text: returnAtFormatted ? `Return by ${returnAtFormatted}` : 'Return to the pickup point' })
