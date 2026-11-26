@@ -1703,7 +1703,7 @@ export async function getAssignCandidates(params: {
   if (params.onlineOnly) extra += ` AND ds.id IS NOT NULL`
   if (params.search) { values.push(`%${params.search}%`); extra += ` AND (d.full_name ILIKE $${values.length} OR d.phone ILIKE $${values.length})` }
   const limit = Math.min(Math.max(params.limit ?? 50, 1), 50)
-  const res = await pool.query<Omit<AssignCandidate, 'eligible'>>(
+  const res = await pool.query<Omit<AssignCandidate, 'eligible' | 'reservable'>>(
     `SELECT
        d.id::text AS driver_id,
        d.full_name AS driver_name,
@@ -1714,6 +1714,8 @@ export async function getAssignCandidates(params: {
        dc.billing_mode AS city_billing_mode,
        (ds.id IS NOT NULL AND ds.status = 'online' AND ds.mode = 'standard') AS is_online,
        (ds.category_id = ANY($4::bigint[])) AS category_ok,
+       dv.category_name AS vehicle_category_name,
+       COALESCE(dv.category_id = ANY($4::bigint[]), false) AS vehicle_category_ok,
        COALESCE(
          (dc.billing_mode = 'commission' AND COALESCE(dw.balance, 0) >= $5 AND NOT COALESCE(dw.is_frozen, false))
          OR
@@ -1731,6 +1733,10 @@ export async function getAssignCandidates(params: {
      LEFT JOIN driver_sessions ds ON ds.driver_id = d.id AND ds.status = 'online'
      LEFT JOIN driver_location_snapshots dls ON dls.session_id = ds.id
      LEFT JOIN vehicle_categories vc ON vc.id = ds.category_id
+     LEFT JOIN LATERAL (
+       SELECT v.category_id, c.display_name AS category_name FROM driver_vehicles v JOIN vehicle_categories c ON c.id = v.category_id
+        WHERE v.driver_id = d.id AND v.status = 'active' ORDER BY v.is_primary DESC LIMIT 1
+     ) dv ON true
      LEFT JOIN driver_wallets dw ON dw.driver_id = d.id
      LEFT JOIN driver_package_wallets dpw ON dpw.driver_id = d.id
      WHERE d.city_id = $1 AND d.status = 'active'${extra}
@@ -1739,7 +1745,7 @@ export async function getAssignCandidates(params: {
      LIMIT ${limit}`,
     values
   )
-  return res.rows.map(r => ({ ...r, eligible: r.is_online && r.category_ok && r.wallet_ok }))
+  return res.rows.map(r => ({ ...r, eligible: r.is_online && r.category_ok && r.wallet_ok, reservable: r.vehicle_category_ok && r.wallet_ok }))
 }
 
 export async function setForceAssignGraceJob(rideId: bigint, jobId: string): Promise<void> {

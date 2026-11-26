@@ -495,6 +495,9 @@ export interface AssignCandidate {
   eligible: boolean
   /** Reserved bookings this driver handed back late (or could not be ready for) in the last 30 days. */
   late_releases?: number
+  /** Active vehicle on file, and whether a booking made ahead can be reserved on it (right vehicle, usable wallet; online or not). */
+  vehicle_category_name?: string | null
+  reservable?: boolean
 }
 
 export const adminRideApi = {

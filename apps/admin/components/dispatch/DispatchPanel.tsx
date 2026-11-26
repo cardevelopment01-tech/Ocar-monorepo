@@ -123,14 +123,16 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
   }
 
   // Booking directly, an advance booking pulled forward, and overriding a failed check all need a second, explicit click.
+  // Asking or booking needs everything right now; a reservation only needs the right vehicle on file and a usable wallet.
+  const okFor = (c: AssignCandidate) => (mode === 'reserve' ? c.reservable ?? c.eligible : c.eligible)
   const needsConfirm = (c: AssignCandidate) => mode !== 'reserve' && (mode === 'book' || !!warning || !c.eligible)
   function onPick(c: AssignCandidate) {
     if (needsConfirm(c) && confirmId !== c.driver_id) { setConfirmId(c.driver_id); return }
     void assign(c)
   }
 
-  const clean = cands.filter(c => c.eligible)
-  const others = cands.filter(c => !c.eligible)
+  const clean = cands.filter(okFor)
+  const others = cands.filter(c => !okFor(c))
 
   return (
     <SlideOver isOpen={!!rideId} onClose={onClose} title={rideId ? `Assign a driver: ride #${rideId}` : ''} width={overMap ? 'md' : 'lg'} backdrop={!overMap}>
@@ -264,22 +266,23 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
                   // Asking or booking needs the driver online now; a reservation does not.
                   const blocked = !c.is_online && mode !== 'reserve'
                   return (
-                    <li key={c.driver_id} className={`rounded-xl border px-3 py-2.5 ${c.eligible ? 'border-border-light' : 'border-border-light bg-surface-2/60'}`}>
+                    <li key={c.driver_id} className={`rounded-xl border px-3 py-2.5 ${okFor(c) ? 'border-border-light' : 'border-border-light bg-surface-2/60'}`}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <Link href={`/drivers/${c.driver_id}`} className="text-sm font-medium text-text-primary hover:underline truncate block">{c.driver_name ?? c.driver_phone}</Link>
                           <p className="text-xs text-text-muted flex items-center gap-1.5 flex-wrap">
-                            {c.category_name ?? 'No vehicle category'}
+                            {(mode === 'reserve' ? (c.vehicle_category_name ?? c.category_name) : c.category_name) ?? 'No vehicle category'}
                             {c.distance_metres != null && <span>· {(c.distance_metres / 1000).toFixed(1)} km from pickup</span>}
-                            {!c.eligible && (mode === 'reserve' && !c.is_online && c.category_ok && c.wallet_ok ? <span className="pill-muted">Offline now</span> : <span className={blocked ? 'pill-muted' : 'pill-warning'}>{whyNot(c)}</span>)}
+                            {mode === 'reserve' ? (!c.is_online && <span className="pill-muted">Offline now</span>) : null}
+                            {!okFor(c) && (mode === 'reserve' ? <span className="pill-warning">{c.reservable === false && c.wallet_ok ? 'No active vehicle of this type' : 'Wallet or package balance'}</span> : <span className={blocked ? 'pill-muted' : 'pill-warning'}>{whyNot(c)}</span>)}
                             {(c.late_releases ?? 0) > 0 && <span className="pill-warning">{c.late_releases} late hand-back{c.late_releases === 1 ? '' : 's'}</span>}
                           </p>
                         </div>
                         <button disabled={blocked || busyId !== null} onClick={() => onPick(c)}
                           className={`px-3 py-1.5 text-xs font-semibold rounded-full flex-shrink-0 inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 ${
-                            c.eligible ? 'bg-primary text-white hover:bg-primary-dark' : 'bg-surface text-text-primary border border-border hover:bg-surface-2'}`}>
+                            okFor(c) ? 'bg-primary text-white hover:bg-primary-dark' : 'bg-surface text-text-primary border border-border hover:bg-surface-2'}`}>
                           {busyId === c.driver_id && <Loader2 size={12} className="animate-spin" />}
-                          {blocked ? 'Offline' : !c.eligible ? (mode === 'reserve' ? 'Reserve anyway' : 'Assign anyway') : mode === 'reserve' ? 'Reserve' : mode === 'ask' ? 'Ask' : 'Book'}
+                          {blocked ? 'Offline' : !okFor(c) ? (mode === 'reserve' ? 'Reserve anyway' : 'Assign anyway') : mode === 'reserve' ? 'Reserve' : mode === 'ask' ? 'Ask' : 'Book'}
                         </button>
                       </div>
                       {isConfirm && (
