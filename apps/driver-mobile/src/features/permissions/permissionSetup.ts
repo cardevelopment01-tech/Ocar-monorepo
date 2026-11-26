@@ -46,7 +46,16 @@ export async function snoozeSetup(): Promise<void> {
   await AsyncStorage.setItem(SNOOZE_KEY, String(Date.now())).catch(() => {})
 }
 
-/** 'checking' until the phone has answered; 'show' when a required permission is missing and "Not now" was not tapped today. */
+/** What Android itself asks, one after the other, and nothing more: no extra screen, no trip to Settings. A "no" is final for today. */
+async function askWithSystemDialogs(rows: PermissionRowModel[]): Promise<void> {
+  const askable = (r: PermissionRowModel) => r.status !== 'granted' && r.status !== 'blocked'
+  if (rows.some((r) => r.key === 'notifications' && askable(r))) await setupPushNotifications({ prompt: true }).catch(() => {})
+  // The "all the time" step cannot be a dialog on Android 11+: Home's own notice covers it.
+  if (rows.some((r) => r.key === 'location' && r.title === 'Location' && askable(r))) await Location.requestForegroundPermissionsAsync().catch(() => {})
+  await snoozeSetup()
+}
+
+/** 'checking' until the phone has answered and anything missing was asked for through Android's own dialog. Never 'show' any more (kept so callers need no change). */
 export function usePermissionGate(enabled: boolean, only?: 'notifications'): 'checking' | 'show' | 'skip' {
   const [state, setState] = useState<'checking' | 'show' | 'skip'>('checking')
   useEffect(() => {
@@ -54,7 +63,8 @@ export function usePermissionGate(enabled: boolean, only?: 'notifications'): 'ch
     let cancelled = false
     void (async () => {
       const [rows, raw] = await Promise.all([readPermissionRows(only), AsyncStorage.getItem(SNOOZE_KEY).catch(() => null)])
-      if (!cancelled) setState(shouldShowSetup(rows, raw ? Number(raw) : null, Date.now()) ? 'show' : 'skip')
+      if (shouldShowSetup(rows, raw ? Number(raw) : null, Date.now())) await askWithSystemDialogs(rows)
+      if (!cancelled) setState('skip')
     })().catch(() => { if (!cancelled) setState('skip') })
     return () => { cancelled = true }
   }, [enabled, only])
