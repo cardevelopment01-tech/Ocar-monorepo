@@ -7,6 +7,7 @@ import { useOnboardingIntroStore } from '@/store/useOnboardingIntroStore'
 import { fetchActiveRideForRelaunch } from '@/features/active-ride/relaunchApi'
 import { refreshDriverProfile } from '@/features/account/refreshDriver'
 import { restrictionOf, standingRoute } from '@/features/account/accountStanding'
+import { usePermissionGate } from '@/features/permissions/permissionSetup'
 
 type CheckState = 'checking' | 'done' | 'failed'
 
@@ -45,6 +46,9 @@ export default function Index() {
   const onboardingRoute = needsOnboarding
     ? (ONBOARDING_STEP_ROUTES[driver.onboarding_step] ?? '/onboarding/pending-review')
     : null
+
+  // Only a driver heading to Home is stopped for setup: one relaunching into a ride, or onboarding, goes straight there.
+  const gate = usePermissionGate(isAuthenticated && !onboardingRoute && route === '/(tabs)/home')
 
   useEffect(() => {
     if (!isAuthenticated || onboardingRoute) return
@@ -95,6 +99,10 @@ export default function Index() {
   }
 
   if (checkState === 'checking' || !route) return null
+  if (route === '/(tabs)/home') {
+    if (gate === 'checking') return null
+    if (gate === 'show') return <Redirect href="/permissions" />
+  }
 
   return <Redirect href={route} />
 }

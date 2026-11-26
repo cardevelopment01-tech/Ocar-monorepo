@@ -1,0 +1,33 @@
+import { describe, expect, it } from 'vitest'
+import { missingRequired, SETUP_SNOOZE_MS, shouldShowSetup, statusFromNotificationPermission, type PermissionRowModel } from './permissionRules'
+
+const row = (over: Partial<PermissionRowModel>): PermissionRowModel => ({ key: 'k', title: 't', reason: 'r', status: 'ask', required: true, actionLabel: 'Allow', ...over })
+
+describe('shouldShowSetup', () => {
+  it('shows when a required permission is missing and nothing was snoozed', () => {
+    expect(shouldShowSetup([row({})], null, 1000)).toBe(true)
+  })
+  it('stays away when every required permission is granted, even with optional ones missing', () => {
+    expect(shouldShowSetup([row({ status: 'granted' }), row({ key: 'o', required: false, status: 'ask' })], null, 1000)).toBe(false)
+  })
+  it('a blocked required permission still counts as missing', () => {
+    expect(shouldShowSetup([row({ status: 'blocked' })], null, 1000)).toBe(true)
+  })
+  it('"Not now" hides it for a day, then it comes back', () => {
+    const t0 = 5_000_000
+    expect(shouldShowSetup([row({})], t0, t0 + SETUP_SNOOZE_MS - 1)).toBe(false)
+    expect(shouldShowSetup([row({})], t0, t0 + SETUP_SNOOZE_MS)).toBe(true)
+  })
+})
+
+describe('missingRequired / statusFromNotificationPermission', () => {
+  it('lists only required, ungranted rows', () => {
+    const rows = [row({ key: 'a', status: 'granted' }), row({ key: 'b' }), row({ key: 'c', required: false })]
+    expect(missingRequired(rows).map((r) => r.key)).toEqual(['b'])
+  })
+  it('maps the system answer: granted, can still ask, or settings only', () => {
+    expect(statusFromNotificationPermission({ granted: true, canAskAgain: true, status: 'granted' })).toBe('granted')
+    expect(statusFromNotificationPermission({ granted: false, canAskAgain: true, status: 'undetermined' })).toBe('ask')
+    expect(statusFromNotificationPermission({ granted: false, canAskAgain: false, status: 'denied' })).toBe('blocked')
+  })
+})
