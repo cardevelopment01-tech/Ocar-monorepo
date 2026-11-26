@@ -20,18 +20,22 @@ describe('formatMoney', () => {
 describe('buildInvoiceRows', () => {
   it('hides zero rows, labels quantities, and sums to the total', () => {
     const { rows, total } = buildInvoiceRows(base)
-    expect(rows.map((r) => r.key)).toEqual(['base', 'distance', 'time'])
-    expect(rows[1]).toMatchObject({ label: 'Distance', detail: '28.4 km' })
+    expect(rows.map((r) => r.key)).toEqual(['ride-fare'])
+    expect(rows[0]).toMatchObject({ label: 'Ride fare', detail: '28.4 km · 58 min', amount: 1430 })
     expect(total).toBe(1430)
     expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(total)
   })
   it('shows surge only when charged', () => {
     const { rows } = buildInvoiceRows({ ...base, surgeFare: '100.00', surgeMultiplier: '1.20', totalFinal: '1530.00' })
-    expect(rows.find((r) => r.key === 'surge')).toMatchObject({ label: 'Surge', detail: '1.2x' })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ label: 'Ride fare', amount: 1530 })
+    expect(rows[0]!.detail).toContain('1.2× surge')
   })
   it('shows waiting at the pickup as its own line, with the minutes and the free minutes, so it is not an adjustment', () => {
     const { rows, total } = buildInvoiceRows({ ...base, totalFinal: '1454.00', pickupWaitMin: '11.00', pickupFreeWaitMin: 3, pickupWaitCharge: '24.00' })
-    expect(rows.find((r) => r.key === 'pickupWait')).toMatchObject({ label: 'Waiting at pickup', detail: '11 min, after 3 free minutes', amount: 24 })
+    expect(rows.some((r) => r.key === 'pickupWait')).toBe(false)
+    expect(rows[0]).toMatchObject({ label: 'Ride fare', amount: 1454 })
+    expect(rows[0]!.detail).toContain('incl. ₹24 waiting')
     expect(rows.some((r) => r.key === 'adjust')).toBe(false)
     expect(rows.reduce((sum, r) => sum + r.amount, 0)).toBe(total)
   })
@@ -46,11 +50,12 @@ describe('buildInvoiceRows', () => {
   })
   it('shows no waiting line when the wait was inside the free minutes', () => {
     const { rows } = buildInvoiceRows({ ...base, pickupWaitMin: '2.50', pickupFreeWaitMin: 3, pickupWaitCharge: '0.00' })
-    expect(rows.some((r) => r.key === 'pickupWait')).toBe(false)
+    expect(rows[0]!.detail).not.toContain('waiting')
   })
   it('adds an Adjustments row when components do not reach the total', () => {
-    const { rows } = buildInvoiceRows({ ...base, totalFinal: '1400.00' })
-    expect(rows.at(-1)).toMatchObject({ key: 'adjust', label: 'Adjustments', amount: -30 })
+    // The lines below the Ride fare add up to more than the total: only then is there an Adjustments row.
+    const { rows } = buildInvoiceRows({ ...base, totalFinal: '1400.00', tollCharge: '1500.00' })
+    expect(rows.at(-1)).toMatchObject({ key: 'adjust', label: 'Adjustments', amount: -100 })
   })
   it('ignores sub-rupee rounding gaps', () => {
     expect(buildInvoiceRows({ ...base, totalFinal: '1430.50' }).rows.some((r) => r.key === 'adjust')).toBe(false)
@@ -59,6 +64,39 @@ describe('buildInvoiceRows', () => {
     const r = buildInvoiceRows({ ...base, totalFinal: null })
     expect(r.isEstimate).toBe(true)
     expect(r.total).toBe(1400)
+  })
+})
+
+describe('buildInvoiceRows: driver allowance', () => {
+  it('a round trip lists the driver allowance below the Ride fare, and the rows add up to the total', () => {
+    const { rows, total } = buildInvoiceRows({ ...base, hourSurcharge: '500.00', totalFinal: '1930.00' })
+    expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Driver allowance'])
+    expect(rows[0]!.amount).toBe(1430)
+    expect(rows[1]!.amount).toBe(500)
+    expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(total)
+  })
+  it('toll, extra distance, extra time and allowance all sit below the one Ride fare', () => {
+    const { rows } = buildInvoiceRows({ ...base, hourSurcharge: '500.00', tollCharge: '40.00', overtimeMin: 10, overtimeFare: 20, totalFinal: '1990.00' })
+    expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Airport toll', 'Extra time', 'Driver allowance'])
+  })
+})
+
+describe('buildInvoiceRows: night allowance', () => {
+  it('lists the night allowance below the Ride fare with its nights and rate, and the rows add up to the total', () => {
+    const { rows, total } = buildInvoiceRows({ ...base, nightAllowance: '600.00', nightCount: 2, totalFinal: '2030.00' })
+    expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Night allowance'])
+    expect(rows[1]).toMatchObject({ amount: 600, detail: '2 nights × ₹300' })
+    expect(rows[0]!.amount).toBe(1430)
+    expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(total)
+  })
+  it('says "1 night" for one, and shows nothing when there is none', () => {
+    expect(buildInvoiceRows({ ...base, nightAllowance: '300.00', nightCount: 1, totalFinal: '1730.00' }).rows[1]!.detail).toBe('1 night × ₹300')
+    expect(buildInvoiceRows({ ...base, nightAllowance: '0.00', nightCount: 0 }).rows.some((r) => r.key === 'night')).toBe(false)
+    expect(buildInvoiceRows(base).rows.some((r) => r.key === 'night')).toBe(false)
+  })
+  it('sits last, after toll, extra time and driver allowance, in the order the client asked for', () => {
+    const { rows } = buildInvoiceRows({ ...base, tollCharge: '40.00', overtimeMin: 10, overtimeFare: 20, hourSurcharge: '500.00', nightAllowance: '300.00', nightCount: 1, totalFinal: '2290.00' })
+    expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Airport toll', 'Extra time', 'Driver allowance', 'Night allowance'])
   })
 })
 
@@ -110,21 +148,23 @@ describe('buildInvoiceRows: hourly round trip', () => {
 
   it('shows booked time and extra time as their own lines, so nothing lands in Adjustments', () => {
     const { rows, total } = buildInvoiceRows(hourly)
-    expect(rows.map((r) => r.key)).toEqual(['distance', 'booked', 'overtime'])
-    expect(rows[1]).toMatchObject({ label: 'Booked time', detail: '6 hours', amount: 600 })
-    expect(rows[2]).toMatchObject({ label: 'Extra time', detail: '16 min', amount: 26.67 })
+    expect(rows.map((r) => r.key)).toEqual(['ride-fare', 'overtime'])
+    expect(rows[0]).toMatchObject({ label: 'Ride fare', amount: 1120 })
+    expect(rows[0]!.detail).toContain('6 hours booked')
+    expect(rows[1]).toMatchObject({ label: 'Extra time', detail: '16 min', amount: 26.67 })
     expect(Math.round(rows.reduce((s, r) => s + r.amount, 0) * 100) / 100).toBe(total)
   })
   it('overtime comes after surge (it is not surged)', () => {
     const { rows } = buildInvoiceRows({ ...hourly, surgeFare: '560.00', surgeMultiplier: '1.50', totalFinal: '1706.67' })
-    expect(rows.map((r) => r.key)).toEqual(['distance', 'booked', 'surge', 'overtime'])
+    expect(rows.map((r) => r.key)).toEqual(['ride-fare', 'overtime'])
+    expect(rows[0]!.detail).toContain('1.5× surge')
   })
   it('no extra-time row when the trip stayed inside the booked window', () => {
     const { rows } = buildInvoiceRows({ ...hourly, overtimeMin: 0, overtimeFare: 0, totalFinal: '1120.00' })
     expect(rows.some((r) => r.key === 'overtime')).toBe(false)
   })
   it('rides without the new fields are unchanged', () => {
-    expect(buildInvoiceRows(base).rows.map((r) => r.key)).toEqual(['base', 'distance', 'time'])
+    expect(buildInvoiceRows(base).rows.map((r) => r.key)).toEqual(['ride-fare'])
   })
 })
 
@@ -151,7 +191,7 @@ describe('buildInvoiceRows for a rental', () => {
   }
   it('reads as package price, extra distance and extra time, not "Base fare" plus one lump', () => {
     const { rows, total } = buildInvoiceRows(rental)
-    expect(rows.map((r) => r.label)).toEqual(['Package price', 'Extra distance', 'Extra time'])
+    expect(rows.map((r) => r.label)).toEqual(['Ride fare', 'Extra distance', 'Extra time'])
     expect(rows[0]).toMatchObject({ amount: 800, detail: '4 h · 40 km included' })
     expect(rows[1]).toMatchObject({ amount: 120, detail: '12 km × ₹10' })
     expect(rows[2]).toMatchObject({ amount: 30, detail: '20 min × ₹1.50' })
@@ -159,10 +199,10 @@ describe('buildInvoiceRows for a rental', () => {
   })
   it('is just the package price when nothing was exceeded', () => {
     const { rows } = buildInvoiceRows({ ...rental, overageFare: '0.00', overageKm: '0', overageMin: '0', totalFinal: '800.00' })
-    expect(rows.map((r) => r.label)).toEqual(['Package price'])
+    expect(rows.map((r) => r.label)).toEqual(['Ride fare'])
   })
   it('leaves other ride types alone', () => {
-    expect(buildInvoiceRows(base).rows[0]!.label).toBe('Base fare')
+    expect(buildInvoiceRows(base).rows[0]!.label).toBe('Ride fare')
   })
 })
 
@@ -179,7 +219,7 @@ describe('with a rider offer (driver-funded discount)', () => {
   const gross = { ...base, totalFinal: '454.00', baseFare: '454.00', distanceFare: '0.00', timeFare: '0.00' }
   it('lists the components that add up to the gross fare, takes the offer off, and the total is what the rider paid', () => {
     const { rows, total, discount } = buildInvoiceRows({ ...gross, discountAmount: '90.80' })
-    expect(rows.map((r) => r.key)).toEqual(['base', 'offer'])
+    expect(rows.map((r) => r.key)).toEqual(['ride-fare', 'offer'])
     expect(rows.at(-1)).toEqual({ key: 'offer', label: 'Offer', amount: 90.8, negative: true })
     expect(total).toBe(363.2)
     expect(discount).toBe(90.8)

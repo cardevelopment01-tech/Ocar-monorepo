@@ -21,6 +21,8 @@ export interface RateCard {
   stop_charge: string
   /** Flat amount added to every one-way / round-trip fare, before surge; 0 = none. */
   base_fare: string
+  /** Rupees per night a one-way or round trip is driven between 11 PM and 6 AM; 0 = none. */
+  night_allowance_per_night?: string
   /** Waiting at the pickup: minutes with no charge, then rupees a minute. */
   pickup_free_wait_min: number
   pickup_wait_per_min: string
@@ -85,6 +87,8 @@ export const pricingApi = {
     stop_charge?: number
     /** Omit to keep the current version's base fare; 0 removes it. */
     base_fare?: number
+    /** Omit to keep the current version's night allowance; 0 removes it. */
+    night_allowance_per_night?: number
     /** Omit to keep the current version's pickup waiting terms. */
     pickup_free_wait_min?: number
     pickup_wait_per_min?: number

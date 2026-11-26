@@ -41,6 +41,7 @@ export interface ReceiptRide {
   rental_km_limit?: N; rental_duration_minutes?: N
   pickup_wait_min?: N; pickup_free_wait_min?: N; pickup_wait_charge?: N
   toll_charge?: N; toll_detail?: Array<{ zone: string; amount: number }> | null
+  night_allowance?: N; night_count?: N
   bookedUntil?: string | null; overtimeMin?: number | null; overtimeFare?: number | null; overtimeGraceMin?: number | null
   cancellation_fee?: N
   cancellation_reason?: string | null
@@ -147,8 +148,8 @@ export function buildFareRows(r: ReceiptRide, stops: ReceiptStopRow[]): { rows: 
   const extraStops = charged > 0 ? charged : stops.filter((s) => s.status !== 'skipped').length
   const rental = rentalRows(r)
 
-  // Receipt layout: the trip itself is ONE "Ride fare" line (base fare, distance, time, extra stops, waiting, surge, allowances all
-  // inside it); only what is charged on top of it (airport toll, extra distance, extra time) is listed underneath, each with its
+  // Receipt layout: the trip itself is ONE "Ride fare" line (base fare, distance, time, extra stops, waiting, surge all
+  // inside it); only what is charged on top of it (airport toll, extra distance, extra time, driver allowance) is listed underneath, each with its
   // charge. The ride fare is the settled total MINUS those lines, never the sum of the quoted components: settlement reprices a
   // trip on the distance and time actually driven but leaves the quoted component amounts on the snapshot, so adding those up
   // printed a stale figure and an unexplained "Adjustments" row.
@@ -160,6 +161,10 @@ export function buildFareRows(r: ReceiptRide, stops: ReceiptStopRow[]): { rows: 
     ...(rental ? rental.filter((x) => x.key !== 'package') : []),
     // Overtime is not surged. Only present once the trip settled with time past the booked window.
     { key: 'overtime', label: 'Extra time', detail: `${num(r.overtimeMin)} min${grace ? `, after ${grace} free minutes` : ''}`, amount: overtime },
+    // Round trips: the driver's per-day allowance (hour_surcharge). The surge on it stays inside the Ride fare.
+    { key: 'allowance', label: 'Driver allowance', amount: num(r.hour_surcharge) },
+    // One-way (Return Cab included) and round trips driven between 11 PM and 6 AM: a flat amount for every night, not surged.
+    { key: 'night', label: 'Night allowance', ...(num(r.night_count) > 0 && { detail: `${num(r.night_count)} ${num(r.night_count) === 1 ? 'night' : 'nights'} × ${rupeeRate(r2(num(r.night_allowance) / num(r.night_count)))}` }), amount: num(r.night_allowance) },
   ].filter((c) => c.amount > 0).map((x) => ({ ...x, amount: r2(x.amount) }))
 
   const waited = r2(stopWait + num(r.pickup_wait_charge))

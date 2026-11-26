@@ -25,7 +25,7 @@ type InvoiceSource = Pick<RideDetail,
   'baseFare' | 'distanceFare' | 'timeFare' | 'stopFare' | 'hourSurcharge' | 'overageFare' | 'surgeFare' |
   'surgeMultiplier' | 'actualKm' | 'actualMin' | 'totalFinal' | 'totalEstimated'> &
   Partial<Pick<RideDetail, 'tripHours' | 'waitingFare' | 'overtimeMin' | 'overtimeFare' | 'overtimeGraceMin' | 'discountAmount' |
-    'pickupWaitMin' | 'pickupFreeWaitMin' | 'pickupWaitCharge' | 'tollCharge' | 'tollDetail' |
+    'pickupWaitMin' | 'pickupFreeWaitMin' | 'pickupWaitCharge' | 'tollCharge' | 'tollDetail' | 'nightAllowance' | 'nightCount' | 'stops' |
     'rideType' | 'overageKm' | 'overageMin' | 'rentalExtraPerKm' | 'rentalExtraPerMin' | 'rentalKmLimit' | 'rentalDurationMinutes'>>
 
 // Only components that were actually charged (> 0), each labelled with its quantity. If the
@@ -42,34 +42,38 @@ export function buildInvoiceRows(r: InvoiceSource): { rows: InvoiceRow[]; total:
   const surge = num(r.surgeMultiplier)
 
   const grace = r.overtimeGraceMin
-  const candidates: InvoiceRow[] = [
-    { key: 'base', label: 'Base fare', amount: num(r.baseFare) },
-    { key: 'distance', label: 'Distance', ...(km > 0 && { detail: `${km} km` }), amount: num(r.distanceFare) },
-    { key: 'time', label: 'Time', ...(min > 0 && { detail: `${min} min` }), amount: num(r.timeFare) },
-    { key: 'stops', label: 'Extra stops', amount: num(r.stopFare) },
-    { key: 'hours', label: 'Hourly package', amount: num(r.hourSurcharge) },
-    // Hourly round trips: the booked hours are their own line, otherwise they would surface as an unexplained adjustment.
-    { key: 'booked', label: 'Booked time', ...(r.tripHours && { detail: `${r.tripHours} ${r.tripHours === 1 ? 'hour' : 'hours'}` }), amount: num(r.waitingFare) },
-    { key: 'overage', label: 'Extra distance or time', amount: num(r.overageFare) },
-    { key: 'surge', label: 'Surge', ...(surge > 1 && { detail: `${surge}x` }), amount: num(r.surgeFare) },
-    // After surge: overtime is not surged. Only present once the trip settled with time past the booked window.
-    { key: 'overtime', label: 'Extra time', detail: `${num(r.overtimeMin)} min${grace ? `, after ${grace} free minutes` : ''}`, amount: (r.overtimeMin ?? 0) > 0 ? num(r.overtimeFare) : 0 },
-    // The driver's wait at the pickup past the free minutes; not surged, so it follows surge.
-    // Airport toll: its own line, not surged, with the zone it was charged for.
-    { key: 'toll', label: 'Airport toll', ...(r.tollDetail?.length && { detail: r.tollDetail.map((t) => t.zone).join(', ') }), amount: num(r.tollCharge) },
-    { key: 'pickupWait', label: 'Waiting at pickup', ...(num(r.pickupWaitMin) > 0 && { detail: `${Math.round(num(r.pickupWaitMin))} min${r.pickupFreeWaitMin != null ? `, after ${r.pickupFreeWaitMin} free minutes` : ''}` }), amount: num(r.pickupWaitCharge) },
-  ]
-  let rows = candidates.filter((c) => c.amount > 0)
-  // A rental reads as package price, extra distance and extra time (each with its quantity x rate), not as a
-  // "Base fare" plus one lump of "Extra distance or time".
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  // Same layout as the PDF receipt (api/.../receipt.model.ts buildFareRows): the trip itself is ONE "Ride fare" line (base, distance,
+  // time, extra stops, waiting at pickup, surge); only what is charged on top of it is listed below. The ride fare is the total MINUS
+  // those lines, so settlement repricing can never leave a stale component or an "Adjustments" row.
   const rental = rentalFareLines({ ...r, rideType: r.rideType ?? '' })
-  if (rental) {
-    const made = new Set(rental.map((l) => l.key))
-    // Only swap out a generic row when its replacement was actually produced, so nothing falls into "Adjustments".
-    const dropBase = made.has('package')
-    const dropOverage = made.has('extra') || made.has('extra-km') || made.has('extra-time')
-    rows = [...rental, ...rows.filter((c) => !(dropBase && c.key === 'base') && !(dropOverage && c.key === 'overage'))]
-  }
+  const overtime = (r.overtimeMin ?? 0) > 0 ? num(r.overtimeFare) : 0
+  const below: InvoiceRow[] = [
+    { key: 'toll', label: 'Airport toll', ...(r.tollDetail?.length && { detail: r.tollDetail.map((t) => t.zone).join(', ') }), amount: num(r.tollCharge) },
+    ...(rental ? rental.filter((x) => x.key !== 'package') : []),
+    { key: 'overtime', label: 'Extra time', detail: `${num(r.overtimeMin)} min${grace ? `, after ${grace} free minutes` : ''}`, amount: overtime },
+    // Round trips: the driver's per-day allowance. Not surged on this line; the surge on it stays inside Ride fare.
+    { key: 'allowance', label: 'Driver allowance', amount: num(r.hourSurcharge) },
+    // One-way (Return Cab included) and round trips driven between 11 PM and 6 AM: a flat amount for every night, not surged.
+    { key: 'night', label: 'Night allowance', ...(num(r.nightCount) > 0 && { detail: `${num(r.nightCount)} ${num(r.nightCount) === 1 ? 'night' : 'nights'} × ${formatMoney(num(r.nightAllowance) / num(r.nightCount))}` }), amount: num(r.nightAllowance) },
+  ].filter((c) => c.amount > 0).map((c) => ({ ...c, amount: r2(c.amount) }))
+
+  const stops = r.stops ?? []
+  const charged = stops.filter((s) => num(s.stopChargeApplied) > 0).length
+  const extraStops = charged > 0 ? charged : stops.filter((s) => s.status !== 'skipped').length
+  const waited = r2(num(r.pickupWaitCharge) + stops.reduce((n, s) => n + num(s.waitCharge), 0))
+  const hours = num(r.tripHours)
+  const detail = [
+    rental?.find((x) => x.key === 'package')?.detail ?? '',
+    !rental && km > 0 ? `${r2(km)} km` : '',
+    !rental && min > 0 ? `${min} min` : '',
+    !rental && hours > 0 ? `${hours} ${hours === 1 ? 'hour' : 'hours'} booked` : '',
+    extraStops > 0 ? `${extraStops} ${extraStops === 1 ? 'stop' : 'stops'}` : '',
+    surge > 1 ? `${surge}× surge` : '',
+    waited > 0 ? `incl. ${formatMoney(waited)} waiting` : '',
+  ].filter(Boolean).join(' · ')
+  const rideFare = r2(total - below.reduce((n, c) => n + c.amount, 0))
+  const rows: InvoiceRow[] = [...(rideFare > 0 ? [{ key: 'ride-fare', label: 'Ride fare', ...(detail ? { detail } : {}), amount: rideFare }] : []), ...below]
   const gap = Math.round((total - rows.reduce((s, c) => s + c.amount, 0)) * 100) / 100
   // Sub-rupee differences are rounding, not something to show a rider as a line item.
   if (Math.abs(gap) >= 1) rows.push({ key: 'adjust', label: 'Adjustments', amount: gap })

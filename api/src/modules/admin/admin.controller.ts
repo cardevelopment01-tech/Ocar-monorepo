@@ -742,6 +742,7 @@ export async function postAdminRateCard(
       baseFare?: number;
       pickupFreeWaitMin?: number;
       pickupWaitPerMin?: number;
+      nightAllowancePerNight?: number;
       cityId?: number | null;
       notes?: string | null;
       tripMode?: "standard" | "city";
@@ -775,6 +776,9 @@ export async function postAdminRateCard(
       data.pickupFreeWaitMin = typeof req.body.pickup_free_wait_min === 'number' ? req.body.pickup_free_wait_min : NaN;
     if (req.body.pickup_wait_per_min !== undefined && req.body.pickup_wait_per_min !== null)
       data.pickupWaitPerMin = typeof req.body.pickup_wait_per_min === 'number' ? req.body.pickup_wait_per_min : NaN;
+    // Night allowance per night (11 PM to 6 AM). Omitted = the previous version's value is carried forward. Strict like base_fare.
+    if (req.body.night_allowance_per_night !== undefined && req.body.night_allowance_per_night !== null)
+      data.nightAllowancePerNight = typeof req.body.night_allowance_per_night === 'number' ? req.body.night_allowance_per_night : NaN;
     if (req.body.city_id !== undefined)
       data.cityId = req.body.city_id != null ? Number(req.body.city_id) : null;
     if (req.body.notes !== undefined) data.notes = String(req.body.notes);

@@ -2148,7 +2148,7 @@ export async function listAdminRateCards() {
     `SELECT rc.id::int AS id, rc.category_id::int AS category_id, rc.ride_type, rc.trip_mode,
             rc.city_id::int AS city_id, rc.rate_per_km, rc.rate_per_min, rc.min_fare,
             rc.return_rate_per_km, rc.hour_rate, rc.km_per_day, rc.driver_allowance_per_day,
-            rc.cancellation_fee, rc.stop_charge, rc.base_fare, rc.pickup_free_wait_min, rc.pickup_wait_per_min,
+            rc.cancellation_fee, rc.stop_charge, rc.base_fare, rc.night_allowance_per_night, rc.pickup_free_wait_min, rc.pickup_wait_per_min,
             rc.effective_from, rc.effective_to, rc.notes,
             rc.created_by::int AS created_by, rc.created_at,
             vc.display_name AS category_name,
@@ -2493,7 +2493,7 @@ export async function getAdminRideById(rideId: bigint) {
        fs.overage_km::text, fs.overage_min::text, fs.refund_amount::text,
        r.trip_hours::float8 AS trip_hours, fs.pricing_version::int AS pricing_version, fs.waiting_fare::text AS waiting_fare,
        fs.overtime_min, fs.overtime_fare::text AS overtime_fare, hrc.hour_rate::float8 AS round_trip_hour_rate,
-       fs.pickup_wait_min::text AS pickup_wait_min, fs.pickup_free_wait_min, fs.pickup_wait_charge::text AS pickup_wait_charge, fs.toll_charge::text AS toll_charge, fs.toll_detail,
+       fs.pickup_wait_min::text AS pickup_wait_min, fs.pickup_free_wait_min, fs.pickup_wait_charge::text AS pickup_wait_charge, fs.toll_charge::text AS toll_charge, fs.toll_detail, fs.night_allowance::text AS night_allowance, fs.night_count,
        pay.status AS payment_status, pay.channel AS payment_channel,
        rc.reason_code AS cancellation_reason_code, rc.reason AS cancellation_reason, rc.actor AS cancellation_actor,
        rc.fee_applicable AS cancellation_fee_applicable, rc.fee_amount::text AS cancellation_fee_amount,
@@ -2981,6 +2981,8 @@ export async function createAdminRateCard(data: {
   /** Free minutes and rupees per minute for waiting at the pickup. Omitted = carry the previous version's value forward (3 and 3 for a brand-new card). */
   pickupFreeWaitMin?: number;
   pickupWaitPerMin?: number;
+  /** Rupees per night driven between 11 PM and 6 AM. Omitted = carry the previous version's value forward (0 for a brand-new card); send 0 to switch it off. */
+  nightAllowancePerNight?: number;
   cityId?: number | null;
   notes?: string | null;
   adminId: bigint;
@@ -3033,9 +3035,9 @@ export async function createAdminRateCard(data: {
       `INSERT INTO rate_cards
          (category_id, ride_type, rate_per_km, rate_per_min,
           min_fare, return_rate_per_km, hour_rate, km_per_day, driver_allowance_per_day,
-          city_id, notes, created_by, stop_charge, cancellation_fee, base_fare, trip_mode,
+          city_id, notes, created_by, night_allowance_per_night, stop_charge, cancellation_fee, base_fare, trip_mode,
           pickup_free_wait_min, pickup_wait_per_min)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        RETURNING *`,
       [
         data.categoryId,
@@ -3050,6 +3052,9 @@ export async function createAdminRateCard(data: {
         data.cityId ?? null,
         data.notes ?? null,
         data.adminId,
+        // Carry-forward for the night allowance (0 = off for a brand-new card). Placed before stop_charge so the parameters counted from the
+        // end (see the stop-charge tests) do not move.
+        data.nightAllowancePerNight ?? Number(expired.rows[0]?.night_allowance_per_night ?? 0),
         // A new version must not silently reset the stop price an admin set earlier.
         data.stopCharge ?? Number(expired.rows[0]?.stop_charge ?? 0),
         // Not editable in the admin form yet: carry the previous version's cancellation fee forward

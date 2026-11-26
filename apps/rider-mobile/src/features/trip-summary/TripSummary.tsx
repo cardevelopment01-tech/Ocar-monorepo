@@ -231,7 +231,7 @@ export function TripSummary({ ride, onRefresh }: TripSummaryProps) {
                   ))}
                 </View>
                 <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>{invoice.discount > 0 ? 'You paid' : 'Total'}</Text>
+                  <Text style={styles.totalLabel}>{invoice.discount > 0 ? 'You paid' : 'Total ride fare'}</Text>
                   <Text style={styles.totalAmount} maxFontSizeMultiplier={1.3}>{formatMoney(invoice.total)}</Text>
                 </View>
               </>
