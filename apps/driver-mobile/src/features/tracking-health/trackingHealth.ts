@@ -55,7 +55,7 @@ export const ISSUE_COPY: Record<TrackingIssue, IssueCopy> = {
   },
   background_permission: {
     title: 'Allow location all the time',
-    message: "Without it, requests stop when your screen turns off. In Settings, choose Location, then 'Allow all the time'.",
+    message: "Requests stop when your screen turns off. Choose Location, then 'Allow all the time'.",
     action: 'app_settings', actionLabel: 'Open settings', tone: 'warning',
   },
   services_off: {

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Dimensions, Linking, Pressable, StyleSheet, Vibration, View } from 'react-native'
+import { Dimensions, Linking, Pressable, ScrollView, StyleSheet, Vibration, View } from 'react-native'
 import * as Location from 'expo-location'
 import MapView from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { Button, Card, captureError, NotificationBell, OCAR_MAP_PROPS, PushPrimerSheet, useUnreadCount, PulseDot, card, colors, geo, h, shadow, useNavBottom, getCurrentOrLastKnownPosition, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
+import { Button, Card, captureError, NotificationBell, OCAR_MAP_PROPS, PushPrimerSheet, useUnreadCount, card, colors, geo, h, shadow, useNavBottom, getCurrentOrLastKnownPosition, radii, spacing, typography, fonts, Text } from '@ocar/mobile-shared'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useDriverSessionStore } from '@/store/useDriverSessionStore'
 import { OnlineToggle } from '@/features/go-online/components/OnlineToggle'
@@ -30,6 +30,7 @@ import { useDriverLivePosition } from '@/features/active-ride/useDriverLivePosit
 import { INITIAL_RECENTER, nextRecenter, type RecenterState } from '@/features/map/recenter'
 import { useReservations } from '@/features/reservations/useReservations'
 import { UpcomingBookingCard } from '@/features/reservations/UpcomingBookingCard'
+import { StatusCard } from '@/components/StatusCard'
 import { stageOf } from '@/features/reservations/format'
 import { confirmReservation, startReservation } from '@/features/reservations/api'
 
@@ -302,7 +303,8 @@ export default function HomeScreen() {
         <NotificationBell count={unreadNotifications} onPress={() => router.push('/notifications')} style={styles.bellBtn} />
       </View>
 
-      <View style={[styles.sheet, { bottom: sheetBottom }]} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
+      <View style={[styles.sheet, { bottom: sheetBottom, maxHeight: WINDOW_HEIGHT - sheetBottom - insets.top - 64 }]} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
+        <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false} bounces={false}>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.date}>{todayLabel}</Text>
@@ -334,23 +336,7 @@ export default function HomeScreen() {
         ) : null}
 
         {shownBanner ? (
-          <Pressable onPress={() => router.push(shownBanner.route)} style={({ pressed }) => [styles.alertCard, pressed ? styles.pressedScale : null]} accessibilityRole="button">
-            {/* Pulse only for the rejected-doc case, a frozen wallet doesn't get worse by the minute
-                the way a rejected document review clock does, so it doesn't need the same urgency cue. */}
-            {documentGate.hasRejected ? (
-              <PulseDot color={colors.error} size={8} />
-            ) : (
-              <Feather name="alert-triangle" size={16} color={colors.error} />
-            )}
-            <View style={styles.alertBody}>
-              <Text style={styles.alertTitle}>{shownBanner.title}</Text>
-              <Text style={styles.alertText} numberOfLines={3}>{shownBanner.message}</Text>
-            </View>
-            <View style={styles.alertAction}>
-              <Text style={styles.alertActionText}>{shownBanner.actionLabel}</Text>
-              <Feather name="chevron-right" size={14} color={colors.error} />
-            </View>
-          </Pressable>
+          <StatusCard tone="blocker" label="Action needed" title={shownBanner.title} message={shownBanner.message} action={{ label: shownBanner.actionLabel, onPress: () => router.push(shownBanner.route) }} />
         ) : null}
 
         {nextBooking ? (
@@ -422,6 +408,7 @@ export default function HomeScreen() {
             <Feather name="chevron-right" size={14} color={colors.ink400} />
           </Pressable>
         </View>
+        </ScrollView>
       </View>
 
       <BottomSheet visible={showOfflineConfirm} onClose={() => setShowOfflineConfirm(false)}>
@@ -481,13 +468,6 @@ const styles = StyleSheet.create({
   card: { gap: spacing.sm },
   detail: { ...typography.body, color: colors.ink600 },
   error: { ...typography.label, color: colors.error },
-  alertCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.errorLight, borderWidth: 1, borderColor: colors.error, borderRadius: 20, padding: spacing.md },
-  alertBody: { flex: 1, gap: 2 },
-  alertTitle: { ...typography.label, color: colors.error, fontFamily: fonts.bold, fontSize: 14 },
-  alertText: { ...typography.caption, color: colors.ink600 },
-  alertAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  alertActionText: { ...typography.caption, color: colors.error, fontFamily: fonts.bold },
-  pressedScale: { transform: [{ scale: 0.98 }] },
   returnCabBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.successLight, borderRadius: 20, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   returnCabDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success },
   returnCabText: { ...typography.caption, color: colors.success, fontFamily: fonts.bold },
@@ -500,6 +480,9 @@ const styles = StyleSheet.create({
     gap: 14,
     boxShadow: shadow.lg,
   },
+  // The sheet's rows live in a ScrollView so it can never grow taller than the screen; the sheet's own gap moves inside.
+  sheetScroll: { flexGrow: 0 },
+  sheetContent: { gap: 14 },
   unifiedCard: {
     backgroundColor: colors.surface2,
     borderRadius: 16,
