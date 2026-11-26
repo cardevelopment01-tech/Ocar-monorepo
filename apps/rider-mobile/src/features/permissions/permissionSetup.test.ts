@@ -14,7 +14,7 @@ vi.mock('expo-location', () => ({
 }))
 vi.mock('@/services/notifications', () => ({ setupPushNotifications: mocks.setupPush }))
 vi.mock('@ocar/mobile-shared', () => ({
-  readLocationStatus: vi.fn(), readNotificationStatus: vi.fn(), shouldShowSetup: vi.fn(),
+  readLocationStatus: vi.fn(), askThenFallback: async (ask: () => Promise<boolean>) => { await ask() }, readNotificationStatus: vi.fn(), shouldShowSetup: vi.fn(),
 }))
 
 import { requestPermission } from './permissionSetup'

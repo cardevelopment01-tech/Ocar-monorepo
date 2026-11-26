@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Linking } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Location from 'expo-location'
-import { readLocationStatus, readNotificationStatus, shouldShowSetup, type PermissionRowModel } from '@ocar/mobile-shared'
+import { askThenFallback, readLocationStatus, readNotificationStatus, shouldShowSetup, type PermissionRowModel } from '@ocar/mobile-shared'
 import { setupPushNotifications } from '@/services/notifications'
 
 const SNOOZE_KEY = 'ocar_permission_setup_snoozed_at'
@@ -20,8 +20,9 @@ export async function requestPermission(key: string, rows: PermissionRowModel[])
   const row = rows.find((r) => r.key === key)
   if (!row || row.status === 'granted') return
   if (row.status === 'blocked') { await Linking.openSettings(); return }
-  if (key === 'notifications') await setupPushNotifications({ prompt: true })
-  else if (key === 'location') await Location.requestForegroundPermissionsAsync()
+  const settings = () => Linking.openSettings()
+  if (key === 'notifications') await askThenFallback(async () => { await setupPushNotifications({ prompt: true }); return (await readNotificationStatus()) === 'granted' }, settings)
+  else if (key === 'location') await askThenFallback(async () => (await Location.requestForegroundPermissionsAsync()).granted, settings)
 }
 
 export async function snoozeSetup(): Promise<void> {
