@@ -64,6 +64,8 @@ describe('admin CSV exports', () => {
   it('rides: needs a date range, then returns the rides in it', async () => {
     const bad = await get('ops', '/rides/export.csv?search=ZZXP')
     expect(bad.status).toBe(400)
+    expect((await get('ops', '/rides/export.csv?dateFrom=2026-02-31&dateTo=2026-03-01')).status).toBe(400)
+    expect((await get('ops', '/rides/export.csv?dateFrom=2026-01-01zzz&dateTo=2026-03-01')).status).toBe(400)
     const day = new Date().toISOString().slice(0, 10)
     const res = await get('ops', `/rides/export.csv?search=ZZXP&dateFrom=${day}&dateTo=${day}`)
     expect(res.status, res.text).toBe(200)
@@ -81,7 +83,7 @@ describe('admin CSV exports', () => {
   it('pending vehicle documents: returns the header even when the queue is empty, and never a file link', async () => {
     const res = await get('ops', '/vehicles/documents/pending/export.csv')
     expect(res.status, res.text).toBe(200)
-    expect(body(res)[0]).toBe('Driver code,Driver,Plate,Vehicle,Document,Document number,Uploaded (UTC)')
+    expect(body(res)[0]).toBe('Driver code,Driver,Plate,Vehicle,Document,Uploaded (UTC)')
     expect(res.text).not.toMatch(/file_url|https?:\/\//)
   })
 
@@ -114,6 +116,7 @@ describe('admin CSV exports', () => {
     const one = await request(app).get('/api/v1/admin/payouts/export.csv?periodFrom=2026-01-01&periodTo=2026-01-07').set('Authorization', `Bearer ${tok.fin}`)
     expect(one.status, one.text).toBe(200)
     expect(body(one)[0]).toContain('Settlement ID,Driver ID,Driver')
+    expect((await request(app).get('/api/v1/admin/payouts/export.csv?periodFrom=nope&periodTo=2026-01-07').set('Authorization', `Bearer ${tok.fin}`)).status).toBe(400)
   })
 
   it('support admins cannot export any of the personal-data lists', async () => {

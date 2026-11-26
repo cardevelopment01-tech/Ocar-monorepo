@@ -62,3 +62,14 @@ describe('exportPhone', () => {
     expect(exportPhone('12345')).toBe('12345')
   })
 })
+
+describe('exportMoney', () => {
+  it('keeps a negative amount a number, so it is not prefixed with an apostrophe and still sums', async () => {
+    const { exportMoney } = await import('@/lib/csv-export')
+    const { toCsv } = await import('@/modules/analytics/csv')
+    expect(exportMoney('-12.50')).toBe(-12.5)
+    expect(toCsv(['A'], [[exportMoney('-12.50')]])).toContain('-12.5')
+    expect(exportMoney(null)).toBe('')
+    expect(exportMoney('abc')).toBe('')
+  })
+})

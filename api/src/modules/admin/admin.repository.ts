@@ -391,14 +391,16 @@ export async function exportDrivers(
     [...main.params, max],
   );
 
-  // Reasons only for the flagged rows (a handful), like the list.
+  // Reasons only for the flagged rows. Chunks of 10, not all at once: "Blocked by docs" can flag thousands and the pool is small.
   const reasons = new Map<number, string>();
-  await Promise.all(
-    res.rows.map(async (r, i) => {
-      if (r.has_doc_issue)
-        reasons.set(i, (await findDocIssues(BigInt(r.id as string))).map((x) => x.short).join("; "));
-    }),
-  );
+  const flagged = res.rows.flatMap((r, i) => (r.has_doc_issue ? [i] : []));
+  for (let k = 0; k < flagged.length; k += 10) {
+    await Promise.all(
+      flagged.slice(k, k + 10).map(async (i) => {
+        reasons.set(i, (await findDocIssues(BigInt(res.rows[i].id as string))).map((x) => x.short).join("; "));
+      }),
+    );
+  }
 
   return res.rows.map((r, i) => ({
     code: r.code as string,

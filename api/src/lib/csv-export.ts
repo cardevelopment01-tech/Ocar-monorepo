@@ -16,6 +16,13 @@ export function exportDate(v: unknown): string {
   return Number.isNaN(d.getTime()) ? '' : d.toISOString()
 }
 
+/** Money arrives from pg as text. A negative one (refund, adjustment) would get the formula guard's ' prefix and stop summing, so send a number. */
+export function exportMoney(v: unknown): number | '' {
+  if (v === null || v === undefined || v === '') return ''
+  const n = Number(v)
+  return Number.isFinite(n) ? n : ''
+}
+
 /**
  * "+919700000001" -> "91 9700000001". A cell that starts with "+" is guarded against spreadsheet formulas (it would read
  * "'+91..."), and a bare 12-digit number turns into 9.19700E+11 in Excel. With the plus dropped and a space after the
