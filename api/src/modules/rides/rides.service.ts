@@ -2855,6 +2855,9 @@ export async function getRideAssignCandidates(
   return list.map((c) => ({ ...c, late_releases: late.get(c.driver_id) ?? 0 }))
 }
 
+/** Same as the dispatch desk's EARLY_ASSIGN_MINUTES: closer than this to the dispatch window, an assignment is not treated as early. */
+const EARLY_ASSIGN_MARGIN_MIN = 10
+
 export async function adminAssignDriver(
   rideId: bigint,
   driverId: bigint,
@@ -2872,9 +2875,11 @@ export async function adminAssignDriver(
   // A booking whose pickup is still ahead of its dispatch window is not put on the driver now: accepting it would lock them out of every other
   // ride until the pickup and leave the ride "accepted" for days. It becomes a reservation instead (the driver stays free, is reminded, and the
   // ride goes live at the normal time). "Book" counts as the driver's yes; "Ask" waits for them to confirm in the app. They need not be online.
-  if (ride.status === 'scheduled' && await repo.isAdvanceNotYetDue(rideId)) {
+  // (Within the last few minutes before dispatch it stays a normal assignment, as the dispatch desk's early-assign warning also says.)
+  if (ride.status === 'scheduled' && await repo.isAdvanceNotYetDue(rideId, EARLY_ASSIGN_MARGIN_MIN)) {
     await reserveDriver(rideId, driverId, adminId, null, overrideEligibility)
-    if (mode === 'force') await confirmReservation(driverId, rideId)
+    // The reservation stands even if the confirmation cannot be recorded: the driver can still confirm in the app.
+    if (mode === 'force') await confirmReservation(driverId, rideId).catch((err: unknown) => log.warn({ err, rideId }, 'reserved, confirmation not recorded'))
     return { success: true, mode, reserved: true }
   }
 

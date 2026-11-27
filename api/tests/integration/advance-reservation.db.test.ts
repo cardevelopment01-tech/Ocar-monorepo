@@ -603,6 +603,14 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
       expect(notify.notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ ownerType: 'driver', ownerId: driverA, type: 'advance_reserved', rideId: id }))
     })
 
+    it('"far from dispatch" has a margin: 5 minutes before the window is still a normal assignment, 30 is a reservation', async () => {
+      const near = await booking(20) // dispatch window opens 15 min before pickup, so 5 minutes from now
+      const far = await booking(45)  // 30 minutes from now
+      expect(await repo.isAdvanceNotYetDue(near, 10)).toBe(false)
+      expect(await repo.isAdvanceNotYetDue(near, 0)).toBe(true)
+      expect(await repo.isAdvanceNotYetDue(far, 10)).toBe(true)
+    })
+
     it('Ask on a far-off booking reserves the driver but waits for them to confirm', async () => {
       const { adminAssignDriver } = await import('@/modules/rides/rides.service')
       const id = await booking(3 * 24 * 60)

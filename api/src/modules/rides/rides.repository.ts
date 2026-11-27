@@ -1335,12 +1335,12 @@ export async function findStaleAcceptedOrArrivedRides(
 }
 
 /** True for an advance booking whose pickup is still outside its dispatch window, i.e. the normal sweep has not opened it for drivers yet. */
-export async function isAdvanceNotYetDue(rideId: bigint): Promise<boolean> {
+export async function isAdvanceNotYetDue(rideId: bigint, marginMin = 0): Promise<boolean> {
   const res = await pool.query<{ far: boolean }>(
-    `SELECT r.scheduled_for > now() + (ram.dispatch_buffer_minutes || ' minutes')::interval AS far
+    `SELECT r.scheduled_for > now() + ((ram.dispatch_buffer_minutes + $2::int) || ' minutes')::interval AS far
        FROM rides r JOIN ride_advance_meta ram ON ram.ride_id = r.id
       WHERE r.id = $1 AND r.scheduled_for IS NOT NULL`,
-    [rideId],
+    [rideId, marginMin],
   )
   return res.rows[0]?.far === true
 }
