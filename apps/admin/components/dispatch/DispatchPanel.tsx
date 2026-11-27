@@ -99,8 +99,8 @@ export default function DispatchPanel({ rideId, canAssign, onClose, onAssigned, 
         await dispatchApi.reserveDriver(rideId, c.driver_id, override)
         onAssigned(`${c.driver_name ?? 'Driver'} reserved. They keep taking rides until then, and are reminded before the pickup.`)
       } else {
-        await adminRideApi.assignDriver(rideId, c.driver_id, mode === 'ask' ? 'request' : 'force', !c.eligible)
-        onAssigned(mode === 'ask' ? `Request sent to ${c.driver_name}` : `Ride booked to ${c.driver_name}`)
+        const { reserved: kept } = await adminRideApi.assignDriver(rideId, c.driver_id, mode === 'ask' ? 'request' : 'force', !c.eligible)
+        onAssigned(kept ? `${c.driver_name ?? 'Driver'} reserved. They keep taking rides until then, and are reminded before the pickup.` : mode === 'ask' ? `Request sent to ${c.driver_name}` : `Ride booked to ${c.driver_name}`)
       }
     } catch (err) {
       setAssignError({

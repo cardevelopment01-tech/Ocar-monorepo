@@ -541,8 +541,9 @@ export const adminRideApi = {
     const res = await api.get(`/api/v1/admin/rides/${rideId}/assign-candidates`, { params })
     return (res.data as { candidates: AssignCandidate[] }).candidates
   },
-  assignDriver: async (rideId: string, driverId: string, mode: 'request' | 'force', overrideEligibility?: boolean): Promise<void> => {
-    await api.post(`/api/v1/admin/rides/${rideId}/assign`, { driverId, mode, overrideEligibility })
+  assignDriver: async (rideId: string, driverId: string, mode: 'request' | 'force', overrideEligibility?: boolean): Promise<{ reserved: boolean }> => {
+    const res = await api.post<{ reserved?: boolean }>(`/api/v1/admin/rides/${rideId}/assign`, { driverId, mode, overrideEligibility })
+    return { reserved: res.data?.reserved === true }
   },
 }
 

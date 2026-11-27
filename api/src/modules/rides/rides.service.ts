@@ -30,7 +30,7 @@ import { tellBooked, tellNoDrivers, keepSearchingAdvance, broadcastDataFor, redi
 import { getAdvancePolicy, lateCancelFee, lateCancelSummary } from '@/lib/advance-policy'
 import { advanceBookingEventsTotal } from '@/observability/metrics'
 import { pickupWaitFloor } from '@/lib/pickup-wait-floor'
-import { reservationClash, lateReleaseCounts } from '@/modules/rides/reservation.service'
+import { reservationClash, lateReleaseCounts, reserveDriver, confirmReservation } from '@/modules/rides/reservation.service'
 import { fmtClock } from '@/lib/ist-format'
 import { enqueueBreadcrumb, flushBreadcrumbs } from '@/lib/gps-buffer'
 import { socketEvents } from '@/websocket/socket.server'
@@ -2861,12 +2861,21 @@ export async function adminAssignDriver(
   mode: 'request' | 'force',
   overrideEligibility: boolean,
   adminId: bigint,
-): Promise<{ success: true; mode: 'request' | 'force' }> {
+): Promise<{ success: true; mode: 'request' | 'force'; reserved?: true }> {
   // Rich (not Core): the manual-offer socket payload below needs total_estimated.
   const ride = await repo.getRideById(rideId)
   if (!ride) throw Object.assign(new Error('Ride not found'), { httpStatus: 404 })
   if (!['scheduled', 'requested', 'no_drivers'].includes(ride.status)) {
     throw Object.assign(new Error('Ride is not open for assignment'), { httpStatus: 409 })
+  }
+
+  // A booking whose pickup is still ahead of its dispatch window is not put on the driver now: accepting it would lock them out of every other
+  // ride until the pickup and leave the ride "accepted" for days. It becomes a reservation instead (the driver stays free, is reminded, and the
+  // ride goes live at the normal time). "Book" counts as the driver's yes; "Ask" waits for them to confirm in the app. They need not be online.
+  if (ride.status === 'scheduled' && await repo.isAdvanceNotYetDue(rideId)) {
+    await reserveDriver(rideId, driverId, adminId, null, overrideEligibility)
+    if (mode === 'force') await confirmReservation(driverId, rideId)
+    return { success: true, mode, reserved: true }
   }
 
   // Look the chosen driver up by id. Scanning the picker's capped, distance-ranked list would refuse any driver past the nearest 50.
@@ -3013,6 +3022,8 @@ export async function forceAssignGraceCheck(rideId: bigint, driverId: bigint): P
 
   const ride = await repo.getRideCoreById(rideId)
   if (!ride || ride.status !== 'accepted' || !ride.driver_id || BigInt(ride.driver_id) !== driverId) return
+  // A booking taken long before its pickup has no reason to show GPS yet; reverting it would also search for a new driver right now.
+  if (ride.scheduled_for && await repo.isAdvanceNotYetDue(rideId)) { await repo.clearForceAssignGraceJob(rideId); return }
 
   const reverted = await repo.revertForceAssign(rideId, driverId)
   if (!reverted) return
@@ -3105,6 +3116,8 @@ export async function expireStaleAcceptedOrArrivedRide(
        VALUES ($1, $2, 'cancelled', 'timeout', 'auto-cancelled: abandoned before in_progress')`,
       [rideId, status]
     )
+    await client.query(`UPDATE ride_advance_meta SET status = 'cancelled', search_until = NULL WHERE ride_id = $1`, [rideId])
+    await releaseForRide(client, rideId, 'auto timeout') // the rider's offer goes back to them
 
     await client.query(
       `UPDATE driver_sessions SET status = 'online'

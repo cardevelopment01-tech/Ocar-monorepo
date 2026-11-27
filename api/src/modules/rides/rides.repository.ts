@@ -1324,12 +1324,25 @@ export async function findStaleAcceptedOrArrivedRides(
   arrivedHours: number
 ): Promise<StaleAcceptedOrArrivedRow[]> {
   const res = await pool.query<StaleAcceptedOrArrivedRow>(
+    // An advance booking is accepted early (an admin booked a driver days ahead): the driver cannot be "abandoning" a pickup that is still
+    // in the future, so the clock starts at the later of the last update and the pickup time.
     `SELECT id, status, driver_id FROM rides
-     WHERE (status = 'accepted'       AND updated_at < now() - ($1 || ' hours')::interval)
-        OR (status = 'driver_arrived' AND updated_at < now() - ($2 || ' hours')::interval)`,
+     WHERE (status = 'accepted'       AND GREATEST(updated_at, COALESCE(scheduled_for, updated_at)) < now() - ($1 || ' hours')::interval)
+        OR (status = 'driver_arrived' AND GREATEST(updated_at, COALESCE(scheduled_for, updated_at)) < now() - ($2 || ' hours')::interval)`,
     [acceptedHours, arrivedHours]
   )
   return res.rows
+}
+
+/** True for an advance booking whose pickup is still outside its dispatch window, i.e. the normal sweep has not opened it for drivers yet. */
+export async function isAdvanceNotYetDue(rideId: bigint): Promise<boolean> {
+  const res = await pool.query<{ far: boolean }>(
+    `SELECT r.scheduled_for > now() + (ram.dispatch_buffer_minutes || ' minutes')::interval AS far
+       FROM rides r JOIN ride_advance_meta ram ON ram.ride_id = r.id
+      WHERE r.id = $1 AND r.scheduled_for IS NOT NULL`,
+    [rideId],
+  )
+  return res.rows[0]?.far === true
 }
 
 /**
