@@ -27,7 +27,7 @@ const cand = (over: Record<string, unknown> = {}) => ({
 function setup(d = detail(), cands = [cand()], canAssign = true) {
   api.getById.mockResolvedValue(d)
   api.getAssignCandidates.mockResolvedValue(cands)
-  api.assignDriver.mockResolvedValue(undefined)
+  api.assignDriver.mockResolvedValue({ reserved: false })
   const onAssigned = vi.fn()
   const onChanged = vi.fn()
   render(<DispatchPanel rideId="77" canAssign={canAssign} onClose={() => {}} onAssigned={onAssigned} onChanged={onChanged} />)
@@ -50,12 +50,21 @@ describe('DispatchPanel', () => {
     await waitFor(() => expect(api.getAssignCandidates).toHaveBeenLastCalledWith('77', { q: 'sahoo' }))
   })
 
-  it('warns that asking or booking a far-off advance booking opens it for dispatch now, and points at Reserve', async () => {
+  it('says that asking or booking a far-off advance booking reserves the driver and keeps them free', async () => {
     const { user } = setup()
     await user.click(await screen.findByRole('radio', { name: /Ask the driver/ }))
     const note = await screen.findByRole('note')
-    expect(note).toHaveTextContent(/opens it for dispatch immediately/)
-    expect(note).toHaveTextContent(/use Reserve/)
+    expect(note).toHaveTextContent(/reserves them/)
+    expect(note).toHaveTextContent(/stay free for other rides/)
+  })
+
+  it('reports a reservation when the server turned a far-off booking into one', async () => {
+    const { user, onAssigned } = setup()
+    api.assignDriver.mockResolvedValue({ reserved: true })
+    await user.click(await screen.findByRole('radio', { name: /Book directly/ }))
+    await user.click(await screen.findByRole('button', { name: 'Book' }))
+    await user.click(await screen.findByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(onAssigned).toHaveBeenCalledWith(expect.stringMatching(/Ravi Das reserved. They keep taking rides/)))
   })
 
   it('stays quiet about timing for a ride already in dispatch', async () => {

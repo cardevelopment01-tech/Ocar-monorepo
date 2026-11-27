@@ -59,7 +59,7 @@ export function earlyAssignWarning(r: Pick<DispatchRow, 'status' | 'dispatch_at'
   if (r.status !== 'scheduled') return null
   const ahead = new Date(r.dispatch_at).getTime() - nowMs
   if (ahead <= EARLY_ASSIGN_MINUTES * MIN) return null
-  return `This ride is not due to dispatch for ${fmtDuration(ahead)}. Asking or booking now opens it for dispatch immediately, the driver has to be online right now, and they cannot take other rides until it is done. To keep a driver for it without that, use Reserve.`
+  return `This ride is not due to dispatch for ${fmtDuration(ahead)}. Assigning a driver now reserves them for it: they stay free for other rides, are reminded before the pickup, and the ride goes live at the normal time. Booking counts as their confirmation; asking waits for them to confirm in the app.`
 }
 
 export type ReservationTone = 'ok' | 'warn' | 'danger'

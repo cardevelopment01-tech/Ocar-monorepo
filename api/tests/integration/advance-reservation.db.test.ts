@@ -5,7 +5,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 // and the hand-off at dispatch time. Notifications and sockets are stubbed: they are covered elsewhere.
 const url = process.env['TEST_DATABASE_URL']
 
-const notify = vi.hoisted(() => ({ notifyOwner: vi.fn(async () => undefined), notifyAllAdmins: vi.fn(async () => undefined) }))
+const notify = vi.hoisted(() => ({ notifyOwner: vi.fn(async () => undefined), notifyAllAdmins: vi.fn(async () => undefined), notifyRideEvent: vi.fn(async () => undefined) }))
 // The real accept path also asks for other notifications: those are no-ops here.
 vi.mock('@/modules/notifications/notifications.service', () => new Proxy(notify, { get: (t, k) => (typeof k !== 'string' || k === 'then' || k === '__esModule' ? undefined : k in t ? (t as Record<string, unknown>)[k] : vi.fn(async () => undefined)) }))
 vi.mock('@/websocket/socket.server', () => ({ socketEvents: { sendRideRequest: vi.fn(), sendRideStatusUpdate: vi.fn(), sendDriverAssigned: vi.fn() } }))
@@ -51,7 +51,7 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
   async function purge(): Promise<void> {
     const drivers = [driverA, driverB].filter(Boolean).map(String)
     const rides = `SELECT id FROM rides WHERE user_id = $1`
-    for (const t of ['ride_assignments', 'ride_status_history', 'ride_advance_meta', 'fare_snapshots', 'driver_reservation_events', 'ride_eta_snapshots']) {
+    for (const t of ['ride_assignments', 'ride_status_history', 'ride_advance_meta', 'fare_snapshots', 'driver_reservation_events', 'ride_eta_snapshots', 'ride_cancellations']) {
       await pool.query(`DELETE FROM ${t} WHERE ride_id IN (${rides})`, [userId])
     }
     await pool.query('DELETE FROM rides WHERE user_id = $1', [userId])
@@ -546,6 +546,85 @@ describe.skipIf(!url)('advance booking driver reservation on a real database', (
       expect((await reservedOn(id)).d).toBeNull()
       expect((await pool.query('SELECT event FROM driver_reservation_events WHERE ride_id = $1', [id])).rows.map((r) => r.event)).toEqual(['released_late'])
       expect(notify.notifyAllAdmins.mock.calls.filter((c) => (c[0] as { rideId: bigint }).rideId === id)).toHaveLength(1)
+    })
+  })
+
+  // ── A booking taken long before its pickup (the ride #1260 incident: an admin booked a driver, the 3-hour sweep cancelled it as "auto timeout") ──
+  describe('a booking taken well before its pickup', () => {
+    // The ride as an admin assignment leaves it. updated_at is backdated with its trigger off (it stamps now() on every write), and the pickup
+    // is set in the same statement so nothing touches the row afterwards.
+    const takeEarly = async (id: bigint, hoursAgo: number, pickupSql = 'scheduled_for') => {
+      await pool.query("UPDATE rides SET status = 'requested' WHERE id = $1", [id]) // the DB refuses scheduled -> accepted
+      const c = await pool.connect()
+      try {
+        await c.query('BEGIN')
+        await c.query('ALTER TABLE rides DISABLE TRIGGER trg_rides_updated_at')
+        await c.query(`UPDATE rides SET status = 'accepted', driver_id = $2, accepted_at = now() - make_interval(hours => $3), updated_at = now() - make_interval(hours => $3), scheduled_for = ${pickupSql} WHERE id = $1`, [id, driverA, hoursAgo])
+        await c.query('ALTER TABLE rides ENABLE TRIGGER trg_rides_updated_at')
+        await c.query('COMMIT')
+      } catch (err) { await c.query('ROLLBACK'); throw err } finally { c.release() }
+    }
+    const staleIds = async () => (await repo.findStaleAcceptedOrArrivedRides(3, 1)).map((r: { id: string }) => BigInt(r.id))
+    const free = (id: bigint) => pool.query("UPDATE rides SET status = 'cancelled', driver_id = NULL WHERE id = $1", [id])
+
+    it('is not swept as abandoned while its pickup is still ahead, however long it has been accepted', async () => {
+      const id = await booking(2 * 24 * 60)
+      await takeEarly(id, 5)
+      expect(await staleIds()).not.toContain(id)
+      await free(id)
+    })
+
+    it('is swept once the pickup is long past with nobody on the trip, and the cancel closes its advance row', async () => {
+      const id = await booking(120)
+      await takeEarly(id, 5, "now() - interval '4 hours'")
+      expect(await staleIds()).toContain(id)
+      const { expireStaleAcceptedOrArrivedRide } = await import('@/modules/rides/rides.service')
+      await expireStaleAcceptedOrArrivedRide(id, 'accepted', driverA)
+      expect((await pool.query('SELECT status FROM rides WHERE id = $1', [id])).rows[0].status).toBe('cancelled')
+      expect((await pool.query('SELECT status FROM ride_advance_meta WHERE ride_id = $1', [id])).rows[0].status).toBe('cancelled')
+    })
+
+    it('still sweeps an ordinary ride that has no pickup time', async () => {
+      const id = await booking(120)
+      await takeEarly(id, 5, 'NULL')
+      expect(await staleIds()).toContain(id)
+      await free(id)
+    })
+
+    it('Book on a far-off booking reserves and confirms the driver, leaves the ride scheduled, and keeps the driver free (even offline)', async () => {
+      const { adminAssignDriver } = await import('@/modules/rides/rides.service')
+      const id = await booking(3 * 24 * 60)
+      await pool.query("DELETE FROM driver_sessions WHERE driver_id = $1", [driverA])
+      expect(await adminAssignDriver(id, driverA, 'force', false, adminId)).toEqual({ success: true, mode: 'force', reserved: true })
+      expect((await pool.query('SELECT status, driver_id FROM rides WHERE id = $1', [id])).rows[0]).toMatchObject({ status: 'scheduled', driver_id: null })
+      const r = await reservedOn(id)
+      expect(r.d).toBe(driverA.toString())
+      expect(r.reservation_confirmed_at).not.toBeNull()
+      expect(notify.notifyOwner).toHaveBeenCalledWith(expect.objectContaining({ ownerType: 'driver', ownerId: driverA, type: 'advance_reserved', rideId: id }))
+    })
+
+    it('"far from dispatch" has a margin: 5 minutes before the window is still a normal assignment, 30 is a reservation', async () => {
+      const near = await booking(20) // dispatch window opens 15 min before pickup, so 5 minutes from now
+      const far = await booking(45)  // 30 minutes from now
+      expect(await repo.isAdvanceNotYetDue(near, 10)).toBe(false)
+      expect(await repo.isAdvanceNotYetDue(near, 0)).toBe(true)
+      expect(await repo.isAdvanceNotYetDue(far, 10)).toBe(true)
+    })
+
+    it('Ask on a far-off booking reserves the driver but waits for them to confirm', async () => {
+      const { adminAssignDriver } = await import('@/modules/rides/rides.service')
+      const id = await booking(3 * 24 * 60)
+      expect(await adminAssignDriver(id, driverB, 'request', false, adminId)).toEqual({ success: true, mode: 'request', reserved: true })
+      expect((await reservedOn(id)).reservation_confirmed_at).toBeNull()
+    })
+
+    it('the no-activity revert leaves a booking taken long before its pickup alone', async () => {
+      const { forceAssignGraceCheck } = await import('@/modules/rides/rides.service')
+      const id = await booking(3 * 24 * 60)
+      await takeEarly(id, 0)
+      await forceAssignGraceCheck(id, driverA)
+      expect((await pool.query('SELECT status, driver_id FROM rides WHERE id = $1', [id])).rows[0]).toMatchObject({ status: 'accepted', driver_id: driverA.toString() })
+      await free(id)
     })
   })
 })

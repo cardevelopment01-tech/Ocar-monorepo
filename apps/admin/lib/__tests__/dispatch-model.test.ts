@@ -46,9 +46,9 @@ describe('relativeTo', () => {
 describe('earlyAssignWarning', () => {
   it('warns when an advance booking is a long way from dispatch, and says what assigning does', () => {
     const w = earlyAssignWarning({ status: 'scheduled', dispatch_at: at(300), scheduled_for: at(315) }, NOW)!
-    expect(w).toMatch(/opens it for dispatch immediately/)
-    expect(w).toMatch(/online right now/)
-    expect(w).toMatch(/Reserve/) // points at the better tool
+    expect(w).toMatch(/reserves them/)
+    expect(w).toMatch(/stay free for other rides/)
+    expect(w).not.toMatch(/online right now/)
     expect(w).toMatch(/5h/)
   })
   it('stays quiet when dispatch is imminent or has passed', () => {
