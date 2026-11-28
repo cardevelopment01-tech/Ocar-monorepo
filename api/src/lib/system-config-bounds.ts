@@ -70,6 +70,7 @@ const ALLOWED_VALUES: Record<string, readonly string[]> = {
   cash_collection_enabled: ['true', 'false'],
   // Read as on only when exactly 'true': a typo must be refused, not left looking like an enabled switch.
   kyc_reminders_enabled: ['true', 'false'],
+  kyc_catchup_enabled: ['true', 'false'],
   // Read as on only when exactly 'true': a typo must be refused, not left looking like an enabled switch.
   dispatch_no_resend_enabled: ['true', 'false'],
   dispatch_head_start_enabled: ['true', 'false'],

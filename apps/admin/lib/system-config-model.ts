@@ -63,6 +63,7 @@ const META: Record<string, Meta> = {
   call_masking_credit_floor:       { group: 'masking', title: 'Credit floor', help: 'If IVR credit drops below this, masking switches itself off until re-enabled.', prefix: '₹' },
 
   kyc_reminders_enabled: { group: 'onboarding', kind: 'switch', title: 'Onboarding reminders', help: 'Sends up to three reminders, between 10:00 and 21:00 India time, to drivers who stopped partway through verification. Off until switched on.' },
+  kyc_catchup_enabled:   { group: 'onboarding', kind: 'switch', title: 'Also remind earlier drivers', help: 'Drivers who stopped before reminders started, and are already past the pause day, get the same three reminders, counted from the first one. Needs “Onboarding reminders” on. Off until switched on.' },
   kyc_reminder_day_1:    { group: 'onboarding', title: 'First reminder', help: 'Days after the driver’s last step. Must be before the second.', suffix: ' days' },
   kyc_reminder_day_2:    { group: 'onboarding', title: 'Second reminder', help: 'Days after the driver’s last step. Must be before the third.', suffix: ' days' },
   kyc_reminder_day_3:    { group: 'onboarding', title: 'Last reminder', help: 'Days after the driver’s last step. Must be before the pause day.', suffix: ' days' },

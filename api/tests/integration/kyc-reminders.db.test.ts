@@ -111,6 +111,41 @@ describe.skipIf(!url)('onboarding reminders on a real database', () => {
     await svc.sendKycReminders(NOW)
     expect((notify.notifyOwner.mock.calls[0]![0] as { imageUrl?: string }).imageUrl).toBe('https://ocarindia.example/push/kyc-step-2.png')
   })
+  describe('catch-up for drivers who were already past the pause day', () => {
+    const plusDays = (d: number) => new Date(NOW.getTime() + d * 86_400_000)
+    it('does nothing for them while the switch is off', async () => {
+      await driver('+919999001401', { updatedAgoDays: 40 })
+      expect(await svc.sendKycReminders(NOW)).toBe(0)
+    })
+    it('runs the same three reminders from the first one: now, 3 days later, 7 days later, then pauses; the pause date counts from the first', async () => {
+      cfg.values = { kyc_reminders_enabled: 'true', kyc_catchup_enabled: 'true' }
+      const id = await driver('+919999001402', { updatedAgoDays: 40 })
+      expect(await svc.sendKycReminders(NOW)).toBe(1)
+      expect((notify.notifyOwner.mock.calls[0]![0] as { title: string }).title).toContain('kyc_reminder_1|')
+      expect((notify.notifyOwner.mock.calls[0]![0] as { title: string }).title).toContain('19 Dec') // first reminder + 10 - 1 days
+      expect(await svc.sendKycReminders(NOW)).toBe(0)
+      expect(await svc.sendKycReminders(plusDays(2))).toBe(0)
+      expect(await svc.sendKycReminders(plusDays(3))).toBe(1)
+      expect(await svc.sendKycReminders(plusDays(7))).toBe(1)
+      expect(await sends(id)).toEqual([1, 2, 3])
+      expect(await svc.sendKycReminders(plusDays(9))).toBe(0) // paused again
+    })
+    it('leaves alone a driver who already had the normal reminders, even with the switch on', async () => {
+      cfg.values = { kyc_reminders_enabled: 'true', kyc_catchup_enabled: 'true' }
+      const id = await driver('+919999001403', { updatedAgoDays: 40 })
+      await pool.query('INSERT INTO driver_kyc_reminder_sends (driver_id, n, step, sent_at) VALUES ($1,1,$2,$3), ($1,2,$2,$4), ($1,3,$2,$5)', [id, 'documents', daysAgo(39), daysAgo(36), daysAgo(32)])
+      expect(await svc.sendKycReminders(NOW)).toBe(0)
+    })
+    it('a newer driver in the normal window still gets theirs, and the report shows a catch-up driver as reminded, not paused', async () => {
+      cfg.values = { kyc_reminders_enabled: 'true', kyc_catchup_enabled: 'true' }
+      await driver('+919999001404', { updatedAgoDays: 1.2 })
+      const old = await driver('+919999001405', { updatedAgoDays: 60 })
+      expect(await svc.sendKycReminders(NOW)).toBe(2)
+      const report = await import('@/modules/drivers/kyc-reminders.report')
+      const row = (await report.listKycReminderReport({}, NOW)).rows.find((r) => r.driverId === old)
+      expect(row?.state).toBe('reminded')
+    })
+  })
   it('stops once the application is paused', async () => {
     await driver('+919999001107', { updatedAgoDays: 11 })
     expect(await svc.sendKycReminders(NOW)).toBe(0)

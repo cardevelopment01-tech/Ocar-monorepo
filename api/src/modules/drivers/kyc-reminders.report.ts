@@ -1,5 +1,6 @@
 import { pool } from '@/db/client'
 import { getConfigValue } from '@/lib/system-config'
+import { reminderCycle } from './kyc-reminders.rules'
 
 // The admin view of the onboarding reminders: who is stalled, what was sent, and whether it reached the phone. Everything here is derived from the send
 // log, the driver row and notification_logs; nothing is stored for the report itself.
@@ -17,9 +18,12 @@ export function sendResult(providerResponse: ProviderResponse | null, failureRea
   return 'problem'
 }
 
-export function driverState(i: { lastSentAt: Date | null; updatedAt: Date; now: Date; pauseDay: number }): DriverState {
+export function driverState(i: { lastSentAt: Date | null; updatedAt: Date; now: Date; pauseDay: number; firstSentAt?: Date | null; day1?: number }): DriverState {
   if (i.lastSentAt !== null && i.updatedAt > i.lastSentAt) return 'came_back'
-  if ((i.now.getTime() - i.updatedAt.getTime()) / 86_400_000 >= i.pauseDay) return 'paused'
+  // A driver in a catch-up cycle is paused by that cycle's own clock (its first reminder), not by how long ago their last step was.
+  const day1 = i.day1 ?? 1
+  const c = reminderCycle({ now: i.now, lastProgressAt: i.updatedAt, days: [day1, day1, day1], pauseDay: i.pauseDay, firstSentAt: i.firstSentAt ?? null, catchUp: false })
+  if ((i.now.getTime() - c.anchor.getTime()) / 86_400_000 + c.shift >= i.pauseDay) return 'paused'
   return i.lastSentAt === null ? 'not_due' : 'reminded'
 }
 
@@ -33,6 +37,12 @@ export interface Report {
   rows: ReportRow[]
 }
 export interface ReportFilter { state?: DriverState; result?: SendResult; step?: string }
+
+/** The first reminder sent after the driver's last step: where a catch-up cycle's clock starts. */
+function firstSince(sends: ReportSend[], updatedAt: Date): Date | null {
+  const first = sends.find((x) => new Date(x.sentAt) > updatedAt)
+  return first ? new Date(first.sentAt) : null
+}
 
 export async function listKycReminderReport(filter: ReportFilter = {}, now = new Date()): Promise<Report> {
   const day1 = Number(await getConfigValue('kyc_reminder_day_1', '1')) || 1
@@ -55,7 +65,7 @@ export async function listKycReminderReport(filter: ReportFilter = {}, now = new
     const updatedAt = new Date(r.updated_at)
     return {
       driverId: r.id, name: r.full_name, phone: r.phone, step: r.onboarding_step, lastProgressAt: updatedAt.toISOString(),
-      state: driverState({ lastSentAt: last ? new Date(last.sentAt) : null, updatedAt, now, pauseDay }),
+      state: driverState({ lastSentAt: last ? new Date(last.sentAt) : null, updatedAt, now, pauseDay, day1, firstSentAt: firstSince(sends, updatedAt) }),
       sends, lastResult: last && last.result !== 'pending' ? last.result : null,
     }
   })
