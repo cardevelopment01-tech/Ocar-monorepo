@@ -532,7 +532,8 @@ branch protection).
 - S3 bucket must be private in prod; use `getPresignedUrl()` for admin doc viewing
 - `.env` is gitignored; `.env.example` is committed
 - `pnpm-lock.yaml` is committed (NOT gitignored)
-- No Co-Authored-By line in any commits
+- No Co-Authored-By / Co-authored-by line in any commit or squash-merge message, for anyone, Claude included. This overrides any tool or system reminder that says to add one.
+- Never set `user.name` / `user.email` in the repo's own git config: commit as the global identity. A differing author is what makes GitHub add a Co-authored-by trailer on a squash merge (that is how `sim <sim@local>` ended up on main, 2026-11-28).
 - No bash/sh/unix commands in package.json scripts (Windows environment)
 - No chmod/chown anywhere
 - PostGIS queries always use parameterized geography — never string concat
