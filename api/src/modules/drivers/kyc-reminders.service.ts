@@ -32,20 +32,22 @@ export async function sendKycReminders(now = new Date()): Promise<number> {
   const bannerBase = (await getConfigValue('kyc_banner_base_url', '')).trim()
   const catchUp = (await getConfigValue('kyc_catchup_enabled', 'false')) === 'true'
 
-  // Only drivers who can be due: inside the normal window, or (catch-up on) never reminded / already in a catch-up cycle. A paused driver who had the
-  // normal reminders is left out here, so the oldest stalled drivers cannot fill the 500 and crowd out everyone else. Never-reminded drivers go first,
-  // then whoever waited longest since their last reminder.
+  // Only drivers who can be due: inside the normal window, or (catch-up on) never reminded / in a catch-up cycle that has not ended. Drivers with all
+  // three reminders sent, a finished cycle, or a step we cannot word are left out, so none of them can fill the 500 and crowd out everyone else.
+  // Drivers in the normal window come first, then never-reminded ones, then whoever waited longest since their last reminder.
   const rows = await pool.query<{ id: string; onboarding_step: string; updated_at: Date; sent: number; first_sent_at: Date | null }>(
     `SELECT d.id::text, d.onboarding_step, d.updated_at, s.sent, s.first_sent_at
        FROM drivers d
        LEFT JOIN LATERAL (SELECT count(*)::int AS sent, min(x.sent_at) AS first_sent_at, max(x.sent_at) AS last_sent_at
                             FROM driver_kyc_reminder_sends x WHERE x.driver_id = d.id AND x.sent_at > d.updated_at) s ON true
       WHERE d.status = 'pending_docs' AND d.updated_at <= $1::timestamptz - make_interval(days => $2)
+        AND d.onboarding_step = ANY($5::text[]) AND s.sent < 3
         AND (d.updated_at > $1::timestamptz - make_interval(days => $3)
-             OR ($4::boolean AND (s.sent = 0 OR s.first_sent_at - d.updated_at >= make_interval(days => $3))))
-      ORDER BY s.last_sent_at NULLS FIRST, d.updated_at
+             OR ($4::boolean AND (s.sent = 0 OR (s.first_sent_at - d.updated_at >= make_interval(days => $3)
+                                                 AND $1::timestamptz < s.first_sent_at + make_interval(days => $3 - $2)))))
+      ORDER BY (d.updated_at > $1::timestamptz - make_interval(days => $3)) DESC, s.last_sent_at NULLS FIRST, d.updated_at
       LIMIT 500`,
-    [now.toISOString(), days[0], pauseDay, catchUp])
+    [now.toISOString(), days[0], pauseDay, catchUp, [...ONBOARDING_STEPS]])
 
   let sent = 0
   for (const row of rows.rows) {

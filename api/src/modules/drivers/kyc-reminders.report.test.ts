@@ -41,3 +41,13 @@ describe('driverState for a catch-up cycle', () => {
     expect(driverState({ lastSentAt: null, firstSentAt: null, updatedAt: ago(40), now, pauseDay: 10, day1: 1 })).toBe('paused')
   })
 })
+
+describe('driverState when the catch-up switch is turned off part way', () => {
+  const now = new Date('2026-12-10T06:00:00Z')
+  const ago = (d: number) => new Date(now.getTime() - d * 86_400_000)
+  it('shows the cycle as paused, since nothing more will be sent', () => {
+    const i = { lastSentAt: ago(2), firstSentAt: ago(2), updatedAt: ago(40), now, pauseDay: 10, day1: 1 }
+    expect(driverState({ ...i, catchUpOn: true })).toBe('reminded')
+    expect(driverState({ ...i, catchUpOn: false })).toBe('paused')
+  })
+})

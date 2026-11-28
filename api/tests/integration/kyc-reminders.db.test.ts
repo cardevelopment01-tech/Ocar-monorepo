@@ -136,6 +136,19 @@ describe.skipIf(!url)('onboarding reminders on a real database', () => {
       await pool.query('INSERT INTO driver_kyc_reminder_sends (driver_id, n, step, sent_at) VALUES ($1,1,$2,$3), ($1,2,$2,$4), ($1,3,$2,$5)', [id, 'documents', daysAgo(39), daysAgo(36), daysAgo(32)])
       expect(await svc.sendKycReminders(NOW)).toBe(0)
     })
+    it('more than 500 drivers whose catch-up is finished cannot crowd out a newer driver whose reminder is due', async () => {
+      cfg.values = { kyc_reminders_enabled: 'true', kyc_catchup_enabled: 'true' }
+      await pool.query(`
+        WITH d AS (INSERT INTO drivers (phone, status, onboarding_step, updated_at)
+                   SELECT '+91999910' || lpad(g::text, 4, '0'), 'pending_docs', 'documents', $1::timestamptz FROM generate_series(1, 505) g RETURNING id, phone)
+        INSERT INTO driver_kyc_reminder_sends (driver_id, n, step, sent_at)
+        SELECT d.id, n, 'documents', $2::timestamptz + (n || ' days')::interval FROM d, generate_series(1, 3) n`, [daysAgo(60), daysAgo(30)])
+      phones.push(...(await pool.query<{ phone: string }>("SELECT phone FROM drivers WHERE phone LIKE '+91999910%'")).rows.map((r) => r.phone))
+      const fresh = await driver('+919999001406', { updatedAgoDays: 5 })
+      await pool.query('INSERT INTO driver_kyc_reminder_sends (driver_id, n, step, sent_at) VALUES ($1,1,$2,$3)', [fresh, 'documents', daysAgo(4)])
+      expect(await svc.sendKycReminders(NOW)).toBe(1) // reminder 2 for the newer driver
+      expect(await sends(fresh)).toEqual([1, 2])
+    })
     it('a newer driver in the normal window still gets theirs, and the report shows a catch-up driver as reminded, not paused', async () => {
       cfg.values = { kyc_reminders_enabled: 'true', kyc_catchup_enabled: 'true' }
       await driver('+919999001404', { updatedAgoDays: 1.2 })
