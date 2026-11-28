@@ -61,6 +61,8 @@ describe('onboarding reminder settings', () => {
     expect(validateConfigBounds('kyc_pause_day', '31')).not.toBeNull()
     expect(validateConfigBounds('kyc_pause_day', '12')).toBeNull()
     expect(validateConfigBounds('kyc_reminders_enabled', 'yes')).not.toBeNull()
+    expect(validateConfigBounds('kyc_catchup_enabled', 'yes')).not.toBeNull()
+    expect(validateConfigBounds('kyc_catchup_enabled', 'true')).toBeNull()
     expect(validateConfigBounds('kyc_reminders_enabled', 'true')).toBeNull()
   })
   it('keeps the days in order: first < second < third < pause day', () => {

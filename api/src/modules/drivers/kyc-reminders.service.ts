@@ -4,7 +4,7 @@ import { getConfigValue } from '@/lib/system-config'
 import { notifyOwner } from '@/modules/notifications/notifications.service'
 import { renderTemplate } from '@/modules/notifications/templates.service'
 import { offersAllowedNow } from '@/modules/notifications/broadcast.service'
-import { nextReminder } from './kyc-reminders.rules'
+import { nextReminder, pausesAt, reminderCycle } from './kyc-reminders.rules'
 
 const log = logger.child({ module: 'kyc-reminders' })
 
@@ -30,20 +30,31 @@ export async function sendKycReminders(now = new Date()): Promise<number> {
   const days: [number, number, number] = [await numberConfig('kyc_reminder_day_1', 1), await numberConfig('kyc_reminder_day_2', 4), await numberConfig('kyc_reminder_day_3', 8)]
   const pauseDay = await numberConfig('kyc_pause_day', 10)
   const bannerBase = (await getConfigValue('kyc_banner_base_url', '')).trim()
+  const catchUp = (await getConfigValue('kyc_catchup_enabled', 'false')) === 'true'
 
-  const rows = await pool.query<{ id: string; onboarding_step: string; updated_at: Date; sent: number }>(
-    `SELECT d.id::text, d.onboarding_step, d.updated_at,
-            (SELECT count(*) FROM driver_kyc_reminder_sends s WHERE s.driver_id = d.id AND s.sent_at > d.updated_at)::int AS sent
+  // Only drivers who can be due: inside the normal window, or (catch-up on) never reminded / in a catch-up cycle that has not ended. Drivers with all
+  // three reminders sent, a finished cycle, or a step we cannot word are left out, so none of them can fill the 500 and crowd out everyone else.
+  // Drivers in the normal window come first, then never-reminded ones, then whoever waited longest since their last reminder.
+  const rows = await pool.query<{ id: string; onboarding_step: string; updated_at: Date; sent: number; first_sent_at: Date | null }>(
+    `SELECT d.id::text, d.onboarding_step, d.updated_at, s.sent, s.first_sent_at
        FROM drivers d
+       LEFT JOIN LATERAL (SELECT count(*)::int AS sent, min(x.sent_at) AS first_sent_at, max(x.sent_at) AS last_sent_at
+                            FROM driver_kyc_reminder_sends x WHERE x.driver_id = d.id AND x.sent_at > d.updated_at) s ON true
       WHERE d.status = 'pending_docs' AND d.updated_at <= $1::timestamptz - make_interval(days => $2)
-      ORDER BY d.updated_at LIMIT 500`,
-    [now.toISOString(), days[0]])
+        AND d.onboarding_step = ANY($5::text[]) AND s.sent < 3
+        AND (d.updated_at > $1::timestamptz - make_interval(days => $3)
+             OR ($4::boolean AND (s.sent = 0 OR (s.first_sent_at - d.updated_at >= make_interval(days => $3)
+                                                 AND $1::timestamptz < s.first_sent_at + make_interval(days => $3 - $2)))))
+      ORDER BY (d.updated_at > $1::timestamptz - make_interval(days => $3)) DESC, s.last_sent_at NULLS FIRST, d.updated_at
+      LIMIT 500`,
+    [now.toISOString(), days[0], pauseDay, catchUp, [...ONBOARDING_STEPS]])
 
   let sent = 0
   for (const row of rows.rows) {
     const done = ONBOARDING_STEPS.indexOf(row.onboarding_step as typeof ONBOARDING_STEPS[number])
     if (done < 0) continue
-    const n = nextReminder({ now, lastProgressAt: new Date(row.updated_at), sentSinceProgress: row.sent, enabled: true, days, pauseDay })
+    const cycle = { now, lastProgressAt: new Date(row.updated_at), days, pauseDay, firstSentAt: row.first_sent_at ? new Date(row.first_sent_at) : null, catchUp }
+    const n = nextReminder({ ...cycle, sentSinceProgress: row.sent, enabled: true })
     if (n === null) continue
 
     // Claim first: the one-per-day unique index makes an overlapping sweep a no-op instead of a second message.
@@ -53,7 +64,7 @@ export async function sendKycReminders(now = new Date()): Promise<number> {
     if (claim.rows.length === 0) continue
 
     try {
-      const pauseDate = pauseDateLabel(new Date(new Date(row.updated_at).getTime() + pauseDay * 86_400_000))
+      const pauseDate = pauseDateLabel(pausesAt(reminderCycle(cycle), pauseDay)) // a catch-up driver's date counts from their first reminder, not their last step
       const slug = `kyc_reminder_${n}${done === 0 ? '_new' : ''}`
       const msg = await renderTemplate(slug, 'push', { headline: HEADLINE[done]!, nextAction: NEXT_ACTION[row.onboarding_step]!, pauseDate })
       const note = await notifyOwner({ ownerType: 'driver', ownerId: BigInt(row.id), type: 'kyc_reminder', title: msg.subject ?? 'Finish your Ocar application', body: msg.body,

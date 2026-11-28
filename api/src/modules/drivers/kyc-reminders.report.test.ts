@@ -29,3 +29,25 @@ describe('driverState', () => {
     expect(driverState({ lastSentAt: null, updatedAt: ago(2), now, pauseDay: 10 })).toBe('not_due')
   })
 })
+
+describe('driverState for a catch-up cycle', () => {
+  const now = new Date('2026-12-10T06:00:00Z')
+  const ago = (d: number) => new Date(now.getTime() - d * 86_400_000)
+  it('is reminded while its own cycle runs, even though the last step was long ago, and paused when that cycle ends', () => {
+    expect(driverState({ lastSentAt: ago(2), firstSentAt: ago(2), updatedAt: ago(40), now, pauseDay: 10, day1: 1 })).toBe('reminded')
+    expect(driverState({ lastSentAt: ago(9), firstSentAt: ago(10), updatedAt: ago(40), now, pauseDay: 10, day1: 1 })).toBe('paused')
+  })
+  it('is still paused when it never had a reminder and the catch-up has not reached it', () => {
+    expect(driverState({ lastSentAt: null, firstSentAt: null, updatedAt: ago(40), now, pauseDay: 10, day1: 1 })).toBe('paused')
+  })
+})
+
+describe('driverState when the catch-up switch is turned off part way', () => {
+  const now = new Date('2026-12-10T06:00:00Z')
+  const ago = (d: number) => new Date(now.getTime() - d * 86_400_000)
+  it('shows the cycle as paused, since nothing more will be sent', () => {
+    const i = { lastSentAt: ago(2), firstSentAt: ago(2), updatedAt: ago(40), now, pauseDay: 10, day1: 1 }
+    expect(driverState({ ...i, catchUpOn: true })).toBe('reminded')
+    expect(driverState({ ...i, catchUpOn: false })).toBe('paused')
+  })
+})

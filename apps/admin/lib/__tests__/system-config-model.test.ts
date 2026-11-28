@@ -13,6 +13,7 @@ function cfg(over: Partial<SystemConfig> & { key: string }): SystemConfig {
 describe('driver onboarding reminder settings', () => {
   it('lands the switch and the four day settings in their own group', () => {
     expect(resolve(cfg({ key: 'kyc_reminders_enabled', valueType: 'boolean', value: 'false' }))).toMatchObject({ group: 'onboarding', kind: 'switch', title: 'Onboarding reminders' })
+    expect(resolve(cfg({ key: 'kyc_catchup_enabled', valueType: 'boolean', value: 'false' }))).toMatchObject({ group: 'onboarding', kind: 'switch', title: 'Also remind earlier drivers' })
     for (const key of ['kyc_reminder_day_1', 'kyc_reminder_day_2', 'kyc_reminder_day_3', 'kyc_pause_day']) {
       expect(resolve(cfg({ key, min: 1, max: 30 }))).toMatchObject({ group: 'onboarding', suffix: ' days' })
     }
